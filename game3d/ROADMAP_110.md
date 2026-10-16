@@ -1,6 +1,6 @@
 # BLINK LIFE 3D — all 110 requested features
 
-**Implementation board / Testlab, 15 October 2026.** This file records all requested capabilities. The presence of a checkbox in this file does **not** mean the game code is finished. Only items explicitly marked TESTLAB have even a partial prototype; many remain pending.
+**Implementation board / Testlab, 16 October 2026.** This file records all requested capabilities. The presence of a checkbox in this file does **not** mean the game code is finished. Only items explicitly marked TESTLAB have even a partial prototype; many remain pending.
 
 ## Delivery guarantees
 
@@ -28,7 +28,7 @@
 
 ### Homes and property
 
-- [ ] **011. Buy permanent houses** — NOT IMPLEMENTED
+- [ ] **011. Buy permanent houses** — TESTLAB · one account-bound virtual home saved in a single dedicated server's JSON file; not global production property
 - [ ] **012. Rent apartments** — NOT IMPLEMENTED
 - [ ] **013. Visit approved friend's home** — TESTLAB · approvals, isolated demo room (no ownership persistence)
 - [ ] **014. Knock at home door** — NOT IMPLEMENTED
@@ -41,11 +41,11 @@
 
 ### Vehicles and transport
 
-- [ ] **021. Purchase vehicles** — NOT IMPLEMENTED
+- [ ] **021. Purchase vehicles** — TESTLAB · fictional 300 GC purchase is server-owned and persisted to the same single host; basic demo car, no full physics
 - [ ] **022. Enter and leave vehicles** — NOT IMPLEMENTED
 - [ ] **023. Drive streets with physics** — NOT IMPLEMENTED
 - [ ] **024. Shared vehicle passenger seats** — TESTLAB · one consenting passenger per demo vehicle, simple car geometry
-- [ ] **025. Passenger consent handshake** — NOT IMPLEMENTED
+- [ ] **025. Passenger consent handshake** — TESTLAB · 60-second invitations, explicit approve/decline, one passenger and per-session block
 - [ ] **026. Ride requests to friends** — TESTLAB · request and driver approval
 - [ ] **027. Virtual GPS waypoints** — TESTLAB · LAN ride request; no dispatch
 - [ ] **028. Garage parking** — NOT IMPLEMENTED
@@ -85,8 +85,8 @@
 - [ ] **053. Restaurant job** — NOT IMPLEMENTED
 - [ ] **054. Run virtual shop** — NOT IMPLEMENTED
 - [ ] **055. Inter-building missions** — NOT IMPLEMENTED
-- [ ] **056. Server-authoritative fictional Game Cash** — NOT IMPLEMENTED
-- [ ] **057. Furniture purchases** — NOT IMPLEMENTED
+- [ ] **056. Server-authoritative fictional Game Cash** — TESTLAB · host validates one virtual job/house/furniture/car transaction at a time; no production database or BLINK Coin integration
+- [ ] **057. Furniture purchases** — TESTLAB · up to 12 purchased cosmetic pieces persist on one dedicated server
 - [ ] **058. Player businesses** — TESTLAB · desk plant only, fictional GC
 - [ ] **059. Job transaction history** — NOT IMPLEMENTED
 
@@ -94,7 +94,7 @@
 
 - [ ] **060. 3D character creator** — NOT IMPLEMENTED
 - [ ] **061. Hairstyle choices** — NOT IMPLEMENTED
-- [ ] **062. Outfit choices** — NOT IMPLEMENTED
+- [ ] **062. Outfit choices** — TESTLAB · four simple colour presets in multiplayer; no complete character wardrobe
 - [ ] **063. Footwear and accessories** — NOT IMPLEMENTED
 - [ ] **064. Character animations** — NOT IMPLEMENTED
 - [ ] **065. Walk/run/sit/jump** — TESTLAB · walking only
@@ -106,7 +106,7 @@
 ### Competitions
 
 - [ ] **070. Friends football mode** — NOT IMPLEMENTED
-- [ ] **071. University game competitions** — NOT IMPLEMENTED
+- [ ] **071. University game competitions** — TESTLAB · consent-only three-question 1v1 campus quiz with server-checked answers, no university leaderboard or real rewards
 - [ ] **072. Fair driving challenges** — NOT IMPLEMENTED
 - [ ] **073. Hide and seek** — NOT IMPLEMENTED
 - [ ] **074. Obstacle course** — NOT IMPLEMENTED
@@ -118,15 +118,15 @@
 
 ### Privacy and safety
 
-- [ ] **080. Home access controls** — NOT IMPLEMENTED
-- [ ] **081. Block player interactions** — NOT IMPLEMENTED
+- [ ] **080. Home access controls** — TESTLAB · opt-in requests default OFF, temporary approvals, not account-wide house keys
+- [ ] **081. Block player interactions** — TESTLAB · session-only server-side block prevents messages, invites, passenger pairing and cancels 1v1; not yet linked to BLINK account blocks
 - [ ] **082. Report abuse to moderators** — NOT IMPLEMENTED
-- [ ] **083. Mute players** — NOT IMPLEMENTED
+- [ ] **083. Mute players** — TESTLAB · local text and wave mute for a LAN session only
 - [ ] **084. Disable voice by default** — NOT IMPLEMENTED
-- [ ] **085. Restrict invites** — NOT IMPLEMENTED
+- [ ] **085. Restrict invites** — TESTLAB · invitations default OFF, owner opt-in, cooldown and 60-second expiry
 - [ ] **086. Opt-in virtual map visibility** — NOT IMPLEMENTED
 - [ ] **087. Consent-required passenger boarding** — TESTLAB · optional fictional coordinates
-- [ ] **088. Public chat moderation** — TESTLAB · seat approval
+- [ ] **088. Public chat moderation** — NOT IMPLEMENTED · dedicated public chat now disabled; moderation is still required before online launch
 - [ ] **089. Never transmit physical GPS** — NOT IMPLEMENTED
 
 ### Infrastructure
@@ -136,9 +136,9 @@
 - [ ] **092. Automatic network reconnection** — NOT IMPLEMENTED
 - [ ] **093. Low-end Android graphics profiles** — NOT IMPLEMENTED
 - [ ] **094. Progressive 3D scene streaming** — PLANNED · GL Compatibility renderer exists but profiling is still required
-- [ ] **095. Instance capacity and crowd management** — NOT IMPLEMENTED
+- [ ] **095. Instance capacity and crowd management** — TESTLAB · 8-person instance cap only; no region scaling or crowd management
 - [ ] **096. Secure persistent player profiles** — NOT IMPLEMENTED
-- [ ] **097. Server-side anti-cheat and fraud checks** — NOT IMPLEMENTED
+- [ ] **097. Server-side anti-cheat and fraud checks** — TESTLAB · one-answer-per-round 1v1 scoring and virtual-asset transactions validated by host; not production anti-cheat
 - [ ] **098. Game-independent app lifecycle** — TESTLAB · movement distance and bounds validated by host only, not Internet-grade
 - [ ] **099. On-demand Godot engine startup** — TESTLAB · separate Godot runtime, return to BLINK via Exit
 
@@ -152,12 +152,15 @@
 - [ ] **105. In-world interactive storefronts** — NOT IMPLEMENTED
 - [ ] **106. Day night cycle** — PLANNED · market and jobs interactive, real storefronts not yet
 - [ ] **107. Dynamic weather** — NOT IMPLEMENTED
-- [ ] **108. Persistent scene possessions** — NOT IMPLEMENTED
+- [ ] **108. Persistent scene possessions** — TESTLAB · furniture/home/car ownership saved on one server filesystem only; no cross-server synchronization
 - [ ] **109. Cooperative missions** — PLANNED · properties reset between game sessions
 
 Tracked: **109 requests**. The features are not 110 production-ready deliverables today.
 
 ## Technical milestones and acceptance gates
+
+**16 October Testlab clarification:** The lightweight website APK still downloads an optional **offline-only WebGL** game pack. The 1v1 quiz and server-owned virtual homes/vehicles require the **native** Godot runtime and an explicitly joined trusted LAN or staging dedicated session. The UDP social protocol is **not encrypted** and is **not safe for open public Internet deployment**. The 1v1 prototype awards no coins, cash, prizes or purchasable advantages. Session blocking, invites and chat restrictions are not substitutes for real account moderation or parental-age-appropriate controls.
+
 
 1. **Current Testlab: local social proof.** 2 devices on one trusted Wi-Fi host/join, nameplates, positions, emote and ephemeral chat. Guest enters a demo home only after owner approval. Passenger boards only after driver approval. Players disconnect without affecting BLINK. Run Android/Windows headless smoke + manual two-device testing.
 2. **Identity and safety:** BLINK account-bound character, user ID, blocked-users integration, friend-only invitations, per-room capacity, rate limits and audited report actions. Staging migration and RLS tests before production.
