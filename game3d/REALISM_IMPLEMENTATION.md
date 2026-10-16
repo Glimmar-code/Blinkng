@@ -292,3 +292,36 @@ coverage. New GitHub Actions on the **latest commit** must pass before any
 merge to Testlab. Physical Android/Windows usability and broader release
 acceptance remain mandatory before main.
 
+## Batch 9: save-first free room palettes and plant positions
+
+The optional solo starter-room interior now has an **INTERACT** decoration
+menu with three free wall colours, three free low-poly floor colour variants
+and three preset positions for the owned desk plant. The plant-position
+control is disabled until the cosmetic plant has actually been purchased in
+the solo market. **F** still exits the room; entering decor does not
+automatically teleport the player. Changes are saved before they are applied,
+never deduct fictional Game Cash, and cannot be used from online sessions.
+
+The version-one solo save is backward compatible: older save files lacking
+the new optional wall_style, floor_style and plant_spot keys load with style 0.
+When new style keys are supplied they must be exact integers within 0–2;
+unknown or fractional values are rejected rather than clamped. A new
+successful job payout or desk-plant purchase preserves existing decoration
+choices in its atomic save transaction. The optional 3D room is still created
+only on demand, and removed after leaving.
+
+Requirements: **#266 implemented in source** (wall-colour preset picker),
+**#267 partial** (floor colour variants, not full editable materials).
+**#265 remains partial**, because plant movement is restricted to three
+collision-free presets rather than arbitrary furniture editing.
+Current tracker: **38 source implemented, 39 partial, 923 pending audit,
+zero device verified and zero released**.
+
+Tests: solo_progress_smoke covers loading legacy version-one saves, saved
+palette roundtrips, rejecting invalid selections and unchanged currency
+after rejected writes. Godot rendered scene smoke exercises the UI, wall
+and floor colours, free plant positioning, save/re-entry persistence,
+unknown action rejection and currency isolation. Real Android and Windows
+viewing, accessibility and touch handling remain release gates. This
+feature does not alter authoritative online homes, multiplayer balances,
+Supabase, BLINK Coins or production delivery.
