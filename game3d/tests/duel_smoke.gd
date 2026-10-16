@@ -62,10 +62,10 @@ func run_test() -> void:
     var timed: Array[Dictionary] = duels.call("tick", 32001)
     check(timed.size() == 1 and int(timed[0].get("round", -1)) == 2,
         "Expired question advances without assigning imaginary points")
-    var cancelled: Dictionary = duels.call("disconnect", 5)
+    var cancelled: Dictionary = duels.call("leave_match", 5)
     check(cancelled.get("type", "") == "cancelled", "Disconnect cancels open match")
     check(not bool(duels.call("is_busy", 4)), "Disconnect releases opponent")
-    check(duels.call("disconnect", 4).is_empty(), "Duplicate disconnect cannot end a match twice")
+    check(duels.call("leave_match", 4).is_empty(), "Duplicate disconnect cannot end a match twice")
 
     if failed:
         quit(1)
