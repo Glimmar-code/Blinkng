@@ -3,6 +3,8 @@ extends Node3D
 
 const Layout = preload("res://scripts/neighborhood_layout.gd")
 var world: Node3D
+var lamp_lights: Array[OmniLight3D] = []
+var lamp_materials: Array[StandardMaterial3D] = []
 
 
 func configure(game_world: Node3D) -> void:
@@ -83,4 +85,41 @@ func _build_lamps() -> void:
             var site := Vector3(x, 0, z)
             _box(site + Vector3(0, 1.65, 0), Vector3(0.12, 3.3, 0.12), Color(0.25, 0.28, 0.3))
             _box(site + Vector3(0, 3.35, 0), Vector3(0.5, 0.16, 0.5), Color(0.95, 0.85, 0.58))
-    # Lamp geometry only until the day/night lighting workstream is implemented.
+            var bulb := MeshInstance3D.new()
+            var mesh := BoxMesh.new()
+            mesh.size = Vector3(0.38, 0.08, 0.38)
+            bulb.mesh = mesh
+            bulb.position = site + Vector3(0, 3.24, 0)
+            var material := StandardMaterial3D.new()
+            material.albedo_color = Color(0.95, 0.85, 0.58)
+            material.emission_enabled = true
+            material.emission = Color(1.0, 0.75, 0.4)
+            bulb.material_override = material
+            lamp_materials.append(material)
+            add_child(bulb)
+            var light := OmniLight3D.new()
+            light.position = site + Vector3(0, 3.05, 0)
+            light.omni_range = 6.0
+            light.light_color = Color(1.0, 0.8, 0.55)
+            light.shadow_enabled = false
+            light.visible = false
+            lamp_lights.append(light)
+            add_child(light)
+
+
+func update_lighting(observer: Vector3, daylight: float, battery_saver: bool) -> void:
+    var intensity: float = clampf(1.0 - daylight, 0.0, 1.0)
+    for material in lamp_materials:
+        material.emission_energy_multiplier = intensity * 1.5
+    # At most two nearby, shadow-free point lights; saving mode keeps just bulbs.
+    var candidates: Array[int] = []
+    if not battery_saver and intensity > 0.01:
+        for i in range(lamp_lights.size()):
+            if observer.distance_squared_to(lamp_lights[i].global_position) < 144.0:
+                candidates.append(i)
+        candidates.sort_custom(func(a: int, b: int):
+            return observer.distance_squared_to(lamp_lights[a].global_position) < observer.distance_squared_to(lamp_lights[b].global_position))
+    for i in range(lamp_lights.size()):
+        lamp_lights[i].visible = candidates.find(i) >= 0 and candidates.find(i) < 2
+        lamp_lights[i].light_energy = intensity * 1.2
+

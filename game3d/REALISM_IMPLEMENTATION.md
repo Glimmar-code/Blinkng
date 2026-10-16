@@ -105,7 +105,7 @@ New work in batch 2:
   server authority, weather, NPC schedules or fully functional street lighting.
 - Escape dismisses active controls/quiz/social UI before quitting.
 
-Current totals: **13 implemented in source, 16 partial, 971 pending audit**.
+Batch-2 totals: **13 implemented in source, 16 partial, 971 pending audit**.
 No row is marked verified_testlab or released. The remaining roadmap is substantial.
 
 New acceptance checks: settings round-trip and corrupt input; acceleration at 30/60
@@ -115,3 +115,28 @@ continuous dawn; fixed-daylight mode; actual scene light energy at noon/midnight
 Local Godot import and these assertions pass. Local dummy-renderer null-mesh
 diagnostics still require the OpenGL CI path for clean rendered validation.
 New-head CI and real Android/Windows usability/performance remain release gates.
+
+## Batch 3: lighting, graphics and purchase review
+
+- Street bulbs fade with the local visual clock. Standard mode permits at most two
+  nearby shadow-free point lights; daylight and battery-saving mode disable them.
+- Device-local preferences add 30 FPS battery-saving and 60 FPS standard targets,
+  plus a sunlight-shadow switch. Targets are caps, not performance guarantees.
+  Physical battery, thermal and low-end device measurements remain outstanding.
+- The market previews the item's price, total, balance and balance after purchase.
+  Explicit confirmation rechecks current funds/location and consumes the pending
+  intent before changing cash. Cancel and duplicate confirmation cannot charge.
+- Existing jobs show their payout before the player submits an answer.
+- Modal contents detach immediately before replacement to prevent obsolete buttons
+  remaining interactive during the frame they are queued for deletion.
+
+Current totals: **22 implemented in source, 15 partial, 963 pending audit**.
+No row is verified or released. Night lighting is local presentation, and the market
+remains a local fictional-GC prototype; no real wallet or server economy is modified.
+
+Local Godot 4.3 parse, preference tests and scene assertions pass. Scene tests cover
+night/day lamp budgets, standard/saver limits, shadow override, graphics settings
+round-trip, purchase preview without spending, cancelled/stale confirmation,
+insufficient funds at confirmation, successful purchase and duplicate submission.
+Dummy-renderer null-mesh diagnostics remain; fresh OpenGL CI must pass. Android and
+Windows device usability, battery measurements and the other 963 items remain open.

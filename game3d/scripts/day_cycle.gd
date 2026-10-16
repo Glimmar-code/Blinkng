@@ -25,5 +25,6 @@ func sample() -> Dictionary:
         "sun_color": Color.WHITE.lerp(Color(1.0, 0.61, 0.35), warmth),
         "ambient_energy": lerpf(0.3, 0.6, daylight),
         "sky_color": sky,
+        "daylight": daylight,
         "hour": display_hour
     }

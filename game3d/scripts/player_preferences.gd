@@ -7,6 +7,8 @@ var movement_scale: float = 1.0
 var reduced_motion: bool = false
 var day_cycle_enabled: bool = true
 var day_minutes: float = 20.0
+var battery_saver: bool = false
+var shadows_enabled: bool = true
 
 
 func read_settings(path: String = PATH) -> void:
@@ -21,6 +23,11 @@ func read_settings(path: String = PATH) -> void:
     day_cycle_enabled = cycle if cycle is bool else true
     day_minutes = _bounded(config.get_value("controls", "day_minutes", 20.0), 10.0, 60.0, 20.0)
 
+    var battery: Variant = config.get_value("graphics", "battery_saver", false)
+    battery_saver = battery if battery is bool else false
+    var shadows: Variant = config.get_value("graphics", "shadows_enabled", true)
+    shadows_enabled = shadows if shadows is bool else true
+
 
 func write_settings(path: String = PATH) -> Error:
     var config := ConfigFile.new()
@@ -29,6 +36,8 @@ func write_settings(path: String = PATH) -> Error:
     config.set_value("controls", "reduced_motion", reduced_motion)
     config.set_value("controls", "day_cycle_enabled", day_cycle_enabled)
     config.set_value("controls", "day_minutes", _bounded(day_minutes, 10.0, 60.0, 20.0))
+    config.set_value("graphics", "battery_saver", battery_saver)
+    config.set_value("graphics", "shadows_enabled", shadows_enabled)
     return config.save(path)
 
 

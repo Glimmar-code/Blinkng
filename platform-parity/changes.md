@@ -216,3 +216,10 @@ Owner/reviewer note: This exception covers only Android AdMob/UMP presentation a
 - Android and Windows receive identical gameplay code through existing script staging. Both packaging checks now require preferences and day-cycle scripts.
 - Local Godot 4.3 parse, control/time unit checks and scene assertions pass; dummy-renderer diagnostics mean OpenGL CI is still needed. Physical-device acceptance remains outstanding.
 - Batch-1 CI passed all six checks. Batch 2 remains in PR #303 targeting Testlab; main and production are unchanged.
+
+
+## 2026-10-16 — BLINK LIFE lighting and purchase controls (Testlab batch 3)
+
+- Shared Godot code adds a two-light night budget, saved 30/60 FPS targets and shadow controls. Battery mode disables dynamic lamp lights and sun shadows.
+- Both Android and Windows receive the same purchase preview/confirmation, duplicate-charge guard, current-balance/location recheck and visible job payouts.
+- Local preference and scene assertions pass. Fresh OpenGL and package CI plus physical usability/battery validation remain necessary; no production merge or real-economy changes.

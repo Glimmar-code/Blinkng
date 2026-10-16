@@ -40,7 +40,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 39,District-specific ambient sounds,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 40,Public noticeboards with opportunities,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 41,Shops with opening hours,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-42,Streetlights placed logically,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Eight evenly placed lamp models; functional night lighting pending.
+42,Streetlights placed logically,World,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/neighborhood_details.gd,tests/controls_smoke.gd;tests/smoke.gd,"Eight positioned lamps fade with local daylight; at most two nearby shadow-free lights, with emissive-only bulbs in saver mode. Physical Android/Windows acceptance outstanding."
 43,Benches near busy destinations,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 44,Waste bins in public spaces,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 45,Realistic pavement variations,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Footpaths and crossing materials; pavement variation and wear art pending.
@@ -542,7 +542,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 541,Farming supply contracts,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 542,Fishing supply contracts,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 543,Job previews before accepting,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-544,Clear task payment estimates,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+544,Clear task payment estimates,Careers,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Quiz/job title displays its fictional GC payout before an answer is submitted. Physical Android/Windows acceptance outstanding.
 545,Skill-based promotion requirements,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 546,Multiple ways to complete jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 547,Flexible shifts for short sessions,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -551,9 +551,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 550,No mandatory unpaid grinding,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 551,Clearly named fictional currency,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 552,Separate earned and premium balances,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-553,Understandable item pricing,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-554,Visible purchase totals,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-555,Purchase confirmation for expensive items,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+553,Understandable item pricing,Economy,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Market purchase preview names the item and its fixed fictional GC price. Physical Android/Windows acceptance outstanding.
+554,Visible purchase totals,Economy,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,"Purchase preview shows total, current balance and remaining balance. Physical Android/Windows acceptance outstanding."
+555,Purchase confirmation for expensive items,Economy,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Explicit purchase confirmation rechecks balance and location; cancellation and repeated confirmation cannot spend twice. Physical Android/Windows acceptance outstanding.
 556,Transaction history for players,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 557,Clear refund rules,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 558,Reasonable starter funds,Economy,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -750,17 +750,17 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 749,Respectful endings to character arcs,Stories,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 750,Content updates expanding established stories,Stories,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 751,Automatic initial graphics recommendations,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-752,Manual override of graphics settings,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-753,Frame-rate targets by device,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+752,Manual override of graphics settings,Adaptive and accessible play,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved manual graphics controls for battery-saving mode and sunlight shadows. Physical Android/Windows acceptance outstanding.
+753,Frame-rate targets by device,Adaptive and accessible play,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved per-device 30/60 FPS targets; this is a cap rather than a guaranteed frame rate or automatic device classification. Physical Android/Windows acceptance outstanding.
 754,Dynamic resolution when needed,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-755,Adjustable shadow quality,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+755,Adjustable shadow quality,Adaptive and accessible play,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved sunlight shadow on/off control; battery saver overrides it while active. Physical Android/Windows acceptance outstanding.
 756,Adjustable reflection quality,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 757,Adjustable draw distance,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 758,Scalable NPC population,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 759,Scalable decorative traffic,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 760,Simplified distant character animations,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 761,Low-memory texture options,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-762,Battery-saving gameplay mode,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+762,Battery-saving gameplay mode,Adaptive and accessible play,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved 30 FPS battery-saving mode disables sun shadows and dynamic lamp lights; physical battery/thermal measurements remain. Physical Android/Windows acceptance outstanding.
 763,Temperature-aware performance reduction,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 764,Optional reduced background effects,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 765,Stable gameplay on smaller screens,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."

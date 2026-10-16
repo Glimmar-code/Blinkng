@@ -37,10 +37,14 @@ var day_cycle := DayCycle.new()
 var sunlight: DirectionalLight3D
 var sky_settings: Environment
 var clock_label: Label
+var neighborhood: Node3D
+var purchase_pending: bool = false
+var previous_fps_limit: int = 0
 
 
 
 func _ready() -> void:
+    previous_fps_limit = Engine.max_fps
     preferences.read_settings()
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
@@ -50,9 +54,11 @@ func _ready() -> void:
     var details := Details.new()
     add_child(details)
     details.configure(self)
+    neighborhood = details
     _create_player()
     _create_camera()
     _create_hud()
+    _apply_graphics()
     # Instantiate network UI only inside the already-launched Godot game.
     # Connections are opt-in: no socket opens until HOST LAN / JOIN LAN.
     var social_script: Script = load("res://scripts/social_world.gd")
@@ -224,6 +230,8 @@ func _update_daylight() -> void:
     sunlight.light_color = frame["sun_color"]
     sky_settings.background_color = frame["sky_color"]
     sky_settings.ambient_light_energy = frame["ambient_energy"]
+    if neighborhood != null and player != null:
+        neighborhood.call("update_lighting", player.global_position, float(frame["daylight"]), preferences.battery_saver)
     if clock_label != null:
         var minutes: int = int(float(frame["hour"]) * 60.0) % 1440
         clock_label.text = "Local scene time %02d:%02d" % [minutes / 60, minutes % 60]
@@ -556,9 +564,44 @@ func _create_controls_panel(hud: Control) -> void:
         preferences.day_minutes = value
         duration_label.text = "Day length: %d minutes" % int(value)
         _save_preferences())
+    var graphics := Label.new()
+    graphics.text = "Graphics (saved on this device)"
+    rows.add_child(graphics)
+    var battery := CheckButton.new()
+    battery.text = "Battery saver · 30 FPS target"
+    battery.button_pressed = preferences.battery_saver
+    battery.custom_minimum_size.y = 48
+    rows.add_child(battery)
+    battery.toggled.connect(func(enabled: bool):
+        preferences.battery_saver = enabled
+        _apply_graphics()
+        _save_preferences())
+    var shadows := CheckButton.new()
+    shadows.text = "Sun shadows (standard mode)"
+    shadows.button_pressed = preferences.shadows_enabled
+    shadows.custom_minimum_size.y = 48
+    rows.add_child(shadows)
+    shadows.toggled.connect(func(enabled: bool):
+        preferences.shadows_enabled = enabled
+        _apply_graphics()
+        _save_preferences())
+    var graphics_help := Label.new()
+    graphics_help.text = "Standard: 60 FPS target. Saver disables shadows\nand nearby lamp lights; bulbs remain visible."
+    rows.add_child(graphics_help)
     var close := _new_button("Done")
     rows.add_child(close)
     close.pressed.connect(func(): controls_panel.hide())
+
+
+func _apply_graphics() -> void:
+    Engine.max_fps = 30 if preferences.battery_saver else 60
+    if sunlight != null:
+        sunlight.shadow_enabled = preferences.shadows_enabled and not preferences.battery_saver
+    _update_daylight()
+
+
+func _exit_tree() -> void:
+    Engine.max_fps = previous_fps_limit
 
 
 func _orbit(degrees: float) -> void:
@@ -603,9 +646,7 @@ func _interact() -> void:
             elif game_cash < 250:
                 hud_status.text = "A desk plant costs 250 fictional Game Cash."
             else:
-                game_cash -= 250
-                owns_plant = true
-                hud_status.text = "Purchased a desk plant. Visit your hostel!"
+                _preview_plant_purchase()
         "Hostel":
             hud_status.text = "Your room has a desk plant." if owns_plant else "Your room is empty. Visit the market."
         "Homes":
@@ -616,17 +657,55 @@ func _interact() -> void:
             hud_status.text = "Campus unlocked. More missions will follow."
 
 
+func _preview_plant_purchase() -> void:
+    _stop_touch_axis()
+    purchase_pending = true
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var label := Label.new()
+    label.text = "Desk plant · cosmetic\nTotal: 250 fictional GC\nBalance: %d GC · After purchase: %d GC" % [game_cash, game_cash - 250]
+    rows.add_child(label)
+    var buy := _new_button("Buy for 250 GC")
+    rows.add_child(buy)
+    buy.pressed.connect(_confirm_plant_purchase)
+    var cancel := _new_button("Cancel")
+    rows.add_child(cancel)
+    cancel.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
+func _confirm_plant_purchase() -> void:
+    if not purchase_pending:
+        return
+    # Consume the pending intent before mutations to prevent double charging.
+    purchase_pending = false
+    var place: Dictionary = _nearest_place()
+    if owns_plant or game_cash < 250 or place.get("name", "") != "Market":
+        hud_status.text = "Purchase unavailable. Return to the market and check your balance."
+        _close_quiz()
+        return
+    game_cash -= 250
+    owns_plant = true
+    hud_status.text = "Purchased a desk plant for 250 fictional GC."
+    _close_quiz()
+
+
 func _start_quiz(title: String, prompt: String, choices: Array[String], answer: int, payout: int) -> void:
     _stop_touch_axis()
+    purchase_pending = false
     active_quiz = {"answer": answer, "payout": payout}
     for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
         child.queue_free()
 
     var content := VBoxContainer.new()
     hud_modal.add_child(content)
 
     var title_label := Label.new()
-    title_label.text = title
+    title_label.text = "%s · Reward: %d GC" % [title, payout]
     title_label.add_theme_font_size_override("font_size", 20)
     content.add_child(title_label)
 
@@ -661,6 +740,7 @@ func _submit_quiz(choice_id: int) -> void:
 
 
 func _close_quiz() -> void:
+    purchase_pending = false
     active_quiz = {}
     hud_modal.visible = false
 

@@ -17,11 +17,15 @@ func _initialize() -> void:
     settings.camera_distance = 18.0
     settings.movement_scale = 0.65
     settings.reduced_motion = true
+    settings.battery_saver = true
+    settings.shadows_enabled = false
     check(settings.write_settings(TEST_PATH) == OK, "Preferences should save")
     var restored := Preferences.new()
     restored.read_settings(TEST_PATH)
     check(is_equal_approx(restored.camera_distance, 18.0), "Camera distance survives relaunch")
     check(is_equal_approx(restored.movement_scale, 0.65), "Walking speed survives relaunch")
+    check(restored.battery_saver, "Battery mode survives relaunch")
+    check(not restored.shadows_enabled, "Shadow preference survives relaunch")
     check(restored.reduced_motion, "Reduced motion survives relaunch")
     var corrupt := ConfigFile.new()
     corrupt.set_value("controls", "camera_distance", "bad")
