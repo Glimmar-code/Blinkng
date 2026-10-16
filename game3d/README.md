@@ -65,3 +65,11 @@ The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is st
 ## Realism roadmap (16 October 2026)
 
 `REALISM_1000.csv` tracks the owner's 1,000 requested improvements with stable IDs and honest statuses. `REALISM_IMPLEMENTATION.md` describes the first shared-world batch, exact acceptance and release gaps. The scene now includes connected footpaths, street signs, building addresses and closer frontage interaction selection. These additions are Testlab source work, not a confirmed production update.
+
+## Local weather preview (Testlab batch 4)
+
+Controls → Local weather provides automatic changing skies, manually selected
+clear conditions, light showers or capped tropical rain. Moving low-poly clouds
+and batched raindrops are fictional visual effects, with no gameplay penalty,
+real-world weather permission or production economy impact. Weather is not
+synchronized between players and has not passed physical-device graphics checks.
