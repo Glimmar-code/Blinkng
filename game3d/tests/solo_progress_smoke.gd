@@ -76,6 +76,20 @@ func _initialize() -> void:
     check(not fresh.call("save_state", floor_grid.merged({"plant_rotation": 0.5}, true)), "Fractional rotation cannot be saved")
     check(not fresh.call("save_state", floor_grid.merged({"plant_custom": "yes"}, true)), "Custom-grid flag must be Boolean")
     check(_store().call("load_state") == Progress.valid_state(floor_grid), "Rejected grid saves preserve the last valid layout")
+    var furnishing: Dictionary = floor_grid.merged({"chair_x": 1, "chair_z": -1,
+        "chair_rotation": 1, "table_x": 3, "table_z": 2, "table_rotation": 2}, true)
+    check(store.call("save_state", furnishing), "Chair and side table can be placed on valid separate cells")
+    check(_store().call("load_state") == Progress.valid_state(furnishing), "Chair and table locations and rotations survive relaunch")
+    check(not fresh.call("save_state", furnishing.merged({"table_x": 1, "table_z": -1}, true)),
+        "Side table may not occupy the chair position")
+    check(not fresh.call("save_state", furnishing.merged({"chair_x": -3, "chair_z": -3}, true)),
+        "Chair cannot overlap the bed")
+    check(not fresh.call("save_state", furnishing.merged({"table_x": 10}, true)),
+        "Furniture cannot escape the bounded room grid")
+    check(not fresh.call("save_state", furnishing.merged({"chair_rotation": 0.5}, true)),
+        "Furniture rotation may not be fractional")
+    check(_store().call("load_state") == Progress.valid_state(furnishing),
+        "Blocked furniture placements never overwrite saved home state")
     check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
