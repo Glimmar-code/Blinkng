@@ -43,6 +43,11 @@ verify_jwt = true
 [functions.send-essential-email]
 verify_jwt = false
 
+# Unsubscribe URL can be opened by email clients (no Supabase session).
+# Requests must carry a verified expiring HMAC token; GET never changes consent.
+[functions.unsubscribe-social-email]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = true
 
