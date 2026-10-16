@@ -10,6 +10,7 @@ const Preferences = preload("res://scripts/player_preferences.gd")
 const DayCycle = preload("res://scripts/day_cycle.gd")
 const WeatherCycle = preload("res://scripts/weather_cycle.gd")
 const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
+const PublicSpaces = preload("res://scripts/public_spaces.gd")
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -39,6 +40,9 @@ var day_cycle := DayCycle.new()
 var weather := WeatherCycle.new()
 var weather_visuals: Node3D
 var weather_label: Label
+var public_spaces: Node3D
+var seated_at: String = ""
+var seated_meshes: Array[Dictionary] = []
 var sunlight: DirectionalLight3D
 var sky_settings: Environment
 var clock_label: Label
@@ -63,6 +67,9 @@ func _ready() -> void:
     add_child(details)
     details.configure(self)
     neighborhood = details
+    public_spaces = PublicSpaces.new()
+    add_child(public_spaces)
+    public_spaces.call("configure", self)
     _create_player()
     _create_camera()
     _create_hud()
@@ -99,8 +106,13 @@ func _process(delta: float) -> void:
     follow_camera.look_at(player.global_position + Vector3.UP * 1.25)
 
     hud_cash.text = "Game Cash: %d GC   |   Jobs: %d" % [game_cash, completed_jobs]
+    var nearby_public: Dictionary = _nearest_public_spot()
     var nearby: Dictionary = _nearest_place()
-    if nearby.is_empty():
+    if not seated_at.is_empty():
+        hud_location.text = "Seated at %s • INTERACT or F to stand" % seated_at
+    elif not nearby_public.is_empty():
+        hud_location.text = "%s • INTERACT" % str(nearby_public["name"])
+    elif nearby.is_empty():
         hud_location.text = "Explore the 3D city — approach a marked building"
     else:
         hud_location.text = "%s • %s • INTERACT" % [nearby["name"], nearby["address"]]
@@ -159,7 +171,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _movement_blocked() -> bool:
-    if not app_focused:
+    if not app_focused or not seated_at.is_empty():
         return true
     if hud_modal != null and hud_modal.visible:
         return true
@@ -191,6 +203,9 @@ func _notification(what: int) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
     if event is InputEventKey and event.pressed and not event.echo:
         if event.keycode == KEY_ESCAPE:
+            if not seated_at.is_empty():
+                _leave_seat()
+                return
             if controls_panel != null and controls_panel.visible:
                 controls_panel.hide()
             elif hud_modal != null and hud_modal.visible:
@@ -662,8 +677,92 @@ func _nearest_place() -> Dictionary:
     return nearest
 
 
+func _nearest_public_spot() -> Dictionary:
+    if player == null or public_spaces == null:
+        return {}
+    return PublicSpaces.nearest_spot(player.global_position)
+
+
+func _interact_public_spot(spot: Dictionary) -> void:
+    match str(spot["type"]):
+        "bench":
+            if social != null and bool(social.get("is_online")):
+                hud_status.text = "Public seating is currently available in offline preview only."
+                return
+            _sit_on_bench(str(spot["name"]))
+        "bin":
+            hud_status.text = "You found a public waste bin. Help keep the city clean."
+        "stall":
+            hud_status.text = "%s • %s (Preview only; no purchases.)" % [spot["name"], spot["description"]]
+        "board":
+            _open_community_board()
+
+
+func _sit_on_bench(bench_name: String) -> void:
+    if player == null or not seated_at.is_empty():
+        return
+    _stop_touch_axis()
+    seated_at = bench_name
+    seated_meshes.clear()
+    for part in player.get_children():
+        if part is MeshInstance3D:
+            var visual: MeshInstance3D = part
+            seated_meshes.append({"node": visual, "transform": visual.transform})
+            visual.position.y -= 0.25
+            if visual.position.y < 0.30:
+                visual.rotation.x = deg_to_rad(-60.0)
+                visual.position.z -= 0.15
+    player.velocity = Vector3.ZERO
+    hud_status.text = "Relaxing on %s. INTERACT or F to stand." % bench_name
+
+
+func _leave_seat() -> void:
+    if seated_at.is_empty():
+        return
+    for saved in seated_meshes:
+        var visual: MeshInstance3D = saved["node"]
+        if is_instance_valid(visual):
+            visual.transform = saved["transform"]
+    seated_meshes.clear()
+    seated_at = ""
+    if player != null:
+        player.velocity = Vector3.ZERO
+    hud_status.text = "Back on your feet."
+
+
+func _open_community_board() -> void:
+    _stop_touch_axis()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Community opportunities (fictional Game Cash)"
+    rows.add_child(heading)
+    for opportunity in ["Café • cashier task: 120 GC", "Tech hub • tech support: 180 GC", "Delivery depot • dispatch: 150 GC"]:
+        var item := Label.new()
+        item.text = opportunity
+        rows.add_child(item)
+    var directions := Label.new()
+    directions.text = "Walk to a listed building to take a job. No automatic payouts."
+    directions.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(directions)
+    var close := _new_button("Close board")
+    rows.add_child(close)
+    close.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
 func _interact() -> void:
+    if not seated_at.is_empty():
+        _leave_seat()
+        return
     if _movement_blocked():
+        return
+    var public_spot: Dictionary = _nearest_public_spot()
+    if not public_spot.is_empty():
+        _interact_public_spot(public_spot)
         return
     var place: Dictionary = _nearest_place()
     if place.is_empty():
