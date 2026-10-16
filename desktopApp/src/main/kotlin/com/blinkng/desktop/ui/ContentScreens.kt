@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -852,7 +854,7 @@ fun SearchScreen(state: DesktopAppState) {
                             Text(
                                 desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                 fontSize = 10.sp,
-                                color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (profile.isOnline) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         TextButton(onClick = { selectedProfile = profile }) { Text("View") }
@@ -1548,12 +1550,12 @@ fun ConnectScreen(state: DesktopAppState) {
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(100.dp),
-                                    color = Color(0xFF22C55E).copy(alpha = 0.13f),
+                                    color = Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.13f),
                                 ) {
                                     Text(
                                         if (liveActivityAvailable) realOnlineCount.toString() else "—",
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                        color = Color(0xFF22C55E),
+                                        color = Color(BlinkDesignTokens.Semantic.Success),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Black,
                                     )
@@ -1901,7 +1903,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                     Text(
                                         if (!liveActivityAvailable) "Presence not current" else if (profile.isOnline) "Online" else "Offline",
                                         fontSize = 11.sp,
-                                        color = if (liveActivityAvailable && profile.isOnline) Color(0xFF22C55E)
+                                        color = if (liveActivityAvailable && profile.isOnline) Color(BlinkDesignTokens.Semantic.Success)
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -2540,7 +2542,7 @@ fun ProfileScreen(state: DesktopAppState) {
                                 Text(
                                     desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                     fontSize = 11.sp,
-                                    color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (profile.isOnline) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
                             }
@@ -2745,7 +2747,7 @@ fun ProfileScreen(state: DesktopAppState) {
                             Text(
                                 message,
                                 fontSize = 11.sp,
-                                color = if (message.contains("activated", ignoreCase = true)) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
+                                color = if (message.contains("activated", ignoreCase = true)) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -2774,7 +2776,7 @@ fun ProfileScreen(state: DesktopAppState) {
                         missions.forEach { mission ->
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (mission.claimed) Color(0xFF22C55E).copy(alpha = 0.08f)
+                                color = if (mission.claimed) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.08f)
                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             ) {
                                 Column(
@@ -2793,7 +2795,7 @@ fun ProfileScreen(state: DesktopAppState) {
                                             "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Black,
-                                            color = if (mission.completed) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
+                                            color = if (mission.completed) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                     LinearProgressIndicator(
