@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.animation.AnimatedContent
@@ -494,7 +496,7 @@ fun MessagesScreen(state: DesktopAppState) {
                     Text(
                         if (active.isGroup) "Group chat" else desktopPresenceStatus(active.isOnline, active.lastSeenAt),
                         fontSize = 11.sp,
-                        color = if (!active.isGroup && active.isOnline) Color(0xFF22C55E)
+                        color = if (!active.isGroup && active.isOnline) Color(BlinkDesignTokens.Semantic.Success)
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
                     )
