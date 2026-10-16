@@ -51,7 +51,7 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -Z1 "$APK" > "$RUNNER_TEMP/native-blink-apk-files.txt"
-          for required in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd assets/scripts/weather_cycle.gd assets/scripts/weather_visuals.gd assets/scripts/npc_routines.gd assets/scripts/npc_world.gd assets/scripts/public_spaces.gd assets/scripts/solo_progress.gd lib/arm64-v8a/libgodot_android.so; do
+          for required in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd assets/scripts/weather_cycle.gd assets/scripts/weather_visuals.gd assets/scripts/npc_routines.gd assets/scripts/npc_world.gd assets/scripts/public_spaces.gd assets/scripts/solo_progress.gd assets/scripts/solo_home.gd lib/arm64-v8a/libgodot_android.so; do
             grep -Fxq "$required" "$RUNNER_TEMP/native-blink-apk-files.txt" || {
               echo "::error::Missing Godot engine/game file $required"
               exit 1
