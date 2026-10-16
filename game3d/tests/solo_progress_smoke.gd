@@ -131,6 +131,20 @@ func _initialize() -> void:
         "Saved bookmarks must not contain overlapping furniture")
     check(_store().call("load_state") == Progress.valid_state(with_slot),
         "Rejected bookmarks preserve the previous valid save and account fields")
+    var bright_home: Dictionary = with_slot.duplicate(true)
+    bright_home["light_mode"] = 2
+    check(store.call("save_state", bright_home), "Three-state room lighting can persist")
+    check(int(_store().call("load_state")["light_mode"]) == 2, "Room lighting survives reload")
+    check(not store.call("save_state", bright_home.merged({"light_mode": 3}, true)),
+        "Light preference outside three available levels is rejected")
+    check(not store.call("save_state", bright_home.merged({"light_mode": -1}, true)),
+        "Negative room light IDs are rejected")
+    check(not store.call("save_state", bright_home.merged({"light_mode": 1.5}, true)),
+        "Fractional room light IDs are rejected")
+    check(int(_store().call("load_state")["light_mode"]) == 2,
+        "Rejected light choices preserve valid saved preferences")
+    check(int(Progress.valid_state(second)["light_mode"]) == 0,
+        "Older solo saves without lighting preferences use default warm light")
     check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
