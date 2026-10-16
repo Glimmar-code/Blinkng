@@ -62,3 +62,26 @@ These five local templates are configured in `supabase/config.toml`. Supabase-ma
 - Supabase local email templates: https://supabase.com/docs/guides/local-development/customizing-email-templates
 - Brevo + Supabase SMTP: https://developers.brevo.com/docs/supabase-smtp-integration
 - Brevo pricing/limits: https://help.brevo.com/hc/en-us/articles/208589409-About-Brevo-s-pricing-plans
+
+
+## Premium responsive BLINK email design (October 2026)
+
+The five HTML templates now use a dark-purple BLINK brand header, high-contrast typography, mobile-friendly table layout, prominent action button, security callout and support contact (`blinksupport.ng@gmail.com`). They intentionally do not use remote images, background-image CSS, JavaScript, CSS frameworks or tracking pixels. Test in Gmail/Outlook before production.
+
+**Deploying hosted email templates is manual** with the currently available integrations:
+1. Open your hosted Supabase project → **Authentication → Email Templates**.
+2. Select **Reset password** (also called **Recovery** in local Supabase config).
+3. Copy the **entire source** of [`supabase/templates/recovery.html`](../supabase/templates/recovery.html) into the HTML editor. Use *HTML/source* view, not a rich-text composition field; keep the `{{ .ConfirmationURL }}` placeholder unchanged.
+4. Set the subject to **BLINK | Reset your password** and save. Repeat for **Confirm signup** with `confirmation.html`, and **Change email address** with `email_change.html`.
+5. Enable the password/email-changed security notifications before configuring their matching templates if those notification controls are available.
+6. Send a **fresh test** recovery message, not an old link; make sure the color header, button, and fallback text render. Supabase dashboard does **not** pull local email HTML automatically from GitHub or `config.toml`.
+
+### Recovery redirect: localhost bug
+
+A received BLINK reset link redirected to `http://localhost:3000/#access_token=…` in Chrome on Android. Do **not** copy, log, or share links containing recovery `access_token` or `refresh_token`. Treat already-shared recovery tokens as compromised; generate a new link and revoke sessions where possible.
+
+- In hosted Supabase → **Authentication → URL Configuration**, replace the development-only default **Site URL** (`http://localhost:3000`) with the actually deployed BLINK web URL, if the web site handles auth callback flows. A URL that serves only a home page does not itself implement password reset.
+- Add the Android app's exact allowlisted redirect `blink://auth/reset-password` under **Redirect URLs**. This is already requested by `PasswordRecoveryClient.RESET_REDIRECT_URL` and is handled by `PasswordResetActivity` on Android.
+- Verify the hosted **Reset Password** template uses `{{ .ConfirmationURL }}` (not hardcoded `{{ .SiteURL }}` or localhost).
+- Confirm a fresh email recovery link launches the installed **BLINK Android app**. Also verify the web/Windows link behavior separately; a mobile-only custom URI does not implement desktop recovery.
+- Never change production callback configuration blindly without validating other sign-in and OAuth flows and recording a rollback approach.
