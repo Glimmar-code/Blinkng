@@ -140,3 +140,27 @@ round-trip, purchase preview without spending, cancelled/stale confirmation,
 insufficient funds at confirmation, successful purchase and duplicate submission.
 Dummy-renderer null-mesh diagnostics remain; fresh OpenGL CI must pass. Android and
 Windows device usability, battery measurements and the other 963 items remain open.
+
+## Batch 4: optional local rain and moving clouds
+
+The shared Godot scene now renders two slowly moving procedural cloud clusters
+and a capped, recycled MultiMesh rain pool (24 drops for light rain and 80 for
+tropical rain). Automatic mode cycles clear → light rain → tropical rain using
+a fictional local timer. Players can force clear, light rain or tropical rain
+under Controls, and this setting survives restarts. The weather clock pauses
+during app focus loss, and the renderer caps rain position updates at 20 Hz.
+
+This remains a visual-only prototype. It does **not** use real weather, alter
+vehicle traction, apply damage, trigger GPS, share authoritative multiplayer
+weather, render wet surfaces, or shield rain inside buildings. It leaves
+normal BLINK startup and existing LAN/demo money behavior unchanged.
+
+Requirements **#58, #59 and #60 implemented in source; #90 partial**.
+Totals after batch 4: **25 implemented in source, 16 partial, 959 pending
+audit**. There are **zero verified Testlab and zero released** rows.
+
+Named checks: `tests/controls_smoke.gd` (weather mode transitions, invalid
+saved settings, bounded rendering) and `tests/smoke.gd` (scene attachment,
+actual rain visibility) under native Godot CI. Fresh CI and physical
+Android/Windows rendering, thermal and battery tests must pass before promotion.
+The branch does not publish an APK or authorize a main merge.
