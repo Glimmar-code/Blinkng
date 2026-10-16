@@ -195,3 +195,16 @@ Windows equivalent or reason no equivalent is needed: Windows does not request A
 Backend/shared behavior preserved: Blink account, feed/reel ranking, messaging, moderation, wallet balances and the 10-coin reward business rule remain unchanged. The new SSV database fields are additive audit metadata and do not change Windows coin spending or shared wallet semantics.
 Tests/validation: Android unit/lint/instrumentation/debug APK/AAB and release-smoke gates, Windows desktop/parity gate, Web Parity/domain checks, and Supabase migration-safety must pass in Testlab before promotion to main.
 Owner/reviewer note: This exception covers only Android AdMob/UMP presentation and AdMob callback verification. It cannot be used to waive Windows parity for shared product features or wallet rules.
+
+
+---
+
+PARITY-FEATURE: shared-opt-in-social-email-notifications
+Date: 2026-10-16
+Feature: BLINK transactional welcome/security messages and five optional social email categories
+Android behavior: The Calls & notifications screen exposes individually opt-in email switches for New followers, Unread conversations, Post engagement, Reel milestones, and Leaderboard updates. A failed server load/save leaves all switches off/unchanged; user can update only own Supabase row.
+Windows behavior: Settings exposes the same five persisted switches through DesktopSupabaseClient, using the same Supabase RLS-protected preference table. Existing global Email notifications switch is also respected on the server.
+Shared behavior: BlinkSocialEmailCategory defines one shared source for preference columns, names and descriptions. Both platform adapters use existing signed-in Supabase user sessions and REST; neither holds Brevo or service-role credentials.
+Server behavior: Verified-account welcome events and server-owned social digest checks enqueue to a service-only outbox. The Brevo worker rechecks consent before any social send; social delivery defaults OFF pending staging rollout. Password recovery/email change remain Supabase Auth events, and signup confirmation emails are never activated/changed by this feature.
+Platform-specific exception: None needed. Both clients have equivalent social email preference controls; native push-notification channels are independent of email.
+Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, no message bodies, idempotent digests, unsubscribe on signed POST, deterministic sender source, email-sending daily cap, HTML safety regression tests. Production changes blocked until staging migrations, signup-policy checks, Brevo keys/sender verification, end-to-end Gmail/Outlook and Android/Windows CI validation.

@@ -37,6 +37,17 @@ verify_jwt = true
 [functions.verify-payment]
 verify_jwt = true
 
+# Internal email worker must not accept end-user JWTs as authorization.
+# This endpoint is protected by a separate strong server-only secret header.
+# Do not deploy it until staging configuration and event-level tests pass.
+[functions.send-essential-email]
+verify_jwt = false
+
+# Unsubscribe URL can be opened by email clients (no Supabase session).
+# Requests must carry a verified expiring HMAC token; GET never changes consent.
+[functions.unsubscribe-social-email]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = true
 
@@ -67,3 +78,27 @@ verify_jwt = false
 # third-party secret values must be configured through Supabase/secrets
 # management and documented as required configuration in RECOVERY.md.
 # Secret values must never be committed to Git.
+
+# BLINK essential account-security templates for local/Testlab Supabase.
+# Signup confirmation is intentionally NOT added, configured, or enabled by this change.
+# Preserve whatever signup confirmation policy the Supabase Auth project already has.
+# Hosted Supabase projects require uploading these templates separately via
+# Authentication > Email Templates; this file does NOT configure hosted SMTP.
+# Keep SMTP credentials only in provider/Supabase secret settings.
+[auth.email.template.recovery]
+subject = "Reset your BLINK password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your BLINK email change"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "BLINK security: your password was changed"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "BLINK security: your email was changed"
+content_path = "./supabase/templates/email_changed_notification.html"

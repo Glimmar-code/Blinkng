@@ -4,6 +4,7 @@ import com.blinkng.shared.BlinkBackendDefaults
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -637,6 +638,38 @@ class DesktopSupabaseClient(
             dataSaver = false,
             reduceMotion = false,
         )
+    }
+
+    /**
+     * All social email flags are separate from user_settings.email_notifs_enabled.
+     * Defaults are false, and the server rejects cross-account writes with RLS.
+     */
+    suspend fun fetchSocialEmailPreferences(): Map<BlinkSocialEmailCategory, Boolean> =
+        withContext(Dispatchers.IO) {
+            val uid = requireSession().userId
+            val fields = BlinkSocialEmailCategory.allColumns.joinToString(",")
+            val list = getArray(
+                "/rest/v1/blink_social_email_preferences?user_id=eq.${encode(uid)}&select=${fields}"
+            )
+            val row = list.optJSONObject(0)
+            BlinkSocialEmailCategory.entries.associateWith { type ->
+                row?.optBoolean(type.column, false) ?: false
+            }
+        }
+
+    suspend fun updateSocialEmailPreference(
+        type: BlinkSocialEmailCategory,
+        enabled: Boolean,
+    ) = withContext(Dispatchers.IO) {
+        val result = postObject(
+            "/rest/v1/rpc/blink_set_social_email_preference",
+            JSONObject().put("p_category", type.column.removeSuffix("_enabled"))
+                .put("p_enabled", enabled),
+        )
+        check((result as? JSONObject)?.optBoolean("value", false) == true) {
+            "Could not save social email preference."
+        }
+        Unit
     }
 
     suspend fun saveSettings(settings: DesktopUserSettings) = withContext(Dispatchers.IO) {
