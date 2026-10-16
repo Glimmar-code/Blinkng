@@ -28,6 +28,7 @@ var places: Array[Dictionary] = []
 var futa_landmarks: Array[Dictionary] = []
 var selected_waypoint: Dictionary = {}
 var map_panel: PanelContainer
+var map_view: Control
 var active_quiz: Dictionary = {}
 var social: Node3D
 var preferences := Preferences.new()
@@ -503,11 +504,18 @@ func _create_map_hud(hud: Control) -> void:
     title.add_theme_font_size_override("font_size", 15)
     layout.add_child(title)
     var hint := Label.new()
-    hint.text = "Select a waypoint, then walk there to interact."
+    hint.text = "Tap a map marker or choose a named destination below."
     layout.add_child(hint)
 
+    var view_script: Script = load("res://scripts/futa_minimap.gd")
+    map_view = view_script.new()
+    map_view.name = "CampusPlanView"
+    layout.add_child(map_view)
+    map_view.call("configure", futa_landmarks, player)
+    map_view.connect("waypoint_selected", _select_waypoint)
+
     var scroll := ScrollContainer.new()
-    scroll.custom_minimum_size = Vector2(315, 285)
+    scroll.custom_minimum_size = Vector2(315, 138)
     layout.add_child(scroll)
     var destinations := VBoxContainer.new()
     scroll.add_child(destinations)
