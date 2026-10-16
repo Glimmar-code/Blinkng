@@ -15,7 +15,7 @@ static func validated_mode(value: Variant) -> String:
 func advance(delta: float) -> void:
     if is_finite(delta) and delta > 0.0:
         # Long app-background gaps cannot skip many weather states at once.
-        elapsed = fposmod(elapsed + minf(delta, 60.0), 270.0)
+        elapsed = fposmod(elapsed + minf(delta, 120.0), 270.0)
 
 
 func condition() -> String:
