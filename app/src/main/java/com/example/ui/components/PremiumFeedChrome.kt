@@ -176,7 +176,7 @@ private fun FeedProfileAvatar(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .background(Color(0xFF3266D5), CircleShape)
+            .background((if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF3266D5)), CircleShape)
             .padding(2.dp)
             .background(MaterialTheme.colorScheme.surface, CircleShape)
             .padding(2.dp)
@@ -377,7 +377,7 @@ private fun FeedUtilityAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (muted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else Color(0xFF3266B4),
+            tint = if (muted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF3266B4),
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.height(2.dp))
@@ -420,7 +420,7 @@ fun FeedTabs(
                 label = "feedSegmentOffset"
             )
             Box(Modifier.offset(x = selectedOffset).width(segmentWidth).fillMaxHeight()
-                .background(Color(0xFF2563EB), RoundedCornerShape(22.dp)))
+                .background(if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF2563EB), RoundedCornerShape(22.dp)))
             Row(Modifier.fillMaxWidth().fillMaxHeight()) {
                 FeedTabLabel("For You", selection == 0, Modifier.weight(1f), onForYouClick)
                 FeedTabLabel("Following", selection == 1, Modifier.weight(1f), onFollowingClick)
@@ -434,7 +434,7 @@ fun FeedTabs(
             contentAlignment = Alignment.Center
         ) {
             if (isRefreshing) CircularProgressIndicator(
-                modifier = Modifier.size(19.dp), color = Color(0xFF2563EB), strokeWidth = 2.dp
+                modifier = Modifier.size(19.dp), color = if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF2563EB), strokeWidth = 2.dp
             ) else Icon(Icons.Default.Refresh, null,
                 tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
         }
