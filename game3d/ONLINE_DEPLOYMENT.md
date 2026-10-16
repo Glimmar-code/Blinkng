@@ -1,40 +1,42 @@
-# BLINK LIFE — Online multiplayer staging deployment
+# BLINK LIFE — encrypted dedicated Internet staging (not live)
 
-Status: **source code prepared; not deployed or production validated**. Do not mistake this for a live game server or a public multiplayer launch.
+**Status 16 October 2026:** Source-only staging. No game server, verified school registry or multi-instance persistence service has been deployed for public BLINK users. Android, Windows and the optional website APK must remain independently usable without the server. The website WebGL version remains an offline preview; only native BLINK LIFE uses authenticated dedicated networking.
 
-## Architecture
+## Secure transport and identities
 
-1. A signed-in BLINK user **chooses Play**. The Android host calls `supabase/functions/blink-life-session` using the existing session JWT, with a 3-second budget; it never passes the full JWT into Godot. On endpoint failure, BLINK LIFE opens offline without disturbing the rest of BLINK.
-2. The Edge Function verifies that the user is authenticated via Supabase Auth and mints a **90-second, one-time signed ticket**, then returns dedicated server hostname and UDP port.
-3. Godot receives just the ticket, host and port, connects through ENet UDP and registers. The server validates HMAC, expiry, nonce replay and duplicate authenticated users before adding them to the roster. Unauthenticated clients cannot participate.
-4. Dedicated Godot hosts a bounded number of players (8 per instance). Real-world GPS is not collected; virtual coordinate visibility requires explicit opt-in. Home entry and ride seating require owner/driver consent.
-5. Each account gets its own server-held fictional Game Cash, house purchase (400 GC), furnishings (150 GC each), and distance/cooldown-validated virtual depot shifts (+80 GC). The host owns the records; clients cannot submit balance changes.
-6. Data is saved atomically to `user://blink_life_houses_v1.json` on the dedicated server. A persistent Docker volume is essential. This is **single-server file persistence, not a distributed Supabase database or global cross-server economy**. Migrating it safely to a staging Postgres schema must precede sharding and public deployment.
+1. A signed-in BLINK user deliberately taps Play in the **native** Android version, which requests a **90-second one-time ticket** over HTTPS through `blink-life-session`. The normal app and WebGL game do not auto-connect.
+2. The ticket issuer advertises `transport: wss_tls`, the operator's TLS **DNS hostname** and public TCP port (default 24568). Android rejects plaintext/expired metadata. Godot connects only to `wss://hostname:port` and validates the CA chain/hostname; there is no `ws://` or plaintext ENet fallback for Internet sessions.
+3. The dedicated Godot 4.3 server loads the operator-owned TLS certificate/full chain and private key from files that are NOT in GitHub or an APK. It validates HMAC ticket, expiry, nonce replay and duplicate authenticated accounts before adding players.
+4. **Trusted LAN-only** host/join mode remains an ENet demo for two devices on the same network; **never port-forward or publish that LAN port**. No real phone GPS is accessed. Opt-in virtual game coordinates are not real locations.
+5. Social invitations default off, home/ride requests need explicit consent, session blocking works, and public dedicated chat is disabled until effective moderation is in place.
+6. Dedicated players currently have **single-server file** property storage. Multi-server state and university points are a separate staging backend contract; the `world_schema.sql` and `blink-life-world-sync` sources are **not deployed or wired to Godot yet**.
 
-## Staging operator prerequisites
+## Private operator deployment requirements
 
-- Create an isolated staging/preview Supabase project, or another controlled test environment. No production Supabase mutations have been made.
-- Provision an always-on Linux amd64 server with UDP port **24567** publicly reachable. Protect API, SSH and other ports with firewall; the Godot UDP port needs controlled exposure.
-- Generate a unique high-entropy `BLINK_LIFE_AUTH_SECRET` (at least 32 characters), securely configure it on BOTH the dedicated game host and Supabase Edge Function environment. **Never** embed it in an APK, desktop binary, GitHub or the browser.
-- Set `BLINK_LIFE_PUBLIC_HOST` to the host's public DNS name, `BLINK_LIFE_PUBLIC_PORT=24567` and `BLINK_LIFE_AUTH_SECRET` on the Edge Function. Runtime supplied `SUPABASE_URL` and `SUPABASE_ANON_KEY` must point to the same BLINK staging project.
-- With project env variables configured, run `docker compose -f game3d/compose.server.yml up --build -d` on the server. `game3d/Dockerfile` pins Godot 4.3, uses a nonroot user and a persistent volume.
-- Deploy the **staging** `blink-life-session` Edge Function only after confirming authenticated JWT verification and the Godot connection smoke tests. `verify_jwt=true` in `supabase/config.toml`. No production deployment command is included.
-- Android Play will fetch a ticket after an authenticated user taps Play and autojoin if all infrastructure responds. Windows uses the same native Godot session UI, but does not yet have an automatic logged-in token bridge; manual short-lived ticket input is Testlab-only until that adapter is written.
+- Provision a domain you control, obtain a valid public CA certificate matching that hostname and arrange safe automatic renewals. BLINK's present GitHub Pages address is not a game server; **do not assume it hosts WebSocket sessions**.
+- Host a Linux amd64 server, with TCP 24568 protected by an allowlisted firewall/rate-limiting proxy where practical. Do **not** open UDP 24567 to the public.
+- Provision separate strong secrets for `BLINK_LIFE_AUTH_SECRET` (ticket issuer + dedicated server) and `BLINK_LIFE_WORLD_SYNC_HMAC_KEY` (only if the sync gateway is separately approved). Never put these values in a source file, logs or a mobile build.
+- On the dedicated server, set `BLINK_LIFE_TLS_DIR` to a directory containing a **readable-to-container-user** `fullchain.crt` and `private.key` belonging to the operator. Store the private key using strict OS permissions. Configure `BLINK_LIFE_AUTH_SECRET`.
+- The compose file provides a nonroot, read-only-rootfs Godot container, runtime memory/process caps, a volume for local data and a TLS-only TCP listener. Containers do not create or renew certificates.
+- Deploy `blink-life-session` in **isolated staging** only after the matching WSS server works, with `BLINK_LIFE_PUBLIC_HOST`, `BLINK_LIFE_PUBLIC_PORT=24568`, `BLINK_LIFE_AUTH_SECRET` and Supabase Auth environment configured.
+- Check actual trusted CA verification, invalid/revoked certificate rejection, stolen/expired/replayed ticket rejection, duplicate sessions, no unintended IPv4/IPv6 plaintext listeners, player blocking and WSS reconnects on actual Android and Windows.
 
-## Abuse protection and privacy gates before public access
+## Persistent property / fictional reward / campus ranking staging
 
-- Scope all social requests to authenticated users and apply blocks, moderation, server-side text filtering, friendship/consent-based invitations, server rate limits and packet budgets.
-- Do not log tickets, account JWTs or private user identifiers unnecessarily. Rotate secret with overlap strategy or drain instances so current tickets can expire.
-- Implement TLS-secured ticket issuance (via Supabase's HTTPS Edge Function). ENet UDP is **not encrypted**: replace with authenticated encrypted transport and perform penetration testing before production public deployment. HMAC ticket admission alone does not encrypt movement/chat in transit.
-- Confirm server movement rate bounds, teleport/housing restrictions, passenger permissions, one-time nonce and double-login behaviour.
-- Add rate-limited login issuance per authenticated account, instance selection/recovery, durable server-owned property saves in a real database, backups and audit trails; test load across multiple instances.
-- Complete Android↔Windows parity and genuine Redmi-class hardware testing. Verify battery, heat, game-crash isolation, Internet connectivity, sign-out/session expiry, and return to BLINK.
+- `game3d/staging/world_schema.sql` is **review-only** schema SQL; it must **not be applied to BLINK's current production database**. Use a dedicated staging Supabase project after a DBA has reviewed it, created a backup and tested it.
+- Private tables store **fictional, non-redeemable** Game Cash, one virtual house, one virtual vehicle, up to 12 furniture items, XP, event ledger, revision and verified campus membership. This is not BLINK Coins, ad rewards or real money.
+- A service-role-only, idempotent database RPC applies fixed amounts from approved event kinds; neither clients nor Godot may submit arbitrary reward values. Job and duel XP have conservative daily caps. The event ID must be generated ONCE by the authoritative game server for the original verified action and reused for every retry.
+- `blink-life-world-sync` is a **staged** Edge Function that checks a shared HMAC over the exact request bytes and timestamp, then invokes service-role-only RPCs. Use a secret manager; the service-role key must remain only in the Edge runtime. Never grant unauthenticated or normal client roles rights to the world-state RPCs or private tables.
+- University rankings count points **only for administrator-verified university memberships**, never self-entered university profile text. There is no need to publish students' names, IDs, precise locations or contact information.
+- Before activating sync: integrate the Godot game-server read/write adapter, test concurrent updates and crash recovery, prove no negative balances or duplicated reward credits, implement backups/restore, school verification workflow, fraud screening and rate limits, validate SQL RLS/advisors on staging, and build monitoring with rollback.
 
-## Deliberate non-features
+## Production-launch blockers
 
-- No cashout, gambling, real-money property purchases, BLINK Coins or BLINK-wallet integration.
-- No real-world location sharing.
-- No premium purchase pressure or exploitable pay-to-win rewards.
-- No unrestricted public chat or proximity voice until moderation and privacy controls are complete.
+- **No deployed WSS domain/server or live TLS certs.**
+- **No operational multi-instance property sync or leaderboard.** Current Godot social code still saves virtual property to one server JSON file.
+- **No verified institution enrollment workflow or trusted ranking API to users.**
+- **No full rigid-body car collisions, wheel simulation, suspension, driving sound or low-end device profiling**; the new movement model is lightweight kinematic motion only.
+- **No 24/7 operations, backups, moderation/reporting, anti-abuse review, regional matchmaking, or measured server load capacity.**
+- No paid matches, betting, cashout, BLINK Coin awards or monetized advantage.
 
-See `ROADMAP_110.md` for all the requested features and their current scope.
+Do not merge or release to production based on green headless CI alone. Require security review, staging DB and real-device regression tests plus public transport/load validation first.

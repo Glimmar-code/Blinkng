@@ -67,6 +67,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify TLS-only WSS multiplayer transport with test CA
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s godot --headless --path game3d --script res://tests/wss_smoke.gd 2>&1 | tee /tmp/blink-life-wss-tests.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-life-wss-tests.log; then
+            echo 'Encrypted WebSocket multiplayer regression detected.'
+            exit 1
+          fi
+
       - name: Run native 3D interactive scene smoke tests
         shell: bash
         run: |

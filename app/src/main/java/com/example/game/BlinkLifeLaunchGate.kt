@@ -92,7 +92,16 @@ object BlinkLifeLaunchGate {
                 val host = json.optString("host")
                 val port = json.optInt("port")
                 val ticket = json.optString("ticket")
-                if (host.isBlank() || host.length > 253 || port !in 1024..65535 ||
+                val transport = json.optString("transport")
+                val expiresAt = json.optLong("expires_at", 0L)
+                // Fail closed for old plaintext ticket endpoints or malformed hosts.
+                // Godot's WebSocket peer validates the server certificate for WSS.
+                val validHost = host.length in 1..253 &&
+                    host.matches(Regex("[a-zA-Z0-9.-]+")) &&
+                    !host.startsWith('.') && !host.endsWith('.') && !host.contains("..")
+                if (transport != "wss_tls" || !validHost || port !in 1024..65535 ||
+                    expiresAt <= System.currentTimeMillis() / 1000L ||
+                    expiresAt > System.currentTimeMillis() / 1000L + 95L ||
                     ticket.length !in 110..240 || ticket.split('.').size != 4
                 ) null else JoinDetails(host, port, ticket)
             }
