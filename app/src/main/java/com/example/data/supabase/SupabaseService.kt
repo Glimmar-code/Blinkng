@@ -3462,6 +3462,7 @@ suspend fun uploadPostMedia(
                 append(if (savedOnly) "*,marketplace_wishlist!inner(user_id)" else "*")
                 append("&status=eq.active")
                 append("&is_sold=eq.false")
+                append("&seller_id=not.is.null")
                 if (verifiedOnly) append("&seller_is_verified=eq.true")
                 if (savedOnly) append("&marketplace_wishlist.user_id=eq.").append(encodeValue(userId.orEmpty()))
                 category?.trim()?.takeIf { it.isNotBlank() && !it.equals("All Categories", true) }?.let {
