@@ -10,6 +10,11 @@ const SPAWN_LOCAL: Vector3 = Vector3(0.0, 0.23, 1.25)
 const WALL_COLORS = [Color(0.80, 0.84, 0.85), Color(0.78, 0.70, 0.61), Color(0.55, 0.69, 0.75)]
 const FLOOR_COLORS = [Color(0.71, 0.61, 0.48), Color(0.46, 0.46, 0.48), Color(0.68, 0.59, 0.47)]
 const PLANT_SPOTS = [Vector3(3.0, 0.95, -2.5), Vector3(0.0, 0.25, -3.65), Vector3(3.2, 0.25, 2.6)]
+const PLANT_DEFAULT_X: int = 0
+const PLANT_DEFAULT_Z: int = 3
+const GRID_LIMIT: int = 3
+const GRID_SPACING: float = 1.0
+const HISTORY_LIMIT: int = 20
 var desk_plant: Node3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
@@ -60,18 +65,47 @@ func update_owned_decor(has_plant: bool) -> void:
         desk_plant.visible = has_plant
 
 
-func apply_decoration(wall_style: int, floor_style: int, plant_spot: int) -> bool:
+## Small collision-safe integer floor grid. The desk, bed, wardrobe, chair
+## and player's spawn/entry corridor retain a 0.45m extra margin.
+static func floor_cell_allowed(x: int, z: int) -> bool:
+    if absi(x) > GRID_LIMIT or absi(z) > GRID_LIMIT:
+        return false
+    var candidate := Vector2(float(x), float(z))
+    var reserved: Array[Dictionary] = [
+        {"center": Vector2(-2.5, -2.5), "half": Vector2(1.075, 1.4)},
+        {"center": Vector2(2.3, -2.5), "half": Vector2(1.1, 0.5)},
+        {"center": Vector2(2.3, -0.8), "half": Vector2(0.425, 0.4)},
+        {"center": Vector2(-3.55, 1.8), "half": Vector2(0.325, 0.725)},
+        {"center": Vector2(0.0, 1.25), "half": Vector2(0.38, 0.38)}
+    ]
+    for obstacle in reserved:
+        var center: Vector2 = obstacle["center"]
+        var half: Vector2 = obstacle["half"]
+        if absf(candidate.x - center.x) < half.x + 0.48 and absf(candidate.y - center.y) < half.y + 0.48:
+            return false
+    return true
+
+
+func apply_decoration(wall_style: int, floor_style: int, plant_spot: int,
+        plant_custom: bool = false, plant_x: int = PLANT_DEFAULT_X,
+        plant_z: int = PLANT_DEFAULT_Z, plant_rotation: int = 0) -> bool:
     if wall_style < 0 or wall_style >= WALL_COLORS.size():
         return false
     if floor_style < 0 or floor_style >= FLOOR_COLORS.size():
         return false
     if plant_spot < 0 or plant_spot >= PLANT_SPOTS.size():
         return false
+    if plant_rotation < 0 or plant_rotation >= 4:
+        return false
+    if plant_custom and not floor_cell_allowed(plant_x, plant_z):
+        return false
     for wall in wall_visuals:
         _repaint(wall, WALL_COLORS[wall_style])
     _repaint(floor_visual, FLOOR_COLORS[floor_style])
     if desk_plant != null:
-        desk_plant.position = PLANT_SPOTS[plant_spot]
+        desk_plant.position = Vector3(float(plant_x) * GRID_SPACING, 0.15,
+            float(plant_z) * GRID_SPACING) if plant_custom else PLANT_SPOTS[plant_spot]
+        desk_plant.rotation.y = deg_to_rad(float(plant_rotation) * 90.0)
     return true
 
 
