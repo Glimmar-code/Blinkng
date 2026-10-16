@@ -627,6 +627,7 @@ fun ProfileScreen(
 
                                         ProfileFollowInteractButton(
                                             isFollowing = isFollowing,
+                                            enabled = !followBusy,
                                             onFollow = {
                                                 if (!followBusy && profile.id.isNotBlank()) {
                                                     followBusy = true
