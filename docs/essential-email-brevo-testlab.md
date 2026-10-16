@@ -79,20 +79,45 @@ For **new-device** and **suspicious** alerts, don't enqueue emails based on arbi
 Previously shared SMTP credentials must be rotated before relying on production sending.
 
 
-## Five opt-in social emails — template groundwork only (October 16, 2026)
+## Five opt-in social emails — staged implementation (October 16, 2026)
 
-The following premium black-and-white designs are committed, are **not** Supabase Auth templates, and have **not** been deployed or connected to email event triggers:
+**GitHub code is staged; none of these notifications are deployed or sending.** Unlike the Supabase Auth account notices, these are app-owned Brevo transactional emails. All branding uses BLINK's black-and-white design.
 
-| Feature | Template | Proposed trusted event / frequency |
-| --- | --- | --- |
-| New follower | `supabase/templates/new_follower.html` | Real persisted follow transition, aggregate into at most a daily opt-in digest; never email on repeated follow/unfollow |
-| Unread messages | `supabase/templates/unread_messages_digest.html` | Server-confirmed unread conversation count after appropriate inactivity; at most daily opt-in digest and no private message content |
-| Post engagement | `supabase/templates/post_engagement_digest.html` | Verified server analytics reaching a meaningful threshold; weekly digest rather than every reaction |
-| Reel milestone | `supabase/templates/reel_milestone.html` | Verified deduplicated milestone crossings; at most one email per milestone, not simulated views |
-| Leaderboard ranking | `supabase/templates/leaderboard_digest.html` | Official server ranking snapshots; optional weekly digest, no notification for every position change |
+| Notification | Template | Server-authoritative condition | Frequency |
+| --- | --- | --- | --- |
+| New followers | `new_follower.html` | Real `public.follows` rows created after user consent | Daily aggregate (if changed) |
+| Unread conversations | `unread_messages_digest.html` | Conversation participation + unread incoming `messages` at least 6 hours old | At most daily (no private text) |
+| Post engagement | `post_engagement_digest.html` | At least 10 new external likes/comments on active, unflagged posts | At most weekly |
+| Reel milestones | `reel_milestone.html` | Server-recorded distinct post viewers crossing 100/500/1000/10000 on reels created since consent | One event per reel milestone; queued in daily scan |
+| Leaderboard update | `leaderboard_digest.html` | Official `leaderboard_snapshots.world_rank` changes from previously observed ranking | At most weekly |
 
-**Activation prerequisites:** Add a clear per-user opt-in/off switch for each category in Android and Windows (shared backend preferences), a working unsubscribe or email-preference link/flow, a server-owned event producer tied to authoritative tables, deduplication, digest aggregation, consent and deliverability suppression checks, per-user daily/weekly rate limits, provider quota reservation for authentication emails, and staged QA of the entire send path. Templates contain no account token, tracking image, private chat content or unverified metrics. Use authenticated app settings as the destination until verified app/web URLs exist; do not invent a BLINK deep link or browser URL.
+The new `supabase/migrations/20261016120000_blink_opt_in_social_email.sql` creates an RLS-controlled preferences row (**all five default FALSE**), server-stamped consent timestamps, server-only cooldown/rank/reel milestone ledgers, and `public.blink_queue_social_email_digests(p_limit)`. A server-side round-robin cursor avoids leaving later users unprocessed. It reads existing BLINK follower, conversation, post and leaderboard tables; unlike notifications generated client-side, no client-submitted claims are used.
 
-**Do not** copy these designs into `Authentication → Emails → Templates`: those are **Supabase Auth** templates, not arbitrary social-event templates. Sending these social emails requires the separate Brevo server-side worker and backend event integrations. **No social email is currently enabled or dispatched.**
+Both Android (Calls & notifications → Email reminders) and Windows (Settings → Social email reminders) use the **same** shared `BlinkSocialEmailCategory` contract and persist switches through the current signed-in Supabase session. The `user_settings.email_notifs_enabled` master switch is checked before queueing and again before sending. Cross-account preference writes are blocked by Supabase RLS.
 
-The user's request to leave signup-confirmation email untouched still applies.
+The `send-essential-email` worker can now dispatch the five social categories **only** when `BLINK_SOCIAL_EMAIL_ENABLED=true`, the user has opted in, the master user setting permits it, the account email is verified, and the unsubscribe endpoint is fully configured. The worker remains internal-only and requires `BLINK_EMAIL_WORKER_SECRET`.
+
+`unsubscribe-social-email` verifies an expiring HMAC-signed category-specific token. **GET displays confirmation without changing consent** (protects against link-preview scanners); a verified **POST disables that category**. The worker attaches a List-Unsubscribe header and one-click POST header. Changing email marketing preferences does not change password-reset/security notifications.
+
+### Required staging order
+
+1. **Do not change** signup confirmation or existing production Supabase Auth policy. Separate account-email-change confirmation remains an existing security flow, not a signup confirmation.
+2. Test the two migrations, in order, in a real Supabase staging project (no development branch currently exists for BLINK; creating one may cost money and needs owner approval). Check trigger and RLS ownership/grants before using personal data. Do not apply them to the live database as a shortcut.
+3. Deploy both **new** Edge Functions to staging: `send-essential-email` (`verify_jwt=false` with a separate strong server-only header) and `unsubscribe-social-email` (`verify_jwt=false`, with HMAC-signed tokens). Auth details remain server-only.
+4. Configure **STAGING-ONLY secrets**, never commit, paste in chat or ship with an APK:
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (managed by Supabase)
+   - `BREVO_API_KEY` — **Brevo HTTP API key**, not the SMTP password/key
+   - `BLINK_EMAIL_SENDER_ADDRESS` — verified Brevo sender; prefer authenticated owned domain for production
+   - `BLINK_EMAIL_WORKER_SECRET` — random 32+ character scheduling secret
+   - `BLINK_EMAIL_UNSUBSCRIBE_SECRET` — separate random 32+ character HMAC secret
+   - `BLINK_EMAIL_UNSUBSCRIBE_URL` — HTTPS URL ending in `/functions/v1/unsubscribe-social-email` for the same staging project
+   - `BLINK_SOCIAL_EMAIL_ENABLED=false` until all staging safety checks pass
+5. Configure a **trusted server scheduler** (e.g. a managed scheduled job) to HTTP POST to `send-essential-email` with header `x-blink-email-worker-secret` on a sensible schedule. Do not expose this endpoint/secret in the Android app, Windows app or front-end JavaScript. Schedule can be hourly for a paged queue; queues only send eligible summaries, never every like/message.
+6. Test in staging: 5 off-by-default flags, 5 independent toggles across Android and Windows, no cross-user updates, mail sent only after opt-in and genuine persisted events, unsubscribe after enqueue (worker must recheck), GET must **not** unsubscribe, explicit POST **must**, idempotency, one event per reel milestone, new rank baseline, privacy, Brevo sender/provider errors, email quotas, daily/weekly cooldown and 200-user scan pagination.
+7. Test password reset and security notifications separately. Existing BLINK recovery email redirect previously fell back to `localhost:3000`; fix the Auth URL/deep-link configuration and test Android + Windows, not just SMTP acceptance.
+8. Run `python3 -m unittest discover -s supabase/tests -p 'test_essential_email_templates.py' -v`, migration safety, Deno check, Android build, Windows build, parity and delivery integration checks. **No merge or release before all gates pass.**
+9. After production deployment, deliberately enable sending only after explicit opt-ins are possible; monitor Brevo deliverability and quota. The worker caps successful *its own outbox* email sends at 75 per UTC day, but Supabase Auth's SMTP messages consume Brevo's plan limit too, so monitor the total externally.
+
+**Operational limitation:** GitHub HTML is not automatically deployed to the hosted Supabase Auth Email Templates editor. The 5 social templates are not Supabase Auth templates and should *never* be pasted into Confirm sign up or another Auth template. The backend composes matching black-and-white social messages in its own renderer. Brevo deliverability and the staging worker schedule are not yet verified.
+
+**Release blockers at time of coding:** No Supabase staging branch, no confirmed server-side Brevo API credential/worker secrets, no scheduler configured, and GitHub checks need to pass. Production BLINK is unchanged.
