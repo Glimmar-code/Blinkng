@@ -124,6 +124,8 @@ fun ProfileScreen(
     hasPostsLoadError: Boolean = false,
     likedPosts: List<FeedPost>,
     savedPosts: List<FeedPost>,
+    arePrivateCollectionsLoading: Boolean = false,
+    havePrivateCollectionsError: Boolean = false,
     userMarketItems: List<MarketItem>,
     isMarketLoading: Boolean = false,
     hasMarketLoadError: Boolean = false,
@@ -1191,6 +1193,9 @@ fun ProfileScreen(
                         profilePostItems(
                             keyPrefix = "saved",
                             posts = savedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
                             profile = profile,
                             canDelete = false,
                             onDelete = onDeletePost,
@@ -1218,6 +1223,9 @@ fun ProfileScreen(
                         profilePostItems(
                             keyPrefix = "liked",
                             posts = likedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
                             profile = profile,
                             canDelete = false,
                             onDelete = onDeletePost,
