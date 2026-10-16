@@ -73,6 +73,27 @@ func _run() -> void:
             _assert_true(not rain_node.visible and rain_node.multimesh.visible_instance_count == 0, "Clear weather hides rainfall immediately")
             local_weather.set("mode", "auto")
 
+    var npc_world: Node3D = world.get_node_or_null("Residents") as Node3D
+    _assert_true(npc_world != null, "Local fictional residents must be present")
+    if npc_world != null:
+        _assert_true(npc_world.get_child_count() == 8, "Scene contains eight original NPC actors")
+        var npc_ada: Node3D = npc_world.get_node_or_null("NPC_ada") as Node3D
+        _assert_true(npc_ada != null, "The first recurring resident has a stable NPC ID")
+        if npc_ada != null:
+            var npc_nameplate: Label3D = npc_ada.get_node_or_null("NPCName") as Label3D
+            _assert_true(npc_nameplate != null and npc_nameplate.text.begins_with("NPC"), "NPC labels must be distinguishable from real players")
+            npc_world.call("update_residents", npc_ada.global_position, 8.0, "light", false, 0.25)
+            var umbrella: Node3D = npc_ada.get_node_or_null("RainUmbrella") as Node3D
+            _assert_true(umbrella != null and umbrella.visible, "A walking NPC carries an umbrella in light rain")
+            _assert_true(not str(npc_world.call("nearby_greeting", npc_ada.global_position)).is_empty(), "Resident conversations remain text-accessible")
+            npc_world.call("update_residents", npc_ada.global_position, 8.0, "clear", true, 0.25)
+            _assert_true(umbrella != null and not umbrella.visible, "NPC umbrellas retract in clear weather")
+            var visible_count: int = 0
+            for actor in npc_world.get_children():
+                if actor.visible:
+                    visible_count += 1
+            _assert_true(visible_count <= 4, "Battery-saving mode caps visible residents at four")
+
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
 
