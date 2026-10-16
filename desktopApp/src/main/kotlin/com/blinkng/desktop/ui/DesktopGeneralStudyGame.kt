@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -38,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -73,6 +76,9 @@ fun DesktopGeneralStudyGame() {
     var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(pane, questionIndex) { listState.scrollToItem(0) }
 
     val questions = remember(difficulty, seed) {
         if (seed == 0L) emptyList()
@@ -85,7 +91,8 @@ fun DesktopGeneralStudyGame() {
     val question = questions.getOrNull(questionIndex)
 
     fun startRound() {
-        seed = System.currentTimeMillis()
+        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
+        confirmExit = false
         questionIndex = 0
         score = 0
         selectedOption = -1
@@ -112,6 +119,7 @@ fun DesktopGeneralStudyGame() {
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -142,10 +150,7 @@ fun DesktopGeneralStudyGame() {
                         score = score,
                         selectedOption = selectedOption,
                         answered = answered,
-                        onClose = {
-                            seed = 0L
-                            paneName = DesktopGeneralStudyPane.SETUP.name
-                        },
+                        onClose = { confirmExit = true },
                         onAnswer = ::submitAnswer,
                         onNext = ::nextQuestion,
                     )
@@ -167,6 +172,23 @@ fun DesktopGeneralStudyGame() {
                 }
             }
         }
+    }
+    if (confirmExit && pane == DesktopGeneralStudyPane.PLAY) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("Leave General Study?") },
+            text = { Text("Your unfinished quiz round will be discarded.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = false
+                    seed = 0L
+                    paneName = DesktopGeneralStudyPane.SETUP.name
+                }) { Text("Leave round") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text("Keep playing") }
+            },
+        )
     }
 }
 
@@ -421,7 +443,8 @@ private fun DesktopGeneralStudyRound(
             }
         }
 
-        val progress = if (totalQuestions == 0) 0f else questionNumber.toFloat() / totalQuestions
+        val completed = (questionNumber - 1 + (if (answered) 1 else 0)).coerceIn(0, totalQuestions)
+        val progress = if (totalQuestions == 0) 0f else completed.toFloat() / totalQuestions
         LinearProgressIndicator(
             progress = progress,
             modifier = Modifier.fillMaxWidth().height(6.dp),
