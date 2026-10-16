@@ -271,7 +271,7 @@ BEGIN
  END IF;
  RETURN v_queued;
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.blink_queue_social_email_digests(integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.blink_queue_social_email_digests(integer) TO service_role;
 
