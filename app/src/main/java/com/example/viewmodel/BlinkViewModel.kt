@@ -237,6 +237,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketSort: String = "newest"
     private var marketMinPrice: Long? = null
     private var marketMaxPrice: Long? = null
+    private var marketSavedOnly: Boolean = false
+    private var marketVerifiedOnly: Boolean = false
     // Reject late network responses after the user changes search, sort or price.
     private var marketRequestVersion = 0L
     private var marketNextOffset = 0
@@ -5419,19 +5421,24 @@ private suspend fun restoreSupabaseSession() {
         category: String?,
         sort: String,
         minPrice: Long? = null,
-        maxPrice: Long? = null
+        maxPrice: Long? = null,
+        savedOnly: Boolean = false,
+        verifiedOnly: Boolean = false
     ) {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
         if (marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
             !_uiState.value.isMarketLoading && _uiState.value.marketErrorMessage == null) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
         marketSort = sort
         marketMinPrice = minPrice
         marketMaxPrice = maxPrice
+        marketSavedOnly = savedOnly
+        marketVerifiedOnly = verifiedOnly
         refreshMarketItems()
     }
 
@@ -5450,6 +5457,8 @@ private suspend fun restoreSupabaseSession() {
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
+        val requestSaved = marketSavedOnly
+        val requestVerified = marketVerifiedOnly
         _uiState.value = _uiState.value.copy(
             isMarketLoading = true, isLoadingMoreMarket = false, marketErrorMessage = null
         )
@@ -5462,7 +5471,9 @@ private suspend fun restoreSupabaseSession() {
                     category = requestCategory,
                     sort = requestSort,
                     minPrice = requestMin,
-                    maxPrice = requestMax
+                    maxPrice = requestMax,
+                    savedOnly = requestSaved,
+                    verifiedOnly = requestVerified
                 )
             }
             if (generation != marketRequestVersion) return@launch
@@ -5497,6 +5508,8 @@ private suspend fun restoreSupabaseSession() {
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
+        val requestSaved = marketSavedOnly
+        val requestVerified = marketVerifiedOnly
         _uiState.value = current.copy(isLoadingMoreMarket = true)
         viewModelScope.launch {
             val result = runCatching {
@@ -5507,7 +5520,9 @@ private suspend fun restoreSupabaseSession() {
                     category = requestCategory,
                     sort = requestSort,
                     minPrice = requestMin,
-                    maxPrice = requestMax
+                    maxPrice = requestMax,
+                    savedOnly = requestSaved,
+                    verifiedOnly = requestVerified
                 )
             }
             if (generation != marketRequestVersion) return@launch
@@ -5624,7 +5639,7 @@ private suspend fun restoreSupabaseSession() {
             )
 
             if (supabaseService.createMarketItem(listing)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 _uiState.value = _uiState.value.copy(
                     marketItems = live,
@@ -5764,7 +5779,7 @@ private suspend fun restoreSupabaseSession() {
         if (item.id.isBlank()) return
         viewModelScope.launch {
             if (supabaseService.updateMarketListingStatus(item.id, status)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 val latest = _uiState.value
                 val updatedViewing = latest.viewingProduct?.let { current ->
