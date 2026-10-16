@@ -73,3 +73,12 @@ clear conditions, light showers or capped tropical rain. Moving low-poly clouds
 and batched raindrops are fictional visual effects, with no gameplay penalty,
 real-world weather permission or production economy impact. Weather is not
 synchronized between players and has not passed physical-device graphics checks.
+
+## Local neighborhood residents (Testlab batch 5)
+
+Eight fictional, always-labeled NPC residents follow predictable local
+home/work/leisure routines along the starter city's sidewalks. They can give
+brief text greetings and show umbrellas when they walk in rain. Battery-saver
+mode limits the visible cast to four. Residents are decorative and use no
+BLINK social identity, online-server attendance or production wallet.
+This is still a staging prototype, not a finished population or live economy.
