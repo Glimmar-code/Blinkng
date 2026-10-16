@@ -154,8 +154,8 @@ fun BlinkLifeDownloadCard() {
                 )
             }
             Text(
-                "On Google Play, the game downloads separately only when requested. " +
-                    "The signed website APK comes with the game preinstalled.",
+                "Google Play delivers the native 3D module on demand. " +
+                    "Website APKs download a separate verified WebGL game pack when requested.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
