@@ -18,6 +18,9 @@ var game_cash: int = 500
 var completed_jobs: int = 0
 var owns_plant: bool = false
 var places: Array[Dictionary] = []
+var futa_landmarks: Array[Dictionary] = []
+var selected_waypoint: Dictionary = {}
+var map_panel: PanelContainer
 var active_quiz: Dictionary = {}
 var social: Node3D
 
@@ -25,6 +28,7 @@ var social: Node3D
 func _ready() -> void:
     _create_lights()
     _create_city()
+    _create_futa_district()
     _create_player()
     _create_camera()
     _create_hud()
@@ -56,6 +60,13 @@ func _process(delta: float) -> void:
         hud_location.text = "Explore the 3D city — approach a marked building"
     else:
         hud_location.text = "%s • Press INTERACT" % str(nearby["name"])
+    if not selected_waypoint.is_empty():
+        var destination: Vector3 = selected_waypoint["position"]
+        var distance: int = roundi(Vector2(
+            destination.x - player.global_position.x,
+            destination.z - player.global_position.z
+        ).length())
+        hud_location.text += "  |  %s: %d game units" % [selected_waypoint["name"], distance]
 
 
 func _physics_process(delta: float) -> void:
@@ -204,6 +215,14 @@ func _create_city() -> void:
         _add_visual_box(self, site + Vector3(0, 1.65, 0), Vector3(2.2, 1.8, 2.2), Color(0.20, 0.44, 0.27))
 
 
+## Loaded only when BLINK LIFE opens, never when normal BLINK pages load.
+func _create_futa_district() -> void:
+    var map_script: Script = load("res://scripts/futa_map.gd")
+    var map_builder: RefCounted = map_script.new()
+    futa_landmarks = map_builder.call("build", self)
+    places.append_array(futa_landmarks)
+
+
 func _create_player() -> void:
     player = CharacterBody3D.new()
     player.name = "Player"
@@ -273,6 +292,7 @@ func _create_hud() -> void:
     hud_status.text = "TESTLAB: all money is fictional. Walk using WASD/arrows or touch controls."
     hud_status.add_theme_font_size_override("font_size", 14)
     hud.add_child(hud_status)
+    _create_map_hud(hud)
 
     # Always offer a visible exit: Android's Godot instance runs in a
     # separate process, so quitting here returns the player to BLINK.
@@ -341,6 +361,52 @@ func _create_hud() -> void:
     hud.add_child(hud_modal)
 
 
+## Navigation uses fictional in-game coordinates, not real-world GPS.
+func _create_map_hud(hud: Control) -> void:
+    var map_button := _new_button("CAMPUS MAP", 145)
+    map_button.position = Vector2(18, 115)
+    hud.add_child(map_button)
+
+    map_panel = PanelContainer.new()
+    map_panel.position = Vector2(18, 175)
+    map_panel.custom_minimum_size = Vector2(335, 0)
+    map_panel.visible = false
+    hud.add_child(map_panel)
+    map_button.pressed.connect(func(): map_panel.visible = not map_panel.visible)
+
+    var layout := VBoxContainer.new()
+    map_panel.add_child(layout)
+    var title := Label.new()
+    title.text = "FUTA-inspired GAME map (fictional layout)"
+    title.add_theme_font_size_override("font_size", 15)
+    layout.add_child(title)
+    var hint := Label.new()
+    hint.text = "Select a waypoint, then walk there to interact."
+    layout.add_child(hint)
+
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(315, 285)
+    layout.add_child(scroll)
+    var destinations := VBoxContainer.new()
+    scroll.add_child(destinations)
+    for landmark in futa_landmarks:
+        var item := _new_button(str(landmark["name"]), 302)
+        destinations.add_child(item)
+        item.pressed.connect(_select_waypoint.bind(landmark))
+    var clear := _new_button("CLEAR WAYPOINT")
+    layout.add_child(clear)
+    clear.pressed.connect(func():
+        selected_waypoint = {}
+        map_panel.visible = false
+    )
+
+
+func _select_waypoint(landmark: Dictionary) -> void:
+    selected_waypoint = landmark.duplicate()
+    map_panel.visible = false
+    hud_status.text = "Waypoint selected: %s. This is a fictional game location." % landmark["name"]
+
+
 func _set_touch_axis(axis: Vector2) -> void:
     touch_axis = axis
 
@@ -355,7 +421,7 @@ func _orbit(degrees: float) -> void:
 
 func _nearest_place() -> Dictionary:
     for place in places:
-        var location: Vector3 = _location_position(int(place["col"]), int(place["row"]))
+        var location: Vector3 = place["position"] if place.has("position") else _location_position(int(place["col"]), int(place["row"]))
         var horizontal_distance: float = Vector2(
             player.global_position.x - location.x,
             player.global_position.z - location.z
@@ -395,8 +461,15 @@ func _interact() -> void:
             if social != null:
                 social.call("open_social")
             hud_status.text = "Social homes: visiting requires the owner's approval."
+        "FUTA Campus Café":
+            _start_quiz("Campus café", "Three meals cost 70 GC each. A guest pays 250 GC. Change?", ["30 GC", "40 GC", "50 GC"], 1, 140)
+        "Campus Delivery Office":
+            _start_quiz("Campus courier", "What is the safest way to deliver a parcel?", ["Follow the marked path", "Speed through crossings", "Skip the destination"], 0, 160)
         _:
-            hud_status.text = "Campus unlocked. More missions will follow."
+            if str(place.get("kind", "")) == "futa":
+                hud_status.text = "%s: %s" % [place["name"], place["description"]]
+            else:
+                hud_status.text = "Campus unlocked. More missions will follow."
 
 
 func _start_quiz(title: String, prompt: String, choices: Array[String], answer: int, payout: int) -> void:
