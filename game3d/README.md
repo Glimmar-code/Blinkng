@@ -93,3 +93,17 @@ never moved to multiplayer accounts or accepted by the dedicated server,
 and must not be used for competitive scoring. The engine still starts only
 when the player deliberately launches BLINK LIFE; shared sessions do not
 pay local demo rewards.
+
+## Offline home preview (staging)
+
+Walk to **Homes** and select **Enter free starter room (offline)**. The
+room is a lightweight 3D interior constructed only on entry and destroyed
+on exit. Walk with the existing controls, and use **INTERACT**, **F**, or
+**Escape** to return to the same city doorway. A fictional desk plant
+purchased at the solo Market appears on the room desk after relaunch.
+
+The solo room is free: it has no rent, property title, online trading or
+synchronized world ownership. It does not modify the separate approved
+multiplayer homes system. Bed and desk are visual furnishings for now, not
+functional sleeping or study activities. Offline Game Cash never becomes
+BLINK Coins, cashable funds or network-authoritative rewards.
