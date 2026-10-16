@@ -425,7 +425,7 @@ func _on_peer_left(peer_id: int) -> void:
     if not people.has(peer_id):
         return
     var departed_slot := int(people[peer_id]["slot"])
-    var duel_end: Dictionary = duel_game.call("disconnect", peer_id)
+    var duel_end: Dictionary = duel_game.call("leave_match", peer_id)
     people.erase(peer_id)
     if not duel_end.is_empty():
         _emit_duel_event(duel_end)
@@ -975,7 +975,7 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             blocked_peers[sender] = blocked
             if _is_blocked(sender, target):
                 if bool(duel_game.call("are_opponents", sender, target)):
-                    var cancelled_duel: Dictionary = duel_game.call("disconnect", sender)
+                    var cancelled_duel: Dictionary = duel_game.call("leave_match", sender)
                     # A block is not a network disconnect: clear the quiz UI for
                     # both players, including the person who pressed BLOCK.
                     cancelled_duel["missing"] = -1
