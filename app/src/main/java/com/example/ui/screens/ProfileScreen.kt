@@ -1989,7 +1989,7 @@ private fun TrustBanner(
                 VerifiedMark(badge = profile.verificationBadge, size = 28.dp)
             } else {
                 Icon(
-                    imageVector = Icons.Default.LockOutline,
+                    imageVector = Icons.Default.Lock,
                     contentDescription = "Not verified",
                     tint = textSecondary,
                     modifier = Modifier.size(28.dp)
