@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(tr -d '\r\n' < web/CNAME)" = "www.blink.com.ng"
+          test "$(tr -d '\r\n' < web/CNAME)" = "blink.com.ng"
           python3 -m json.tool web/manifest.webmanifest >/dev/null
           python3 scripts/check_github_pages_site.py
 
