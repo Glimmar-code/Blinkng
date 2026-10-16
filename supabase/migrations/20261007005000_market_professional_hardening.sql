@@ -19,6 +19,37 @@ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Existing profile owners have broad UPDATE grants. The pre-existing
+-- guard protects is_seller_active, but newly introduced seller_status and
+-- activation/payment fields must also be server-authoritative.
+-- SECURITY INVOKER preserves the calling role: privileged, verified server
+-- payment handlers can update these fields; regular clients cannot.
+CREATE OR REPLACE FUNCTION public.guard_market_seller_privileged_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $market_guard$
+BEGIN
+  IF current_user IN ('authenticated', 'anon') THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.seller_status := 'inactive';
+      NEW.seller_activated_at := NULL;
+      NEW.seller_payment_reference := NULL;
+    ELSE
+      NEW.seller_status := OLD.seller_status;
+      NEW.seller_activated_at := OLD.seller_activated_at;
+      NEW.seller_payment_reference := OLD.seller_payment_reference;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$market_guard$;
+DROP TRIGGER IF EXISTS trg_guard_market_seller_privileged_fields ON public.profiles;
+CREATE TRIGGER trg_guard_market_seller_privileged_fields
+BEFORE INSERT OR UPDATE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.guard_market_seller_privileged_fields();
+
 UPDATE public.profiles
 SET seller_status = 'active',
     seller_activated_at = COALESCE(seller_activated_at, now())
