@@ -58,6 +58,21 @@ func _run() -> void:
         _assert_true(world.call("_nearest_place").is_empty(), "Interaction should not reach between floors")
         player.global_position = Vector3.ZERO
 
+    var weather_fx: Node3D = world.get_node_or_null("WeatherVisuals") as Node3D
+    _assert_true(weather_fx != null, "Local weather scene must be present")
+    if weather_fx != null:
+        var rain_node: MultiMeshInstance3D = weather_fx.get_node_or_null("Rain") as MultiMeshInstance3D
+        _assert_true(rain_node != null, "Weather renderer must batch drops")
+        if rain_node != null:
+            var local_weather: RefCounted = world.get("weather")
+            local_weather.set("mode", "heavy")
+            world.call("_process", 0.10)
+            _assert_true(rain_node.visible and rain_node.multimesh.visible_instance_count == 80, "Tropical weather shows capped rainfall")
+            local_weather.set("mode", "clear")
+            world.call("_process", 0.10)
+            _assert_true(not rain_node.visible and rain_node.multimesh.visible_instance_count == 0, "Clear weather hides rainfall immediately")
+            local_weather.set("mode", "auto")
+
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
 
