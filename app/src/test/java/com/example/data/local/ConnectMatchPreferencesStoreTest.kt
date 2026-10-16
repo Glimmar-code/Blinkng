@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import android.app.Application
 import com.example.data.models.MatchSpinPreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -11,7 +12,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class ConnectMatchPreferencesStoreTest {
     @Test
     fun savedPreferencesSurviveRecreatingTheStoreAndStayScopedToAccount() {
