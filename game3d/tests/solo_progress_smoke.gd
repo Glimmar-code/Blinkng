@@ -60,21 +60,32 @@ func _initialize() -> void:
     check(FileAccess.file_exists(BAK), "Previous valid checkpoint must be backed up")
 
     var fresh: RefCounted = _store()
-    check(fresh.call("load_state") == second, "Balance, job count and cosmetic item survive relaunch")
+    check(fresh.call("load_state") == Progress.valid_state(second), "Old version-one saves load with valid default decoration")
+    check(Progress.valid_state(second)["wall_style"] == 0, "Old saves default to original wall palette")
+    var painted: Dictionary = {"version": 1, "cash": 370, "jobs": 1, "plant": true,
+        "wall_style": 2, "floor_style": 1, "plant_spot": 2}
+    check(store.call("save_state", painted), "Players can save three explicit decoration choices")
+    check(_store().call("load_state") == painted, "Saved decoration survives a fresh loader")
+    check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
+    check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
+    check(not fresh.call("save_state", painted.merged({"plant_spot": 1.5}, true)), "Fractional plant spot is refused")
+    check(_store().call("load_state") == painted, "Invalid decoration cannot overwrite good progress")
+    # Put an older-format save back so the existing rollback checks remain meaningful.
+    check(store.call("save_state", second), "Legacy shaped solo saves can still be committed")
     check(not fresh.call("save_state", {"version": 1, "cash": -1, "jobs": 0, "plant": false}), "Negative cash must be rejected")
     check(not fresh.call("save_state", {"version": 1, "cash": 1000001, "jobs": 0, "plant": false}), "Excessive balance must be rejected")
     check(not fresh.call("save_state", {"version": 1, "cash": 500.0, "jobs": 0, "plant": false}), "Float input cannot masquerade as integer money")
     check(not fresh.call("save_state", {"version": 1, "cash": 500, "jobs": 0, "plant": "yes"}), "Nonboolean ownership is invalid")
     check(not fresh.call("save_state", {"version": 1.0, "cash": 500, "jobs": 0, "plant": false}), "Schema version must be an integer")
     check(not fresh.call("save_state", {"version": 2, "cash": 500, "jobs": 0, "plant": false}), "Unknown formats are rejected")
-    check(fresh.call("load_state") == second, "Rejected writes cannot alter saved progress")
+    check(fresh.call("load_state") == Progress.valid_state(second), "Rejected writes cannot alter saved progress")
 
     write_direct(MAIN, "{broken-json")
     var fallback: RefCounted = _store()
-    check(fallback.call("load_state") == first, "Corrupt primary must recover prior known-good checkpoint")
+    check(fallback.call("load_state") == Progress.valid_state(first), "Corrupt primary must recover prior known-good checkpoint")
     check(str(fallback.get("warning")).contains("backup"), "Players get a backup restoration explanation")
     check(fallback.call("save_state", second), "Recovered progress can be committed safely")
-    check(_store().call("load_state") == second, "Recovered save reloads after safe commit")
+    check(_store().call("load_state") == Progress.valid_state(second), "Recovered save reloads after safe commit")
 
     var newer: Dictionary = {"version": 2, "cash": 500, "jobs": 7, "plant": true}
     write_direct(MAIN, JSON.stringify(newer))
