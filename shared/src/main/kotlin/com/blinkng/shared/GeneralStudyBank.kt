@@ -509,20 +509,27 @@ object GeneralStudyBank {
         var bIndex = ((n / size) * 7 + (n % size) * 11 + 5) % size
         if (bIndex == n % size) bIndex = (bIndex + 1) % size
         val b = events[bIndex]
+        val sameYear = a.year == b.year
         val earlier = if (a.year <= b.year) a else b
         val later = if (a.year <= b.year) b else a
         val gap = kotlin.math.abs(a.year - b.year)
         val salt = n + d.ordinal * 1103
+        val firstAnswer = if (sameYear) "They happened in the same year" else earlier.title
+        val chronologyDistractors = if (sameYear) {
+            listOf(a.title, b.title, "Neither event")
+        } else {
+            listOf(later.title, "They happened in the same year", "Neither event")
+        }
         return when (d) {
-            GeneralStudyDifficulty.EASY -> q("Which happened earlier: '" + a.title + "' or '" + b.title + "'?", earlier.title, listOf(later.title, "They happened in the same year", "Neither event"), salt)
+            GeneralStudyDifficulty.EASY -> q("Which happened earlier: '" + a.title + "' or '" + b.title + "'?", firstAnswer, chronologyDistractors, salt)
             GeneralStudyDifficulty.MEDIUM -> q("Calculate the number of years from " + earlier.title + " (" + earlier.year + ") to " + later.title + " (" + later.year + ").", gap.toString(), numberChoices(gap.toLong(), "", salt).filter { it != gap.toString() }, salt)
             GeneralStudyDifficulty.HARD -> if (n % 2 == 0) {
-                q("Chronologically, which came first: '" + a.title + "' or '" + b.title + "'?", earlier.title, listOf(later.title, "They happened in the same year", "Cannot be determined"), salt)
+                q("Chronologically, which came first: '" + a.title + "' or '" + b.title + "'?", firstAnswer, chronologyDistractors, salt)
             } else {
                 q("How many years elapsed from " + earlier.title + " in " + earlier.year + " to " + later.title + " in " + later.year + "?", gap.toString(), numberChoices(gap.toLong(), "", salt).filter { it != gap.toString() }, salt)
             }
             GeneralStudyDifficulty.EXPERT -> if (n % 2 == 0) {
-                q("Determine which event precedes the other in time: '" + a.title + "' or '" + b.title + "'.", earlier.title, listOf(later.title, "Same year", "Insufficient information"), salt)
+                q("Determine which event precedes the other in time: '" + a.title + "' or '" + b.title + "'.", firstAnswer, chronologyDistractors, salt)
             } else {
                 q("Compute the historical interval, in years, between '" + a.title + "' and '" + b.title + "'.", gap.toString(), numberChoices(gap.toLong(), "", salt).filter { it != gap.toString() }, salt)
             }
@@ -709,7 +716,7 @@ object GeneralStudyBank {
                     val value = 50 + (n % 3950)
                     q("Write " + value + " in Roman numerals.", roman(value), listOf(roman((value + 1).coerceAtMost(3999)), roman((value + 10).coerceAtMost(3999)), roman((value + 50).coerceAtMost(3999))), salt)
                 }
-                else -> q("Expand the abbreviation " + if (n % 2 == 0) "AM." else "PM.", if (n % 2 == 0) "ante meridiem" else "post meridiem", listOf("after meridiem","post meridiem","ante meridiem","annual measure"), salt)
+                else -> q("Expand the abbreviation " + if ((n / 4) % 2 == 0) "AM." else "PM.", if ((n / 4) % 2 == 0) "ante meridiem" else "post meridiem", listOf("after meridiem","post meridiem","ante meridiem","annual measure"), salt)
             }
             GeneralStudyDifficulty.HARD -> when (n % 3) {
                 0 -> {
