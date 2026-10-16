@@ -13,6 +13,11 @@ TEMPLATES = ROOT / "supabase" / "templates"
 CONFIG = ROOT / "supabase" / "config.toml"
 MIGRATION = ROOT / "supabase" / "migrations" / "20261016093000_blink_essential_email_outbox.sql"
 WORKER = ROOT / "supabase" / "functions" / "send-essential-email" / "index.ts"
+SOCIAL_MIGRATION = ROOT / "supabase" / "migrations" / "20261016120000_blink_opt_in_social_email.sql"
+UNSUBSCRIBE = ROOT / "supabase" / "functions" / "unsubscribe-social-email" / "index.ts"
+ANDROID = ROOT / "app" / "src" / "main" / "java" / "com" / "example" / "notification" / "NotificationAndCallSettingsActivity.kt"
+WINDOWS = ROOT / "desktopApp" / "src" / "main" / "kotlin" / "com" / "blinkng" / "desktop" / "ui" / "ContentScreens.kt"
+SHARED = ROOT / "shared" / "src" / "main" / "kotlin" / "com" / "blinkng" / "shared" / "notification" / "BlinkSocialEmailCategory.kt"
 
 TEMPLATES_TO_CHECK = {
     "recovery.html": 1,
@@ -71,6 +76,55 @@ class EssentialEmailSafetyTests(unittest.TestCase):
                 self.assertNotIn("access_token=", html)
                 self.assertNotIn("refresh_token=", html)
                 self.assertNotIn("http://localhost", html)
+
+    def test_new_social_email_preferences_default_off_and_private(self):
+        sql = SOCIAL_MIGRATION.read_text(encoding="utf-8").lower()
+        for col in (
+            "new_follower_enabled", "unread_messages_enabled",
+            "post_engagement_enabled", "reel_milestone_enabled", "leaderboard_enabled",
+        ):
+            self.assertIn(col + " boolean not null default false", sql)
+        self.assertIn("enable row level security", sql)
+        self.assertIn("using ((select auth.uid()) = user_id)", sql)
+        self.assertIn("with check ((select auth.uid()) = user_id)", sql)
+        self.assertIn("revoke all on public.blink_social_email_progress from public, anon, authenticated", sql)
+        self.assertIn("grant execute on function public.blink_queue_social_email_digests(integer) to service_role", sql)
+        self.assertIn("new_follower_since", sql)
+        self.assertIn("last_user_id", sql)
+        self.assertIn("v_current_rank <> v_rank", sql)
+        self.assertIn("distinct pv.viewer_id", sql)
+        self.assertIn("cp.last_read_at", sql)
+        self.assertNotIn("enable_confirmations", sql)
+
+    def test_social_categories_present_on_android_windows_and_shared(self):
+        shared = SHARED.read_text(encoding="utf-8")
+        android = ANDROID.read_text(encoding="utf-8")
+        windows = WINDOWS.read_text(encoding="utf-8")
+        self.assertIn("BlinkSocialEmailCategory", shared)
+        self.assertIn("BlinkSocialEmailPreferencesPanel()", android)
+        self.assertIn("DesktopSocialEmailPreferencesPanel(state)", windows)
+        for category in (
+            "NEW_FOLLOWER", "UNREAD_MESSAGES", "POST_ENGAGEMENT",
+            "REEL_MILESTONE", "LEADERBOARD",
+        ):
+            self.assertIn(category, shared)
+
+    def test_social_worker_checks_consent_and_has_unsubscribe(self):
+        worker = WORKER.read_text(encoding="utf-8")
+        fn = UNSUBSCRIBE.read_text(encoding="utf-8")
+        for kind in ("new_follower", "unread_messages", "post_engagement", "reel_milestone", "leaderboard"):
+            self.assertIn(kind + ":", worker)
+        self.assertIn("BLINK_SOCIAL_EMAIL_ENABLED", worker)
+        self.assertIn("user_opted_out", worker)
+        self.assertIn("email_notifs_enabled", worker)
+        self.assertIn("socialUnsubscribeUrl", worker)
+        self.assertIn("List-Unsubscribe", worker)
+        self.assertIn("BLINK_EMAIL_UNSUBSCRIBE_SECRET", fn)
+        self.assertIn('req.method === "GET"', fn)
+        self.assertIn('req.method === "POST"', fn)
+        self.assertIn('await crypto.subtle.verify("HMAC"', fn)
+        self.assertIn('.update({ [FIELDS[valid.kind]]: false })', fn)
+        self.assertNotIn("ConfirmationURL", fn)
 
     def test_signup_confirmation_is_not_added_or_enabled(self):
         config = CONFIG.read_text(encoding="utf-8")
