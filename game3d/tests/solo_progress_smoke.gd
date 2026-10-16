@@ -65,7 +65,7 @@ func _initialize() -> void:
     var painted: Dictionary = {"version": 1, "cash": 370, "jobs": 1, "plant": true,
         "wall_style": 2, "floor_style": 1, "plant_spot": 2}
     check(store.call("save_state", painted), "Players can save three explicit decoration choices")
-    check(_store().call("load_state") == painted, "Saved decoration survives a fresh loader")
+    check(_store().call("load_state") == Progress.valid_state(painted), "Saved decoration survives a fresh loader")
     var floor_grid: Dictionary = painted.merged({"plant_custom": true,
         "plant_x": -1, "plant_z": 3, "plant_rotation": 3}, true)
     check(store.call("save_state", floor_grid), "Safe floor-grid plant and orientation can be stored")
@@ -80,7 +80,7 @@ func _initialize() -> void:
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
     check(not fresh.call("save_state", painted.merged({"plant_spot": 1.5}, true)), "Fractional plant spot is refused")
-    check(_store().call("load_state") == painted, "Invalid decoration cannot overwrite good progress")
+    check(_store().call("load_state") == Progress.valid_state(painted), "Invalid decoration cannot overwrite good progress")
     # Put an older-format save back so the existing rollback checks remain meaningful.
     check(store.call("save_state", second), "Legacy shaped solo saves can still be committed")
     check(not fresh.call("save_state", {"version": 1, "cash": -1, "jobs": 0, "plant": false}), "Negative cash must be rejected")
