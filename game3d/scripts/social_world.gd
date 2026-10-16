@@ -220,6 +220,7 @@ func _build_ui() -> void:
     var property_actions := HBoxContainer.new()
     rows.add_child(property_actions)
     _make_button("BUY HOME (400 GC)", func(): _action("buy_home", 0), property_actions)
+    _make_button("BUY CAR (300 GC)", func(): _action("buy_car", 0), property_actions)
     _make_button("FURNITURE (150 GC)", func(): _action("furnish", 0), property_actions)
     _make_button("DEPOT SHIFT (+80 GC)", func(): _action("work", 0), property_actions)
     account_status = _make_label("Persistent property needs a signed-in dedicated world.", rows)
@@ -479,6 +480,7 @@ func _make_profile(display_name: String, room_slot: int) -> Dictionary:
         "car_enabled": false,
         "outfit": 0,
         "home_owned": false,
+        "vehicle_owned": false,
         "furniture": 0
     }
 
@@ -506,6 +508,7 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
     if secure_dedicated and persistent_store != null:
         var saved: Dictionary = persistent_store.call("get_profile", peer_auth_ids[id])
         member["home_owned"] = bool(saved.get("house_owned", false))
+        member["vehicle_owned"] = bool(saved.get("vehicle_owned", false))
         member["furniture"] = int(saved.get("furniture", 0))
     else:
         member["home_owned"] = true # LAN demonstration has free temporary homes.
@@ -885,6 +888,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             profile["map_opt_in"] = not bool(profile["map_opt_in"])
             people[sender] = profile
         "car":
+            if secure_dedicated and not bool(profile.get("vehicle_owned", false)):
+                _notify(sender, "Purchase a virtual vehicle for 300 fictional GC first.")
+                return
             profile["car_enabled"] = true
             people[sender] = profile
             if not cars.has(sender):
@@ -938,6 +944,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
                 return
             var source_pos: Vector3 = people[sender]["pos"]
             var driver_pos: Vector3 = people[target]["pos"]
+            if cars.values().has(sender):
+                _notify(sender, "Leave your current ride before requesting another.")
+                return
             if source_pos.distance_to(driver_pos) > 7.0:
                 _notify(sender, "Move near the vehicle before requesting a ride.")
                 return
@@ -953,7 +962,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             if not _fresh_request(ride_requests, sender, target) or not cars.has(sender):
                 ride_requests.erase(sender)
                 return
-            if cars[sender] != -1:
+            if cars[sender] != -1 or cars.values().has(target):
+                _notify(sender, "That passenger is already in another car.")
+                ride_requests.erase(sender)
                 return
             var source_pos: Vector3 = people[sender]["pos"]
             var rider_pos: Vector3 = people[target]["pos"]
@@ -979,6 +990,29 @@ func _server_action(sender: int, kind: String, target: int) -> void:
         "outfit":
             profile["outfit"] = posmod(int(profile["outfit"]) + 1, 4)
             people[sender] = profile
+        "buy_car":
+            if not secure_dedicated or persistent_store == null:
+                _notify(sender, "Vehicle ownership needs an authenticated dedicated session.")
+                return
+            var account: String = str(peer_auth_ids.get(sender, ""))
+            var saved: Dictionary = persistent_store.call("get_profile", account)
+            if saved.is_empty():
+                return
+            if bool(saved.get("vehicle_owned", false)):
+                _notify(sender, "You already own a virtual car. Tap GET CAR to use it.")
+                return
+            if int(saved.get("cash", 0)) < 300:
+                _notify(sender, "You need 300 fictional GC to buy a virtual car.")
+                return
+            saved["cash"] = int(saved["cash"]) - 300
+            saved["vehicle_owned"] = true
+            if not bool(persistent_store.call("update_profile", account, saved)):
+                _notify(sender, "Vehicle purchase could not be saved.")
+                return
+            profile["vehicle_owned"] = true
+            people[sender] = profile
+            _send_private_wallet(sender)
+            _notify(sender, "Virtual vehicle purchased! Tap GET CAR to use it.")
         "buy_home":
             if not secure_dedicated or persistent_store == null:
                 _notify(sender, "Permanent homes are only available in account-backed dedicated sessions.")
@@ -1133,20 +1167,21 @@ func _send_private_wallet(peer_id: int) -> void:
     if saved.is_empty():
         return
     if peer_id == 1:
-        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]))
+        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]), bool(saved.get("vehicle_owned", false)))
     else:
         _receive_private_wallet.rpc_id(
-            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"])
+            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]), bool(saved.get("vehicle_owned", false))
         )
 
 
 @rpc("authority", "reliable")
-func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int) -> void:
+func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int, owns_vehicle: bool) -> void:
     if multiplayer.get_remote_sender_id() != 1:
         return
     if account_status != null:
-        account_status.text = "My private Game Cash: %d GC · Home: %s · Furniture: %d" % [
-            cash, "owned" if owns_home else "not owned", furnishing
+        account_status.text = "My fictional GC: %d · Home: %s · Furniture: %d · Car: %s" % [
+            cash, "owned" if owns_home else "not owned", furnishing,
+            "owned" if owns_vehicle else "not owned"
         ]
 
 
