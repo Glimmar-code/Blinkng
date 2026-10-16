@@ -179,6 +179,41 @@ func _run() -> void:
         world.call("_interact")
         _assert_true(int(world.get("game_cash")) == 370, "Purchasing a second time must not charge again")
 
+
+    # The free starter room is a playable, opt-in SOLO interior, never a
+    # replacement for the host-authorized property visiting system.
+    if player != null:
+        var layout_home: Script = load("res://scripts/neighborhood_layout.gd")
+        var home_place: Dictionary = {}
+        for destination in world.get("places"):
+            if str(destination["id"]) == "homes":
+                home_place = destination
+        _assert_true(not home_place.is_empty(), "Homes destination must exist")
+        if not home_place.is_empty():
+            var outside_home: Vector3 = layout_home.entrance_for(home_place) + Vector3.UP * 0.15
+            player.global_position = outside_home
+            world.call("_interact")
+            _assert_true(bool(world.get("hud_modal").visible), "Homes offers a choice between solo and multiplayer")
+            _assert_true(not bool(world.get("home_inside")), "A menu must not teleport without consent")
+            world.call("_enter_solo_home")
+            _assert_true(bool(world.get("home_inside")), "Solo starter room opens when player chooses it")
+            var room: Node3D = world.get("solo_room")
+            _assert_true(room != null and room.get_node_or_null("Floor") != null, "Starter home has a physical floor")
+            _assert_true(room != null and room.get_node_or_null("North wall") != null, "Starter home has real walls")
+            _assert_true(player.global_position.y > 28.0, "Solo room places player in a distinct reachable interior")
+            _assert_true(bool(room.get_node("DeskPlant").visible), "Purchased plant decor appears in the starter room")
+            _assert_true(world.call("_nearest_place").is_empty(), "Cannot trigger outside businesses from a room")
+            _assert_true(world.call("_nearest_public_spot").is_empty(), "Cannot trigger city props from a room")
+            _assert_true(player.velocity == Vector3.ZERO, "Entering a home resets movement")
+            player.global_position = Vector3(30, 0, 0)
+            world.call("_recover_if_needed")
+            _assert_true(bool(world.get("home_inside")) and player.global_position.y > 28.0, "Indoor fall/out-of-bounds recovers indoors")
+            world.call("_interact")
+            _assert_true(not bool(world.get("home_inside")), "Interact exits the solo room safely")
+            _assert_true(player.global_position.distance_to(outside_home) < 0.01, "Solo room returns to original home entrance")
+            _assert_true(int(world.get("game_cash")) == 370 and bool(world.get("owns_plant")), "Entering homes cannot change saved money or decoration")
+            _assert_true(not bool(world.get_node("SocialWorld").get("is_online")), "Solo room must never connect to multiplayer")
+
     # Controls must never move an avatar while UI input owns the interaction.
     world.call("_set_touch_axis", Vector2.RIGHT)
     world.call("_set_touch_axis", Vector2.UP)
