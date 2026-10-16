@@ -55,4 +55,25 @@ class GeneralStudyAppBankTest {
             assertEquals(first.size, first.map { it.id }.distinct().size)
         }
     }
+
+    @Test
+    fun sameYearHistoricalEventsAreNotIncorrectlyOrdered() {
+        // History occupies category index 4; slot 94 compares two events from 2002.
+        for (difficulty in listOf(GeneralStudyDifficulty.EASY, GeneralStudyDifficulty.HARD, GeneralStudyDifficulty.EXPERT)) {
+            val question = GeneralStudyBank.questionAt(difficulty, 94 * 8 + 4)
+            assertEquals("They happened in the same year", question.answer)
+            assertEquals(4, question.options.distinct().size)
+        }
+    }
+
+    @Test
+    fun generalKnowledgeAbbreviationsIncludeBothAmAndPm() {
+        // General Knowledge is category 7; slots 3 and 7 exercise both cases.
+        val morning = GeneralStudyBank.questionAt(GeneralStudyDifficulty.MEDIUM, 3 * 8 + 7)
+        val evening = GeneralStudyBank.questionAt(GeneralStudyDifficulty.MEDIUM, 7 * 8 + 7)
+        assertTrue(morning.prompt.contains("AM."))
+        assertEquals("ante meridiem", morning.answer)
+        assertTrue(evening.prompt.contains("PM."))
+        assertEquals("post meridiem", evening.answer)
+    }
 }
