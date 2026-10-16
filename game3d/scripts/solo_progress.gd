@@ -2,6 +2,7 @@ extends RefCounted
 ## Versioned save for the SOLO, FICTIONAL Game Cash tutorial only.
 ## Do not sync it to BLINK Coins, online inventory or competitive leaderboards.
 ## Files are untrusted and can be edited; the dedicated server NEVER loads them.
+const SoloHome = preload("res://scripts/solo_home.gd")
 
 const SAVE_PATH: String = "user://blink_life_solo_v1.json"
 const BACKUP_PATH: String = "user://blink_life_solo_v1.json.bak"
@@ -19,7 +20,9 @@ var warning: String = ""
 
 static func fresh_state() -> Dictionary:
     return {"version": 1, "cash": 500, "jobs": 0, "plant": false,
-        "wall_style": 0, "floor_style": 0, "plant_spot": 0}
+        "wall_style": 0, "floor_style": 0, "plant_spot": 0,
+        "plant_custom": false, "plant_x": SoloHome.PLANT_DEFAULT_X,
+        "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -57,9 +60,31 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
         if style < 0 or style > 2:
             return {}
         styles[key] = style
+    var plant_custom: Variant = data.get("plant_custom", false)
+    if typeof(plant_custom) != TYPE_BOOL:
+        return {}
+    var plant_coordinates: Dictionary = {}
+    for key in ["plant_x", "plant_z", "plant_rotation"]:
+        var standard: int = 0
+        if key == "plant_z":
+            standard = SoloHome.PLANT_DEFAULT_Z
+        var value: Variant = data.get(key, standard)
+        if not _is_integer_number(value, from_json):
+            return {}
+        plant_coordinates[key] = int(value)
+    var x: int = plant_coordinates["plant_x"]
+    var z: int = plant_coordinates["plant_z"]
+    var rotation: int = plant_coordinates["plant_rotation"]
+    if abs(x) > SoloHome.GRID_LIMIT or abs(z) > SoloHome.GRID_LIMIT:
+        return {}
+    if rotation < 0 or rotation >= 4:
+        return {}
+    if plant_custom and not SoloHome.floor_cell_allowed(x, z):
+        return {}
     return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"],
         "wall_style": styles["wall_style"], "floor_style": styles["floor_style"],
-        "plant_spot": styles["plant_spot"]}
+        "plant_spot": styles["plant_spot"], "plant_custom": plant_custom,
+        "plant_x": x, "plant_z": z, "plant_rotation": rotation}
 
 
 func _read_json(path: String) -> Variant:
