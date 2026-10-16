@@ -80,7 +80,7 @@ class EssentialEmailSafetyTests(unittest.TestCase):
     def test_new_social_email_preferences_default_off_and_private(self):
         sql = SOCIAL_MIGRATION.read_text(encoding="utf-8").lower()
         # A broken PL/pgSQL dollar quote would make the staging migration fail.
-        self.assertEqual(sql.count("$$"), 4)
+        self.assertEqual(sql.count("$"), 6)
         self.assertIn("end;\n$$;\nrevoke all on function public.blink_queue_social_email_digests", sql)
 
         for col in (
@@ -95,6 +95,9 @@ class EssentialEmailSafetyTests(unittest.TestCase):
         self.assertIn("grant execute on function public.blink_queue_social_email_digests(integer) to service_role", sql)
         self.assertIn("new_follower_since", sql)
         self.assertIn("last_user_id", sql)
+        self.assertIn("blink_set_social_email_preference", sql)
+        self.assertIn("security invoker", sql)
+        self.assertIn("to authenticated", sql)
         self.assertIn("v_current_rank <> v_rank", sql)
         self.assertIn("distinct pv.viewer_id", sql)
         self.assertIn("cp.last_read_at", sql)
