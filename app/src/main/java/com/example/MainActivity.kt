@@ -1558,7 +1558,7 @@ fun MainAppContent(
                     onReport = { listing, reason, details ->
                         viewModel.reportMarketItem(listing, reason, details)
                     },
-                    isOwner = viewModel.isMe(product.sellerUsername) || viewModel.isMe(product.sellerName),
+                    isOwner = viewModel.isMe(product.sellerUsername),
                     onUpdateListingStatus = { listing, status ->
                         viewModel.updateMarketListingStatus(listing, status)
                     },
