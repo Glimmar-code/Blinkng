@@ -35,7 +35,7 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 
 ## Economy and safety
 
-The native prototype's **GC** balance is fiction, exists only for its local session, and cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
+The native prototype's **GC** balance is fictional solo-tutorial currency, saved only on the current device and never accepted by multiplayer servers; it cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
 
 ## Social multiplayer foundation (Testlab, not public release)
 
