@@ -935,3 +935,12 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
 - **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
 - **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
+
+
+## 2026-10-16 — FUTA-inspired BLINK LIFE 3D district (Testlab only)
+
+- **Shared source:** `game3d/scripts/futa_map.gd` is pure Godot world geometry and landmark data consumed by `game3d/scripts/world.gd`. Android native and Windows run the same scene, art primitives, fictional in-world coordinates, waypoint HUD and interactions; no new backend or real GPS access.
+- **World:** adds 19 original fictional FUTA-inspired landmarks, roads, low-poly community lodges, trees, a map overlay and two optional quiz jobs paid only in local fictional GC. Does not import or imply precise campus cartography.
+- **LAN privacy:** expansion of the allowed *negative-X campus rectangle only* in `social_world.gd`; individual positive-X private interiors remain guarded by existing consent checks.
+- **Web exception:** Standalone Android website distribution exports the *same offline scene* to WebGL on demand, with no ENet LAN support. This update needs a new signed/hashed optional archive and device verification before release.
+- **Gates pending:** CI Godot import/smoke, Android and Windows builds, low-memory device exploration and on-demand download tests. Leave `main` unchanged until all applicable checks pass.
