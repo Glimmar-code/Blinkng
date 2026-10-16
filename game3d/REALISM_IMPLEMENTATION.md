@@ -325,3 +325,37 @@ unknown action rejection and currency isolation. Real Android and Windows
 viewing, accessibility and touch handling remain release gates. This
 feature does not alter authoritative online homes, multiplayer balances,
 Supabase, BLINK Coins or production delivery.
+
+## Batch 10: safe grid positioning, quarter-turns and undo/redo (solo)
+
+Added explicit optional 1m floor-grid positioning for the **single owned
+cosmetic desk plant**, four quarter-turn orientations and up to 20
+session-scoped undo/redo steps. The same edit history covers wall palettes,
+floor variants, preset plant positions, grid movement and rotation.
+All accepted decoration edits (including undo/redo) are validated and
+written to the existing local SOLO save before the live room is changed;
+a new edit clears redo history. Unsafe coordinates, furniture footprints,
+walls and the character's room entry position are rejected rather than
+silently re-positioned. UI uses a vertical scroll area suitable for a
+small screen. There is no charge, payout or server action for decorating.
+
+The existing V1 solo-save format remains backward-compatible; new
+plant_custom, plant_x, plant_z and plant_rotation fields are optional
+and default to the old safe position and no rotation. Integer bounds
+and a static furniture/door collision map validate all custom floor cells.
+The fixed original plant presets and previously saved wall/floor styles
+remain supported. This is not generalized drag-and-drop furniture, live
+physics collisions or a shared online property editor.
+
+Tracker **#272 implemented in source** for current solo room controls;
+**#270, #271, #273 partial** for one cosmetic plant rather than all furniture.
+Totals: **39 source-implemented, 42 partial, 919 pending audit,
+0 device verified and 0 released**.
+
+New smoke checks cover corrupted/invalid grid saves, out-of-room and
+blocked-furniture rejection, rotation display and persistence, indoor
+UI accessibility, reversible editing, redo invalidation, deterministic
+room re-entry and no changes to fictional Game Cash or multiplayer.
+Godot CI, Android/Windows builds, touch usability and real-device
+performance are required before Testlab promotion; a source implementation
+is not evidence of a production feature.
