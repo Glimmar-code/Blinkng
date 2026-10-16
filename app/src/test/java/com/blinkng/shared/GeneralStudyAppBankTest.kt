@@ -76,4 +76,21 @@ class GeneralStudyAppBankTest {
         assertTrue(evening.prompt.contains("PM."))
         assertEquals("post meridiem", evening.answer)
     }
+
+    @Test
+    fun topicFilteredRoundsContainOnlyRequestedCategoryWithoutRepeats() {
+        for (difficulty in GeneralStudyDifficulty.entries) {
+            for (category in GeneralStudyBank.categories) {
+                val round = GeneralStudyBank.round(
+                    difficulty = difficulty,
+                    seed = 12345L,
+                    count = 50,
+                    category = category,
+                )
+                assertEquals(50, round.size)
+                assertTrue(round.all { it.category == category })
+                assertEquals(50, round.map { it.id }.distinct().size)
+            }
+        }
+    }
 }
