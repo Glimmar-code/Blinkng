@@ -54,7 +54,7 @@ ALTER TABLE public.marketplace_orders
 ALTER TABLE public.market_items ALTER COLUMN seller_phone SET DEFAULT '';
 ALTER TABLE public.market_items ALTER COLUMN seller_whatsapp SET DEFAULT '';
 
-DO $
+DO $$
 BEGIN
   ALTER TABLE public.market_items
     ADD CONSTRAINT market_items_quantity_check CHECK (quantity BETWEEN 0 AND 9999);
