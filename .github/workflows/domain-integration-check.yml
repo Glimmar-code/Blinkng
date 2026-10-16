@@ -15,6 +15,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -27,6 +28,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
 
 permissions:
   contents: read
@@ -68,6 +70,9 @@ jobs:
           grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
       # Android App Links use the canonical BLINK domain.
+      - name: Test Supabase OAuth, password recovery and token-safe redirects
+        run: node scripts/test_domain_auth_links.mjs
+
       - name: Validate existing Android signing association
         shell: bash
         run: |
