@@ -7,17 +7,22 @@ const ROOM_WIDTH: float = 8.8
 const ROOM_DEPTH: float = 8.8
 const HEIGHT: float = 2.8
 const SPAWN_LOCAL: Vector3 = Vector3(0.0, 0.23, 1.25)
+const WALL_COLORS = [Color(0.80, 0.84, 0.85), Color(0.78, 0.70, 0.61), Color(0.55, 0.69, 0.75)]
+const FLOOR_COLORS = [Color(0.71, 0.61, 0.48), Color(0.46, 0.46, 0.48), Color(0.68, 0.59, 0.47)]
+const PLANT_SPOTS = [Vector3(3.0, 0.95, -2.5), Vector3(0.0, 0.25, -3.65), Vector3(3.2, 0.25, 2.6)]
 var desk_plant: Node3D
+var floor_visual: MeshInstance3D
+var wall_visuals: Array[MeshInstance3D] = []
 
 
 func configure() -> void:
     name = "SoloStarterRoom"
     position = Vector3(0, 30.0, 0)
-    _solid_box("Floor", Vector3(0, -0.15, 0), Vector3(ROOM_WIDTH, 0.3, ROOM_DEPTH), Color(0.71, 0.61, 0.48))
-    _solid_box("North wall", Vector3(0, HEIGHT / 2.0, -4.4), Vector3(8.8, HEIGHT, 0.25), Color(0.80, 0.84, 0.85))
-    _solid_box("South wall", Vector3(0, HEIGHT / 2.0, 4.4), Vector3(8.8, HEIGHT, 0.25), Color(0.80, 0.84, 0.85))
-    _solid_box("East wall", Vector3(4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), Color(0.78, 0.82, 0.85))
-    _solid_box("West wall", Vector3(-4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), Color(0.78, 0.82, 0.85))
+    floor_visual = _solid_box("Floor", Vector3(0, -0.15, 0), Vector3(ROOM_WIDTH, 0.3, ROOM_DEPTH), FLOOR_COLORS[0])
+    wall_visuals.append(_solid_box("North wall", Vector3(0, HEIGHT / 2.0, -4.4), Vector3(8.8, HEIGHT, 0.25), WALL_COLORS[0]))
+    wall_visuals.append(_solid_box("South wall", Vector3(0, HEIGHT / 2.0, 4.4), Vector3(8.8, HEIGHT, 0.25), WALL_COLORS[0]))
+    wall_visuals.append(_solid_box("East wall", Vector3(4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), WALL_COLORS[0]))
+    wall_visuals.append(_solid_box("West wall", Vector3(-4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), WALL_COLORS[0]))
     _box(self, Vector3(-2.5, 0.42, -2.5), Vector3(2.15, 0.45, 2.8), Color(0.29, 0.32, 0.39))
     _box(self, Vector3(-2.5, 0.70, -2.5), Vector3(1.9, 0.18, 2.55), Color(0.84, 0.81, 0.67))
     _box(self, Vector3(-2.5, 0.9, -3.35), Vector3(1.55, 0.25, 0.5), Color(0.47, 0.62, 0.70))
@@ -44,8 +49,9 @@ func configure() -> void:
     desk_plant = Node3D.new()
     desk_plant.name = "DeskPlant"
     add_child(desk_plant)
-    _box(desk_plant, Vector3(3.0, 1.0, -2.5), Vector3(0.34, 0.33, 0.34), Color(0.54, 0.32, 0.22))
-    _box(desk_plant, Vector3(3.0, 1.32, -2.5), Vector3(0.55, 0.5, 0.55), Color(0.19, 0.48, 0.24))
+    _box(desk_plant, Vector3(0, 0.16, 0), Vector3(0.34, 0.33, 0.34), Color(0.54, 0.32, 0.22))
+    _box(desk_plant, Vector3(0, 0.48, 0), Vector3(0.55, 0.5, 0.55), Color(0.19, 0.48, 0.24))
+    desk_plant.position = PLANT_SPOTS[0]
     desk_plant.visible = false
 
 
@@ -54,11 +60,34 @@ func update_owned_decor(has_plant: bool) -> void:
         desk_plant.visible = has_plant
 
 
+func apply_decoration(wall_style: int, floor_style: int, plant_spot: int) -> bool:
+    if wall_style < 0 or wall_style >= WALL_COLORS.size():
+        return false
+    if floor_style < 0 or floor_style >= FLOOR_COLORS.size():
+        return false
+    if plant_spot < 0 or plant_spot >= PLANT_SPOTS.size():
+        return false
+    for wall in wall_visuals:
+        _repaint(wall, WALL_COLORS[wall_style])
+    _repaint(floor_visual, FLOOR_COLORS[floor_style])
+    if desk_plant != null:
+        desk_plant.position = PLANT_SPOTS[plant_spot]
+    return true
+
+
+func _repaint(mesh: MeshInstance3D, color: Color) -> void:
+    if mesh == null:
+        return
+    var material: StandardMaterial3D = mesh.material_override as StandardMaterial3D
+    if material != null:
+        material.albedo_color = color
+
+
 func spawn_position() -> Vector3:
     return global_position + SPAWN_LOCAL
 
 
-func _box(parent: Node3D, center: Vector3, size: Vector3, color: Color) -> void:
+func _box(parent: Node3D, center: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
     var mesh := BoxMesh.new()
     mesh.size = size
     var visual := MeshInstance3D.new()
@@ -69,19 +98,21 @@ func _box(parent: Node3D, center: Vector3, size: Vector3, color: Color) -> void:
     material.roughness = 0.82
     visual.material_override = material
     parent.add_child(visual)
+    return visual
 
 
-func _solid_box(node_name: String, center: Vector3, size: Vector3, color: Color) -> void:
+func _solid_box(node_name: String, center: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
     var body := StaticBody3D.new()
     body.name = node_name
     body.position = center
     add_child(body)
-    _box(body, Vector3.ZERO, size, color)
+    var visual: MeshInstance3D = _box(body, Vector3.ZERO, size, color)
     var collision := CollisionShape3D.new()
     var shape := BoxShape3D.new()
     shape.size = size
     collision.shape = shape
     body.add_child(collision)
+    return visual
 
 
 func _caption(message: String, center: Vector3, size: int = 28) -> void:
