@@ -59,6 +59,7 @@ func _initialize() -> void:
     check(not fresh.call("save_state", {"version": 1, "cash": 1000001, "jobs": 0, "plant": false}), "Excessive balance must be rejected")
     check(not fresh.call("save_state", {"version": 1, "cash": 500.0, "jobs": 0, "plant": false}), "Float input cannot masquerade as integer money")
     check(not fresh.call("save_state", {"version": 1, "cash": 500, "jobs": 0, "plant": "yes"}), "Nonboolean ownership is invalid")
+    check(not fresh.call("save_state", {"version": 1.0, "cash": 500, "jobs": 0, "plant": false}), "Schema version must be an integer")
     check(not fresh.call("save_state", {"version": 2, "cash": 500, "jobs": 0, "plant": false}), "Unknown formats are rejected")
     check(fresh.call("load_state") == second, "Rejected writes cannot alter saved progress")
 
