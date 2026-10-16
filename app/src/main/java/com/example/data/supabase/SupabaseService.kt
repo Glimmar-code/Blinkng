@@ -3447,17 +3447,23 @@ suspend fun uploadPostMedia(
         university: String? = null,
         minPrice: Long? = null,
         maxPrice: Long? = null,
-        sort: String = "newest"
+        sort: String = "newest",
+        savedOnly: Boolean = false,
+        verifiedOnly: Boolean = false
     ): List<MarketItem> = withContext(Dispatchers.IO) {
         try {
             val safeLimit = limit.coerceIn(1, 60)
             val safeOffset = offset.coerceAtLeast(0)
             val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
+            val userId = if (savedOnly) getCurrentUserId() ?: return@withContext emptyList() else null
 
             val url = buildString {
-                append("/rest/v1/market_items?select=*")
+                append("/rest/v1/market_items?select=")
+                append(if (savedOnly) "*,marketplace_wishlist!inner(user_id)" else "*")
                 append("&status=eq.active")
                 append("&is_sold=eq.false")
+                if (verifiedOnly) append("&seller_is_verified=eq.true")
+                if (savedOnly) append("&marketplace_wishlist.user_id=eq.").append(encodeValue(userId.orEmpty()))
                 category?.trim()?.takeIf { it.isNotBlank() && !it.equals("All Categories", true) }?.let {
                     append("&category=eq.").append(encodeValue(it))
                 }
