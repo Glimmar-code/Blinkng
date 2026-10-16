@@ -1322,7 +1322,7 @@ fun ConnectScreen(state: DesktopAppState) {
         val inboxResult = runCatching { state.client.fetchConnectInbox() }
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
-        listings = listingsResult.getOrDefault(listings)
+        listings = listingsResult.getOrDefault(listings).distinctBy { it.id }
         val applicationsResult = runCatching {
             state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
         }
@@ -1950,7 +1950,10 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             } else {
                 val currentId = state.profile?.id.orEmpty()
-                val requestItems = inbox.requests.sortedByDescending { it.createdAt }
+                // The RPC inbox already contains game rows; the challenge stream renders them separately.
+                val requestItems = inbox.requests
+                    .filterNot { it.kind.equals("game", ignoreCase = true) }
+                    .sortedByDescending { it.createdAt }
                 val challengeItems = inbox.challenges.sortedByDescending { it.createdAt }
                 val pendingDirectoryApplications = directoryApplications.filter { it.status == "pending" }
 

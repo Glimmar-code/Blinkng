@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -65,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +90,8 @@ import com.blinkng.shared.BlinkPulseTrend
 import com.blinkng.shared.campusActivityLabel
 import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.pulseTrend
+import org.json.JSONArray
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class LivePeopleFilter(val label: String) {
@@ -109,6 +113,7 @@ private enum class LivePeopleSort(val label: String) {
 @Composable
 fun ConnectSection(
     profiles: List<UserProfile>,
+    currentProfile: UserProfile? = null,
     currentUsername: String,
     userAvatar: String,
     isDark: Boolean,
@@ -129,17 +134,42 @@ fun ConnectSection(
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
+    var query by rememberPersistentTextState(key = "connect:students:query:${currentUsername.trim().lowercase()}")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     var sort by rememberSaveable { mutableStateOf(LivePeopleSort.RECOMMENDED) }
-    // Local, session-safe "Not interested" feedback. Backend remains responsible for block/privacy rules.
-    var dismissedIds by rememberSaveable(currentUsername) { mutableStateOf<List<String>>(emptyList()) }
+    // Account-isolated durable "Not interested" suggestions; server still enforces blocks.
+    val localContext = LocalContext.current
+    val hiddenProfilesStore = remember(localContext) {
+        localContext.applicationContext.getSharedPreferences("blink_connect_hidden_profiles", 0)
+    }
+    val hiddenProfileKey = remember(currentUsername) {
+        "hidden:${currentUsername.trim().lowercase()}"
+    }
+    var dismissedIds by remember(currentUsername) {
+        mutableStateOf(
+            runCatching {
+                val serialized = hiddenProfilesStore.getString(hiddenProfileKey, "[]").orEmpty()
+                val stored = JSONArray(serialized)
+                (0 until stored.length()).mapNotNull {
+                    stored.optString(it).takeIf { key -> key.isNotBlank() }
+                }.distinct().takeLast(200)
+            }.getOrDefault(emptyList())
+        )
+    }
+    LaunchedEffect(dismissedIds, hiddenProfileKey) {
+        if (currentUsername.isNotBlank()) {
+            val serialized = JSONArray()
+            dismissedIds.forEach { serialized.put(it) }
+            hiddenProfilesStore.edit().putString(hiddenProfileKey, serialized.toString()).apply()
+        }
+    }
     val pullToRefreshState = rememberPullToRefreshState()
     val followScope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
-    val current = remember(profiles, currentUsername) {
-        profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
+    val current = remember(profiles, currentUsername, currentProfile) {
+        currentProfile?.takeIf { it.username.equals(currentUsername, ignoreCase = true) }
+            ?: profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
     }
 
     val liveProfiles = remember(profiles, currentUsername) {
@@ -211,7 +241,7 @@ fun ConnectSection(
                 )
             }
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
+                compareByDescending<UserProfile> { isLiveDataAvailable && it.onlineNow }
                     .thenByDescending { it.lastSeenAt }
                     .thenBy { it.fullName.lowercase() }
             )
@@ -219,7 +249,7 @@ fun ConnectSection(
                 compareByDescending<UserProfile> {
                     myCampus.isNotBlank() &&
                         it.university.equals(myCampus, ignoreCase = true)
-                }.thenByDescending { it.onlineNow }
+                }.thenByDescending { isLiveDataAvailable && it.onlineNow }
                     .thenBy { it.fullName.lowercase() }
             )
             LivePeopleSort.NAME -> filtered.sortedBy {
@@ -229,10 +259,13 @@ fun ConnectSection(
     }
 
     val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
-    val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
+    val windowActive = rememberWindowActive()
+    val activeNowCount = remember(liveProfiles, isLiveDataAvailable) {
+        if (isLiveDataAvailable) liveProfiles.count { it.onlineNow } else 0
+    }
     // The signed-in, foreground Connect session counts as one actual active session.
     // Other people are counted only when their profile reports online presence.
-    val isCurrentSessionActive = isLiveDataAvailable && currentUsername.isNotBlank()
+    val isCurrentSessionActive = isLiveDataAvailable && currentUsername.isNotBlank() && windowActive
     val realOnlineCount = activeNowCount + if (isCurrentSessionActive) 1 else 0
     val reduceMotion = rememberReducedMotionEnabled()
     val activityScoreRange = remember(realOnlineCount) { connectActivityScoreRange(realOnlineCount) }
@@ -242,7 +275,7 @@ fun ConnectSection(
         tickMillis = policy.connectTickMillis,
         policy = policy,
         liveDataAvailable = isLiveDataAvailable,
-        windowActive = rememberWindowActive(),
+        windowActive = windowActive,
         reduceMotion = reduceMotion,
     )
     // Always show values from the current band (even when an older session has a
@@ -263,8 +296,8 @@ fun ConnectSection(
         label = "connectLiveActiveCount"
     )
     val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
-    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive) {
-        val others = liveProfiles.count {
+    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive, isLiveDataAvailable) {
+        val others = if (!isLiveDataAvailable) 0 else liveProfiles.count {
             it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
         }
         others + if (isCurrentSessionActive && campusName.isNotBlank()) 1 else 0
@@ -272,8 +305,10 @@ fun ConnectSection(
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
     }
-    val onlinePreview = remember(liveProfiles, policy.onlinePreviewLimit) {
-        liveProfiles.filter { it.onlineNow }.take(policy.onlinePreviewLimit)
+    val onlinePreview = remember(liveProfiles, policy.onlinePreviewLimit, isLiveDataAvailable, dismissedIds) {
+        if (!isLiveDataAvailable) emptyList() else liveProfiles
+            .filter { it.onlineNow && dismissedIds.none { hidden -> hidden.equals(it.id.ifBlank { it.username }, ignoreCase = true) } }
+            .take(policy.onlinePreviewLimit)
     }
 
     LaunchedEffect(realOnlineCount, currentUsername, isLiveDataAvailable) {
@@ -297,6 +332,13 @@ fun ConnectSection(
         FollowStateStore.refresh()
     }
 
+    LaunchedEffect(query, currentUsername) {
+        val search = query.trim()
+        if (search.length >= 2) delay(350)
+        // Even a cleared query invalidates any older in-flight search.
+        connectHubActions.searchStudents(search)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -304,7 +346,10 @@ fun ConnectSection(
     ) {
         PullToRefreshBox(
             isRefreshing = isConnectHubLoading,
-            onRefresh = connectHubActions.refresh,
+            onRefresh = {
+                connectHubActions.refresh()
+                connectHubActions.refreshStudents()
+            },
             state = pullToRefreshState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             indicator = {
@@ -386,14 +431,14 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    if (isLiveDataAvailable) "Online sessions (including yours): $realOnlineCount" else "Online count unavailable",
+                                    if (isLiveDataAvailable) "Online among loaded profiles (including yours): $realOnlineCount" else "Online count unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
                                 if (campusName.isNotBlank()) {
                                     Text(
-                                        if (isLiveDataAvailable) "$campusName activity: $campusLabel • $realCampusOnline confirmed online" else "$campusName activity is temporarily unavailable",
+                                        if (isLiveDataAvailable) "$campusName activity: $campusLabel • $realCampusOnline online among loaded profiles" else "$campusName activity is temporarily unavailable",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -402,16 +447,16 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        if (isLiveDataAvailable) "Other students online" else "Previously online",
+                                        "Other students online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Row(
+                                    LazyRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        onlinePreview.forEach { profile ->
+                                        items(onlinePreview, key = { it.id.ifBlank { it.username } }) { profile ->
                                             Column(
                                                 modifier = Modifier
                                                     .width(58.dp)
@@ -489,7 +534,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "${if (isLiveDataAvailable) "Active now" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) realOnlineCount else displayedOnlineCount) else "—"}",
+                                        "${if (isLiveDataAvailable) "Online here" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) realOnlineCount else displayedOnlineCount) else "—"}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,

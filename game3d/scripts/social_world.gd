@@ -81,6 +81,8 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
 
 
 func _start_dedicated_server() -> void:
+    if OS.has_feature("web"):
+        return # Browser-hosted on-demand game must never run a dedicated UDP server.
     auth_secret = OS.get_environment("BLINK_LIFE_AUTH_SECRET")
     var port_str := OS.get_environment("BLINK_LIFE_SERVER_PORT")
     var port := int(port_str) if port_str.is_valid_int() else PORT
@@ -262,6 +264,9 @@ func _append_chat(message: String) -> void:
 
 
 func _host_lan() -> void:
+    if OS.has_feature("web"):
+        status_label.text = "This on-demand Web version supports offline 3D play. Multiplayer requires the native Play version."
+        return
     if is_online:
         status_label.text = "Leave your current session before hosting another."
         return
@@ -303,6 +308,9 @@ func _is_private_lan_ip(raw: String) -> bool:
 
 
 func _join_lan() -> void:
+    if OS.has_feature("web"):
+        status_label.text = "This on-demand Web version supports offline 3D play. Multiplayer requires the native Play version."
+        return
     if is_online:
         status_label.text = "Leave your current session before joining."
         return
@@ -322,6 +330,9 @@ func _join_lan() -> void:
 
 
 func _join_online() -> void:
+    if OS.has_feature("web"):
+        status_label.text = "This on-demand Web version supports offline 3D play. Multiplayer requires the native Play version."
+        return
     if is_online:
         status_label.text = "Disconnect first before opening another world."
         return

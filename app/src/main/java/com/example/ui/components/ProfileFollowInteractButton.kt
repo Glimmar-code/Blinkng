@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun ProfileFollowInteractButton(
     isFollowing: Boolean,
+    enabled: Boolean = true,
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
     onMessage: () -> Unit,
@@ -77,7 +78,7 @@ fun ProfileFollowInteractButton(
             border = BorderStroke(1.dp, border),
             modifier = Modifier
                 .heightIn(min = 28.dp)
-                .clickable {
+                .clickable(enabled = enabled) {
                     if (isFollowing) menuExpanded = true else onFollow()
                 }
         ) {

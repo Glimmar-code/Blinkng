@@ -1,0 +1,55 @@
+name: BLINK LIFE web pack and size isolation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'game3d/**'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - '.github/workflows/blink-life-web-pack-check.yml'
+      - 'app/src/main/java/com/example/game/**'
+  push:
+    branches: [main, Testlab, 'Testlab-*']
+    paths:
+      - 'game3d/**'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - '.github/workflows/blink-life-web-pack-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  godot-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot 4.3 and matching official Web export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 'https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip' -o /tmp/godot-linux.zip
+          unzip -q /tmp/godot-linux.zip -d /tmp
+          sudo install -m 755 /tmp/Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+          curl -fLsS --retry 3 'https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz' -o /tmp/godot-templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
+          unzip -q /tmp/godot-templates.tpz 'templates/*' -d /tmp/godot-templates
+          cp -r /tmp/godot-templates/templates/. "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          godot --version
+      - name: Export game into standalone WEB archive
+        run: bash scripts/build_blink_life_web_pack.sh
+      - name: Reject native libraries in downloadable Web archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -Z1 app/build/outputs/publish/blink-life-web.zip | tee /tmp/game-web-archive-files
+          if grep -E '(\.so$|\.dex$|\.apk$|\.exe$|\.dll$|^/|\.\./)' /tmp/game-web-archive-files; then
+            echo '::error::Game pack contains unexpected executable/native payloads'; exit 1
+          fi
+          sha256sum -c app/build/outputs/publish/blink-life-web.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blink-life-web-preview-${{ github.sha }}
+          path: |
+            app/build/outputs/publish/blink-life-web.zip
+            app/build/outputs/publish/blink-life-web.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -45,42 +45,42 @@ class ConnectHubRepository(
         // Fan requests out concurrently so one slow Supabase endpoint does not serialize the whole screen.
         val roommatesDeferred = async {
             runCatching {
-            getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+            getPagedArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseRoommate)
             }
         }
 
         val mentorsDeferred = async {
             runCatching {
-            getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
+            getPagedArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc")
                 .mapObjects(::parseMentor)
             }
         }
 
         val readingDeferred = async {
             runCatching {
-            getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+            getPagedArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseReadingMate)
             }
         }
 
         val agentsDeferred = async {
             runCatching {
-            getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
+            getPagedArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc")
                 .mapObjects(::parseHousingAgent)
             }
         }
 
         val housingRequestsDeferred = async {
             runCatching {
-            getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+            getPagedArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc")
                 .mapObjects(::parseHousingRequest)
             }
         }
 
         val challengesDeferred = async {
             runCatching {
-            getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
+            getPagedArray("/rest/v1/game_challenges?select=*&order=created_at.desc")
                 .mapObjects(::parseChallenge)
             }
         }
@@ -94,7 +94,7 @@ class ConnectHubRepository(
 
         val requestsDeferred = async {
             runCatching {
-            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
+            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 200)))
                 .mapObjects(::parseConnectRequest)
             }
         }
@@ -367,6 +367,20 @@ class ConnectHubRepository(
                     .put("p_coins_earned", 0)
             ).isNotBlank()
         }
+
+    /** Bounded offset pagination prevents the former 30-item directory ceiling. */
+    private fun getPagedArray(path: String, pageSize: Int = 80, maxRows: Int = 240): JSONArray {
+        val all = JSONArray()
+        var offset = 0
+        while (offset < maxRows) {
+            val limit = minOf(pageSize, maxRows - offset)
+            val next = getArray("$path&limit=$limit&offset=$offset")
+            for (index in 0 until next.length()) all.put(next.get(index))
+            if (next.length() < limit) break
+            offset += next.length()
+        }
+        return all
+    }
 
     private fun getArray(path: String): JSONArray {
         val request = baseRequest(path).get().build()

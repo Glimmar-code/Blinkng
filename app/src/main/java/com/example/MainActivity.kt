@@ -713,6 +713,11 @@ fun MainAppContent(
     val connectHubActions = remember(viewModel) {
         ConnectHubActions(
             refresh = { viewModel.refreshConnectHub() },
+            refreshStudents = { viewModel.refreshConnectStudents() },
+            searchStudents = { query -> viewModel.searchConnectStudents(query) },
+            submitHubForm = { kind, a, b, c, d, e, onResult ->
+                viewModel.submitConnectForm(kind, a, b, c, d, e, onResult)
+            },
             publishRoommate = { title, description, location, minBudget, maxBudget ->
                 viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
             },
@@ -738,7 +743,8 @@ fun MainAppContent(
             respondChallenge = { challengeId, accept -> viewModel.respondToGameChallenge(challengeId, accept) },
             respondRequest = { kind, requestId, accept -> viewModel.respondToConnectRequest(kind, requestId, accept) },
             submitChallengeScore = { challengeId, score -> viewModel.submitChallengeScore(challengeId, score) },
-            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) }
+            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) },
+            onMatchSpinCoinsUpdated = { balance -> viewModel.onConnectMatchSpinCoinsUpdated(balance) }
         )
     }
 
@@ -898,6 +904,7 @@ fun MainAppContent(
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
+                        currentUserProfile = uiState.myProfile,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
@@ -1614,13 +1621,13 @@ fun MainAppContent(
                 val profileLikedPosts = if (isMyProfile) uiState.myLikedPosts.filter { it.isLiked } else emptyList()
                 val profileSavedPosts = if (isMyProfile) uiState.mySavedPosts.filter { it.isBookmarked } else emptyList()
 
-                val userMarketItems = if (isMyProfile) {
-                    uiState.marketItems.filter {
-                        viewModel.isMe(it.sellerUsername) || viewModel.isMe(it.sellerName)
-                    }
-                } else {
-                    uiState.marketItems.filter { it.sellerUsername.equals(profile.username, ignoreCase = true) }
-                }
+                // Seller listings are loaded from Supabase by seller ID, never from
+                // the limited global Market discovery feed.
+                val userMarketItems = uiState.profileMarketItemsByUserId[profileKey].orEmpty()
+                val isProfileMarketLoading = profileKey in uiState.profileMarketLoadingIds ||
+                    (profileKey !in uiState.profileMarketLoadedIds &&
+                     profileKey !in uiState.profileMarketFailedIds)
+                val isProfileMarketFailed = profileKey in uiState.profileMarketFailedIds
 
                 ProfileScreen(
                     profile = currentProfileToDisplay,
@@ -1630,13 +1637,17 @@ fun MainAppContent(
                     hasPostsLoadError = profilePostsLoadFailed,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
+                    arePrivateCollectionsLoading = profileKey in uiState.privateProfileCollectionsLoadingIds,
+                    havePrivateCollectionsError = profileKey in uiState.privateProfileCollectionsFailedIds,
                     userMarketItems = userMarketItems,
+                    isMarketLoading = isProfileMarketLoading,
+                    hasMarketLoadError = isProfileMarketFailed,
                     onBack = { viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
                         viewModel.closeProfile()
                         viewModel.setTab(MainTab.MESSAGES)
-                        viewModel.openChatWithUser(partner, profile.fullName, profile.avatarUrl)
+                        viewModel.openChatWithUser(partner, currentProfileToDisplay.fullName, currentProfileToDisplay.avatarUrl)
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
                     onLikePost = { viewModel.togglePostLike(it) },
@@ -1654,8 +1665,12 @@ fun MainAppContent(
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode,
+                    currentUserId = uiState.myProfile.id,
+                    isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
+                    onFollowChanged = { viewModel.refreshViewedProfile() },
                     onRefreshProfile = {
                         viewModel.refreshProgressState()
+                        viewModel.refreshViewedProfile()
                         viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
                     }
                 )
@@ -1719,7 +1734,7 @@ fun MainAppContent(
                 profile = uiState.myProfile,
                 onBack = { viewModel.openEditProfile(false) },
                 onSave = { updated ->
-                    viewModel.updateMyProfile(updated)
+                    viewModel.onProfilePersisted(updated)
                 },
                 isDark = uiState.isDarkMode
             )

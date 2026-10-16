@@ -1,5 +1,7 @@
 package com.example.game
 
+import com.example.BuildConfig
+import android.os.Build
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -42,6 +44,22 @@ private fun findActivity(context: Context): Activity? = when (context) {
 @Composable
 fun BlinkLifeDownloadCard() {
     val context = LocalContext.current
+    // Play delivers native signed splits. Website APK downloads a pinned WebAssembly
+    // game archive in the background and launches it without a second installation.
+    val playInstaller = remember(context) {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 30) {
+                context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getInstallerPackageName(context.packageName)
+            }
+        }.getOrNull() == "com.android.vending"
+    }
+    if (!playInstaller && BuildConfig.BLINK_LIFE_WEB_SHA256.isNotBlank()) {
+        BlinkLifeWebDownloadCard()
+        return
+    }
     val activity = remember(context) { findActivity(context) }
     val delivery = remember(context.applicationContext) {
         BlinkLifeFeatureDelivery(context.applicationContext)
@@ -136,8 +154,8 @@ fun BlinkLifeDownloadCard() {
                 )
             }
             Text(
-                "On Google Play, the game downloads separately only when requested. " +
-                    "The signed website APK comes with the game preinstalled.",
+                "Google Play delivers the native 3D module on demand. " +
+                    "Website APKs download a separate verified WebGL game pack when requested.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )

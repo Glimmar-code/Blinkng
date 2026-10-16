@@ -42,10 +42,11 @@ class ConnectDirectoryListingsRepository {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
 
-    suspend fun listings(slug: String): List<DirectoryConnectListing> = withContext(Dispatchers.IO) {
+    suspend fun listings(slug: String, offset: Int = 0, limit: Int = 40): List<DirectoryConnectListing> = withContext(Dispatchers.IO) {
         val rows = read(
             "/rest/v1/connect_listings?select=id,user_id,title,description" +
-                "&category_slug=eq.${encode(slug)}&is_active=eq.true&order=created_at.desc&limit=80"
+                "&category_slug=eq.${encode(slug)}&is_active=eq.true&order=created_at.desc" +
+                "&limit=${limit.coerceIn(1, 80)}&offset=${offset.coerceAtLeast(0)}"
         )
         buildList {
             for (index in 0 until rows.length()) {
@@ -62,13 +63,20 @@ class ConnectDirectoryListingsRepository {
         }
     }
 
-    suspend fun applicationsForOwnListings(listings: List<DirectoryConnectListing>, userId: String):
+    suspend fun applicationsForOwnListings(categorySlug: String, userId: String):
         List<DirectoryConnectApplication> = withContext(Dispatchers.IO) {
-        val ownIds = listings.filter { it.userId == userId }.map { it.id }
+        if (userId.isBlank()) return@withContext emptyList()
+        // The inbox must not depend on whether the owner's listing is in the first browse page.
+        val owned = read(
+            "/rest/v1/connect_listings?select=id&user_id=eq.${encode(userId)}" +
+                "&category_slug=eq.${encode(categorySlug)}&order=created_at.desc&limit=200"
+        )
+        val ownIds = (0 until owned.length()).map { owned.getJSONObject(it).optString("id") }
+            .filter { it.isNotBlank() }
         if (ownIds.isEmpty()) return@withContext emptyList()
         val rows = read(
             "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
-                "&listing_id=in.(${ownIds.joinToString(",")})&order=created_at.desc&limit=80"
+                "&listing_id=in.(${ownIds.joinToString(",")})&order=created_at.desc&limit=200"
         )
         buildList {
             for (index in 0 until rows.length()) {
@@ -84,6 +92,44 @@ class ConnectDirectoryListingsRepository {
                 )
             }
         }
+    }
+
+    /** Outgoing applications are independent of browse pagination and category page size. */
+    suspend fun myApplications(userId: String): List<DirectoryConnectApplication> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext emptyList()
+        val rows = read(
+            "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
+                "&applicant_id=eq.${encode(userId)}&order=created_at.desc&limit=200"
+        )
+        buildList {
+            for (index in 0 until rows.length()) {
+                val row = rows.getJSONObject(index)
+                add(DirectoryConnectApplication(
+                    id = row.optString("id"),
+                    listingId = row.optString("listing_id"),
+                    applicantId = row.optString("applicant_id"),
+                    message = row.optString("message"),
+                    status = row.optString("status")
+                ))
+            }
+        }
+    }
+
+    suspend fun archiveListing(listingId: String, userId: String) = withContext(Dispatchers.IO) {
+        require(userId.isNotBlank()) { "Please sign in again." }
+        mutate(
+            "/rest/v1/connect_listings?id=eq.${encode(listingId)}&user_id=eq.${encode(userId)}&is_active=eq.true",
+            JSONObject().put("is_active", false), "PATCH"
+        )
+    }
+
+    suspend fun withdrawApplication(applicationId: String, userId: String) = withContext(Dispatchers.IO) {
+        require(userId.isNotBlank()) { "Please sign in again." }
+        mutate(
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}" +
+                "&applicant_id=eq.${encode(userId)}&status=eq.pending",
+            JSONObject().put("status", "withdrawn"), "PATCH"
+        )
     }
 
     suspend fun create(categorySlug: String, title: String, description: String) = withContext(Dispatchers.IO) {
@@ -122,7 +168,7 @@ class ConnectDirectoryListingsRepository {
 
     suspend fun respond(applicationId: String, accept: Boolean) = withContext(Dispatchers.IO) {
         mutate(
-            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}",
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}&status=eq.pending",
             JSONObject().put("status", if (accept) "accepted" else "declined"),
             "PATCH"
         )
@@ -139,13 +185,16 @@ class ConnectDirectoryListingsRepository {
     private fun mutate(path: String, body: JSONObject, method: String) {
         val builder = authenticatedRequest(path)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Prefer", "return=minimal")
+            .addHeader("Prefer", if (method == "PATCH") "return=representation" else "return=minimal")
         val requestBody = body.toString().toRequestBody(jsonType)
         val request = if (method == "PATCH") builder.patch(requestBody).build()
                       else builder.post(requestBody).build()
         client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IllegalStateException(serverMessage(response.code, raw))
+            if (method == "PATCH" && (raw.isBlank() || JSONArray(raw).length() == 0)) {
+                throw IllegalStateException("This request has already been handled. Refresh to see its latest status.")
+            }
         }
     }
 

@@ -177,11 +177,17 @@ data class BlinkUiState(
     val loadingOlderConversationId: String? = null,
     val loadingInitialConversationId: String? = null,
     val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val profileMarketItemsByUserId: Map<String, List<MarketItem>> = emptyMap(),
+    val profileMarketLoadingIds: Set<String> = emptySet(),
+    val profileMarketLoadedIds: Set<String> = emptySet(),
+    val profileMarketFailedIds: Set<String> = emptySet(),
     val myLikedPosts: List<FeedPost> = emptyList(),
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
     val profileSurfaceLoadedIds: Set<String> = emptySet(),
-    val profileSurfaceFailedIds: Set<String> = emptySet()
+    val profileSurfaceFailedIds: Set<String> = emptySet(),
+    val privateProfileCollectionsLoadingIds: Set<String> = emptySet(),
+    val privateProfileCollectionsFailedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -803,6 +809,19 @@ private suspend fun restoreSupabaseSession() {
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
             conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
+            viewingProfile = if (accountChanged) null else _uiState.value.viewingProfile,
+            profilePostsByUserId = if (accountChanged) emptyMap() else _uiState.value.profilePostsByUserId,
+            myLikedPosts = if (accountChanged) emptyList() else _uiState.value.myLikedPosts,
+            mySavedPosts = if (accountChanged) emptyList() else _uiState.value.mySavedPosts,
+            profileSurfaceLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadingIds,
+            profileSurfaceLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadedIds,
+            profileSurfaceFailedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceFailedIds,
+            privateProfileCollectionsLoadingIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsFailedIds,
+            profileMarketItemsByUserId = if (accountChanged) emptyMap() else _uiState.value.profileMarketItemsByUserId,
+            profileMarketLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadingIds,
+            profileMarketLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadedIds,
+            profileMarketFailedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketFailedIds,
             destination = authenticatedDestination(UserProfile(onboardingCompleted = savedOnboardingCompleted))
         )
     }
@@ -2220,6 +2239,52 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Reflect the authoritative balance returned by a successful Connect Match RPC. */
+    fun onConnectMatchSpinCoinsUpdated(remainingCoins: Long) {
+        if (remainingCoins >= 0L) {
+            _uiState.value = _uiState.value.copy(blinkCoinBalance = remainingCoins)
+        }
+    }
+
+    /** Re-fetch the profile directory without clearing previously loaded results on failure. */
+    private var connectStudentSearchEpoch: Long = 0
+
+    /** Search beyond the first directory page; stale results cannot replace newer queries. */
+    fun searchConnectStudents(query: String) {
+        val cleaned = query.trim()
+        val epoch = ++connectStudentSearchEpoch
+        if (cleaned.length < 2) return
+        val accountId = _uiState.value.myProfile.id
+        viewModelScope.launch {
+            val found = runCatching { supabaseService.searchProfilesPage(cleaned, limit = 60) }
+                .getOrDefault(emptyList())
+            if (epoch == connectStudentSearchEpoch &&
+                _uiState.value.myProfile.id == accountId && found.isNotEmpty()) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    profiles = (listOf(current.myProfile) + found + current.profiles)
+                        .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        .take(600)
+                )
+            }
+        }
+    }
+
+    fun refreshConnectStudents() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchProfiles() }
+                .onSuccess { fresh ->
+                    if (fresh.isNotEmpty()) {
+                        val own = _uiState.value.myProfile
+                        _uiState.value = _uiState.value.copy(
+                            profiles = (listOf(own) + fresh).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        )
+                    }
+                }
+                .onFailure { Log.w(TAG, "Connect students refresh failed", it) }
+        }
+    }
+
     fun refreshConnectHub() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
@@ -2239,21 +2304,79 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private fun runConnectAction(successMessage: String, action: suspend () -> Boolean) {
+    private val pendingConnectActions = mutableSetOf<String>()
+
+    /** Ignore rapid repeated taps while the same Connect request is in flight. */
+    private fun runConnectAction(
+        successMessage: String,
+        actionKey: String = successMessage,
+        action: suspend () -> Boolean
+    ) {
+        if (!pendingConnectActions.add(actionKey)) return
         viewModelScope.launch {
-            runCatching { action() }
-                .onSuccess { ok ->
-                    if (ok) {
-                        showToast(successMessage)
-                        refreshConnectHub()
-                    } else {
-                        showToast("That request is no longer available.")
+            try {
+                runCatching { action() }
+                    .onSuccess { ok ->
+                        if (ok) {
+                            showToast(successMessage)
+                            refreshConnectHub()
+                        } else {
+                            showToast("That request is no longer available.")
+                        }
                     }
+                    .onFailure {
+                        Log.e(TAG, "Connect Hub action failed", it)
+                        showToast(it.message ?: "Connect Hub action failed.")
+                    }
+            } finally {
+                pendingConnectActions.remove(actionKey)
+            }
+        }
+    }
+
+    /** Publish a Connect form with explicit acknowledgement so user input survives failures. */
+    fun submitConnectForm(
+        kind: String,
+        first: String,
+        second: String,
+        third: String,
+        fourth: String,
+        fifth: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val values = first.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val otherValues = second.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val budget = third.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                require(third.isBlank() || kind !in setOf("ROOMMATE", "HOUSING") ||
+                    (budget != null && budget.isFinite() && budget >= 0.0)) {
+                    "Enter a valid non-negative budget."
                 }
-                .onFailure {
-                    Log.e(TAG, "Connect Hub action failed", it)
-                    showToast(it.message ?: "Connect Hub action failed.")
+                when (kind) {
+                    "ROOMMATE" -> connectHubRepository.upsertRoommate(
+                        first, fourth, second, null, budget
+                    )
+                    "MENTOR" -> connectHubRepository.upsertMentor("mentor", values, second, third)
+                    "READING" -> connectHubRepository.upsertReadingMate(
+                        values, fourth.ifBlank { "Focused" }, otherValues, third, fifth
+                    )
+                    "AGENT" -> connectHubRepository.applyAsHousingAgent(first, otherValues, third)
+                    "HOUSING" -> connectHubRepository.createHousingRequest(first, second, null, budget, fourth)
+                    else -> throw IllegalArgumentException("Unknown Connect form.")
                 }
+            }
+            result.onSuccess { ok ->
+                if (ok) {
+                    refreshConnectHub()
+                    onResult(true, null)
+                } else {
+                    onResult(false, "The server did not confirm your submission.")
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Connect form submission failed", error)
+                onResult(false, error.message ?: "Connect submission failed. Try again.")
+            }
         }
     }
 
@@ -2268,7 +2391,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyForRoommate(profileId: String) =
-        runConnectAction("Roommate request sent.") {
+        runConnectAction("Roommate request sent.", actionKey = "roommate:$profileId") {
             connectHubRepository.applyRoommate(profileId)
         }
 
@@ -2282,7 +2405,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestMentor(profileId: String) =
-        runConnectAction("Mentor request sent.") {
+        runConnectAction("Mentor request sent.", actionKey = "mentor:$profileId") {
             connectHubRepository.requestMentor(profileId)
         }
 
@@ -2297,7 +2420,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestReadingMate(profileId: String) =
-        runConnectAction("Reading-mate request sent.") {
+        runConnectAction("Reading-mate request sent.", actionKey = "reading:$profileId") {
             connectHubRepository.requestReadingMate(profileId)
         }
 
@@ -2320,7 +2443,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyToHousingRequest(requestId: String, message: String) =
-        runConnectAction("Housing application sent.") {
+        runConnectAction("Housing application sent.", actionKey = "housing:$requestId") {
             connectHubRepository.applyToHousingRequest(requestId, message)
         }
 
@@ -2328,7 +2451,7 @@ private suspend fun restoreSupabaseSession() {
         userId: String,
         gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName
     ) =
-        runConnectAction("Game challenge sent.") {
+        runConnectAction("Game challenge sent.", actionKey = "challenge:$userId:$gameType") {
             connectHubRepository.challengeUser(userId, gameType)
         }
 
@@ -2354,12 +2477,12 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
-        runConnectAction(if (accept) "Request accepted." else "Request declined.") {
+        runConnectAction(if (accept) "Request accepted." else "Request declined.", actionKey = "respond:$kind:$requestId") {
             connectHubRepository.respondToConnectRequest(kind, requestId, accept)
         }
 
     fun submitChallengeScore(challengeId: String, score: Int) =
-        runConnectAction("Challenge score submitted.") {
+        runConnectAction("Challenge score submitted.", actionKey = "challenge-score:$challengeId") {
             connectHubRepository.submitChallengeScore(challengeId, score)
         }
 
@@ -2790,9 +2913,12 @@ private suspend fun restoreSupabaseSession() {
         if (identifier.isNullOrBlank()) return false
         val clean = identifier.trim().removePrefix("@").trim()
         val myUser = _uiState.value.myProfile.username.trim().removePrefix("@").trim()
-        val myName = _uiState.value.myProfile.fullName.trim()
         val myId = _uiState.value.myProfile.id.trim()
-        return clean.equals("you", true) || clean.equals("me", true) || clean.equals(myUser, true) || clean.equals(myName, true) || clean.equals(myId, true) || clean.replace(" ", ".").equals(myUser, true) || myUser.replace(".", " ").equals(clean, true)
+        // Display names are not unique. Never equate someone else's identity to
+        // the signed-in account because they happen to have the same name.
+        return clean.equals("you", true) || clean.equals("me", true) ||
+            (myUser.isNotBlank() && clean.equals(myUser, true)) ||
+            (myId.isNotBlank() && clean.equals(myId, true))
     }
 
     private fun cachedProfile(identifier: String): UserProfile? {
@@ -2805,21 +2931,82 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+    /** Independently load every active listing belonging to the viewed seller. */
+    fun loadProfileMarketData(profile: UserProfile, force: Boolean = false) {
+        val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
+        if (key.isBlank()) return
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(
+                profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key,
+                profileMarketLoadingIds = _uiState.value.profileMarketLoadingIds - key
+            )
+            return
+        }
+        val state = _uiState.value
+        if (key in state.profileMarketLoadingIds || (!force && key in state.profileMarketLoadedIds)) return
+        _uiState.value = state.copy(
+            profileMarketLoadingIds = state.profileMarketLoadingIds + key,
+            profileMarketFailedIds = state.profileMarketFailedIds - key
+        )
+        viewModelScope.launch {
+            try {
+                val resolved = profile.id.takeIf { it.isNotBlank() }
+                    ?: profileRepository.fetchByUsername(profile.username)?.id
+                    ?: throw IllegalStateException("Seller profile is missing.")
+                val items = supabaseService.fetchProfileMarketItems(resolved)
+                if (supabaseService.getCurrentUserId() != ownerId) return@launch
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    profileMarketItemsByUserId = latest.profileMarketItemsByUserId +
+                        mapOf(key to items, resolved to items),
+                    profileMarketLoadedIds = latest.profileMarketLoadedIds + key + resolved,
+                    profileMarketFailedIds = latest.profileMarketFailedIds - key - resolved
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_MARKET_LOAD failed", error)
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key
+                    )
+                }
+            } finally {
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        profileMarketLoadingIds = latest.profileMarketLoadingIds - key
+                    )
+                }
+            }
+        }
+    }
+
     fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
         val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
-        val ownerId = supabaseService.getCurrentUserId() ?: return
-        if (key.isBlank() || !_uiState.value.isOnline) return
+        if (key.isBlank()) return
+        loadProfileMarketData(profile, force)
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            // Do not leave a profile with no cached posts permanently shimmering offline.
+            _uiState.value = _uiState.value.copy(
+                profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key,
+                profileSurfaceLoadingIds = _uiState.value.profileSurfaceLoadingIds - key
+            )
+            return
+        }
         val current = _uiState.value
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
         _uiState.value = current.copy(
             profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key,
-            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key
+            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key,
+            privateProfileCollectionsLoadingIds = if (profile.id == ownerId) current.privateProfileCollectionsLoadingIds + key else current.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = current.privateProfileCollectionsFailedIds - key
         )
         viewModelScope.launch {
             try {
                 val resolved = if (profile.id.isNotBlank()) profile
                     else profileRepository.fetchByUsername(profile.username) ?: profile
-                if (resolved.id.isBlank()) return@launch
+                if (resolved.id.isBlank()) throw IllegalStateException("Profile has no user ID.")
                 // Show actual profile posts as soon as one short request completes.
                 // The liked/saved collections are optional secondary requests and
                 // must not hold the entire Posts/Reels timeline hostage.
@@ -2833,25 +3020,45 @@ private suspend fun restoreSupabaseSession() {
                     profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
                 if (isOwner) {
-                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts) }
-                        .onSuccess { content ->
-                            if (supabaseService.getCurrentUserId() != ownerId) return@onSuccess
-                            val current = _uiState.value
-                            _uiState.value = current.copy(
-                                profilePostsByUserId = current.profilePostsByUserId +
+                    // Private tabs must not claim "nothing saved/liked" while still loading.
+                    _uiState.value = _uiState.value.copy(
+                        privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds + key
+                    )
+                    try {
+                        val content = supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            val state = _uiState.value
+                            _uiState.value = state.copy(
+                                profilePostsByUserId = state.profilePostsByUserId +
                                     mapOf(key to content.posts, resolved.id to content.posts),
                                 myLikedPosts = content.likedPosts,
-                                mySavedPosts = content.savedPosts
+                                mySavedPosts = content.savedPosts,
+                                privateProfileCollectionsFailedIds = state.privateProfileCollectionsFailedIds - key
                             )
                         }
-                        .onFailure { Log.w(TAG, "Optional profile collections sync failed", it) }
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Private profile collections sync failed", error)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsFailedIds = _uiState.value.privateProfileCollectionsFailedIds + key
+                            )
+                        }
+                    } finally {
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds - key
+                            )
+                        }
+                    }
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
-                _uiState.value = _uiState.value.copy(
-                    profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
-                )
-                showToast("Could not load profile content. Tap Retry to try again.")
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
+                    )
+                    showToast("Could not load profile content. Tap Retry to try again.")
+                }
             } finally {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
@@ -2927,6 +3134,29 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
+    /** Reconcile profile counters, verification, XP and other server-owned fields. */
+    fun refreshViewedProfile() {
+        val viewing = _uiState.value.viewingProfile ?: return
+        val actorId = supabaseService.getCurrentUserId() ?: return
+        viewModelScope.launch {
+            val refreshed = runCatching {
+                if (viewing.id.isNotBlank()) profileRepository.fetchById(viewing.id)
+                else profileRepository.fetchByUsername(viewing.username)
+            }.getOrNull() ?: return@launch
+            if (supabaseService.getCurrentUserId() != actorId) return@launch
+            val state = _uiState.value
+            if (state.viewingProfile?.id != refreshed.id) return@launch
+            val isOwner = refreshed.id == actorId
+            _uiState.value = state.copy(
+                viewingProfile = refreshed,
+                myProfile = if (isOwner) refreshed else state.myProfile,
+                profiles = listOf(refreshed) + state.profiles.filterNot { it.id == refreshed.id }
+            )
+            if (isOwner) saveLocalProfile(refreshed)
+            persistProfile(refreshed)
+        }
+    }
+
     fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
 
     fun updateProfile(updated: UserProfile) {
@@ -2958,12 +3188,41 @@ private suspend fun restoreSupabaseSession() {
                 val normalized = updated.copy(username = cleanUsername, fullName = cleanName)
                 if (profileRepository.updateProfile(normalized)) {
                     val authoritative = profileRepository.fetchCurrent(normalized.username) ?: normalized
-                    _uiState.value = _uiState.value.copy(myProfile = authoritative, isEditProfileOpen = false, viewingProfile = if (_uiState.value.viewingProfile?.username?.equals(authoritative.username, true) == true) authoritative else _uiState.value.viewingProfile)
-                    saveLocalProfile(authoritative); persistProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
+                    onProfilePersisted(authoritative)
+                    showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
             } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
         }
     }
+    /**
+     * Called only after EditProfileScreen has received successful confirmation from Supabase.
+     * Never POST/PATCH this profile again: that used to create duplicate requests.
+     */
+    fun onProfilePersisted(updated: UserProfile) {
+        val old = _uiState.value.myProfile
+        if (old.id.isNotBlank() && updated.id != old.id) {
+            Log.w(TAG, "Rejected persisted profile for a different signed-in account")
+            return
+        }
+        // Update cached author metadata while the former display name and username
+        // are still known, then switch the account's public identity.
+        updateLocalAuthorData(updated)
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            myProfile = updated,
+            viewingProfile = if (state.viewingProfile?.id == updated.id ||
+                state.viewingProfile?.username?.equals(old.username, ignoreCase = true) == true
+            ) updated else state.viewingProfile,
+            profiles = listOf(updated) + state.profiles.filterNot {
+                it.id == updated.id || it.username.equals(old.username, ignoreCase = true)
+            },
+            isEditProfileOpen = false
+        )
+        saveLocalProfile(updated)
+        persistProfile(updated)
+        persistCurrentFeed()
+    }
+
     fun updateMyProfile(updated: UserProfile) = updateProfile(updated)
 
     private fun updateLocalAuthorData(profile: UserProfile) {

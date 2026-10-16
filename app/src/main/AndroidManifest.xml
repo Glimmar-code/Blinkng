@@ -27,6 +27,17 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
+        <!-- Isolated WebGL game viewer: optional files never load when BLINK starts. -->
+        <activity android:name=".game.BlinkLifeWebActivity"
+            android:exported="false"
+            android:process=":blink_life_web"
+            android:screenOrientation="sensorLandscape" />
+        <receiver android:name=".game.BlinkLifeGameDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />

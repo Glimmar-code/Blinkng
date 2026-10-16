@@ -207,6 +207,18 @@ jobs:
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "Building Blink $VERSION_NAME (versionCode $VERSION_CODE)"
 
+      - name: Install Godot 4.3 Web exporter
+        run: bash scripts/setup_godot_43_web.sh
+
+      - name: Export optional BLINK LIFE Web game package
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build_blink_life_web_pack.sh
+          GAME_SHA="$(sha256sum app/build/outputs/publish/blink-life-web.zip | awk '{print $1}')"
+          echo "BLINK_LIFE_WEB_SHA256=$GAME_SHA" >> "$GITHUB_ENV"
+          echo "Optional BLINK LIFE archive ready; exact hash embedded into the signed APK."
+
       - name: Build signed production APK and AAB
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -216,13 +228,36 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
-      - name: Build full signed website APK from Play App Bundle
+      - name: Verify website APK excludes native Godot (no secondary install)
         shell: bash
-        env:
-          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: bash .github/scripts/build_full_website_apk.sh
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          test -s "$APK"
+          test -s "$AAB"
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-website-files.txt"
+          if grep -E '(^|/)libgodot_android\.so$|(^|/)project\.godot$|(^|/)scenes/main\.tscn$' "$RUNNER_TEMP/blink-website-files.txt"; then
+            echo "::error::Website APK unexpectedly contains the 3D engine or game scenes."
+            exit 1
+          fi
+          unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/manifest/AndroidManifest.xml "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          # Fail closed: publishing the old ~345 MB universal APK would break Option B.
+          # The optional game is published separately, never silently fused into Blink.
+          APK_BYTES="$(stat -c %s "$APK")"
+          PACK_BYTES="$(stat -c %s app/build/outputs/publish/blink-life-web.zip)"
+          if [ "$APK_BYTES" -gt 100000000 ]; then
+            echo "::error::Website APK is $APK_BYTES bytes (target: below 100 MB). Refusing oversized release."
+            exit 1
+          fi
+          if [ "$PACK_BYTES" -lt 1 ] || [ "$PACK_BYTES" -gt 167772160 ]; then
+            echo "::error::Optional game pack exceeds the app's 160 MiB download limit."
+            exit 1
+          fi
+          echo "PASS: lightweight website APK, Google Play AAB keeps on-demand native game."
+          du -h "$APK" app/build/outputs/publish/blink-life-web.zip
 
       - name: Verify embedded source revision
         shell: bash
@@ -235,6 +270,10 @@ jobs:
           fi
           grep -F "BUILD_COMMIT_SHA = \"$GITHUB_SHA\"" "$BUILD_CONFIG" >/dev/null || {
             echo "::error::The release does not embed its exact Git source revision."
+            exit 1
+          }
+          grep -F "BLINK_LIFE_WEB_SHA256 = \"$BLINK_LIFE_WEB_SHA256\"" "$BUILD_CONFIG" >/dev/null || {
+            echo "::error::The signed APK does not pin its matching optional game archive."
             exit 1
           }
           echo "Embedded source revision verified: $GITHUB_SHA"
@@ -294,6 +333,8 @@ jobs:
           signingCertificateSha1=$RELEASE_CERT_SHA1
           signingCertificateSha256=$RELEASE_CERT_SHA256
           apkSha256=$APK_SHA256
+          gamePackSha256=$BLINK_LIFE_WEB_SHA256
+          gamePackSize=$(stat -c %s app/build/outputs/publish/blink-life-web.zip)
           EOF
 
       - name: Upload signed release files
@@ -306,3 +347,5 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
             app/build/outputs/publish/release-info.txt
+            app/build/outputs/publish/blink-life-web.zip
+            app/build/outputs/publish/blink-life-web.zip.sha256

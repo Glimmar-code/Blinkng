@@ -1677,17 +1677,9 @@ fun getCurrentUserId(): String? {
             val (savedWithPrivacy, firstRaw) = send(profileBody(includePrivacy = true))
             if (savedWithPrivacy) return@withContext true
 
-            // Compatibility path while a Testlab client is running against an older backend.
-            if (firstRaw.contains("visibility", ignoreCase = true) ||
-                firstRaw.contains("schema cache", ignoreCase = true) ||
-                firstRaw.contains("PGRST204", ignoreCase = true)
-            ) {
-                val (legacySaved, legacyRaw) = send(profileBody(includePrivacy = false))
-                if (legacySaved) return@withContext true
-                Log.e(TAG, "PROFILE_UPDATE legacy fallback failed body=$legacyRaw")
-                return@withContext false
-            }
-
+            // Fail closed: falling back to a partial update can change contact
+            // information without persisting the user's privacy preferences.
+            // An outdated Supabase schema must be migrated first.
             Log.e(TAG, "PROFILE_UPDATE failed body=$firstRaw")
             false
         } catch (e: Exception) {
@@ -2168,18 +2160,25 @@ fun getCurrentUserId(): String? {
         // a missing enrichment RPC must never turn a populated feed into "no posts".
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            val profilePath = "/rest/v1/profiles?select=id,username,full_name,avatar_url,is_verified,verification_badge" +
-                "&id=in.(${userIds.joinToString(",")})"
-            executeRequest(newRequestBuilder(profilePath, true).get().build()).use { response ->
+            // Profiles contain email, phone and other private data. Always use the
+            // server's redacted author projection, never raw rows of other users.
+            val authorBody = JSONObject().put("p_ids", JSONArray(userIds.toList()))
+            val authorRows = executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_public_profiles_by_ids", true)
+                    .post(authorBody.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Could not load post authors."))
+                    throw IllegalStateException(
+                        parseSupabaseError(raw, "Could not securely load post authors.")
+                    )
                 }
-                val array = JSONArray(raw.ifBlank { "[]" })
-                for (i in 0 until array.length()) {
-                    val profile = array.getJSONObject(i)
-                    profiles[profile.optString("id")] = profile
-                }
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            for (i in 0 until authorRows.length()) {
+                val author = authorRows.getJSONObject(i)
+                profiles[author.optString("id")] = author
             }
         }
 
@@ -3533,6 +3532,38 @@ suspend fun uploadPostMedia(
             Log.w(TAG, "MARKET_FETCH_BY_ID exception", e)
             null
         }
+    }
+
+    /**
+     * Profile listings are not sourced from the discovery Market feed window.
+     * Query the seller's own active listings in stable, paginated batches instead.
+     */
+    suspend fun fetchProfileMarketItems(sellerId: String): List<MarketItem> = withContext(Dispatchers.IO) {
+        require(isValidUuid(sellerId)) { "Seller profile is required." }
+        if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
+        val wishlistIds = fetchMyMarketWishlistIds()
+        val items = mutableListOf<MarketItem>()
+        var offset = 0
+        while (true) {
+            val path = "/rest/v1/market_items?select=*" +
+                "&seller_id=eq.${encodeValue(sellerId)}&status=eq.active" +
+                "&order=created_at.desc,id.desc&limit=100&offset=$offset"
+            val rows = executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    parseSupabaseError(raw, "Profile listings could not be loaded.")
+                )
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            for (i in 0 until rows.length()) {
+                parseMarketItem(rows.getJSONObject(i))?.let { item ->
+                    items += item.copy(isSaved = item.id in wishlistIds)
+                }
+            }
+            if (rows.length() < 100) break
+            offset += rows.length()
+        }
+        items
     }
 
     suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
@@ -5157,7 +5188,8 @@ suspend fun uploadPostMedia(
     suspend fun fetchProfileConnections(
         profileId: String,
         kind: ProfileConnectionKind,
-        limit: Int = 100
+        limit: Int = 100,
+        throwOnError: Boolean = false
     ): List<UserProfile> = withContext(Dispatchers.IO) {
         if (!isValidUuid(profileId)) return@withContext emptyList()
         try {
@@ -5171,7 +5203,10 @@ suspend fun uploadPostMedia(
                     .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@withContext emptyList()
+                if (!response.isSuccessful) {
+                    if (throwOnError) throw IllegalStateException("Cannot load followers right now.")
+                    return@withContext emptyList()
+                }
                 val array = JSONArray(if (raw.isBlank()) "[]" else raw)
                 buildList {
                     for (i in 0 until array.length()) {
@@ -5182,6 +5217,7 @@ suspend fun uploadPostMedia(
             }
         } catch (e: Exception) {
             Log.w(TAG, "fetchProfileConnections failed", e)
+            if (throwOnError) throw e
             emptyList()
         }
     }

@@ -268,6 +268,7 @@ fun PremiumFeedScreen(
     reels: List<FeedPost>,
     stories: List<Story>,
     profiles: List<UserProfile>,
+    currentUserProfile: UserProfile? = null,
     leaderboardUsers: List<LeaderboardUser>,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
@@ -518,6 +519,7 @@ fun PremiumFeedScreen(
 
         2 -> PremiumConnectHost(
             profiles = profiles,
+            currentUserProfile = currentUserProfile,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             isDark = isDark,
@@ -1866,6 +1868,7 @@ private fun PremiumGameHost(
 @Composable
 private fun PremiumConnectHost(
     profiles: List<UserProfile>,
+    currentUserProfile: UserProfile?,
     currentUsername: String,
     userAvatar: String,
     isDark: Boolean,
@@ -1891,6 +1894,7 @@ private fun PremiumConnectHost(
     ) {
         ConnectSection(
             profiles = profiles,
+            currentProfile = currentUserProfile,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             isDark = isDark,
