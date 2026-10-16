@@ -236,3 +236,14 @@ Whenever an AI agent or developer completes a task that changed Supabase, the fi
 10. Whether recovery of this version would require any secret values/data backups that are intentionally kept outside Git.
 
 Do not claim a Supabase-related feature or recovery is fully complete if any required app integration, migration capture, recovery baseline, security verification, testing, or release preparation remains outstanding.
+
+---
+
+## Default BLINK Auto-Fix → Testlab → Main → App Update command
+
+**Owner instruction:** "When all pass push to Testlab and merge to main and update my app. If an error remains, automatically fix the errors and reverify again. Repeat until all required checks pass."
+
+For **every** coding task, follow the repository's [Auto-Fix and Release Policy](../docs/BLINK_AUTO_FIX_VERIFY_RELEASE.md). It is a **gated workflow**, not permission to bypass tests, purchase paid Supabase resources, mutate production as a test environment, or force updates to a user's installed APK. Inspect full failing logs, apply real fixes, reverify Android/Windows/Supabase/real integrations, merge into Testlab only after required checks pass, and promote **only the tested changes** to main after staging and live compatibility checks. If a required check cannot run, stop and report its blocker rather than call it passed.
+
+Do not activate or modify signup confirmation email settings. Never publish or claim live Brevo email delivery on static tests alone. Running GitHub Actions doesn't auto-fix source code without a configured authorized coding agent.
+
