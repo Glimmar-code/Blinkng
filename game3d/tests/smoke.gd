@@ -38,7 +38,32 @@ func _run() -> void:
         _assert_true(camera.current, "Perspective camera must be the active scene camera")
 
     var places: Array = world.get("places")
-    _assert_true(places.size() == 7, "World should include Homes and six original destinations")
+    _assert_true(places.size() == 7, "Original seven businesses must stay unchanged")
+    var landmarks: Array = world.get("futa_landmarks")
+    _assert_true(landmarks.size() == 19, "FUTA-inspired map must contain 19 named landmarks")
+    var name_keys: Dictionary = {}
+    var position_keys: Dictionary = {}
+    for site in landmarks:
+        _assert_true(site.has("entry") and site.has("position"), "Each new building needs a waypoint and walkable frontage")
+        _assert_true(str(site.get("kind", "")) == "futa", "New destinations must be clearly marked fictional")
+        _assert_true(not name_keys.has(site["name"]), "Campus landmark names must be unique")
+        name_keys[site["name"]] = true
+        var p: Vector3 = site["position"]
+        var coordinate := "%s:%s" % [p.x, p.z]
+        _assert_true(not position_keys.has(coordinate), "Campus building coordinates must be unique")
+        position_keys[coordinate] = true
+    _assert_true(world.get_node_or_null("FutaGameGround") is StaticBody3D, "Campus requires solid physical ground")
+    _assert_true(world.get_node_or_null("CampusLibrary") is StaticBody3D, "Campus library must have 3D collision")
+    var map_panel: Control = world.get("map_panel")
+    _assert_true(map_panel != null and not map_panel.visible, "Campus map must start closed")
+    if map_panel != null:
+        map_panel.show()
+        _assert_true(bool(world.call("_movement_blocked")), "Map overlay must block avatar motion")
+        map_panel.hide()
+    if landmarks.size() > 0:
+        world.call("_select_waypoint", landmarks[0])
+        _assert_true(world.get("selected_waypoint")["name"] == landmarks[0]["name"], "Selecting map waypoints must persist the target")
+        _assert_true(not world.get("map_panel").visible, "Destination selection closes the map overlay")
 
     var details: Node = world.get_node_or_null("NeighborhoodDetails")
     _assert_true(details != null, "Shared neighborhood details must be present")
@@ -174,6 +199,36 @@ func _run() -> void:
     world.call("_apply_graphics")
     player.global_position = Vector3.ZERO
 
+    # Test each new job and interaction without changing BLINK Coins or real funds.
+    if player != null:
+        player.global_position = Vector3(-13.0, 0.15, -43.8)
+        _assert_true(world.call("_nearest_place").get("name", "") == "FUTA Campus Café", "Café entrance must be reachable")
+        world.call("_interact")
+        _assert_true(not world.get("active_quiz").is_empty(), "Campus café starts a local quiz")
+        world.call("_submit_quiz", 0)
+        _assert_true(int(world.get("game_cash")) == 370, "Wrong campus café answer earns zero cash")
+        world.call("_submit_quiz", 1)
+        _assert_true(int(world.get("game_cash")) == 510, "Correct campus café quiz earns 140 fictional GC")
+        player.global_position = Vector3(-154.0, 0.15, -117.8)
+        _assert_true(world.call("_nearest_place").get("name", "") == "Campus Delivery Office", "Courier entrance must be reachable")
+        world.call("_interact")
+        world.call("_submit_quiz", 0)
+        _assert_true(int(world.get("game_cash")) == 670, "Courier task earns 160 fictional GC")
+        _assert_true(int(world.get("completed_jobs")) == 3, "Both campus jobs increment completed jobs")
+        player.global_position = Vector3(-85.0, 0.15, -43.8)
+        world.call("_interact")
+        _assert_true(world.get("active_quiz").is_empty(), "Campus library has no surprise purchases")
+        _assert_true("Campus Library" in str(world.get("hud_status").text), "Campus library interaction identifies its name")
+        _assert_true(bool(world.call("_is_play_area", player.global_position)), "Offline map recovery must accept campus positions")
+        world.set("last_safe_position", player.global_position)
+        world.call("_recover_if_needed")
+        _assert_true(player.global_position.x == -85.0, "Navigable campus walk must not teleport player away")
+        player.global_position = Vector3(-240.0, 0.15, -43.8)
+        world.call("_recover_if_needed")
+        _assert_true(player.global_position.x > -100.0, "Out-of-map movement must recover to last safe ground")
+        player.global_position = Vector3.ZERO
+        world.set("last_safe_position", Vector3(0, 0.15, 0))
+
     # The game must remain offline until a player explicitly chooses Host/Join.
     var social: Node = world.get_node_or_null("SocialWorld")
     _assert_true(social != null, "Social LAN module must be embedded in native scene")
@@ -189,6 +244,10 @@ func _run() -> void:
         _assert_true(bool(social.get("is_online")), "Trusted local multiplayer host should start")
         var profiles: Dictionary = social.get("people")
         _assert_true(profiles.size() == 1, "Hosting starts with exactly one real player")
+        _assert_true(bool(social.call("_allowed_position", 1, Vector3(-85, 0.5, -49))), "LAN players can visit campus")
+        _assert_true(bool(social.call("_allowed_position", 1, Vector3(-13, 0.5, -123))), "LAN players can reach eastern campus")
+        _assert_true(not bool(social.call("_allowed_position", 1, Vector3(-240, 0.5, -49))), "LAN rejects out-of-map positions")
+        _assert_true(not bool(social.call("_allowed_position", 1, Vector3(69, 0.5, 32))), "Campus map cannot bypass other player's private home")
         social.call("_server_action", 1, "car", 0)
         var vehicles: Dictionary = social.get("cars")
         _assert_true(vehicles.has(1), "Host should be able to spawn a virtual car")
