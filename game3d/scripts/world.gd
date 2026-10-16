@@ -484,7 +484,7 @@ func _create_map_hud(hud: Control) -> void:
     hud.add_child(map_button)
 
     map_panel = PanelContainer.new()
-    map_panel.position = Vector2(18, 175)
+    map_panel.position = Vector2(18, 155)
     map_panel.custom_minimum_size = Vector2(335, 0)
     map_panel.visible = false
     hud.add_child(map_panel)
@@ -515,7 +515,7 @@ func _create_map_hud(hud: Control) -> void:
     map_view.connect("waypoint_selected", _select_waypoint)
 
     var scroll := ScrollContainer.new()
-    scroll.custom_minimum_size = Vector2(315, 138)
+    scroll.custom_minimum_size = Vector2(315, 110)
     layout.add_child(scroll)
     var destinations := VBoxContainer.new()
     scroll.add_child(destinations)
