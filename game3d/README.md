@@ -107,3 +107,14 @@ synchronized world ownership. It does not modify the separate approved
 multiplayer homes system. Bed and desk are visual furnishings for now, not
 functional sleeping or study activities. Offline Game Cash never becomes
 BLINK Coins, cashable funds or network-authoritative rewards.
+
+## Free offline home customization
+
+At the **Homes** location enter your optional solo starter room and tap
+**INTERACT** to open its decoration menu. Cycle among three free wall
+palettes, three floor colour variants and, after purchasing the cosmetic
+desk plant, three safe plant positions. Choices save locally before
+being applied. Press **Done** to return to the room or **F** to exit.
+Older solo saves load using the original design. This is a small offline
+demo; it is not a multiplayer property editor, free-form furniture
+placement, server account progress or redeemable currency.
