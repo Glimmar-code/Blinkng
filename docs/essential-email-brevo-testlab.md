@@ -77,3 +77,22 @@ For **new-device** and **suspicious** alerts, don't enqueue emails based on arbi
 - Brevo transactional API: https://developers.brevo.com/reference/sendtransacemail
 
 Previously shared SMTP credentials must be rotated before relying on production sending.
+
+
+## Five opt-in social emails — template groundwork only (October 16, 2026)
+
+The following premium black-and-white designs are committed, are **not** Supabase Auth templates, and have **not** been deployed or connected to email event triggers:
+
+| Feature | Template | Proposed trusted event / frequency |
+| --- | --- | --- |
+| New follower | `supabase/templates/new_follower.html` | Real persisted follow transition, aggregate into at most a daily opt-in digest; never email on repeated follow/unfollow |
+| Unread messages | `supabase/templates/unread_messages_digest.html` | Server-confirmed unread conversation count after appropriate inactivity; at most daily opt-in digest and no private message content |
+| Post engagement | `supabase/templates/post_engagement_digest.html` | Verified server analytics reaching a meaningful threshold; weekly digest rather than every reaction |
+| Reel milestone | `supabase/templates/reel_milestone.html` | Verified deduplicated milestone crossings; at most one email per milestone, not simulated views |
+| Leaderboard ranking | `supabase/templates/leaderboard_digest.html` | Official server ranking snapshots; optional weekly digest, no notification for every position change |
+
+**Activation prerequisites:** Add a clear per-user opt-in/off switch for each category in Android and Windows (shared backend preferences), a working unsubscribe or email-preference link/flow, a server-owned event producer tied to authoritative tables, deduplication, digest aggregation, consent and deliverability suppression checks, per-user daily/weekly rate limits, provider quota reservation for authentication emails, and staged QA of the entire send path. Templates contain no account token, tracking image, private chat content or unverified metrics. Use authenticated app settings as the destination until verified app/web URLs exist; do not invent a BLINK deep link or browser URL.
+
+**Do not** copy these designs into `Authentication → Emails → Templates`: those are **Supabase Auth** templates, not arbitrary social-event templates. Sending these social emails requires the separate Brevo server-side worker and backend event integrations. **No social email is currently enabled or dispatched.**
+
+The user's request to leave signup-confirmation email untouched still applies.
