@@ -142,3 +142,17 @@ free and reversible with Undo/Redo; new furniture positions save
 locally and survive restarting the game. These changes do not operate
 inside shared homes or award any BLINK Coins. This is not yet arbitrary
 bed placement, furniture physics or a full online property editor.
+
+## Optional solo room layouts
+
+Open Homes, choose the private offline starter room and tap INTERACT.
+The furniture editor now provides **Bed position** and **Wardrobe
+position** (three collision-checked options each), plus three prepared
+arrangements: **Original room**, **Study corner** and **Open floor**.
+Layouts reposition the existing chair and side table too. Edits are
+free, undoable and written to the local solo save before being applied.
+Applying a plan resets the cosmetic plant's display position, but does
+not remove its ownership or modify Game Cash. This is not customizable
+online property, arbitrary bed dragging, public multiplayer housing or
+production in-game currency.
+
