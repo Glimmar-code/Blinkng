@@ -49,7 +49,13 @@ check(f'<meta property="og:url" content="{SITE}/privacy/"' in privacy, "privacy 
 check(f"{SITE}/blink-logo-v2.png" in privacy, "privacy image")
 sitemap = ET.fromstring(read("sitemap.xml"))
 locs = [x.text for x in sitemap.iter() if x.tag.endswith("loc")]
-check(locs == [SITE + "/", SITE + "/privacy/"], "sitemap lists only public canonical pages")
+check(locs == [SITE + "/", SITE + "/about/", SITE + "/privacy/"], "sitemap lists only public canonical pages")
+about = read("about/index.html")
+check(f'<link rel="canonical" href="{SITE}/about/"' in about, "about canonical URL")
+check(f'<meta property="og:url" content="{SITE}/about/"' in about, "about sharing URL")
+check("About BLINK" in about and "Nigeria" in about, "about page describes the brand")
+check('href="./about/"' in index, "homepage links to about")
+check("About BLINK Nigeria" in read("app.js"), "interactive landing links to about")
 check("Sitemap: " + SITE + "/sitemap.xml" in read("robots.txt"), "robots sitemap URL")
 check(("glimmar-code.github.io/Blinkng" not in index + privacy + read("robots.txt") + read("sitemap.xml")), "no obsolete indexable GitHub Pages URLs")
 
@@ -59,7 +65,7 @@ check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-l
 check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
 check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
-check("blink-web-v15-official-domain-seo" in read("sw.js"), "new service worker version")
+check("blink-web-v16-brand-about" in read("sw.js"), "new service worker version")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
 check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
 check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")
