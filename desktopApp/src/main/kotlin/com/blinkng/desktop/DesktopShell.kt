@@ -121,19 +121,6 @@ import com.blinkng.desktop.ui.StoreProScreen
 import kotlinx.coroutines.delay
 import java.awt.Dimension
 
-private val BlinkPurple = Color(0xFF6D3DF5)
-private val BlinkBackground = Color(0xFF0B0B0F)
-private val BlinkSurface = Color(0xFF121218)
-private val BlinkSurfaceRaised = Color(0xFF191920)
-
-private val BlinkDarkColors = darkColorScheme(
-    primary = BlinkPurple,
-    background = BlinkBackground,
-    surface = BlinkSurface,
-    surfaceVariant = BlinkSurfaceRaised,
-)
-private val BlinkLightColors = lightColorScheme(primary = BlinkPurple)
-
 private data class DesktopDestination(
     val id: String,
     val title: String,
@@ -315,9 +302,9 @@ fun runBlinkDesktopApplication() = application {
                 window.minimumSize = Dimension(960, 640)
             }
 
-            val theme = appState.settings?.theme?.lowercase()
-            val colors = if (theme == "light") BlinkLightColors else BlinkDarkColors
-            MaterialTheme(colorScheme = colors) {
+            // The window now uses the same shared Auth-inspired tokens as Android.
+            // BlinkDesktopTheme also respects the saved light/dark/system choice.
+            com.blinkng.desktop.ui.BlinkDesktopTheme(appearance = appState.settings?.theme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         when {
@@ -667,7 +654,7 @@ private fun DesktopSidebar(
                 icon = { Icon(destination.icon, contentDescription = destination.title, tint = iconTint) },
                 shape = RoundedCornerShape(14.dp),
                 colors = NavigationDrawerItemDefaults.colors(
-                    selectedContainerColor = BlinkPurple.copy(alpha = 0.18f),
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
                 ),
