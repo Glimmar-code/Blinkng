@@ -64,6 +64,37 @@ CREATE POLICY blink_email_prefs_update_own ON public.blink_social_email_preferen
  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id)
  WITH CHECK ((select auth.uid()) = user_id);
 
+-- Atomic one-category update: never overwrite other flags from mobile or desktop.
+-- Invoker RLS confines the write to the currently signed-in account.
+CREATE OR REPLACE FUNCTION public.blink_set_social_email_preference(
+ p_category text, p_enabled boolean
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
+AS $
+DECLARE v_user uuid := auth.uid();
+BEGIN
+ IF v_user IS NULL OR p_enabled IS NULL
+   OR p_category NOT IN (
+      'new_follower','unread_messages','post_engagement','reel_milestone','leaderboard'
+   ) THEN
+   RAISE EXCEPTION 'Invalid social email preference' USING ERRCODE='22023';
+ END IF;
+
+ INSERT INTO public.blink_social_email_preferences(user_id)
+ VALUES(v_user) ON CONFLICT(user_id) DO NOTHING;
+ UPDATE public.blink_social_email_preferences
+ SET new_follower_enabled = CASE WHEN p_category='new_follower' THEN p_enabled ELSE new_follower_enabled END,
+     unread_messages_enabled = CASE WHEN p_category='unread_messages' THEN p_enabled ELSE unread_messages_enabled END,
+     post_engagement_enabled = CASE WHEN p_category='post_engagement' THEN p_enabled ELSE post_engagement_enabled END,
+     reel_milestone_enabled = CASE WHEN p_category='reel_milestone' THEN p_enabled ELSE reel_milestone_enabled END,
+     leaderboard_enabled = CASE WHEN p_category='leaderboard' THEN p_enabled ELSE leaderboard_enabled END
+ WHERE user_id = v_user;
+ RETURN FOUND;
+END;
+$;
+REVOKE ALL ON FUNCTION public.blink_set_social_email_preference(text,boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.blink_set_social_email_preference(text,boolean) TO authenticated;
+
 -- Server-only counters prevent a client resetting digest cooldown/rank comparison.
 CREATE TABLE IF NOT EXISTS public.blink_social_email_progress (
  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
