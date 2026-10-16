@@ -8,6 +8,8 @@ const Details = preload("res://scripts/neighborhood_details.gd")
 const Preferences = preload("res://scripts/player_preferences.gd")
 
 const DayCycle = preload("res://scripts/day_cycle.gd")
+const WeatherCycle = preload("res://scripts/weather_cycle.gd")
+const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -34,6 +36,9 @@ var app_focused: bool = true
 var last_safe_position := Vector3(0, 0.15, 0)
 var camera_distance: float = 13.0
 var day_cycle := DayCycle.new()
+var weather := WeatherCycle.new()
+var weather_visuals: Node3D
+var weather_label: Label
 var sunlight: DirectionalLight3D
 var sky_settings: Environment
 var clock_label: Label
@@ -49,8 +54,11 @@ func _ready() -> void:
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
+    weather.mode = preferences.weather_mode
     _create_lights()
     _create_city()
+    weather_visuals = WeatherVisuals.new()
+    add_child(weather_visuals)
     var details := Details.new()
     add_child(details)
     details.configure(self)
@@ -71,7 +79,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     if app_focused:
         day_cycle.advance(delta)
+        weather.advance(delta)
     _update_daylight()
+    if weather_visuals != null and player != null:
+        weather_visuals.call("update_weather", player.global_position, weather.condition(), delta if app_focused else 0.0)
+    if weather_label != null:
+        weather_label.text = "Fictional local weather: " + WeatherCycle.label_for(weather.condition())
     if player == null or follow_camera == null:
         return
 
@@ -373,6 +386,12 @@ func _create_hud() -> void:
     hud_status.add_theme_font_size_override("font_size", 14)
     hud.add_child(hud_status)
 
+    weather_label = Label.new()
+    weather_label.name = "WeatherStatus"
+    weather_label.position = Vector2(18, 108)
+    weather_label.add_theme_font_size_override("font_size", 14)
+    hud.add_child(weather_label)
+
     # Always offer a visible exit: Android's Godot instance runs in a
     # separate process, so quitting here returns the player to BLINK.
     var exit_button := _new_button("EXIT TO BLINK", 160)
@@ -564,6 +583,16 @@ func _create_controls_panel(hud: Control) -> void:
         preferences.day_minutes = value
         duration_label.text = "Day length: %d minutes" % int(value)
         _save_preferences())
+    var weather_heading := Label.new()
+    weather_heading.text = "Local weather preview (visual only, no penalties)"
+    rows.add_child(weather_heading)
+    var weather_choice := OptionButton.new()
+    weather_choice.name = "WeatherMode"
+    for caption in ["Automatic cycle", "Clear", "Light rain", "Tropical rain"]:
+        weather_choice.add_item(caption)
+    weather_choice.select(WeatherCycle.MODES.find(preferences.weather_mode))
+    rows.add_child(weather_choice)
+    weather_choice.item_selected.connect(_set_weather_mode)
     var graphics := Label.new()
     graphics.text = "Graphics (saved on this device)"
     rows.add_child(graphics)
@@ -591,6 +620,14 @@ func _create_controls_panel(hud: Control) -> void:
     var close := _new_button("Done")
     rows.add_child(close)
     close.pressed.connect(func(): controls_panel.hide())
+
+
+func _set_weather_mode(index: int) -> void:
+    if index < 0 or index >= WeatherCycle.MODES.size():
+        return
+    weather.mode = WeatherCycle.MODES[index]
+    preferences.weather_mode = weather.mode
+    _save_preferences()
 
 
 func _apply_graphics() -> void:
