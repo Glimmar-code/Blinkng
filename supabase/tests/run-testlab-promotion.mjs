@@ -71,7 +71,7 @@ try {
     alter table storage.objects enable row level security;
     create or replace function storage.foldername(p_path text)
       returns text[] language sql immutable
-      as $select (string_to_array(p_path, '/'))[1:array_length(string_to_array(p_path, '/'),1)-1]$;
+      as $$select (string_to_array(p_path, '/'))[1:array_length(string_to_array(p_path, '/'),1)-1]$$;
   `);
   const marketHardeningSql = fs.readFileSync(
     new URL('../migrations/20261007005000_market_professional_hardening.sql', import.meta.url), 'utf8');
