@@ -50,7 +50,7 @@ GRANT SELECT ON public.blink_social_email_preferences TO authenticated;
 GRANT INSERT (user_id, new_follower_enabled, unread_messages_enabled,
  post_engagement_enabled, reel_milestone_enabled, leaderboard_enabled)
  ON public.blink_social_email_preferences TO authenticated;
-GRANT UPDATE (new_follower_enabled, unread_messages_enabled, post_engagement_enabled,
+GRANT UPDATE (user_id, new_follower_enabled, unread_messages_enabled, post_engagement_enabled,
  reel_milestone_enabled, leaderboard_enabled) ON public.blink_social_email_preferences TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.blink_social_email_preferences TO service_role;
 DROP POLICY IF EXISTS blink_email_prefs_read_own ON public.blink_social_email_preferences;
@@ -99,6 +99,16 @@ ALTER TABLE public.blink_essential_email_outbox
 CREATE INDEX IF NOT EXISTS blink_email_outbox_user_kind_recent_idx
  ON public.blink_essential_email_outbox(user_id, kind, created_at DESC);
 
+-- Round-robin scans ensure accounts beyond the first page are eventually processed.
+CREATE TABLE IF NOT EXISTS private.blink_social_email_scan_cursor (
+ id smallint PRIMARY KEY DEFAULT 1 CHECK(id=1),
+ last_user_id uuid
+);
+INSERT INTO private.blink_social_email_scan_cursor (id, last_user_id)
+ VALUES(1,NULL) ON CONFLICT(id) DO NOTHING;
+REVOKE ALL ON private.blink_social_email_scan_cursor FROM PUBLIC, anon, authenticated;
+GRANT SELECT, UPDATE ON private.blink_social_email_scan_cursor TO service_role;
+
 -- Called only from an INTERNAL, server-owned scheduling job. It is not
 -- executable by app users; never enqueue based on client assertions.
 CREATE OR REPLACE FUNCTION public.blink_queue_social_email_digests(p_limit integer DEFAULT 100)
@@ -112,6 +122,9 @@ DECLARE
  v_last timestamptz;
  v_rank bigint;
  v_current_rank bigint;
+ v_cursor uuid;
+ v_final uuid;
+ v_seen integer := 0;
  v_count bigint;
  v_milestone integer;
  v_reel record;
@@ -122,6 +135,8 @@ BEGIN
  IF auth.role() <> 'service_role' THEN
    RAISE EXCEPTION 'server role required' USING ERRCODE = '42501';
  END IF;
+ SELECT last_user_id INTO v_cursor
+ FROM private.blink_social_email_scan_cursor WHERE id=1 FOR UPDATE;
  FOR r IN
   SELECT p.*, u.email_notifs_enabled
   FROM public.blink_social_email_preferences p
@@ -129,9 +144,12 @@ BEGIN
   WHERE (u.email_notifs_enabled IS DISTINCT FROM false)
   AND (p.new_follower_enabled OR p.unread_messages_enabled OR p.post_engagement_enabled
        OR p.reel_milestone_enabled OR p.leaderboard_enabled)
-  ORDER BY p.updated_at, p.user_id
+  AND (v_cursor IS NULL OR p.user_id > v_cursor)
+  ORDER BY p.user_id
   LIMIT least(greatest(p_limit, 0), 200)
  LOOP
+  v_seen := v_seen + 1;
+  v_final := r.user_id;
   FOREACH v_kind IN ARRAY ARRAY['new_follower','unread_messages','post_engagement','reel_milestone','leaderboard'] LOOP
    v_since := CASE v_kind
     WHEN 'new_follower' THEN CASE WHEN r.new_follower_enabled THEN r.new_follower_since END
@@ -244,9 +262,16 @@ BEGIN
    END IF;
   END LOOP;
  END LOOP;
+ IF v_seen = 0 THEN
+   -- Reached the end of the current sweep. The next run starts again at the
+   -- first user; this is not a failure or an invitation to send duplicates.
+   UPDATE private.blink_social_email_scan_cursor SET last_user_id=NULL WHERE id=1;
+ ELSE
+   UPDATE private.blink_social_email_scan_cursor SET last_user_id=v_final WHERE id=1;
+ END IF;
  RETURN v_queued;
 END;
-$$;
+$;
 REVOKE ALL ON FUNCTION public.blink_queue_social_email_digests(integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.blink_queue_social_email_digests(integer) TO service_role;
 
