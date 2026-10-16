@@ -1173,6 +1173,71 @@ func _cycle_home_light() -> void:
     _commit_home_decor(candidate)
 
 
+
+## Optional educational mini-activity, entirely local and reward-free.
+func _show_study_panel() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Study desk • practice %d/%d" % [study_card + 1, STUDY_CARDS.size()]
+    rows.add_child(heading)
+    var card: Dictionary = STUDY_CARDS[study_card]
+    var prompt := Label.new()
+    prompt.text = str(card["question"])
+    prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(prompt)
+    for option in range(card["choices"].size()):
+        var answer := _new_button(str(card["choices"][option]))
+        answer.disabled = study_answered
+        rows.add_child(answer)
+        answer.pressed.connect(_submit_study_answer.bind(option))
+    if study_answered:
+        var note := Label.new()
+        note.text = str(card["note"])
+        note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        rows.add_child(note)
+        var next := _new_button("Next question")
+        rows.add_child(next)
+        next.pressed.connect(_next_study_card)
+    var count := Label.new()
+    count.text = "Correct this visit: %d" % study_correct
+    rows.add_child(count)
+    var close := _new_button("Back to room controls")
+    rows.add_child(close)
+    close.pressed.connect(_show_home_decor)
+    hud_modal.show()
+
+
+func _submit_study_answer(choice: int) -> bool:
+    if not home_inside or study_answered:
+        return false
+    var card: Dictionary = STUDY_CARDS[study_card]
+    if choice < 0 or choice >= card["choices"].size():
+        return false
+    study_answered = true
+    var correct: bool = choice == int(card["answer"])
+    if correct:
+        study_correct += 1
+    hud_status.text = "Correct practice answer!" if correct else "Try the next one."
+    _show_study_panel()
+    return correct
+
+
+func _next_study_card() -> void:
+    if not home_inside or not study_answered:
+        return
+    study_card = (study_card + 1) % STUDY_CARDS.size()
+    study_answered = false
+    _show_study_panel()
+
+
 func _home_move_plant(delta_x: int, delta_z: int) -> void:
     if not owns_plant or not home_inside:
         return
