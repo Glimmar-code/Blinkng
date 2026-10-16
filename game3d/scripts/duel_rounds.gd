@@ -114,7 +114,7 @@ func tick(now_ms: int) -> Array[Dictionary]:
     return ready
 
 
-func disconnect(peer_id: int) -> Dictionary:
+func leave_match(peer_id: int) -> Dictionary:
     if not participant_matches.has(peer_id):
         return {}
     var id: int = int(participant_matches[peer_id])
