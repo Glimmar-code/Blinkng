@@ -4381,7 +4381,7 @@ private fun RingAvatar(
                 .fillMaxSize()
                 .background(
                     brush = if (emphasizeRing) {
-                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, Color(0xFF8B5CF6)))
+                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, palette.accent))
                     } else {
                         Brush.linearGradient(listOf(palette.border, palette.border))
                     },
