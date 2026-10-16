@@ -921,3 +921,10 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Platform-specific exception:** Android product photo upload cleanup and external WhatsApp deep-link validation are Android adapters. Windows currently exposes a simpler listing creation UI; its existing form must not be treated as an equivalent verified seller checkout and remains a known parity follow-up.
 - **Release blocker:** The tracked marketplace hardening migration and server RPCs are absent from live Blink Supabase, so database updates must be staged and tested before any production promotion. This PR remains draft pending complete Android, Windows, backend and real-device checks.
 
+
+## 2026-10-16 — BLINK Market full-page saved and verified filters
+
+- **Shared contract:** Android and Windows use the same authenticated Supabase wishlist RLS relationship to filter saved listings, and `seller_is_verified` to filter verified sellers, before pagination rather than discarding loaded pages locally. They share price validation and stable sorting in `MarketQueryPolicy`.
+- **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
+- **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
+- **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
