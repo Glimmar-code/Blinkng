@@ -462,3 +462,29 @@ Totals: **40 implemented in source; 43 partially implemented;
 exercise both slots, persistence, invalid/overlapping bookmark rejection,
 cash isolation, applying and undoing saved layouts. Latest-head CI must
 pass and Android/Windows devices must still be tested before promoting.
+
+## Batch 14: interactive solo study practice and affordable room lighting
+
+A player in the private offline starter room can now open a **Study desk**
+practice panel from the existing room controls, answer three original
+multiple-choice number/language questions, see feedback, and move on.
+The practice score counts once per question per visit, resets on re-entry,
+and deliberately generates **no Game Cash, coins, achievements or online
+engagement**. Answers and explanations are text accessible. The action
+doesn't require an Internet connection or contact Supabase.
+
+The same room now has an optional **Warm / Bright / Dim** lighting
+control, reusing its single, shadow-free OmniLight3D instead of creating
+extra dynamic lights. The selected mode is validated as integer 0–2,
+saved to the existing v1 offline file, restored on re-entry and supported
+by the session's undo/redo. Older saves default to the original warm
+mode. This remains separate from user layout bookmarks, so applying a
+saved arrangement cannot silently change lighting.
+
+Roadmap **#268 partial** (three light modes, no ceiling editor) and
+**#279 remains partial** (one small study activity; not a full curriculum).
+Counts: **40 implemented in source, 44 partial, 916 pending audit;
+0 device verified; 0 released**. Scene and save smoke tests cover
+offline study grading, duplicate-answer rejection, no reward mutation,
+lighting feedback and safe on-disk restoration. Real-world Android/Windows
+performance and accessibility tests remain necessary before deployment.
