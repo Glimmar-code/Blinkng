@@ -205,3 +205,5 @@ Owner/reviewer note: This exception covers only Android AdMob/UMP presentation a
 - Validation: Godot 4.3 import; layout invariants; scene assertions; existing ticket/persistence checks; 1,000-row tracker validation. Local dummy renderer emits null-mesh diagnostics; rendered CI and device validation remain gates.
 - Delivery: feature branch targets Testlab. No main merge or app publication. Android/Windows package builds and physical-device acceptance remain outstanding.
 - Scope: five requirements implemented in source, ten partial, 985 pending audit; see `game3d/REALISM_IMPLEMENTATION.md`.
+
+- Follow-up: repaired the inherited malformed Android workflow and require both neighborhood scripts in Android/Windows package verification. YAML/Bash syntax checked locally; no build success inferred.

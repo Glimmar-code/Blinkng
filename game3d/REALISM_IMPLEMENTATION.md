@@ -55,6 +55,13 @@ build checks, rendered CI, physical-device usability and performance measurement
 remain release gates. This change must target Testlab and must not publish an APK
 or promote itself to main.
 
+## Build-gate repair
+
+The inherited Android quality workflow contained duplicate upload steps inserted
+inside an unfinished `grep` command. This batch removes that corruption and validates
+the YAML and Bash syntax. Android and Windows packaging checks now also require both
+new neighborhood scripts. This repairs a check; it does not assert either build passed.
+
 ## Work sequence
 
 Work through rows 1–50 first, completing usable blocks before expanding the map.
