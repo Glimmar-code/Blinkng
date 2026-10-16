@@ -80,6 +80,11 @@ func _initialize() -> void:
     check(not fresh.call("save_state", {"version": 2, "cash": 500, "jobs": 0, "plant": false}), "Unknown formats are rejected")
     check(fresh.call("load_state") == Progress.valid_state(second), "Rejected writes cannot alter saved progress")
 
+    # Recreate the initial two transaction checkpoints before recovery tests.
+    clean_files()
+    check(store.call("save_state", first), "Recovery fixture begins with first checkpoint")
+    check(store.call("save_state", second), "Recovery fixture preserves prior balance")
+
     write_direct(MAIN, "{broken-json")
     var fallback: RefCounted = _store()
     check(fallback.call("load_state") == Progress.valid_state(first), "Corrupt primary must recover prior known-good checkpoint")
