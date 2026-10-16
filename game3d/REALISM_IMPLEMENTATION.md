@@ -359,3 +359,38 @@ room re-entry and no changes to fictional Game Cash or multiplayer.
 Godot CI, Android/Windows builds, touch usability and real-device
 performance are required before Testlab promotion; a source implementation
 is not evidence of a production feature.
+
+## Batch 11: movable starter chair and side table (solo only)
+
+A second offline-only furniture slice now supports a free starter **chair**
+and a small **side table** in the optional solo room. Both are original,
+lightweight low-poly nodes. The scrollable home decoration screen exposes
+four directional grid moves and quarter-turn rotation separately for
+each item. The existing desk plant, colour palettes and 20-entry undo/redo
+history remain available. Room contents continue to spawn only when the
+player explicitly enters their private offline home.
+
+Before committing any change, the solo-save validator checks the chair,
+table and floor-grid plant for bounded placement, rotated footprints,
+bed/desk/wardrobe clearance, spawn/exit space and mutual overlap. Positions
+and angles are saved before visual changes. Optional chair_x/z/rotation and
+table_x/z/rotation fields are backward compatible with earlier V1 solo
+saves; missing fields use default original positions. Plant X/Z can be
+negative because grid coordinates are signed: the earlier Godot smoke
+failure was caused by incorrectly rejecting negative JSON numeric values
+at read time, even after writing a valid negative grid coordinate. This
+has been corrected while retaining separate strict rejection of negative
+money and invalid scene coordinates.
+
+Added Godot saved-state and rendered-scene checks for both furnishings,
+rotation, room re-entry, colliding placement refusal, backward compatible
+defaults, persistence, home editor undo/redo and no cash effects. These
+objects are rendered furniture only; their static footprint checker is
+not a general Godot rigidbody system. The bed, wardrobe, full furniture
+catalog, online property editor and production persistence remain pending.
+
+Tracker items #265, #270, #271 and #273 now explicitly mention these
+three supported decor objects but remain **partial**. **39 source implemented,
+42 partial, 919 pending audit, 0 device verified, 0 released**. No Testlab
+or production merge until current-commit Android, Windows, Godot and
+release tests pass; real-device usability remains unverified.
