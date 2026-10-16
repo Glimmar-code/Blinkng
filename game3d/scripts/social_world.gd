@@ -731,6 +731,10 @@ func _allowed_position(sender: int, position: Vector3) -> bool:
         return false
     if absf(position.x) < WORLD_LIMIT and absf(position.z) < WORLD_LIMIT:
         return true
+    # Fictional FUTA-inspired campus is west of the existing city only.
+    # Do NOT increase WORLD_LIMIT: positive-X demo homes remain invite-gated.
+    if position.x >= -170.0 and position.x <= 0.0 and position.z >= -145.0 and position.z <= 0.0:
+        return true
     var profile: Dictionary = people[sender]
     var own_slot := int(profile["slot"])
     var visiting := int(profile.get("visiting", -1))
