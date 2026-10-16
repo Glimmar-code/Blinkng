@@ -24,7 +24,7 @@ static func fresh_state() -> Dictionary:
 static func valid_state(data: Variant) -> Dictionary:
     if not (data is Dictionary):
         return {}
-    if data.get("version") != 1:
+    if typeof(data.get("version")) != TYPE_INT or data["version"] != 1:
         return {}
     if typeof(data.get("cash")) != TYPE_INT or typeof(data.get("jobs")) != TYPE_INT:
         return {}
