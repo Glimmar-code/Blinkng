@@ -222,6 +222,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
                 get_tree().quit()
             _stop_touch_axis()
             return
+        if not seated_at.is_empty() and event.keycode == KEY_F:
+            _leave_seat()
+            return
         if _movement_blocked():
             return
         if event.keycode == KEY_Q:
