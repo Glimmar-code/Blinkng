@@ -10,7 +10,7 @@ const html = readFileSync('web/404.html', 'utf8');
 const fallback = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(fallback, '404.html must retain a route fallback script');
 
-assert.match(config, /siteUrl: "https:\/\/www\.blink\.com\.ng"/);
+assert.ok(config.includes('siteUrl: "https://blink.com.ng"'), "Canonical BLINK domain not configured");
 assert.ok(web.includes("const redirectBase=(SITE_URL||location.origin).replace(/\\/+$/,'');"), 'Google login must derive its callback from the canonical configured site');
 assert.ok(web.includes("redirect_to:`${redirectBase}/`"), 'Google login must send redirect_to to the canonical domain');
 assert.ok(web.includes("const redirect=SITE_URL+'/settings/password'"), 'Password reset email callback must use the canonical domain');
@@ -40,7 +40,7 @@ function check404(original) {
 }
 
 const tokenFragment='#access_token=EXAMPLE_ACCESS&refresh_token=EXAMPLE_REFRESH&type=recovery';
-const prod = check404('https://www.blink.com.ng/settings/password?source=mail'+tokenFragment);
+const prod = check404('https://blink.com.ng/settings/password?source=mail'+tokenFragment);
 assert.equal(prod.result.pathname, '/');
 assert.equal(prod.path, '/settings/password?source=mail');
 
