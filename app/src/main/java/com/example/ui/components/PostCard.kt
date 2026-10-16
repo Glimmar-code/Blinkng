@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
@@ -325,7 +327,7 @@ fun PostCard(
                                 .size(14.dp)
                                 .align(Alignment.BottomEnd)
                                 .background(
-                                    Color(0xFF22C55E),
+                                    Color(BlinkDesignTokens.Semantic.Success),
                                     CircleShape
                                 )
                                 .border(2.dp, surfaceColor, CircleShape)
