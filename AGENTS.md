@@ -92,3 +92,9 @@ This includes, where applicable:
 Use production-compatible test data without copying unnecessary sensitive user data. Run the relevant app/backend tests against staging, confirm migrations and rollback/recovery behavior, and only promote the change to production after staging passes. Production must not be used as the first place to experiment with a risky Supabase change.
 
 This Supabase preview/staging-first policy and the Testlab-first policy are the defaults for future Blinkng development unless the repository owner explicitly instructs otherwise.
+
+## MANDATORY BLINK AUTO-FIX → VERIFY → TESTLAB → MAIN → APP RELEASE
+
+For every BLINK coding task: inspect, fix, run applicable Android + Windows + Supabase + integration gates; if any required test fails, inspect the logs, correct the root cause, and rerun all required tests. Merge only validated work into `Testlab`, verify there, and promote only the proven changes to `main`. After a safe main merge, verify signed APK release/publishing and report the actual artifact. Do not misrepresent GitHub publishing as an update installed on a phone. **If mandatory staging or real delivery evidence is missing, STOP instead of merging to main. Do not purchase paid Supabase staging.** Signup confirmation emails must remain untouched.
+
+Detailed owner command: [docs/BLINK_AUTO_FIX_VERIFY_RELEASE.md](docs/BLINK_AUTO_FIX_VERIFY_RELEASE.md). Agent-ready prompt: [.github/prompts/blink-auto-fix-verify-release.prompt.md](.github/prompts/blink-auto-fix-verify-release.prompt.md).
