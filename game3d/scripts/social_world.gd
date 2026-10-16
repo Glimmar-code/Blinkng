@@ -720,6 +720,10 @@ func _allowed_position(sender: int, position: Vector3) -> bool:
         return false
     if absf(position.x) < WORLD_LIMIT and absf(position.z) < WORLD_LIMIT:
         return true
+    # Campus remains a negative-X public zone. Do not widen WORLD_LIMIT,
+    # because positive-X interiors still need the existing owner's approval.
+    if position.x >= -170.0 and position.x <= 0.0 and position.z >= -145.0 and position.z <= 0.0:
+        return true
     var profile: Dictionary = people[sender]
     var own_slot := int(profile["slot"])
     var visiting := int(profile.get("visiting", -1))
