@@ -5,6 +5,10 @@ extends Node3D
 const Layout = preload("res://scripts/neighborhood_layout.gd")
 const Details = preload("res://scripts/neighborhood_details.gd")
 
+const Preferences = preload("res://scripts/player_preferences.gd")
+
+const DayCycle = preload("res://scripts/day_cycle.gd")
+
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
 const WORLD_STEP: float = Layout.GRID_METRES
@@ -23,9 +27,24 @@ var owns_plant: bool = false
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
 var social: Node3D
+var preferences := Preferences.new()
+var controls_panel: PanelContainer
+var touch_directions: Dictionary = {}
+var app_focused: bool = true
+var last_safe_position := Vector3(0, 0.15, 0)
+var camera_distance: float = 13.0
+var day_cycle := DayCycle.new()
+var sunlight: DirectionalLight3D
+var sky_settings: Environment
+var clock_label: Label
+
 
 
 func _ready() -> void:
+    preferences.read_settings()
+    camera_distance = preferences.camera_distance
+    day_cycle.enabled = preferences.day_cycle_enabled
+    day_cycle.day_minutes = preferences.day_minutes
     _create_lights()
     _create_city()
     var details := Details.new()
@@ -44,16 +63,20 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+    if app_focused:
+        day_cycle.advance(delta)
+    _update_daylight()
     if player == null or follow_camera == null:
         return
 
     var radians: float = deg_to_rad(orbit_angle)
     var desired: Vector3 = player.global_position + Vector3(
-        sin(radians) * 13.0, 11.0, cos(radians) * 13.0
+        sin(radians) * camera_distance, camera_distance * 0.846, cos(radians) * camera_distance
     )
-    follow_camera.global_position = follow_camera.global_position.lerp(
-        desired, minf(delta * 6.0, 1.0)
-    )
+    if preferences.reduced_motion:
+        follow_camera.global_position = desired
+    else:
+        follow_camera.global_position = follow_camera.global_position.lerp(desired, 1.0 - exp(-delta * 6.0))
     follow_camera.look_at(player.global_position + Vector3.UP * 1.25)
 
     hud_cash.text = "Game Cash: %d GC   |   Jobs: %d" % [game_cash, completed_jobs]
@@ -67,6 +90,10 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
     if player == null:
         return
+    # Recover only offline. Network-authorized movement/home ownership stays
+    # with SocialWorld, so local rescue cannot become a teleport exploit.
+    if social == null or not bool(social.get("is_online")):
+        _recover_if_needed()
     # Approved passengers follow their driver's networked vehicle.
     # Driving remains a client-side visual preview; the host validates moves.
     if social != null and bool(social.call("is_local_passenger")):
@@ -75,6 +102,11 @@ func _physics_process(delta: float) -> void:
         return
 
     var direction := Vector2.ZERO
+    var blocked: bool = _movement_blocked()
+    if blocked:
+        _stop_touch_axis()
+        player.velocity.x = 0.0
+        player.velocity.z = 0.0
     if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
         direction.x -= 1.0
     if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
@@ -87,39 +119,85 @@ func _physics_process(delta: float) -> void:
     if touch_axis != Vector2.ZERO:
         direction = touch_axis
 
-    direction = direction.normalized()
-    var speed: float = WALK_SPEED
+    direction = Vector2.ZERO if blocked else direction.limit_length(1.0)
+    var speed: float = WALK_SPEED * preferences.movement_scale
     if social != null and bool(social.call("is_local_driver")):
         speed *= 1.6
-    player.velocity.x = direction.x * speed
-    player.velocity.z = direction.y * speed
+    var horizontal: Vector2 = Preferences.horizontal_velocity(
+        Vector2(player.velocity.x, player.velocity.z), direction, speed, delta)
+    player.velocity.x = horizontal.x
+    player.velocity.z = horizontal.y
     if not player.is_on_floor():
         player.velocity.y -= 18.0 * delta
     else:
         player.velocity.y = 0.0
 
     if direction.length_squared() > 0.001:
-        player.rotation.y = atan2(-direction.x, -direction.y)
+        player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.y), minf(delta * 12.0, 1.0))
     player.move_and_slide()
+    if player.is_on_floor() and absf(player.global_position.x) < 25.0 and absf(player.global_position.z) < 19.0:
+        last_safe_position = player.global_position
+
+
+func _movement_blocked() -> bool:
+    if not app_focused:
+        return true
+    if hud_modal != null and hud_modal.visible:
+        return true
+    if controls_panel != null and controls_panel.visible:
+        return true
+    if social != null and social.get("panel") != null and social.get("panel").visible:
+        return true
+    var focused: Control = get_viewport().gui_get_focus_owner()
+    return focused is LineEdit or focused is TextEdit
+
+
+func _recover_if_needed() -> void:
+    var position: Vector3 = player.global_position
+    if not position.is_finite() or position.y < -3.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
+        player.global_position = last_safe_position + Vector3.UP * 0.1
+        player.velocity = Vector3.ZERO
+        _stop_touch_axis()
+        hud_status.text = "Returned to safe ground."
+
+
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+        app_focused = false
+        _stop_touch_axis()
+    elif what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_APPLICATION_RESUMED:
+        app_focused = true
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
     if event is InputEventKey and event.pressed and not event.echo:
+        if event.keycode == KEY_ESCAPE:
+            if controls_panel != null and controls_panel.visible:
+                controls_panel.hide()
+            elif hud_modal != null and hud_modal.visible:
+                _close_quiz()
+            elif social != null and social.get("panel").visible:
+                social.get("panel").hide()
+            else:
+                get_tree().quit()
+            _stop_touch_axis()
+            return
+        if _movement_blocked():
+            return
         if event.keycode == KEY_Q:
             _orbit(-35.0)
         elif event.keycode == KEY_E:
             _orbit(35.0)
         elif event.keycode == KEY_F:
             _interact()
-        elif event.keycode == KEY_ESCAPE:
-            if hud_modal != null and hud_modal.visible:
-                _close_quiz()
-            else:
-                get_tree().quit()
+        elif event.keycode == KEY_EQUAL or event.keycode == KEY_KP_ADD:
+            _zoom(-1.0)
+        elif event.keycode == KEY_MINUS or event.keycode == KEY_KP_SUBTRACT:
+            _zoom(1.0)
 
 
 func _create_lights() -> void:
-    var sunlight := DirectionalLight3D.new()
+    sunlight = DirectionalLight3D.new()
     sunlight.rotation_degrees = Vector3(-55.0, 25.0, 0.0)
     sunlight.light_energy = 1.2
     sunlight.shadow_enabled = true
@@ -127,6 +205,7 @@ func _create_lights() -> void:
 
     var environment := WorldEnvironment.new()
     var settings := Environment.new()
+    sky_settings = settings
     settings.background_mode = Environment.BG_COLOR
     settings.background_color = Color(0.72, 0.82, 0.92)
     settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -134,6 +213,20 @@ func _create_lights() -> void:
     settings.ambient_light_energy = 0.6
     environment.environment = settings
     add_child(environment)
+
+
+func _update_daylight() -> void:
+    if sunlight == null or sky_settings == null:
+        return
+    var frame: Dictionary = day_cycle.sample()
+    sunlight.rotation_degrees = frame["sun_rotation"]
+    sunlight.light_energy = frame["sun_energy"]
+    sunlight.light_color = frame["sun_color"]
+    sky_settings.background_color = frame["sky_color"]
+    sky_settings.ambient_light_energy = frame["ambient_energy"]
+    if clock_label != null:
+        var minutes: int = int(float(frame["hour"]) * 60.0) % 1440
+        clock_label.text = "Local scene time %02d:%02d" % [minutes / 60, minutes % 60]
 
 
 func _make_material(tint: Color) -> StandardMaterial3D:
@@ -301,7 +394,7 @@ func _create_hud() -> void:
         var arrow := _new_button(str(item[0]))
         direction_bar.add_child(arrow)
         arrow.button_down.connect(_set_touch_axis.bind(item[1]))
-        arrow.button_up.connect(_stop_touch_axis)
+        arrow.button_up.connect(_release_touch_axis.bind(item[1]))
 
     var action_bar := HBoxContainer.new()
     action_bar.anchor_left = 1
@@ -337,14 +430,135 @@ func _create_hud() -> void:
     hud_modal.offset_bottom = 145
     hud_modal.visible = false
     hud.add_child(hud_modal)
+    _create_controls_panel(hud)
 
 
 func _set_touch_axis(axis: Vector2) -> void:
-    touch_axis = axis
+    if _movement_blocked():
+        return
+    touch_directions[axis] = true
+    _refresh_touch_axis()
+
+
+func _release_touch_axis(axis: Vector2) -> void:
+    touch_directions.erase(axis)
+    _refresh_touch_axis()
+
+
+func _refresh_touch_axis() -> void:
+    touch_axis = Vector2.ZERO
+    for axis in touch_directions:
+        touch_axis += axis
+    touch_axis = touch_axis.limit_length(1.0)
 
 
 func _stop_touch_axis() -> void:
+    touch_directions.clear()
     touch_axis = Vector2.ZERO
+
+
+func _zoom(amount: float) -> void:
+    camera_distance = clampf(camera_distance + amount, 8.0, 20.0)
+    preferences.camera_distance = camera_distance
+    _save_preferences()
+
+
+func _save_preferences() -> void:
+    if preferences.write_settings() != OK:
+        hud_status.text = "Settings apply now, but could not be saved on this device."
+
+
+func _create_controls_panel(hud: Control) -> void:
+    var toggle := _new_button("CONTROLS", 160)
+    toggle.anchor_left = 1.0
+    toggle.anchor_right = 1.0
+    toggle.offset_left = -195
+    toggle.offset_right = -12
+    toggle.offset_top = 76
+    toggle.offset_bottom = 128
+    hud.add_child(toggle)
+    controls_panel = PanelContainer.new()
+    controls_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+    controls_panel.offset_left = -210
+    controls_panel.offset_right = 210
+    controls_panel.offset_top = -245
+    controls_panel.offset_bottom = 245
+    hud.add_child(controls_panel)
+    controls_panel.hide()
+    toggle.pressed.connect(func():
+        if hud_modal.visible or (social != null and social.get("panel").visible):
+            return
+        controls_panel.visible = not controls_panel.visible
+        _stop_touch_axis())
+    var rows := VBoxContainer.new()
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(420, 490)
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    controls_panel.add_child(scroll)
+    scroll.add_child(rows)
+    rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    var title := Label.new()
+    title.text = "Movement and camera"
+    rows.add_child(title)
+    var speed_label := Label.new()
+    speed_label.text = "Walking speed (50–100%)"
+    rows.add_child(speed_label)
+    var speed := HSlider.new()
+    speed.name = "WalkingSpeed"
+    speed.min_value = 0.5
+    speed.max_value = 1.0
+    speed.step = 0.05
+    speed.value = preferences.movement_scale
+    speed.custom_minimum_size = Vector2(360, 44)
+    rows.add_child(speed)
+    speed.value_changed.connect(func(value: float):
+        preferences.movement_scale = value
+        _save_preferences())
+    var reduced := CheckButton.new()
+    reduced.text = "Reduced camera motion"
+    reduced.button_pressed = preferences.reduced_motion
+    reduced.custom_minimum_size.y = 48
+    rows.add_child(reduced)
+    reduced.toggled.connect(func(enabled: bool):
+        preferences.reduced_motion = enabled
+        _save_preferences())
+    var zoom_row := HBoxContainer.new()
+    rows.add_child(zoom_row)
+    var nearer := _new_button("Zoom in (+)", 160)
+    var farther := _new_button("Zoom out (−)", 160)
+    zoom_row.add_child(nearer)
+    zoom_row.add_child(farther)
+    nearer.pressed.connect(_zoom.bind(-1.0))
+    farther.pressed.connect(_zoom.bind(1.0))
+    clock_label = Label.new()
+    rows.add_child(clock_label)
+    var cycle := CheckButton.new()
+    cycle.text = "Day/night cycle (local visuals)"
+    cycle.button_pressed = day_cycle.enabled
+    cycle.custom_minimum_size.y = 48
+    rows.add_child(cycle)
+    cycle.toggled.connect(func(enabled: bool):
+        day_cycle.enabled = enabled
+        preferences.day_cycle_enabled = enabled
+        _save_preferences())
+    var duration_label := Label.new()
+    duration_label.text = "Day length: %d minutes" % int(day_cycle.day_minutes)
+    rows.add_child(duration_label)
+    var duration := HSlider.new()
+    duration.min_value = 10
+    duration.max_value = 60
+    duration.step = 5
+    duration.value = day_cycle.day_minutes
+    duration.custom_minimum_size.y = 44
+    rows.add_child(duration)
+    duration.value_changed.connect(func(value: float):
+        day_cycle.day_minutes = value
+        preferences.day_minutes = value
+        duration_label.text = "Day length: %d minutes" % int(value)
+        _save_preferences())
+    var close := _new_button("Done")
+    rows.add_child(close)
+    close.pressed.connect(func(): controls_panel.hide())
 
 
 func _orbit(degrees: float) -> void:
@@ -369,7 +583,7 @@ func _nearest_place() -> Dictionary:
 
 
 func _interact() -> void:
-    if hud_modal.visible:
+    if _movement_blocked():
         return
     var place: Dictionary = _nearest_place()
     if place.is_empty():
@@ -403,6 +617,7 @@ func _interact() -> void:
 
 
 func _start_quiz(title: String, prompt: String, choices: Array[String], answer: int, payout: int) -> void:
+    _stop_touch_axis()
     active_quiz = {"answer": answer, "payout": payout}
     for child in hud_modal.get_children():
         child.queue_free()

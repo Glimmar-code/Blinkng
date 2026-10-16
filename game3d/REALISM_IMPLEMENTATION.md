@@ -82,3 +82,36 @@ Game content must remain opt-in. Never start its renderer during ordinary BLINK
 use. Coordinate with the separate on-demand-delivery work; this batch does not
 claim the APK-size requirement is complete. Keep one shared gameplay implementation
 for Android and Windows. Never use production as the first test for backend changes.
+
+## Batch 2: controls and local day/night
+
+The batch-1 commit `631c0f7a10aa4976d3a1afbb333e7d7b2c9da3f7` passed all six
+GitHub checks, including OpenGL scene tests, Android quality/APK preview and
+Windows quality/build. This confirms CI, not physical-device acceptance.
+
+New work in batch 2:
+- Stop movement while answering a quiz, editing text, using controls or viewing social UI.
+- Clear touch input on application focus loss/pause; preserve other held touch
+  directions when one direction is released. Normalize diagonal movement.
+- Smooth acceleration, braking and turning; adjustable walking speed capped at
+  the existing network movement maximum. Sprint animation remains unfinished.
+- Offline fall/out-of-bounds recovery to the last grounded city position.
+  Multiplayer rescue remains with server rules; this does not implement it.
+- Saved 8–20 metre camera zoom, 50–100% walking speed and reduced camera-follow
+  motion. Settings validate corrupt types, non-finite numbers and out-of-range values.
+- A local visual day/night clock, sunrise/sunset/twilight interpolation and sun
+  rotation; adjustable 10–60 minute days and fixed daylight, with saved preferences.
+  Night retains ambient illumination. This is NOT synchronized multiplayer time,
+  server authority, weather, NPC schedules or fully functional street lighting.
+- Escape dismisses active controls/quiz/social UI before quitting.
+
+Current totals: **13 implemented in source, 16 partial, 971 pending audit**.
+No row is marked verified_testlab or released. The remaining roadmap is substantial.
+
+New acceptance checks: settings round-trip and corrupt input; acceleration at 30/60
+FPS; diagonal cap; braking; touch release; focus reset; modal input blocking; cancel
+without payout; offline fall recovery; day-length arithmetic; midnight wrapping;
+continuous dawn; fixed-daylight mode; actual scene light energy at noon/midnight.
+Local Godot import and these assertions pass. Local dummy-renderer null-mesh
+diagnostics still require the OpenGL CI path for clean rendered validation.
+New-head CI and real Android/Windows usability/performance remain release gates.

@@ -207,3 +207,12 @@ Owner/reviewer note: This exception covers only Android AdMob/UMP presentation a
 - Scope: five requirements implemented in source, ten partial, 985 pending audit; see `game3d/REALISM_IMPLEMENTATION.md`.
 
 - Follow-up: repaired the inherited malformed Android workflow and require both neighborhood scripts in Android/Windows package verification. YAML/Bash syntax checked locally; no build success inferred.
+
+
+## 2026-10-16 — BLINK LIFE controls and local day/night (Testlab batch 2)
+
+- Shared Godot code adds safe modal/focus input handling, diagonal touch tracking, smooth movement, offline fall recovery, configurable zoom/walking speed and saved preferences.
+- Shared local visual day/night clock adds adjustable duration, fixed daylight, dawn/dusk blending and sun rotation. It does not implement shared server time or weather.
+- Android and Windows receive identical gameplay code through existing script staging. Both packaging checks now require preferences and day-cycle scripts.
+- Local Godot 4.3 parse, control/time unit checks and scene assertions pass; dummy-renderer diagnostics mean OpenGL CI is still needed. Physical-device acceptance remains outstanding.
+- Batch-1 CI passed all six checks. Batch 2 remains in PR #303 targeting Testlab; main and production are unchanged.

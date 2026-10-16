@@ -49,11 +49,11 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 48,Lively areas without overcrowding,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 49,Interesting destinations within walking distance,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Seven destinations retained with walkable approaches; activity-depth playtest pending.
 50,Expandable districts for future updates,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Layout separated into shared data; streamed district expansion pending.
-51,Gradual day-to-night transitions,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-52,Configurable-length game days,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-53,Natural sunrise lighting,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-54,Warm sunset lighting,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-55,Soft twilight transitions,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+51,Gradual day-to-night transitions,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Local visual clock drives a smooth complete day; shared multiplayer time is not implemented. Android/Windows packaged-device verification outstanding.
+52,Configurable-length game days,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved 10–60 minute day length and a fixed-daylight switch. Android/Windows packaged-device verification outstanding.
+53,Natural sunrise lighting,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Warm dawn sky and sun interpolation from local scene time. Android/Windows packaged-device verification outstanding.
+54,Warm sunset lighting,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Warm sunset sky and sun interpolation from local scene time. Android/Windows packaged-device verification outstanding.
+55,Soft twilight transitions,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Continuous twilight brightness and color around the horizon. Android/Windows packaged-device verification outstanding.
 56,Visible moon phases,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 57,Stars under clear skies,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 58,Moving cloud formations,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -93,7 +93,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 92,Shared weather within multiplayer sessions,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 93,Indoor weather sound filtering,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 94,Rain visible through windows,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-95,Shadows moving with sunlight,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+95,Shadows moving with sunlight,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Directional sun rotation follows the local visual clock. Android/Windows packaged-device verification outstanding.
 96,Temperature represented without excessive chores,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 97,Clear shelter indicators,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 98,Weather-aware NPC dialogue,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -150,9 +150,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 149,Free starter customization variety,Characters,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 150,Appearance changes without stat penalties,Characters,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 151,Responsive walking controls,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-152,Smooth acceleration into running,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+152,Smooth acceleration into running,Movement,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Walking accelerates and brakes smoothly; sprint/running animation is still pending. Android/Windows packaged-device verification outstanding.
 153,Natural stopping animations,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-154,Adjustable movement sensitivity,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+154,Adjustable movement sensitivity,Movement,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved walking-speed scaling added; analog sensitivity and configurable response curves remain. Android/Windows packaged-device verification outstanding.
 155,Walking speeds matching companions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 156,Stamina that avoids excessive interruption,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 157,Optional automatic sprinting,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -193,8 +193,8 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 192,Looking toward conversation partners,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 193,Animation blending without snapping,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 194,Collision recovery without trapping,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-195,Automatic rescue from stuck positions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-196,Reliable interaction cancellation,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+195,Automatic rescue from stuck positions,Movement,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Automatic offline fall/out-of-bounds recovery; geometry-stuck detection and server-authorized rescue remain. Android/Windows packaged-device verification outstanding.
+196,Reliable interaction cancellation,Movement,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Quiz cancellation clears the active task and pays no reward; movement stays blocked while modal UI is open. Android/Windows packaged-device verification outstanding.
 197,Clear object interaction ranges,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 198,Prioritized nearby interaction prompts,Movement,implemented_in_source,scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Nearest reachable-range frontage is selected; verify crowded-edge interaction on both clients.
 199,Low-latency local movement feedback,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -775,7 +775,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 774,Subtitles for important audio,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 775,Speaker labels in subtitles,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 776,Adjustable subtitle backgrounds,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-777,Reduced-motion mode,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+777,Reduced-motion mode,Adaptive and accessible play,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Reduced camera-follow lag option; broader animation/effect accessibility review remains. Android/Windows packaged-device verification outstanding.
 778,Camera-shake intensity controls,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 779,Flashing-effect reduction,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 780,Motion-blur toggle,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -797,13 +797,13 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 796,Downloadable language packs,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 797,Low-bandwidth interaction options,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 798,Text alternatives to voice features,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-799,Sessions designed for interrupted play,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+799,Sessions designed for interrupted play,Adaptive and accessible play,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Focus/pause clears input and stops local clock; mission/save restoration after process death remains. Android/Windows packaged-device verification outstanding.
 800,Accessibility settings available before gameplay,Adaptive and accessible play,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 801,Clean and readable main menu,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 802,Fast access to continue playing,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 803,Clear multiplayer session selection,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 804,Consistent icon meanings,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-805,Predictable back-button behavior,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+805,Predictable back-button behavior,Interface and audio,partial,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,"Escape closes settings, quiz or social panel before exit; full Android system-back and host navigation validation remains. Android/Windows packaged-device verification outstanding."
 806,Clear loading progress,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 807,Useful loading tips,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 808,Honest download size displays,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -824,7 +824,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 823,Minimap size controls,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 824,Optional destination trail guidance,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 825,Smooth isometric camera controls,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-826,Adjustable camera zoom,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+826,Adjustable camera zoom,Interface and audio,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd,tests/controls_smoke.gd;tests/smoke.gd,Bounded 8–20 metre zoom through touch settings and keyboard +/−; survives relaunch. Android/Windows packaged-device verification outstanding.
 827,Optional third-person exploration camera,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 828,Camera obstruction transparency,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 829,Indoor camera collision handling,Interface and audio,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."

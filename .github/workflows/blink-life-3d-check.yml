@@ -57,6 +57,15 @@ jobs:
             exit 1
           fi
 
+      - name: Test control acceleration and saved settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/controls_smoke.gd 2>&1 | tee /tmp/blink-controls.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-controls.log; then
+            exit 1
+          fi
+
       - name: Test HMAC join tickets, replay protection and server-backed houses
         shell: bash
         run: |

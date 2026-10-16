@@ -59,7 +59,7 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-apk-entry-list.txt"
-          for file in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd assets/scripts/neighborhood_layout.gd assets/scripts/neighborhood_details.gd; do
+          for file in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd assets/scripts/neighborhood_layout.gd assets/scripts/neighborhood_details.gd assets/scripts/player_preferences.gd assets/scripts/day_cycle.gd; do
             if ! grep -Fxq "$file" "$RUNNER_TEMP/blink-apk-entry-list.txt"; then
               echo "::error::Missing native BLINK LIFE asset: $file"
               exit 1
