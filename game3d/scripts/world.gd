@@ -37,6 +37,7 @@ var home_plant_custom: bool = false
 var home_plant_x: int = SoloHome.PLANT_DEFAULT_X
 var home_plant_z: int = SoloHome.PLANT_DEFAULT_Z
 var home_plant_rotation: int = 0
+var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
 var decor_undo: Array[Dictionary] = []
 var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
@@ -83,6 +84,8 @@ func _ready() -> void:
     home_plant_x = int(recovered["plant_x"])
     home_plant_z = int(recovered["plant_z"])
     home_plant_rotation = int(recovered["plant_rotation"])
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        home_furniture[key] = int(recovered[key])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -915,7 +918,8 @@ func _enter_solo_home() -> void:
         solo_room.call("configure")
     solo_room.call("update_owned_decor", owns_plant)
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
-        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z, home_plant_rotation)
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
+        home_plant_rotation, home_furniture)
     decor_undo.clear()
     decor_redo.clear()
     home_inside = true
@@ -948,7 +952,13 @@ func _home_save_snapshot() -> Dictionary:
         "wall_style": home_wall_style, "floor_style": home_floor_style,
         "plant_spot": home_plant_spot, "plant_custom": home_plant_custom,
         "plant_x": home_plant_x, "plant_z": home_plant_z,
-        "plant_rotation": home_plant_rotation}
+        "plant_rotation": home_plant_rotation,
+        "chair_x": int(home_furniture["chair_x"]),
+        "chair_z": int(home_furniture["chair_z"]),
+        "chair_rotation": int(home_furniture["chair_rotation"]),
+        "table_x": int(home_furniture["table_x"]),
+        "table_z": int(home_furniture["table_z"]),
+        "table_rotation": int(home_furniture["table_rotation"])}
 
 
 func _show_home_decor() -> void:
@@ -1002,6 +1012,21 @@ func _show_home_decor() -> void:
     rotate.disabled = not owns_plant
     rows.add_child(rotate)
     rotate.pressed.connect(_home_rotate_plant)
+    for kind in ["chair", "table"]:
+        var title := Label.new()
+        title.text = "%s grid (%d, %d) • angle %d°" % [
+            kind.capitalize(), int(home_furniture[kind + "_x"]),
+            int(home_furniture[kind + "_z"]), int(home_furniture[kind + "_rotation"]) * 90]
+        rows.add_child(title)
+        var actions := HBoxContainer.new()
+        rows.add_child(actions)
+        for choice in [["←", -1, 0], ["→", 1, 0], ["↑", 0, -1], ["↓", 0, 1]]:
+            var arrow := _new_button(kind.capitalize() + " " + str(choice[0]), 108)
+            actions.add_child(arrow)
+            arrow.pressed.connect(_home_move_furniture.bind(kind, int(choice[1]), int(choice[2])))
+        var turn := _new_button("Rotate %s 90°" % kind)
+        rows.add_child(turn)
+        turn.pressed.connect(_home_rotate_furniture.bind(kind))
     var history_row := HBoxContainer.new()
     rows.add_child(history_row)
     var undo := _new_button("Undo", 210)
@@ -1013,7 +1038,7 @@ func _show_home_decor() -> void:
     redo.pressed.connect(_redo_home_decor)
     history_row.add_child(redo)
     var note := Label.new()
-    note.text = "Occupied cells and the doorway are protected.\nPlant movement needs the cosmetic plant."
+    note.text = "Free starter furniture: chair + table + owned plant.\nOccupied grid cells and your doorway stay clear."
     rows.add_child(note)
     var close := _new_button("Done • F to leave room")
     rows.add_child(close)
@@ -1041,8 +1066,11 @@ func _apply_home_decor(candidate: Dictionary) -> bool:
     home_plant_x = int(candidate["plant_x"])
     home_plant_z = int(candidate["plant_z"])
     home_plant_rotation = int(candidate["plant_rotation"])
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        home_furniture[key] = int(candidate[key])
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
-        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z, home_plant_rotation)
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
+        home_plant_rotation, home_furniture)
     hud_status.text = "Free solo room changes saved."
     return true
 
@@ -1052,6 +1080,7 @@ func _commit_home_decor(candidate: Dictionary) -> void:
     if previous == candidate:
         return
     if not _apply_home_decor(candidate):
+        hud_status.text = "Decoration cannot overlap furniture or block the doorway."
         return
     decor_undo.append(previous)
     if decor_undo.size() > SoloHome.HISTORY_LIMIT:
@@ -1094,6 +1123,25 @@ func _home_rotate_plant() -> void:
         return
     var candidate: Dictionary = _home_save_snapshot()
     candidate["plant_rotation"] = (home_plant_rotation + 1) % 4
+    _commit_home_decor(candidate)
+
+
+func _home_move_furniture(kind: String, dx: int, dz: int) -> void:
+    if kind not in ["chair", "table"] or not home_inside:
+        return
+    if absi(dx) + absi(dz) != 1:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[kind + "_x"] = int(candidate[kind + "_x"]) + dx
+    candidate[kind + "_z"] = int(candidate[kind + "_z"]) + dz
+    _commit_home_decor(candidate)
+
+
+func _home_rotate_furniture(kind: String) -> void:
+    if kind not in ["chair", "table"] or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[kind + "_rotation"] = (int(candidate[kind + "_rotation"]) + 1) % 4
     _commit_home_decor(candidate)
 
 
