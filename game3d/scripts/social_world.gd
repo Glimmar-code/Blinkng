@@ -26,6 +26,7 @@ var duel_requests: Dictionary = {}
 var duel_game: RefCounted
 var duel_status: Label
 var duel_choices: HBoxContainer
+var active_duel_round: int = 0
 var pending_duel_from: int = -1
 var last_request_ms: Dictionary = {}
 var blocked_peers: Dictionary = {} # Server-only per-session blocking; never published to roster.
@@ -468,6 +469,7 @@ func _disconnect() -> void:
     duel_requests.clear()
     duel_game = load("res://scripts/duel_rounds.gd").new()
     pending_duel_from = -1
+    active_duel_round = 0
     if duel_choices != null:
         for child in duel_choices.get_children():
             child.queue_free()
@@ -929,7 +931,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
                 _notify(target, "Your friendly 1v1 quiz invite was declined.")
             return
         "duel_answer":
-            var answer_event: Dictionary = duel_game.call("answer", sender, target, Time.get_ticks_msec())
+            var sent_round: int = target / 10
+            var selected_option: int = target % 10
+            var answer_event: Dictionary = duel_game.call("answer", sender, sent_round, selected_option, Time.get_ticks_msec())
             if answer_event.is_empty():
                 return
             if str(answer_event.get("type", "")) == "waiting":
@@ -965,6 +969,17 @@ func _server_action(sender: int, kind: String, target: int) -> void:
                     cars[sender] = -1
                 if cars.has(target) and int(cars[target]) == sender:
                     cars[target] = -1
+                # Blocking immediately revokes any existing permission to enter a home.
+                if people.has(sender) and int(people[sender].get("visiting", -1)) == int(people[target]["slot"]):
+                    var sender_profile: Dictionary = people[sender]
+                    sender_profile["visiting"] = -1
+                    people[sender] = sender_profile
+                    _teleport(sender, -1, false)
+                if people.has(target) and int(people[target].get("visiting", -1)) == int(people[sender]["slot"]):
+                    var target_profile: Dictionary = people[target]
+                    target_profile["visiting"] = -1
+                    people[target] = target_profile
+                    _teleport(target, -1, false)
         "location":
             profile["map_opt_in"] = not bool(profile["map_opt_in"])
             people[sender] = profile
@@ -1293,6 +1308,7 @@ func _show_duel_question(round_number: int, total: int, prompt: String, options:
     if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1:
         return
     panel.visible = true
+    active_duel_round = round_number
     duel_status.text = "Friendly 1v1 · Question %d/%d: %s" % [round_number, total, prompt]
     for child in duel_choices.get_children():
         child.queue_free()
@@ -1305,7 +1321,7 @@ func _submit_duel_choice(choice: int) -> void:
         if child is Button:
             child.disabled = true
     duel_status.text = "Answer submitted · waiting for other player or round timer."
-    _action("duel_answer", choice)
+    _action("duel_answer", active_duel_round * 10 + choice)
 
 
 @rpc("authority", "reliable")
@@ -1314,6 +1330,7 @@ func _show_duel_result(your_score: int, opponent_score: int, total: int, cancell
         return
     for child in duel_choices.get_children():
         child.queue_free()
+    active_duel_round = 0
     if cancelled:
         duel_status.text = "1v1 quiz cancelled because a player disconnected."
     else:
