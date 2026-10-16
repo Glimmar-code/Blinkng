@@ -22,6 +22,11 @@ var home_models: Dictionary = {}
 var vehicle_models: Dictionary = {}
 var visit_requests: Dictionary = {}
 var ride_requests: Dictionary = {}
+var duel_requests: Dictionary = {}
+var duel_game: RefCounted
+var duel_status: Label
+var duel_choices: HBoxContainer
+var pending_duel_from: int = -1
 var last_request_ms: Dictionary = {}
 var blocked_peers: Dictionary = {} # Server-only per-session blocking; never published to roster.
 var local_blocks: Dictionary = {} # This player's session UI state, not an account-wide block.
@@ -65,6 +70,7 @@ var account_status: Label
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
     world = game_world
     local_player = avatar
+    duel_game = load("res://scripts/duel_rounds.gd").new()
     multiplayer.connected_to_server.connect(_on_connected_to_server)
     multiplayer.connection_failed.connect(_on_connection_failed)
     multiplayer.server_disconnected.connect(_on_server_lost)
@@ -238,6 +244,11 @@ func _build_ui() -> void:
     _make_button("DECLINE VISIT", _decline_visit, approvals)
     _make_button("APPROVE PASSENGER", _approve_ride, approvals)
     _make_button("DECLINE RIDE", _decline_ride, approvals)
+    _make_button("ACCEPT 1V1", _approve_duel, rows)
+    _make_button("DECLINE 1V1", _decline_duel, rows)
+    duel_status = _make_label("1v1 campus quiz: friendly, no wagers or coin rewards.", rows)
+    duel_choices = HBoxContainer.new()
+    rows.add_child(duel_choices)
 
     _make_label("PLAYERS (invites are OFF by default; session blocks are not permanent)", rows)
     player_rows = VBoxContainer.new()
@@ -293,6 +304,8 @@ func _host_lan() -> void:
     cars.clear()
     visit_requests.clear()
     ride_requests.clear()
+    duel_requests.clear()
+    duel_game = load("res://scripts/duel_rounds.gd").new()
     last_request_ms.clear()
     blocked_peers.clear()
     local_blocks.clear()
@@ -394,7 +407,10 @@ func _on_peer_left(peer_id: int) -> void:
     if not people.has(peer_id):
         return
     var departed_slot := int(people[peer_id]["slot"])
+    var duel_end: Dictionary = duel_game.call("disconnect", peer_id)
     people.erase(peer_id)
+    if not duel_end.is_empty():
+        _emit_duel_event(duel_end)
     peer_auth_ids.erase(peer_id)
     last_work_ms.erase(peer_id)
     last_motion_ms.erase(peer_id)
@@ -406,6 +422,12 @@ func _on_peer_left(peer_id: int) -> void:
         blocked_peers[blocker].erase(peer_id)
     visit_requests.erase(peer_id)
     ride_requests.erase(peer_id)
+    duel_requests.erase(peer_id)
+    local_blocks.erase(peer_id)
+    muted_peers.erase(peer_id)
+    for target in duel_requests.keys():
+        if int(duel_requests[target].get("source", -1)) == peer_id:
+            duel_requests.erase(target)
     for target in visit_requests.keys():
         if int(visit_requests[target].get("source", -1)) == peer_id:
             visit_requests.erase(target)
@@ -443,6 +465,14 @@ func _disconnect() -> void:
     cars.clear()
     visit_requests.clear()
     ride_requests.clear()
+    duel_requests.clear()
+    duel_game = load("res://scripts/duel_rounds.gd").new()
+    pending_duel_from = -1
+    if duel_choices != null:
+        for child in duel_choices.get_children():
+            child.queue_free()
+    if duel_status != null:
+        duel_status.text = "1v1 campus quiz: friendly, no wagers or coin rewards."
     last_motion_ms.clear()
     last_chat_ms.clear()
     last_wave_ms.clear()
@@ -692,6 +722,10 @@ func _create_vehicle() -> Node3D:
 func _process(delta: float) -> void:
     if not is_online or local_player == null:
         return
+    if multiplayer.is_server() and duel_game != null:
+        var expired: Array[Dictionary] = duel_game.call("tick", Time.get_ticks_msec())
+        for event in expired:
+            _emit_duel_event(event)
     var my_id := multiplayer.get_unique_id()
     # Prevent stepping into an unapproved player's home even locally.
     if people.has(my_id) and not _allowed_position(my_id, local_player.global_position):
@@ -1284,6 +1318,7 @@ func _refresh_player_rows() -> void:
             row.add_child(actions)
             _make_button("VISIT", func(): _action("visit", peer_id), actions)
             _make_button("RIDE", func(): _action("ride", peer_id), actions)
+            _make_button("1V1", func(): _action("duel_invite", peer_id), actions)
             var blocked_here: bool = local_blocks.has(peer_id)
             _make_button("UNBLOCK" if blocked_here else "BLOCK", func(): _toggle_block(peer_id), actions)
             var muted := muted_peers.has(peer_id)
