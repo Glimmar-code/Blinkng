@@ -27,6 +27,12 @@ enabled = true
 [functions.blink-life-session]
 verify_jwt = true
 
+# Trusted game servers use HMAC-SHA256 with timestamp; there is no user JWT.
+# The handler rejects unknown/replayed mutations with deterministic event IDs.
+# Do not deploy this staging function until the DB review and secrets are ready.
+[functions.blink-life-world-sync]
+verify_jwt = false
+
 [functions.game-rewards]
 verify_jwt = true
 
