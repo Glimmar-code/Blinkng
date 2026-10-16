@@ -66,6 +66,17 @@ func _initialize() -> void:
         "wall_style": 2, "floor_style": 1, "plant_spot": 2}
     check(store.call("save_state", painted), "Players can save three explicit decoration choices")
     check(_store().call("load_state") == painted, "Saved decoration survives a fresh loader")
+    var floor_grid: Dictionary = painted.merged({"plant_custom": true,
+        "plant_x": -1, "plant_z": 3, "plant_rotation": 3}, true)
+    check(store.call("save_state", floor_grid), "Safe floor-grid plant and orientation can be stored")
+    check(_store().call("load_state") == Progress.valid_state(floor_grid), "Free grid and rotation survive restart")
+    check(not fresh.call("save_state", floor_grid.merged({"plant_x": -3, "plant_z": -3}, true)), "Furniture-occupied grid cells cannot be saved")
+    check(not fresh.call("save_state", floor_grid.merged({"plant_x": 4}, true)), "Outside-room grid cells cannot be saved")
+    check(not fresh.call("save_state", floor_grid.merged({"plant_rotation": 4}, true)), "Rotation outside four quarter-turns is rejected")
+    check(not fresh.call("save_state", floor_grid.merged({"plant_rotation": 0.5}, true)), "Fractional rotation cannot be saved")
+    check(not fresh.call("save_state", floor_grid.merged({"plant_custom": "yes"}, true)), "Custom-grid flag must be Boolean")
+    check(_store().call("load_state") == Progress.valid_state(floor_grid), "Rejected grid saves preserve the last valid layout")
+    check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
     check(not fresh.call("save_state", painted.merged({"plant_spot": 1.5}, true)), "Fractional plant spot is refused")
