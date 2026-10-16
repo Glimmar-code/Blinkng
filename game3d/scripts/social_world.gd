@@ -566,6 +566,12 @@ func _receive_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
 func _apply_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
     people = roster.duplicate(true)
     cars = shared_cars.duplicate(true)
+    for peer_id in local_blocks.keys():
+        if not people.has(peer_id):
+            local_blocks.erase(peer_id)
+    for peer_id in muted_peers.keys():
+        if not people.has(peer_id):
+            muted_peers.erase(peer_id)
     _reconcile_people()
     _refresh_player_rows()
     var my_id := multiplayer.get_unique_id()
@@ -854,7 +860,7 @@ func _action(kind: String, target: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_action(kind: String, target: int) -> void:
-    if not multiplayer.is_server():
+    if not multiplayer.is_server() or kind.length() > 32:
         return
     _server_action(multiplayer.get_remote_sender_id(), kind, target)
 
@@ -947,6 +953,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
                 blocked[target] = true
             blocked_peers[sender] = blocked
             if _is_blocked(sender, target):
+                if bool(duel_game.call("are_opponents", sender, target)):
+                    var cancelled_duel: Dictionary = duel_game.call("disconnect", sender)
+                    _emit_duel_event(cancelled_duel)
                 for pending in [visit_requests, ride_requests]:
                     for owner in pending.keys():
                         if (owner == sender and int(pending[owner].get("source", -1)) == target) or \
