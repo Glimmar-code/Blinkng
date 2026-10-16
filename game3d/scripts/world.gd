@@ -33,6 +33,12 @@ var owns_plant: bool = false
 var home_wall_style: int = 0
 var home_floor_style: int = 0
 var home_plant_spot: int = 0
+var home_plant_custom: bool = false
+var home_plant_x: int = SoloHome.PLANT_DEFAULT_X
+var home_plant_z: int = SoloHome.PLANT_DEFAULT_Z
+var home_plant_rotation: int = 0
+var decor_undo: Array[Dictionary] = []
+var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
@@ -73,6 +79,10 @@ func _ready() -> void:
     home_wall_style = int(recovered["wall_style"])
     home_floor_style = int(recovered["floor_style"])
     home_plant_spot = int(recovered["plant_spot"])
+    home_plant_custom = bool(recovered["plant_custom"])
+    home_plant_x = int(recovered["plant_x"])
+    home_plant_z = int(recovered["plant_z"])
+    home_plant_rotation = int(recovered["plant_rotation"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -904,7 +914,10 @@ func _enter_solo_home() -> void:
         add_child(solo_room)
         solo_room.call("configure")
     solo_room.call("update_owned_decor", owns_plant)
-    solo_room.call("apply_decoration", home_wall_style, home_floor_style, home_plant_spot)
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style,
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z, home_plant_rotation)
+    decor_undo.clear()
+    decor_redo.clear()
     home_inside = true
     player.global_position = solo_room.call("spawn_position")
     player.velocity = Vector3.ZERO
@@ -933,7 +946,9 @@ func _exit_solo_home() -> void:
 func _home_save_snapshot() -> Dictionary:
     return {"version": 1, "cash": game_cash, "jobs": completed_jobs, "plant": owns_plant,
         "wall_style": home_wall_style, "floor_style": home_floor_style,
-        "plant_spot": home_plant_spot}
+        "plant_spot": home_plant_spot, "plant_custom": home_plant_custom,
+        "plant_x": home_plant_x, "plant_z": home_plant_z,
+        "plant_rotation": home_plant_rotation}
 
 
 func _show_home_decor() -> void:
@@ -944,45 +959,163 @@ func _show_home_decor() -> void:
     for child in hud_modal.get_children():
         hud_modal.remove_child(child)
         child.queue_free()
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(508, 278)
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    hud_modal.add_child(scroll)
     var rows := VBoxContainer.new()
-    hud_modal.add_child(rows)
+    scroll.add_child(rows)
+    rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     var heading := Label.new()
-    heading.text = "Free solo-room decoration (saved locally)"
+    heading.text = "Free solo-room decoration • saved locally"
     rows.add_child(heading)
-    var walls := _new_button("Wall palette: %d / 3" % (home_wall_style + 1))
-    rows.add_child(walls)
-    walls.pressed.connect(_cycle_home_decoration.bind("wall_style"))
-    var floors := _new_button("Floor palette: %d / 3" % (home_floor_style + 1))
-    rows.add_child(floors)
-    floors.pressed.connect(_cycle_home_decoration.bind("floor_style"))
-    var plants := _new_button("Plant position: %d / 3%s" % [home_plant_spot + 1, "" if owns_plant else " (buy at market)"])
-    rows.add_child(plants)
-    plants.disabled = not owns_plant
-    plants.pressed.connect(_cycle_home_decoration.bind("plant_spot"))
+    var wall := _new_button("Wall palette %d/3" % (home_wall_style + 1))
+    rows.add_child(wall)
+    wall.pressed.connect(_cycle_home_decoration.bind("wall_style"))
+    var floor := _new_button("Floor colour %d/3" % (home_floor_style + 1))
+    rows.add_child(floor)
+    floor.pressed.connect(_cycle_home_decoration.bind("floor_style"))
+    var spot := _new_button("Plant preset %d/3" % (home_plant_spot + 1))
+    spot.disabled = not owns_plant
+    rows.add_child(spot)
+    spot.pressed.connect(_cycle_home_decoration.bind("plant_spot"))
+    var caption := Label.new()
+    caption.text = "Plant floor grid: (%d, %d) • rotation: %d°" % [
+        home_plant_x, home_plant_z, home_plant_rotation * 90]
+    rows.add_child(caption)
+    var move_plant := _new_button("Start floor-grid placement" if not home_plant_custom else "Use floor-grid placement")
+    move_plant.disabled = not owns_plant
+    rows.add_child(move_plant)
+    move_plant.pressed.connect(_home_move_plant.bind(0, 0))
+    for choices in [
+        [["← Move", -1, 0], ["Move →", 1, 0]],
+        [["↑ Move", 0, -1], ["Move ↓", 0, 1]]
+    ]:
+        var row := HBoxContainer.new()
+        rows.add_child(row)
+        for choice in choices:
+            var button := _new_button(str(choice[0]), 200)
+            button.disabled = not owns_plant
+            row.add_child(button)
+            button.pressed.connect(_home_move_plant.bind(int(choice[1]), int(choice[2])))
+    var rotate := _new_button("Rotate plant 90°")
+    rotate.disabled = not owns_plant
+    rows.add_child(rotate)
+    rotate.pressed.connect(_home_rotate_plant)
+    var history_row := HBoxContainer.new()
+    rows.add_child(history_row)
+    var undo := _new_button("Undo", 210)
+    undo.disabled = decor_undo.is_empty()
+    undo.pressed.connect(_undo_home_decor)
+    history_row.add_child(undo)
+    var redo := _new_button("Redo", 210)
+    redo.disabled = decor_redo.is_empty()
+    redo.pressed.connect(_redo_home_decor)
+    history_row.add_child(redo)
+    var note := Label.new()
+    note.text = "Occupied cells and the doorway are protected.\nPlant movement needs the cosmetic plant."
+    rows.add_child(note)
     var close := _new_button("Done • F to leave room")
     rows.add_child(close)
     close.pressed.connect(_close_quiz)
     hud_modal.show()
 
 
-func _cycle_home_decoration(field: String) -> void:
+func _apply_home_decor(candidate: Dictionary) -> bool:
     if not home_inside or solo_room == null or (social != null and bool(social.get("is_online"))):
+        return false
+    if SoloProgress.valid_state(candidate).is_empty():
+        return false
+    if not bool(progress_store.call("save_state", candidate)):
+        hud_status.text = "Decoration not saved: " + str(progress_store.get("warning"))
+        return false
+    # No visual or currency changes happen before a successful disk commit.
+    home_wall_style = int(candidate["wall_style"])
+    home_floor_style = int(candidate["floor_style"])
+    home_plant_spot = int(candidate["plant_spot"])
+    home_plant_custom = bool(candidate["plant_custom"])
+    home_plant_x = int(candidate["plant_x"])
+    home_plant_z = int(candidate["plant_z"])
+    home_plant_rotation = int(candidate["plant_rotation"])
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style,
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z, home_plant_rotation)
+    hud_status.text = "Free solo room changes saved."
+    return true
+
+
+func _commit_home_decor(candidate: Dictionary) -> void:
+    var previous: Dictionary = _home_save_snapshot()
+    if previous == candidate:
         return
+    if not _apply_home_decor(candidate):
+        return
+    decor_undo.append(previous)
+    if decor_undo.size() > SoloHome.HISTORY_LIMIT:
+        decor_undo.pop_front()
+    decor_redo.clear()
+    _show_home_decor()
+
+
+func _cycle_home_decoration(field: String) -> void:
     if field not in ["wall_style", "floor_style", "plant_spot"]:
         return
     if field == "plant_spot" and not owns_plant:
         return
     var candidate: Dictionary = _home_save_snapshot()
     candidate[field] = (int(candidate[field]) + 1) % 3
-    if not bool(progress_store.call("save_state", candidate)):
-        hud_status.text = "Decoration was not saved: " + str(progress_store.get("warning"))
+    if field == "plant_spot":
+        candidate["plant_custom"] = false
+    _commit_home_decor(candidate)
+
+
+func _home_move_plant(delta_x: int, delta_z: int) -> void:
+    if not owns_plant or not home_inside:
         return
-    # Apply only after commit. No Game Cash is consumed by these cosmetic choices.
-    home_wall_style = int(candidate["wall_style"])
-    home_floor_style = int(candidate["floor_style"])
-    home_plant_spot = int(candidate["plant_spot"])
-    solo_room.call("apply_decoration", home_wall_style, home_floor_style, home_plant_spot)
-    hud_status.text = "Saved your free offline room decoration."
+    if absi(delta_x) + absi(delta_z) > 1:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var x: int = home_plant_x + delta_x
+    var z: int = home_plant_z + delta_z
+    if not SoloHome.floor_cell_allowed(x, z):
+        hud_status.text = "That plant position is blocked by a wall or furniture."
+        return
+    candidate["plant_custom"] = true
+    candidate["plant_x"] = x
+    candidate["plant_z"] = z
+    _commit_home_decor(candidate)
+
+
+func _home_rotate_plant() -> void:
+    if not owns_plant or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["plant_rotation"] = (home_plant_rotation + 1) % 4
+    _commit_home_decor(candidate)
+
+
+func _undo_home_decor() -> void:
+    if not home_inside or decor_undo.is_empty():
+        return
+    var previous: Dictionary = decor_undo.pop_back()
+    var current: Dictionary = _home_save_snapshot()
+    if not _apply_home_decor(previous):
+        decor_undo.append(previous)
+        return
+    decor_redo.append(current)
+    _show_home_decor()
+
+
+func _redo_home_decor() -> void:
+    if not home_inside or decor_redo.is_empty():
+        return
+    var next: Dictionary = decor_redo.pop_back()
+    var current: Dictionary = _home_save_snapshot()
+    if not _apply_home_decor(next):
+        decor_redo.append(next)
+        return
+    decor_undo.append(current)
+    if decor_undo.size() > SoloHome.HISTORY_LIMIT:
+        decor_undo.pop_front()
     _show_home_decor()
 
 
