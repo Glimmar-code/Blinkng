@@ -87,7 +87,7 @@ func configure() -> void:
     _box(self, Vector3(0.0, 1.8, -4.25), Vector3(2.1, 1.0, 0.05), Color(0.46, 0.68, 0.78))
     _box(self, Vector3(0.0, 1.8, -4.19), Vector3(0.08, 1.1, 0.06), Color(0.92, 0.92, 0.90))
     _caption("YOUR SOLO STARTER ROOM", Vector3(0, 2.5, -3.9))
-    _caption("BED", Vector3(-2.5, 1.5, -2.5), 21)
+    _caption("BED", Vector3(0, 1.5, 0), 21, movable_bed)
     _caption("STUDY DESK", Vector3(2.3, 1.8, -2.5), 21)
     var light := OmniLight3D.new()
     light.name = "InteriorLight"
@@ -278,7 +278,7 @@ func _solid_box(node_name: String, center: Vector3, size: Vector3, color: Color)
     return visual
 
 
-func _caption(message: String, center: Vector3, size: int = 28) -> void:
+func _caption(message: String, center: Vector3, size: int = 28, parent: Node3D = null) -> void:
     var label := Label3D.new()
     label.text = message
     label.position = center
@@ -286,4 +286,4 @@ func _caption(message: String, center: Vector3, size: int = 28) -> void:
     label.pixel_size = 0.009
     label.outline_size = 8
     label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-    add_child(label)
+    (self if parent == null else parent).add_child(label)
