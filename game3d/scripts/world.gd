@@ -38,6 +38,7 @@ var home_plant_x: int = SoloHome.PLANT_DEFAULT_X
 var home_plant_z: int = SoloHome.PLANT_DEFAULT_Z
 var home_plant_rotation: int = 0
 var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
+var home_layout_slots: Dictionary = {}
 var decor_undo: Array[Dictionary] = []
 var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
@@ -86,6 +87,7 @@ func _ready() -> void:
     home_plant_rotation = int(recovered["plant_rotation"])
     for key in SoloHome.FURNITURE_DEFAULTS:
         home_furniture[key] = int(recovered[key])
+    home_layout_slots = recovered["layout_slots"].duplicate(true)
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -960,7 +962,8 @@ func _home_save_snapshot() -> Dictionary:
         "table_z": int(home_furniture["table_z"]),
         "table_rotation": int(home_furniture["table_rotation"]),
         "bed_layout": int(home_furniture["bed_layout"]),
-        "wardrobe_layout": int(home_furniture["wardrobe_layout"])}
+        "wardrobe_layout": int(home_furniture["wardrobe_layout"]),
+        "layout_slots": home_layout_slots.duplicate(true)}
 
 
 func _show_home_decor() -> void:
@@ -1045,6 +1048,20 @@ func _show_home_decor() -> void:
         var plan := _new_button(str(preset["name"]))
         rows.add_child(plan)
         plan.pressed.connect(_apply_room_plan.bind(index))
+    var custom_heading := Label.new()
+    custom_heading.text = "My saved layouts (2 local slots)"
+    rows.add_child(custom_heading)
+    for index in range(1, 3):
+        var slot_key: String = "slot_%d" % index
+        var actions := HBoxContainer.new()
+        rows.add_child(actions)
+        var save := _new_button("Save layout %d" % index, 210)
+        save.pressed.connect(_save_home_layout_slot.bind(slot_key))
+        actions.add_child(save)
+        var load := _new_button("Apply layout %d" % index, 210)
+        load.disabled = not home_layout_slots.has(slot_key)
+        load.pressed.connect(_load_home_layout_slot.bind(slot_key))
+        actions.add_child(load)
     var history_row := HBoxContainer.new()
     rows.add_child(history_row)
     var undo := _new_button("Undo", 210)
@@ -1086,6 +1103,7 @@ func _apply_home_decor(candidate: Dictionary) -> bool:
     home_plant_rotation = int(candidate["plant_rotation"])
     for key in SoloHome.FURNITURE_DEFAULTS:
         home_furniture[key] = int(candidate[key])
+    home_layout_slots = candidate["layout_slots"].duplicate(true)
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
@@ -1187,11 +1205,43 @@ func _apply_room_plan(index: int) -> void:
     _commit_home_decor(candidate)
 
 
+func _save_home_layout_slot(slot: String) -> void:
+    if not home_inside or not SoloProgress.SLOT_NAMES.has(slot):
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var bookmark: Dictionary = {}
+    for key in SoloProgress.DECOR_KEYS:
+        bookmark[key] = candidate[key]
+    var slots: Dictionary = candidate["layout_slots"].duplicate(true)
+    slots[slot] = bookmark
+    candidate["layout_slots"] = slots
+    # Saving a bookmark does not change the scene and does not consume
+    # undo history; money and item ownership are left untouched.
+    if _apply_home_decor(candidate):
+        hud_status.text = "Your private decoration bookmark was saved."
+        _show_home_decor()
+
+
+func _load_home_layout_slot(slot: String) -> void:
+    if not home_inside or not SoloProgress.SLOT_NAMES.has(slot):
+        return
+    if not home_layout_slots.has(slot):
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var layout: Dictionary = home_layout_slots[slot]
+    for key in SoloProgress.DECOR_KEYS:
+        candidate[key] = layout[key]
+    # Loading a layout only affects cosmetics. The current wallet and
+    # ownership never come from a bookmarked object.
+    _commit_home_decor(candidate)
+
+
 func _undo_home_decor() -> void:
     if not home_inside or decor_undo.is_empty():
         return
     var previous: Dictionary = decor_undo.pop_back()
     var current: Dictionary = _home_save_snapshot()
+    previous["layout_slots"] = home_layout_slots.duplicate(true)
     if not _apply_home_decor(previous):
         decor_undo.append(previous)
         return
@@ -1204,6 +1254,7 @@ func _redo_home_decor() -> void:
         return
     var next: Dictionary = decor_redo.pop_back()
     var current: Dictionary = _home_save_snapshot()
+    next["layout_slots"] = home_layout_slots.duplicate(true)
     if not _apply_home_decor(next):
         decor_redo.append(next)
         return
