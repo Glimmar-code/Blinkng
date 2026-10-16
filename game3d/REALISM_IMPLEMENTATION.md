@@ -429,3 +429,36 @@ application, undo/redo, restart restoration and preserved Game Cash.
 Real Android/Windows behavior and production release gates still need
 verification. Multiplayer property ownership/editing remains unchanged.
 
+## Batch 13: two user-saved room bookmarks, offline and free
+
+In addition to the three built-in Original / Study corner / Open floor
+arrangements, a player can now **Save layout 1** or **Save layout 2** from
+the private starter-room editor and later **Apply** either saved layout.
+Each bookmark captures wall and floor style, the cosmetic plant's approved
+preset/grid/rotation, and chair, table, bed and wardrobe positions. Bookmarks
+store strictly cosmetics: fictional Game Cash, jobs, item ownership, login
+credentials, server IDs and BLINK Coins are not copied into saved layouts.
+The save data holds at most two complete decoration records; missing
+bookmarks preserve compatibility with older version-one local files.
+
+Each nested bookmark is validated against the same approved furniture
+positions, rotated footprints and entry-clearance rules used by the live
+editor. Unknown slot names, missing/extra fields, overlapping furniture,
+bad rotations and nested currency are rejected before an atomic save.
+Saving a bookmark is free, doesn't change the displayed room, and doesn't
+consume undo history. Applying a bookmark becomes one reversible change;
+undo/redo cannot delete user bookmarks. Local job payouts and the market
+purchase preserve the bookmarks through the single save snapshot.
+
+This is deliberately an **offline, device-local** prototype. These local
+JSON saves aren't tamper-resistant, don't sync across devices, and don't
+modify or confer access to multiplayer homes. It is not a public property
+marketplace, paid feature or verified full release.
+
+Roadmap requirement **#275 implemented in source** for these bounded two
+save/apply slots; **#274 remains partial**, with three built-in layouts.
+Totals: **40 implemented in source; 43 partially implemented;
+917 pending audit; 0 device-verified; 0 released**. Regression tests
+exercise both slots, persistence, invalid/overlapping bookmark rejection,
+cash isolation, applying and undoing saved layouts. Latest-head CI must
+pass and Android/Windows devices must still be tested before promoting.
