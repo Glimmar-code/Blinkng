@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.models.kNigerianStatesList
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
+import com.blinkng.shared.BlinkDesignTokens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,7 +89,12 @@ fun BecomeSellerScreen(
                             .fillMaxWidth()
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF171717), Color(0xFF050505))
+                                    if (isDark) {
+                                         listOf(Color(BlinkDesignTokens.Dark.SurfaceElevated), Color(BlinkDesignTokens.Dark.Background))
+                                     } else {
+                                         // Retain the promotional hero's contrast in Light Mode.
+                                         listOf(Color(0xFF171717), Color(0xFF050505))
+                                     }
                                 )
                             )
                             .padding(20.dp)
