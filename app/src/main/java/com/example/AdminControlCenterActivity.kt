@@ -200,7 +200,7 @@ private fun AdminDashboardV3(
                     )
                     Divider(
                         modifier = Modifier.fillMaxHeight().width(1.dp),
-                        color = Color(0xFF242424)
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         val selected = sections.firstOrNull { it.key == selectedKey }
@@ -249,7 +249,7 @@ private fun AdminSidebar(
     onSelect: (String) -> Unit
 ) {
     LazyColumn(
-        Modifier.width(122.dp).fillMaxHeight().background(Color(0xFF090909)),
+        Modifier.width(122.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surface),
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -803,7 +803,7 @@ private fun FeatureActionDialog(
         Surface(
             Modifier.fillMaxWidth().padding(18.dp).heightIn(max = 760.dp),
             shape = MaterialTheme.shapes.large,
-            color = Color(0xFF171521)
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Column(Modifier.fillMaxWidth().padding(18.dp).verticalScroll(rememberScrollState())) {
                 Text(feature.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
@@ -1139,7 +1139,7 @@ private fun AdminHistoryDialog(
     ) {
         Surface(
             Modifier.fillMaxSize().padding(10.dp),
-            color = Color(0xFF101014),
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large
         ) {
             Column(Modifier.fillMaxSize()) {
@@ -1236,7 +1236,7 @@ private fun AdminGlobalSearchDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             Modifier.fillMaxSize().padding(12.dp),
-            color = Color(0xFF101014),
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large
         ) {
             Column(Modifier.fillMaxSize().padding(14.dp)) {
