@@ -1,3 +1,9 @@
+## 2026-10-16 — GO54 BLINK domain and Android App Links (Testlab)
+
+- **PARITY-EXCEPTION: android-app-links-go54-domain-20261016** — Android's `AndroidManifest.xml` must verify HTTPS App Links for `blink.com.ng`, the purchased GO54 domain. App Links OS intent-filter verification has no native Windows manifest equivalent. Android's share-host build default changes to the new canonical apex, without changing profile, post, reel, market identity or backend data.
+- **Windows equivalent:** The desktop application uses ordinary HTTPS links/browser handoff instead of Android OS App Links. The shared BLINK web client now uses `https://blink.com.ng` for canonical metadata, sitemap, privacy policy and web-generated shares; Windows user accounts and Supabase project remain unchanged. Check Windows share targets on the released desktop package before claiming full link parity.
+- **Release gates:** Require Windows build, Android link contract tests, domain CI, verified published `/.well-known/assetlinks.json`, Supabase allowlisted redirect URLs, HTTPS and staged web tests. Do not merge until these checks pass. Existing app binaries require a new release to adopt the changed Android share-host default.
+
 ## 2026-10-16 — Legacy dark-color cleanup, Android and Windows (Testlab)
 
 - **Per-screen dark backgrounds replaced:** Feed home, post cards, reels skeleton/disc, profile skeleton/avatar, admin sidebar/dialogs, verified panels, market-seller header, seller confirmation, message action menus and story media fallback now consume semantic colors or shared platform-neutral design tokens.
