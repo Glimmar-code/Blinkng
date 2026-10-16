@@ -2223,12 +2223,14 @@ private suspend fun restoreSupabaseSession() {
     /** Search beyond the first directory page; stale results cannot replace newer queries. */
     fun searchConnectStudents(query: String) {
         val cleaned = query.trim()
-        if (cleaned.length < 2) return
         val epoch = ++connectStudentSearchEpoch
+        if (cleaned.length < 2) return
+        val accountId = _uiState.value.myProfile.id
         viewModelScope.launch {
             val found = runCatching { supabaseService.searchProfilesPage(cleaned, limit = 60) }
                 .getOrDefault(emptyList())
-            if (epoch == connectStudentSearchEpoch && found.isNotEmpty()) {
+            if (epoch == connectStudentSearchEpoch &&
+                _uiState.value.myProfile.id == accountId && found.isNotEmpty()) {
                 val current = _uiState.value
                 _uiState.value = current.copy(
                     profiles = (listOf(current.myProfile) + found + current.profiles)
