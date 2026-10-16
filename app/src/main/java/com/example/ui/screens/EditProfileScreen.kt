@@ -2264,6 +2264,7 @@ private fun AvatarEditor(
     onRemove: () -> Unit
 ) {
 
+    val model = pendingUri?.toString() ?: currentUrl
     Row(
         verticalAlignment =
             Alignment.CenterVertically
@@ -2275,10 +2276,6 @@ private fun AvatarEditor(
                     88.dp
                 )
         ) {
-
-            val model =
-                pendingUri?.toString()
-                    ?: currentUrl
 
             if (
                 model.isNotBlank()
