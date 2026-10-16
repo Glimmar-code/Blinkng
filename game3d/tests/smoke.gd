@@ -247,6 +247,10 @@ func _run() -> void:
             unsafe_layout["plant_z"] = -3
             _assert_true(not bool(world.call("_apply_home_decor", unsafe_layout)), "Furniture-overlap layout is rejected before saving")
             _assert_true(room.get_node("DeskPlant").position == moved_position, "Rejected overlap cannot repaint or move furniture")
+            var forged_balance: Dictionary = world.call("_home_save_snapshot")
+            forged_balance["cash"] = 999999
+            _assert_true(not bool(world.call("_apply_home_decor", forged_balance)), "Decor changes cannot alter the offline wallet")
+            _assert_true(int(demo_progress.load_state()["cash"]) == 370, "Rejected forged decor wallet remains unchanged on disk")
             world.call("_home_rotate_plant")
             _assert_true(int(world.get("home_plant_rotation")) == 1, "Plant orientation cycles in ninety-degree steps")
             _assert_true(is_equal_approx(room.get_node("DeskPlant").rotation.y, PI / 2.0), "Plant visibly rotates on scene")
