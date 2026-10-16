@@ -230,6 +230,36 @@ func _run() -> void:
             _assert_true(int(decor_checkpoint["wall_style"]) == 1 and int(decor_checkpoint["floor_style"]) == 1, "Wall and floor choices survive disk reload")
             _assert_true(int(decor_checkpoint["plant_spot"]) == 1, "Plant placement survives disk reload")
             _assert_true(int(decor_checkpoint["cash"]) == 370, "No currency charged for free home decoration")
+
+            var preset_position: Vector3 = room.get_node("DeskPlant").position
+            world.call("_home_move_plant", 0, 0)
+            _assert_true(bool(world.get("home_plant_custom")), "Explicit floor-grid mode becomes active")
+            _assert_true(int(world.get("home_plant_z")) == 3, "The starting floor grid is safe and deterministic")
+            var new_floor_position: Vector3 = room.get_node("DeskPlant").position
+            _assert_true(new_floor_position != preset_position, "Floor-grid mode visibly relocates the plant")
+            world.call("_home_move_plant", -1, 0)
+            _assert_true(int(world.get("home_plant_x")) == -1, "Grid moves one metre left into a safe cell")
+            var moved_position: Vector3 = room.get_node("DeskPlant").position
+            world.call("_home_move_plant", 0, 1)
+            _assert_true(room.get_node("DeskPlant").position == moved_position, "An out-of-bounds grid move is rejected without jumping")
+            var unsafe_layout: Dictionary = world.call("_home_save_snapshot")
+            unsafe_layout["plant_x"] = -3
+            unsafe_layout["plant_z"] = -3
+            _assert_true(not bool(world.call("_apply_home_decor", unsafe_layout)), "Furniture-overlap layout is rejected before saving")
+            _assert_true(room.get_node("DeskPlant").position == moved_position, "Rejected overlap cannot repaint or move furniture")
+            world.call("_home_rotate_plant")
+            _assert_true(int(world.get("home_plant_rotation")) == 1, "Plant orientation cycles in ninety-degree steps")
+            _assert_true(is_equal_approx(room.get_node("DeskPlant").rotation.y, PI / 2.0), "Plant visibly rotates on scene")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_plant_rotation")) == 0, "Undo restores previous rotation")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_plant_x")) == 0, "Second undo restores previous position")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_plant_x")) == -1, "Redo reapplies one safe placement change")
+            _assert_true(int(demo_progress.load_state()["plant_x"]) == -1, "Redo persists to local disk")
+            world.call("_home_rotate_plant")
+            _assert_true((world.get("decor_redo") as Array).is_empty(), "New edits clear stale redo history")
+            _assert_true(int(world.get("game_cash")) == 370, "Undo/redo/rotation cannot create or charge currency")
             world.call("_cycle_home_decoration", "invalid")
             _assert_true(int(world.get("home_wall_style")) == 1, "Unknown decoration requests do nothing")
             world.call("_close_quiz")
