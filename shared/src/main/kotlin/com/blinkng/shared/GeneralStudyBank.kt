@@ -59,13 +59,26 @@ object GeneralStudyBank {
         difficulty: GeneralStudyDifficulty,
         seed: Long,
         count: Int = DEFAULT_ROUND_SIZE,
+        category: String? = null,
     ): List<GeneralStudyQuestion> {
         val safeCount = count.coerceIn(1, 50)
-        val start = Math.floorMod((seed xor (seed ushr 32)).toInt(), QUESTIONS_PER_DIFFICULTY)
+        val categoryIndex = category?.let { categories.indexOf(it).also { index ->
+            require(index >= 0) { "Unknown study category" }
+        } } ?: -1
+        val seedValue = (seed xor (seed ushr 32)).toInt()
+        if (categoryIndex >= 0) {
+            // Exactly 625 questions per study area in each 5,000-question bank.
+            val slots = QUESTIONS_PER_DIFFICULTY / categories.size
+            val start = Math.floorMod(seedValue, slots)
+            val step = 199 // coprime with 625, so a round cannot repeat a slot.
+            return List(safeCount) { offset ->
+                questionAt(difficulty, ((start + offset * step) % slots) * categories.size + categoryIndex)
+            }
+        }
+        val start = Math.floorMod(seedValue, QUESTIONS_PER_DIFFICULTY)
         val step = 997
         return List(safeCount) { offset ->
-            val index = (start + offset * step) % QUESTIONS_PER_DIFFICULTY
-            questionAt(difficulty, index)
+            questionAt(difficulty, (start + offset * step) % QUESTIONS_PER_DIFFICULTY)
         }
     }
 
