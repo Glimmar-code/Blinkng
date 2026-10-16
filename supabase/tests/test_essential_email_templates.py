@@ -22,6 +22,12 @@ TEMPLATES_TO_CHECK = {
     "welcome.html": 0,
     "new_device_alert.html": 0,
     "suspicious_activity_alert.html": 0,
+    # Opt-in social notification designs only; no social emails are enabled.
+    "new_follower.html": 0,
+    "unread_messages_digest.html": 0,
+    "post_engagement_digest.html": 0,
+    "reel_milestone.html": 0,
+    "leaderboard_digest.html": 0,
 }
 
 
@@ -50,6 +56,21 @@ class EssentialEmailSafetyTests(unittest.TestCase):
             with self.subTest(template=name):
                 html = (TEMPLATES / name).read_text(encoding="utf-8")
                 self.assertEqual(html.count("{{ .ConfirmationURL }}"), required_count)
+
+    def test_social_templates_have_no_private_message_or_session_data(self):
+        names = (
+            "new_follower.html", "unread_messages_digest.html",
+            "post_engagement_digest.html", "reel_milestone.html",
+            "leaderboard_digest.html",
+        )
+        for name in names:
+            with self.subTest(template=name):
+                html = (TEMPLATES / name).read_text(encoding="utf-8").lower()
+                self.assertIn("opt in", html)
+                self.assertNotIn("{{ .confirmationurl }}", html)
+                self.assertNotIn("access_token=", html)
+                self.assertNotIn("refresh_token=", html)
+                self.assertNotIn("http://localhost", html)
 
     def test_signup_confirmation_is_not_added_or_enabled(self):
         config = CONFIG.read_text(encoding="utf-8")
