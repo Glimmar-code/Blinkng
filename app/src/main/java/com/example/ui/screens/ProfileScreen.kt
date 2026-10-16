@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -123,7 +124,11 @@ fun ProfileScreen(
     hasPostsLoadError: Boolean = false,
     likedPosts: List<FeedPost>,
     savedPosts: List<FeedPost>,
+    arePrivateCollectionsLoading: Boolean = false,
+    havePrivateCollectionsError: Boolean = false,
     userMarketItems: List<MarketItem>,
+    isMarketLoading: Boolean = false,
+    hasMarketLoadError: Boolean = false,
     onBack: () -> Unit,
     onEditProfileClick: () -> Unit,
     onDirectMessage: (String) -> Unit,
@@ -147,9 +152,11 @@ fun ProfileScreen(
     onBuyBlinkCoins: () -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
-    onRefreshProfile: () -> Unit = {}
+    onRefreshProfile: () -> Unit = {},
+    isProfileRefreshing: Boolean = false,
+    currentUserId: String = ""
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(profile.id) { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
@@ -171,13 +178,14 @@ fun ProfileScreen(
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
-    var isRefreshing by remember { mutableStateOf(false) }
 
     val profileService = remember { SupabaseService() }
     var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
     var connectionKind by remember(profile.id) { mutableStateOf<ProfileConnectionKind?>(null) }
     var connectionProfiles by remember(profile.id) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var connectionLoading by remember(profile.id) { mutableStateOf(false) }
+    var connectionFailed by remember(profile.id) { mutableStateOf(false) }
+    var connectionRequestId by remember(profile.id) { mutableIntStateOf(0) }
     var profileSearchActive by rememberSaveable(profile.id) { mutableStateOf(false) }
     var profileSearchQuery by rememberSaveable(profile.id) { mutableStateOf("") }
     var profileNotificationMode by remember(profile.id) { mutableStateOf(ProfileNotificationMode.OFF) }
@@ -246,10 +254,20 @@ fun ProfileScreen(
         if (profile.id.isBlank()) return
         connectionKind = kind
         connectionProfiles = emptyList()
+        connectionFailed = false
         connectionLoading = true
+        val requestId = ++connectionRequestId
         overlayScope.launch {
-            connectionProfiles = profileService.fetchProfileConnections(profile.id, kind)
-            connectionLoading = false
+            try {
+                val response = profileService.fetchProfileConnections(profile.id, kind, throwOnError = true)
+                if (requestId == connectionRequestId && connectionKind == kind) {
+                    connectionProfiles = response
+                }
+            } catch (_: Exception) {
+                if (requestId == connectionRequestId) connectionFailed = true
+            } finally {
+                if (requestId == connectionRequestId) connectionLoading = false
+            }
         }
     }
 
@@ -324,21 +342,10 @@ fun ProfileScreen(
     val glowAlpha = 0.24f
 
     val refreshRotation by animateFloatAsState(
-        targetValue = if (isRefreshing) 360f else 0f,
-        animationSpec = if (isRefreshing) {
-            infiniteRepeatable(tween(800, easing = LinearEasing))
-        } else {
-            tween(0)
-        },
+        targetValue = if (isProfileRefreshing) 360f else 0f,
+        animationSpec = if (isProfileRefreshing) infiniteRepeatable(tween(800, easing = LinearEasing)) else tween(0),
         label = "refreshRotation"
     )
-
-    LaunchedEffect(isRefreshing) {
-        if (isRefreshing) {
-            delay(900)
-            isRefreshing = false
-        }
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(
@@ -489,6 +496,8 @@ fun ProfileScreen(
                                         text = profile.fullName,
                                         color = Color.White,
                                         fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
@@ -618,6 +627,7 @@ fun ProfileScreen(
 
                                         ProfileFollowInteractButton(
                                             isFollowing = isFollowing,
+                                            enabled = !followBusy,
                                             onFollow = {
                                                 if (!followBusy && profile.id.isNotBlank()) {
                                                     followBusy = true
@@ -700,7 +710,7 @@ fun ProfileScreen(
                                                     onOpenConnectHub()
                                                 }
                                             },
-                                            onViewProfile = {},
+                                            onViewProfile = { overlayScope.launch { scrollState.animateScrollToItem(0) } },
                                             onOpenConnectHub = onOpenConnectHub,
                                             darkSurface = isDark,
                                             modifier = Modifier.scale(animatedFollowScale)
@@ -718,6 +728,9 @@ fun ProfileScreen(
                                     text = profile.fullName,
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
                                     color = textPrimary
                                 )
                                 if (profile.verificationBadge != VerificationBadge.NONE) {
@@ -851,7 +864,8 @@ fun ProfileScreen(
                                 ProfileMetric(
                                     value = userPosts.count { !it.isReel },
                                     label = "Posts",
-                                    animateCount = true
+                                    animateCount = true,
+                                    isLoading = isPostsLoading && userPosts.isEmpty()
                                 )
                                 DividerMetric()
                                 ProfileMetric(
@@ -1123,6 +1137,9 @@ fun ProfileScreen(
 
                     "Market" -> profileMarketItems(
                         items = userMarketItems,
+                        isLoading = isMarketLoading,
+                        loadFailed = hasMarketLoadError,
+                        onRetry = onRefreshProfile,
                         isDark = isDark,
                         textPrimary = textPrimary,
                         textSecondary = textSecondary,
@@ -1177,6 +1194,9 @@ fun ProfileScreen(
                         profilePostItems(
                             keyPrefix = "saved",
                             posts = savedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
                             profile = profile,
                             canDelete = false,
                             onDelete = onDeletePost,
@@ -1204,6 +1224,9 @@ fun ProfileScreen(
                         profilePostItems(
                             keyPrefix = "liked",
                             posts = likedPosts,
+                            isLoading = arePrivateCollectionsLoading,
+                            loadFailed = havePrivateCollectionsError,
+                            onRetry = onRefreshProfile,
                             profile = profile,
                             canDelete = false,
                             onDelete = onDeletePost,
@@ -1236,10 +1259,7 @@ fun ProfileScreen(
                 exit = scaleOut() + fadeOut()
             ) {
                 FloatingActionButton(
-                    onClick = {
-                        isRefreshing = true
-                        onRefreshProfile()
-                    },
+                    onClick = { if (!isProfileRefreshing) onRefreshProfile() },
                     containerColor = cardBg,
                     contentColor = BlinkPink,
                     modifier = Modifier.size(48.dp)
@@ -1261,18 +1281,17 @@ fun ProfileScreen(
     if (showAvatarViewer) {
         AlertDialog(
             onDismissRequest = { showAvatarViewer = false },
-            confirmButton = {},
+            confirmButton = { TextButton(onClick = { showAvatarViewer = false }) { Text("Close") } },
             text = {
                 AsyncImage(
                     model = profile.avatarUrl,
                     error = painterResource(R.drawable.ic_default_profile),
                     fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Full profile picture",
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(CircleShape)
                 )
             }
         )
@@ -1417,7 +1436,7 @@ fun ProfileScreen(
     // SHARE SHEET
     // ================================================================
     if (showShareSheet) {
-        val shareProfileId = profile.id.ifBlank { profile.username }
+        val shareProfileId = profile.username.ifBlank { profile.id }
         ProfileShareSheet(
             username = profile.username,
             fullName = profile.fullName,
@@ -1507,9 +1526,13 @@ fun ProfileScreen(
             kind = kind,
             profiles = connectionProfiles,
             loading = connectionLoading,
+            loadFailed = connectionFailed,
+            onRetry = { openConnectionList(kind) },
+            currentUserId = currentUserId,
             followingIds = followingIds,
             onDismiss = {
                 connectionKind = null
+                connectionRequestId++
                 connectionProfiles = emptyList()
             },
             onOpenProfile = { username ->
@@ -1517,12 +1540,13 @@ fun ProfileScreen(
                 onProfileClick(username)
             },
             onFollowToggle = { item, desired ->
-                overlayScope.launch {
-                    val saved = FollowStateStore.setFollowing(item.id, desired)
-                    if (!saved) {
-                        Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
-                    }
+                val saved = FollowStateStore.setFollowing(item.id, desired)
+                if (!saved) {
+                    Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
+                } else {
+                    onRefreshProfile()
                 }
+                saved
             }
         )
     }
@@ -1737,8 +1761,9 @@ private fun AnimatedTabRow(
 
 @Composable
 private fun ProfilePostSkeleton() {
-    val base = Color(0xFF15131A)
-    val highlight = Color(0xFF292333)
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val base = if (dark) Color(0xFF151515) else Color(0xFFE6E6E6)
+    val highlight = if (dark) Color(0xFF292929) else Color(0xFFF5F5F5)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
@@ -1969,10 +1994,16 @@ private fun TrustBanner(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            VerifiedMark(
-                badge = if (verified) profile.verificationBadge else VerificationBadge.BLUE,
-                size = 28.dp
-            )
+            if (verified) {
+                VerifiedMark(badge = profile.verificationBadge, size = 28.dp)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Not verified",
+                    tint = textSecondary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.width(10.dp))
 
@@ -2061,7 +2092,7 @@ private fun SkillsAndBadgesSection(
                     border = BorderStroke(1.dp, borderColor),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onEndorseSkill(endorsement.skill) }
+                        .clickable(enabled = !isMe && !endorsement.endorsedByMe) { onEndorseSkill(endorsement.skill) }
                 ) {
                     Row(
                         modifier = Modifier.padding(13.dp),
@@ -2194,7 +2225,7 @@ private fun AboutSection(
             }
         }
 
-        if (showEmail || showPhone || showWhatsapp || profile.currentCityState.isNotBlank()) {
+        if (showEmail || showPhone || showWhatsapp || (isMe && profile.currentCityState.isNotBlank())) {
             InfoCard(title = "Contact", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
                 if (showEmail) {
                     ProfileInfoRow(Icons.Default.Email, "Email", profile.email.value, textPrimary, textSecondary)
@@ -2205,7 +2236,7 @@ private fun AboutSection(
                 if (showWhatsapp) {
                     ProfileInfoRow(Icons.Default.Chat, "WhatsApp", profile.whatsapp.value, textPrimary, textSecondary)
                 }
-                if (profile.currentCityState.isNotBlank()) {
+                if (isMe && profile.currentCityState.isNotBlank()) {
                     ProfileInfoRow(Icons.Default.LocationOn, "Location", profile.currentCityState, textPrimary, textSecondary)
                 }
             }
@@ -2284,11 +2315,33 @@ private fun AboutSection(
 
 private fun LazyListScope.profileMarketItems(
     items: List<MarketItem>,
+    isLoading: Boolean = false,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
     onItemClick: (MarketItem) -> Unit
 ) {
+    if (items.isEmpty() && isLoading) {
+        items(3, key = { "market_skeleton_$it" }, contentType = { "profile_skeleton" }) {
+            ProfilePostSkeleton()
+        }
+        return
+    }
+    if (items.isEmpty() && loadFailed) {
+        item(key = "market_error", contentType = "profile_error") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Listings couldn't load", color = textPrimary, fontWeight = FontWeight.SemiBold)
+                Text("Check your connection and retry.", color = textSecondary)
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
     if (items.isEmpty()) {
         item(key = "market_empty", contentType = "profile_empty") {
             EmptyProfileState(
@@ -2336,27 +2389,12 @@ private fun CircleToolbarButton(
     onClick: () -> Unit,
     testTag: String = ""
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.88f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "toolbarBtnScale"
-    )
-
     IconButton(
         onClick = onClick,
         modifier = Modifier
             .size(40.dp)
-            .scale(scale)
             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
             .testTag(testTag)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                pressed = true
-                onClick()
-            }
     ) {
         Icon(
             icon,
@@ -2366,12 +2404,6 @@ private fun CircleToolbarButton(
         )
     }
 
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            delay(120)
-            pressed = false
-        }
-    }
 }
 
 @Composable
@@ -2482,6 +2514,7 @@ private fun ProfileMetric(
     value: Int,
     label: String,
     animateCount: Boolean = false,
+    isLoading: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
     val displayValue by if (animateCount) {
@@ -2507,7 +2540,7 @@ private fun ProfileMetric(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = clickModifier.padding(horizontal = 8.dp, vertical = 2.dp)
     ) {
-        Text(displayValue.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Text(if (isLoading) "—" else displayValue.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black)
         Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

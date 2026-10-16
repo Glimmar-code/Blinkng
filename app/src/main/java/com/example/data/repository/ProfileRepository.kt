@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import java.io.ByteArrayOutputStream
 import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
 import com.example.data.supabase.ProfileMediaType
@@ -219,25 +220,31 @@ class ProfileRepository(
                 val resolver =
                     context.contentResolver
 
-                val mimeType =
-                    resolver.getType(
-                        uri
-                    )
-                        ?: "image/jpeg"
+                val mimeType = resolver.getType(uri)?.lowercase() ?: "image/jpeg"
+                if (mimeType !in setOf("image/jpeg", "image/png", "image/webp")) {
+                    Log.w(TAG, "Rejected unsupported profile image type $mimeType")
+                    return@withContext null
+                }
 
-                val bytes =
-                    resolver
-                        .openInputStream(
-                            uri
-                        )
-                        ?.use {
-                            it.readBytes()
+                // Never unconditionally read an untrusted image into memory.
+                // Keep a strict cap for mobile devices with limited RAM.
+                val maxBytes = 8 * 1024 * 1024
+                val bytes = resolver.openInputStream(uri)?.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        if (output.size() + n > maxBytes) {
+                            Log.w(TAG, "Profile photo exceeds 8 MiB")
+                            return@withContext null
                         }
+                        output.write(buffer, 0, n)
+                    }
+                    output.toByteArray()
+                }
 
-                if (
-                    bytes == null ||
-                    bytes.isEmpty()
-                ) {
+                if (bytes == null || bytes.isEmpty()) {
 
                     Log.e(
                         TAG,
