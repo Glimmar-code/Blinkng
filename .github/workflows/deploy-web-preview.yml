@@ -31,11 +31,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Validate current GitHub Pages project URL
+      - name: Validate GO54 production domain
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e web/CNAME
+          test "$(tr -d '\r\n' < web/CNAME)" = "blink.com.ng"
           python3 -m json.tool web/manifest.webmanifest >/dev/null
           python3 scripts/check_github_pages_site.py
 
@@ -127,7 +127,7 @@ jobs:
           PY
 
           python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
-          echo "Generated verified Android App Links metadata for temporary GitHub Pages hosting."
+          echo "Generated verified Android App Links metadata for blink.com.ng."
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
