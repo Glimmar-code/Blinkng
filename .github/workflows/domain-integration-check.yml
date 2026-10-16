@@ -62,12 +62,12 @@ jobs:
           print("All BLINK website download buttons track future signed APK releases.")
           PY
           grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
-          grep -F '<link rel="canonical" href="https://www.blink.com.ng/" />' web/index.html >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/" />' web/index.html >/dev/null
           test -f web/privacy/index.html
-          grep -F '<link rel="canonical" href="https://www.blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
-          grep -F 'https://www.blink.com.ng/privacy/' web/sitemap.xml >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
+          grep -F 'https://blink.com.ng/privacy/' web/sitemap.xml >/dev/null
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
-          grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
+          grep -F 'Uri.parse("https://blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
       # Android App Links use the canonical BLINK domain.
       - name: Test Supabase OAuth, password recovery and token-safe redirects
