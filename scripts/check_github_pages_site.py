@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Regression guard for the temporary BLINK GitHub Pages project website.
+"""Regression guard for BLINK on the purchased GO54 custom domain.
 
-The downloaded APK stays on GitHub Releases /latest/download; the paid domain
-and Android manifest/App Links configuration are handled in a later rollout.
+BLINK uses its production custom domain for web links and APK downloads
+remain on the verified latest GitHub Release alias.
 """
 from pathlib import Path
 import re
@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://glimmar-code.github.io/Blinkng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
@@ -22,10 +22,10 @@ def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(not (WEB / "CNAME").exists(), "CNAME must be absent until a domain is purchased")
+check(read("CNAME").strip() == "blink.com.ng", "CNAME must match the verified GO54 domain")
 config = read("config.js")
 check(f'siteUrl: "{SITE}"' in config, "client siteUrl must use the GitHub Pages project path")
-check("www.blink.com.ng" not in config, "do not redirect sign-in to an unowned custom domain")
+check("glimmar-code.github.io" not in config, "OAuth must use the purchased domain")
 
 index = read("index.html")
 check(f'<link rel="canonical" href="{SITE}/"' in index, "home canonical URL")
@@ -50,10 +50,18 @@ fallback = read("404.html")
 check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA deep-link fallback must preserve /Blinkng")
 
 sw = read("sw.js")
-check("blink-web-v14-github-pages-primary" in sw, "web service worker version must be bumped for URL migration")
+check("blink-web-v15-go54-canonical-domain" in sw, "service worker cache must refresh for the domain cutover")
 
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
-check("web/CNAME" in workflow and "test ! -e web/CNAME" in workflow, "deploy must block custom domains")
+check("web/CNAME" in workflow and "blink.com.ng" in workflow, "deploy must verify the live custom domain")
 check("scripts/check_github_pages_site.py" in workflow, "deployment must validate Pages project setup")
 
-print("BLINK GitHub Pages project URL, SPA navigation and latest APK regression checks passed.")
+ads = read("app-ads.txt").strip()
+check(ads == "google.com, pub-9152580730716304, DIRECT, f08c47fec0942fa0",
+      "AdMob publisher authorization must match the approved account")
+check((WEB / ".nojekyll").exists(), "Pages must serve .well-known/assetlinks.json")
+import json
+links = json.loads(read(".well-known/assetlinks.json"))
+check(any(item.get("target", {}).get("package_name") == "com.aistudio.blink.appvtwo"
+          for item in links), "Android App Links must retain BLINK package association")
+print("BLINK GO54 domain, privacy, SEO, ads, App Links and APK link checks passed.")
