@@ -94,6 +94,36 @@ func _run() -> void:
                     visible_count += 1
             _assert_true(visible_count <= 4, "Battery-saving mode caps visible residents at four")
 
+    var spaces: Node3D = world.get_node_or_null("PublicSpaces") as Node3D
+    _assert_true(spaces != null, "Public amenities should exist as 3D geometry")
+    var PublicSpaceData: Script = load("res://scripts/public_spaces.gd")
+    if player != null and PublicSpaceData != null:
+        var public_locations: Array[Dictionary] = PublicSpaceData.public_spots()
+        var bench: Dictionary = public_locations[0]
+        player.global_position = bench["position"] + Vector3.UP * 0.15
+        var first_body: MeshInstance3D = player.get_child(1) as MeshInstance3D
+        var before_pose: Transform3D = first_body.transform
+        world.call("_interact")
+        _assert_true(not str(world.get("seated_at")).is_empty(), "The park bench should be usable in offline preview")
+        _assert_true(bool(world.call("_movement_blocked")), "Sitting must block movement until standing")
+        _assert_true(not first_body.transform.is_equal_approx(before_pose), "Sitting must visibly change the character pose")
+        world.call("_interact")
+        _assert_true(str(world.get("seated_at")).is_empty(), "Interact again must stand up")
+        _assert_true(first_body.transform.is_equal_approx(before_pose), "Standing must restore the original avatar pose")
+
+        var board: Dictionary = public_locations[public_locations.size() - 1]
+        player.global_position = board["position"] + Vector3.UP * 0.15
+        var before_board_cash: int = int(world.get("game_cash"))
+        world.call("_interact")
+        _assert_true(world.get("hud_modal").visible, "Community opportunities must open a readable panel")
+        _assert_true(int(world.get("game_cash")) == before_board_cash, "Viewing opportunities cannot create currency")
+        world.call("_close_quiz")
+        player.global_position = public_locations[6]["position"] + Vector3.UP * 0.15
+        world.call("_interact")
+        _assert_true(int(world.get("game_cash")) == before_board_cash, "Browsing stalls cannot charge or mint currency")
+        _assert_true(str(world.get("hud_status").text).contains("Fruit Stall"), "The selected stall should show its own identity")
+        player.global_position = Vector3.ZERO
+
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
 
