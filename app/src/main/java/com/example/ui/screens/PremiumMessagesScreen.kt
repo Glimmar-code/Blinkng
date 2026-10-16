@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.ui.components.BlinkSkeletonChatHistory
 
 import android.Manifest
@@ -2733,7 +2735,7 @@ private fun MessageBubble(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             receipt,
-                            color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
+                            color = if (message.status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
