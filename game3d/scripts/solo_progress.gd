@@ -33,7 +33,7 @@ static func fresh_state() -> Dictionary:
         "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0,
         "chair_x": 2, "chair_z": -1, "chair_rotation": 0,
         "table_x": 2, "table_z": 2, "table_rotation": 0,
-        "bed_layout": 0, "wardrobe_layout": 0, "layout_slots": {}}
+        "bed_layout": 0, "wardrobe_layout": 0, "light_mode": 0, "layout_slots": {}}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -102,6 +102,13 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
     layout["plant_z"] = z
     if not SoloHome.layout_allowed(layout):
         return {}
+    # Lighting is a separate room preference, not a user layout bookmark.
+    var light_raw: Variant = data.get("light_mode", 0)
+    if not _is_integer_number(light_raw, from_json):
+        return {}
+    var light_mode: int = int(light_raw)
+    if light_mode < 0 or light_mode > 2:
+        return {}
     var slots_raw: Variant = data.get("layout_slots", {})
     if not (slots_raw is Dictionary):
         return {}
@@ -137,7 +144,7 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
         "chair_rotation": furniture["chair_rotation"], "table_x": furniture["table_x"],
         "table_z": furniture["table_z"], "table_rotation": furniture["table_rotation"],
         "bed_layout": furniture["bed_layout"], "wardrobe_layout": furniture["wardrobe_layout"],
-        "layout_slots": slots}
+        "light_mode": light_mode, "layout_slots": slots}
 
 
 func _read_json(path: String) -> Variant:
