@@ -19,9 +19,9 @@ checks below pass and the owner verifies the domain in a browser.
   Do not mix this with a competing website provider's A/CNAME records.
 - **GitHub repository → Settings → Pages → Custom domain**:
   `blink.com.ng` (as shown in GitHub Pages settings). Keep Enforce HTTPS enabled.
-- Publish the `web/` artifact containing `CNAME`. Verify apex redirects
-  to the canonical apex, privacy, manifest, sitemap, robots, HTTPS and 404
-  handling on mobile; browser smoke is mandatory.
+- Publish the `web/` artifact containing `CNAME`. Verify that the apex serves
+  the site directly over HTTPS, with working privacy, manifest, sitemap, robots,
+  and 404 handling on mobile; browser smoke is mandatory.
 - Existing GitHub Release `.../releases/latest/download/Blink-latest.apk`
   must remain the five website download buttons' canonical target; verify
   the **published and signed** file actually exists before advertising it.
@@ -50,8 +50,9 @@ checks below pass and the owner verifies the domain in a browser.
   existing `https://jhwgifrlxwspoedxjaly.supabase.co` URL and publishable
   key; website domain ownership does **not** imply changing the backend.
 - Supabase → Authentication → URL Configuration: add
-  `https://blink.com.ng/` and any *specific* login / recovery routes
-  BLINK actually uses. Consider changing Site URL to the canonical site
+  `https://blink.com.ng/` and `https://blink.com.ng/settings/password`
+  (actual login / recovery routes used by the website). Preserve earlier
+  `https://www.blink.com.ng/` allowlist entries until the domain migration is stable. Consider changing Site URL to the canonical site
   only after Android recovery and Windows deep links are tested.
   Preserve existing Android deep-link redirects such as
   `blink://reset-password` and `blink://auth/reset-password`
@@ -65,8 +66,8 @@ checks below pass and the owner verifies the domain in a browser.
 
 ## 4. AdMob and email (26–39)
 
-- AdMob: verify `https://blink.com.ng/app-ads.txt` works by an HTTPS
-  redirect to canonical www. Public `web/app-ads.txt` contains
+- AdMob: verify `https://blink.com.ng/app-ads.txt` is directly accessible
+  over HTTPS and returns plaintext. Public `web/app-ads.txt` contains
   `google.com, pub-9152580730716304, DIRECT, f08c47fec0942fa0`.
   AdMob dashboard still must crawl and approve the file. Ads also depend
   on store/app/account reviews; file publication is not approval.
