@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.content.Intent
@@ -578,7 +580,7 @@ fun ProfileScreen(
                                                 .size(19.dp)
                                                 .align(Alignment.BottomEnd)
                                                 .background(
-                                                    Color(0xFF22C55E),
+                                                    Color(BlinkDesignTokens.Semantic.Success),
                                                     CircleShape
                                                 )
                                                 .border(3.dp, bgColor, CircleShape)
@@ -780,7 +782,7 @@ fun ProfileScreen(
                                     Modifier
                                         .size(7.dp)
                                         .background(
-                                            if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B8B8B),
+                                            if (profile.onlineNow) Color(BlinkDesignTokens.Semantic.Success) else Color(0xFF8B8B8B),
                                             CircleShape
                                         )
                                 )
@@ -789,7 +791,7 @@ fun ProfileScreen(
                                     text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
+                                    color = if (profile.onlineNow) Color(BlinkDesignTokens.Semantic.Success) else textSecondary
                                 )
                             }
                         }
