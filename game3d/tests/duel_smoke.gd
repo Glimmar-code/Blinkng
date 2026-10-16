@@ -28,23 +28,27 @@ func run_test() -> void:
     check(not bool(duels.call("are_opponents", 2, 4)), "Unrelated player cannot be matched")
     check(duels.call("start", 2, 4, 1001).is_empty(), "A player cannot enter two matches")
     check(duels.call("start", 2, 2, 1001).is_empty(), "Cannot challenge oneself")
-    check(duels.call("answer", 4, 1, 1100).is_empty(), "Unregistered player cannot score")
-    check(duels.call("answer", 2, -1, 1100).is_empty(), "Negative option index must be rejected")
-    check(duels.call("answer", 2, 10, 1100).is_empty(), "Out-of-bounds options must be rejected")
+    check(duels.call("answer", 4, 1, 1, 1100).is_empty(), "Unregistered player cannot score")
+    check(duels.call("answer", 2, 1, -1, 1100).is_empty(), "Negative option index must be rejected")
+    check(duels.call("answer", 2, 1, 10, 1100).is_empty(), "Out-of-bounds options must be rejected")
 
-    var answer: Dictionary = duels.call("answer", 2, 0, 1100)
+    var answer: Dictionary = duels.call("answer", 2, 1, 0, 1100)
     check(answer.get("type", "") == "waiting", "First answer waits for opponent")
-    check(duels.call("answer", 2, 1, 1101).is_empty(), "Duplicate answers cannot replace a prior choice")
-    answer = duels.call("answer", 3, 1, 1102)
+    check(duels.call("answer", 2, 1, 1, 1101).is_empty(), "Duplicate answers cannot replace a prior choice")
+    answer = duels.call("answer", 3, 1, 1, 1102)
     check(int(answer.get("round", -1)) == 2, "Two recorded answers start second question")
 
-    answer = duels.call("answer", 2, 2, 1200)
+    check(duels.call("answer", 2, 1, 1, 1200).is_empty(),
+        "Old question packets must not count toward new rounds")
+    answer = duels.call("answer", 2, 2, 2, 1200)
     check(answer.get("type", "") == "waiting", "Second-round answer is recorded")
-    answer = duels.call("answer", 3, 0, 1201)
+    answer = duels.call("answer", 3, 2, 0, 1201)
     check(int(answer.get("round", -1)) == 3, "Both answers progress to final question")
 
-    answer = duels.call("answer", 2, 0, 1300)
-    answer = duels.call("answer", 3, 2, 1301)
+    check(duels.call("answer", 2, 2, 2, 1300).is_empty(),
+        "Previously answered packets are rejected after round advancement")
+    answer = duels.call("answer", 2, 3, 0, 1300)
+    answer = duels.call("answer", 3, 3, 2, 1301)
     check(answer.get("type", "") == "finished", "Three rounds finish deterministically")
     check(int(answer.get("first_score", -1)) == 2, "Server counts only first participant's correct answers")
     check(int(answer.get("second_score", -1)) == 1, "Server counts second participant's correct answers")
@@ -53,6 +57,8 @@ func run_test() -> void:
 
     var second: Dictionary = duels.call("start", 4, 5, 2000)
     check(second.get("type", "") == "question", "Match can start after prior completed")
+    check(duels.call("answer", 4, 1, 1, 32001).is_empty(),
+        "Late answers cannot score or advance after server deadline")
     var timed: Array[Dictionary] = duels.call("tick", 32001)
     check(timed.size() == 1 and int(timed[0].get("round", -1)) == 2,
         "Expired question advances without assigning imaginary points")
