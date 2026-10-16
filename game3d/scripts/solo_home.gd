@@ -46,6 +46,7 @@ var movable_chair: Node3D
 var movable_table: Node3D
 var movable_bed: Node3D
 var movable_wardrobe: Node3D
+var interior_light: OmniLight3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
 
@@ -97,6 +98,8 @@ func configure() -> void:
     light.light_energy = 1.0
     light.shadow_enabled = false
     add_child(light)
+    interior_light = light
+    apply_light_mode(0)
     desk_plant = Node3D.new()
     desk_plant.name = "DeskPlant"
     add_child(desk_plant)
@@ -105,6 +108,19 @@ func configure() -> void:
     desk_plant.position = PLANT_SPOTS[0]
     desk_plant.visible = false
     apply_decoration(0, 0, 0)
+
+
+## Three fixed-cost light options. This never spawns more real-time lights.
+## 0 warm, 1 neutral/bright, 2 dim for reduced energy consumption.
+func apply_light_mode(mode: int) -> bool:
+    if mode < 0 or mode > 2 or interior_light == null:
+        return false
+    var levels := [0.85, 1.15, 0.20]
+    var shades := [Color(1.0, 0.89, 0.72), Color(0.94, 0.97, 1.0),
+        Color(1.0, 0.77, 0.52)]
+    interior_light.light_energy = levels[mode]
+    interior_light.light_color = shades[mode]
+    return true
 
 
 func update_owned_decor(has_plant: bool) -> void:
