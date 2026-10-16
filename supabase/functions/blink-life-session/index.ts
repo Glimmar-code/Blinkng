@@ -2,6 +2,7 @@
  * BLINK LIFE dedicated server join ticket.
  * This function does not modify balances, houses, auth identities or wallets.
  * Only authenticated BLINK users may request 90-second server tickets.
+ * Dedicated world traffic is TLS-encrypted WebSocket (WSS). Plaintext ENet is forbidden.
  * Deploy only after staging checks and a dedicated Godot host are configured.
  */
 const corsHeaders = {
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
       port,
       ticket: `${unsigned}.${signature}`,
       expires_at: expires,
-      transport: "enet_udp",
+      transport: "wss_tls",
     });
   } catch (_error) {
     return answer({ error: "SESSION_ISSUER_UNAVAILABLE" }, 503);
