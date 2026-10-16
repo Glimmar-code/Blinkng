@@ -2273,21 +2273,33 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private fun runConnectAction(successMessage: String, action: suspend () -> Boolean) {
+    private val pendingConnectActions = mutableSetOf<String>()
+
+    /** Ignore rapid repeated taps while the same Connect request is in flight. */
+    private fun runConnectAction(
+        successMessage: String,
+        actionKey: String = successMessage,
+        action: suspend () -> Boolean
+    ) {
+        if (!pendingConnectActions.add(actionKey)) return
         viewModelScope.launch {
-            runCatching { action() }
-                .onSuccess { ok ->
-                    if (ok) {
-                        showToast(successMessage)
-                        refreshConnectHub()
-                    } else {
-                        showToast("That request is no longer available.")
+            try {
+                runCatching { action() }
+                    .onSuccess { ok ->
+                        if (ok) {
+                            showToast(successMessage)
+                            refreshConnectHub()
+                        } else {
+                            showToast("That request is no longer available.")
+                        }
                     }
-                }
-                .onFailure {
-                    Log.e(TAG, "Connect Hub action failed", it)
-                    showToast(it.message ?: "Connect Hub action failed.")
-                }
+                    .onFailure {
+                        Log.e(TAG, "Connect Hub action failed", it)
+                        showToast(it.message ?: "Connect Hub action failed.")
+                    }
+            } finally {
+                pendingConnectActions.remove(actionKey)
+            }
         }
     }
 
@@ -2348,7 +2360,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyForRoommate(profileId: String) =
-        runConnectAction("Roommate request sent.") {
+        runConnectAction("Roommate request sent.", actionKey = "roommate:$profileId") {
             connectHubRepository.applyRoommate(profileId)
         }
 
@@ -2362,7 +2374,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestMentor(profileId: String) =
-        runConnectAction("Mentor request sent.") {
+        runConnectAction("Mentor request sent.", actionKey = "mentor:$profileId") {
             connectHubRepository.requestMentor(profileId)
         }
 
@@ -2377,7 +2389,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestReadingMate(profileId: String) =
-        runConnectAction("Reading-mate request sent.") {
+        runConnectAction("Reading-mate request sent.", actionKey = "reading:$profileId") {
             connectHubRepository.requestReadingMate(profileId)
         }
 
@@ -2400,7 +2412,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyToHousingRequest(requestId: String, message: String) =
-        runConnectAction("Housing application sent.") {
+        runConnectAction("Housing application sent.", actionKey = "housing:$requestId") {
             connectHubRepository.applyToHousingRequest(requestId, message)
         }
 
@@ -2408,7 +2420,7 @@ private suspend fun restoreSupabaseSession() {
         userId: String,
         gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName
     ) =
-        runConnectAction("Game challenge sent.") {
+        runConnectAction("Game challenge sent.", actionKey = "challenge:$userId:$gameType") {
             connectHubRepository.challengeUser(userId, gameType)
         }
 
@@ -2434,12 +2446,12 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
-        runConnectAction(if (accept) "Request accepted." else "Request declined.") {
+        runConnectAction(if (accept) "Request accepted." else "Request declined.", actionKey = "respond:$kind:$requestId") {
             connectHubRepository.respondToConnectRequest(kind, requestId, accept)
         }
 
     fun submitChallengeScore(challengeId: String, score: Int) =
-        runConnectAction("Challenge score submitted.") {
+        runConnectAction("Challenge score submitted.", actionKey = "challenge-score:$challengeId") {
             connectHubRepository.submitChallengeScore(challengeId, score)
         }
 
