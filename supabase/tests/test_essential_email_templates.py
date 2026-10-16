@@ -80,8 +80,8 @@ class EssentialEmailSafetyTests(unittest.TestCase):
     def test_new_social_email_preferences_default_off_and_private(self):
         sql = SOCIAL_MIGRATION.read_text(encoding="utf-8").lower()
         # A broken PL/pgSQL dollar quote would make the staging migration fail.
-        self.assertEqual(sql.count("$"), 4)
-        self.assertIn("end;\n$;\nrevoke all on function public.blink_queue_social_email_digests", sql)
+        self.assertEqual(sql.count("$$"), 4)
+        self.assertIn("end;\n$$;\nrevoke all on function public.blink_queue_social_email_digests", sql)
 
         for col in (
             "new_follower_enabled", "unread_messages_enabled",
