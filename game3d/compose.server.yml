@@ -1,6 +1,6 @@
-# Preview dedicated server. Requires Docker, a UDP-reachable host and secrets.
-# NO automatic production deployment. Use staging and the same secret as the
-# Supabase Edge ticket issuer BLINK_LIFE_AUTH_SECRET.
+# Staging-only TLS multiplayer. No plaintext public UDP listener.
+# Obtain a valid public CA certificate from the hostname operator.
+# Never commit secrets or TLS private keys to GitHub.
 services:
   blink-life:
     build:
@@ -8,18 +8,29 @@ services:
       dockerfile: game3d/Dockerfile
     restart: unless-stopped
     environment:
-      BLINK_LIFE_AUTH_SECRET: "${BLINK_LIFE_AUTH_SECRET:?Set a 32+ character random server secret}"
-      BLINK_LIFE_SERVER_PORT: "24567"
+      BLINK_LIFE_AUTH_SECRET: "${BLINK_LIFE_AUTH_SECRET:?Set a strong random server secret}"
+      BLINK_LIFE_SERVER_PORT: "24568"
+      BLINK_LIFE_TLS_CERT_PATH: "/run/blink-life/tls/fullchain.crt"
+      BLINK_LIFE_TLS_KEY_PATH: "/run/blink-life/tls/private.key"
     ports:
-      - "24567:24567/udp"
+      - "24568:24568/tcp"
     volumes:
       - blink_life_game_data:/var/lib/blinklife
+      - "${BLINK_LIFE_TLS_DIR:?Set a path to CA-issued cert files}:/run/blink-life/tls:ro"
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     pids_limit: 128
     mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -r /run/blink-life/tls/fullchain.crt && test -r /run/blink-life/tls/private.key && test -d /var/lib/blinklife"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   blink_life_game_data:
