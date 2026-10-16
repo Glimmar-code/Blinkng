@@ -394,3 +394,38 @@ three supported decor objects but remain **partial**. **39 source implemented,
 42 partial, 919 pending audit, 0 device verified, 0 released**. No Testlab
 or production merge until current-commit Android, Windows, Godot and
 release tests pass; real-device usability remains unverified.
+
+## Batch 12: starter bed, wardrobe and curated room plans (solo)
+
+The existing offline starter room now exposes three deliberately bounded
+arrangements for the low-poly **bed** and **wardrobe**. The original bed
+and wardrobe meshes are attached to moveable scene nodes; the bed label
+moves with its parent. Positions and the one quarter-turn bed/wardrobe
+variants are curated rather than unrestricted drag-and-drop so player
+spawn clearance and furniture walkways remain protected.
+
+A second menu section offers three predefined **Original room**, **Study
+corner** and **Open floor** plans. Each plan arranges the starter bed,
+wardrobe, chair and table together; applying a plan also returns the
+optional plant to its prior first display preset, without taking it away
+or changing Game Cash. Players can undo or redo the whole plan as one
+save-first decoration action. The selected bed/wardrobe variants and
+resulting grid placements persist locally and restore on room re-entry.
+
+The validator now checks all four major furnishings plus custom floor
+plant against room walls, desk, player spawn point and mutual overlap
+using their actual rotated 2D footprints. Room plans cannot charge,
+award or affect the server, and generic physics collisions for
+furniture remain out of scope. Old version-one solo saves default
+the new bed_layout and wardrobe_layout fields to original positions.
+
+Roadmap: **#274 partially implemented** for three built-in layouts
+in the single solo room. #265, #270, #271 and #273 remain partial;
+they now include evidence for the bed and wardrobe slice.
+**39 implemented in source, 43 partial, 918 pending audit,
+0 device-verified and 0 released**. Unit/state and Godot rendered
+scene smoke tests cover curated placements, rotation, backups, plan
+application, undo/redo, restart restoration and preserved Game Cash.
+Real Android/Windows behavior and production release gates still need
+verification. Multiplayer property ownership/editing remains unchanged.
+
