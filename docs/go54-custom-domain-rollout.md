@@ -1,7 +1,7 @@
 # BLINK custom-domain rollout — staging checklist (16 October 2026)
 
 The domain `blink.com.ng` was purchased through **GO54**. Target canonical
-website: **https://www.blink.com.ng/** (apex redirects to www).
+website: **https://blink.com.ng/** (verified GitHub Pages custom-domain setting; www is optional).
 
 **Status:** This file describes a **proposed deployment on a Testlab-named
 feature branch**. It does not confirm live DNS, dashboard approval, or a
@@ -15,12 +15,12 @@ checks below pass and the owner verifies the domain in a browser.
 - For GitHub Pages hosting, set `@` A records to GitHub Pages' four documented
   addresses: `185.199.108.153`, `185.199.109.153`,
   `185.199.110.153`, `185.199.111.153`.
-- Add `www` CNAME → `glimmar-code.github.io` (without `/Blinkng`).
+- **Optional**: Add `www` CNAME → `glimmar-code.github.io` (without `/Blinkng`) if you also want the www alias. Verify it redirects to the apex and does not compete with another host.
   Do not mix this with a competing website provider's A/CNAME records.
 - **GitHub repository → Settings → Pages → Custom domain**:
-  `www.blink.com.ng`. Enforce HTTPS after the certificate is ready.
+  `blink.com.ng` (as shown in GitHub Pages settings). Keep Enforce HTTPS enabled.
 - Publish the `web/` artifact containing `CNAME`. Verify apex redirects
-  to canonical www, privacy, manifest, sitemap, robots, HTTPS and 404
+  to the canonical apex, privacy, manifest, sitemap, robots, HTTPS and 404
   handling on mobile; browser smoke is mandatory.
 - Existing GitHub Release `.../releases/latest/download/Blink-latest.apk`
   must remain the five website download buttons' canonical target; verify
@@ -30,7 +30,7 @@ checks below pass and the owner verifies the domain in a browser.
 
 ## 2. Android, Windows and stores (9–17)
 
-- The Android manifest uses `https://www.blink.com.ng` as its production
+- The Android manifest uses `https://blink.com.ng` as the production
   verified share host with profile/post/reel link patterns. The website
   serves `/.well-known/assetlinks.json`; the GitHub Pages deploy job
   regenerates it from the production signing keystore and compares with
@@ -50,7 +50,7 @@ checks below pass and the owner verifies the domain in a browser.
   existing `https://jhwgifrlxwspoedxjaly.supabase.co` URL and publishable
   key; website domain ownership does **not** imply changing the backend.
 - Supabase → Authentication → URL Configuration: add
-  `https://www.blink.com.ng/` and any *specific* login / recovery routes
+  `https://blink.com.ng/` and any *specific* login / recovery routes
   BLINK actually uses. Consider changing Site URL to the canonical site
   only after Android recovery and Windows deep links are tested.
   Preserve existing Android deep-link redirects such as
@@ -89,7 +89,7 @@ checks below pass and the owner verifies the domain in a browser.
   keep verified payment webhooks pointing to their working server-side
   endpoints, not a static GitHub Pages URL.
 - Google Search Console: verify domain through its supplied DNS TXT,
-  and submit `https://www.blink.com.ng/sitemap.xml` after deployment.
+  and submit `https://blink.com.ng/sitemap.xml` after deployment.
   Bing Webmaster Tools may also be configured.
 - Analytics, Google Cloud OAuth origins, social profiles and support
   links may reference the canonical site where the provider uses them.
