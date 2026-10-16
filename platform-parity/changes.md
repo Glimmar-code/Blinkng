@@ -235,3 +235,13 @@ Server behavior: Verified-account welcome events and server-owned social digest 
 Platform-specific exception: None needed. Both clients have equivalent social email preference controls; native push-notification channels are independent of email.
 Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, no message bodies, idempotent digests, unsubscribe on signed POST, deterministic sender source, email-sending daily cap, HTML safety regression tests. Production changes blocked until staging migrations, signup-policy checks, Brevo keys/sender verification, end-to-end Gmail/Outlook and Android/Windows CI validation.
 
+
+
+## 2026-10-16 — BLINK LIFE FUTA-inspired 3D district (Testlab prototype)
+
+- Shared Godot: original low-poly campus streets, 19 fictional landmarks, 13 community lodges, trees, waypoint overlay and two optional GC-only quiz jobs in `game3d/scripts/futa_map.gd` and `game3d/scripts/world.gd`.
+- Same native scene delivered on Android on-demand and Windows. Website APK uses a separately exported WebGL pack from the same project; WebGL does not support LAN ENet.
+- Preserves Testlab enhancements: day/night, battery settings, touch movement, safe offline recovery, confirmations, address-based existing destinations and optional LAN multiplayer.
+- Private-home authorization stays positive-X/invite-gated; new negative-X campus path is added without broadening all movement limits.
+- No real map tiles, physical GPS, live cash, guaranteed FUTA survey accuracy or production-hosted online service.
+- Hold for Godot CI, Android/Windows build/export verification and physical low-end device, WebGL and multiplayer tests. Leave main unchanged until verified.

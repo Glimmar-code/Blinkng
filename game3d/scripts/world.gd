@@ -25,6 +25,10 @@ var game_cash: int = 500
 var completed_jobs: int = 0
 var owns_plant: bool = false
 var places: Array[Dictionary] = []
+var futa_landmarks: Array[Dictionary] = []
+var selected_waypoint: Dictionary = {}
+var map_panel: PanelContainer
+var map_view: Control
 var active_quiz: Dictionary = {}
 var social: Node3D
 var preferences := Preferences.new()
@@ -55,6 +59,7 @@ func _ready() -> void:
     add_child(details)
     details.configure(self)
     neighborhood = details
+    _create_futa_district()
     _create_player()
     _create_camera()
     _create_hud()
@@ -90,7 +95,17 @@ func _process(delta: float) -> void:
     if nearby.is_empty():
         hud_location.text = "Explore the 3D city — approach a marked building"
     else:
-        hud_location.text = "%s • %s • INTERACT" % [nearby["name"], nearby["address"]]
+        if str(nearby.get("kind", "")) == "futa":
+            hud_location.text = "%s • INTERACT" % nearby["name"]
+        else:
+            hud_location.text = "%s • %s • INTERACT" % [nearby["name"], nearby["address"]]
+    if not selected_waypoint.is_empty():
+        var destination: Vector3 = selected_waypoint["entry"]
+        var distance: int = roundi(Vector2(
+            destination.x - player.global_position.x,
+            destination.z - player.global_position.z
+        ).length())
+        hud_location.text += "  |  %s: %d game units" % [selected_waypoint["name"], distance]
 
 
 func _physics_process(delta: float) -> void:
@@ -141,8 +156,16 @@ func _physics_process(delta: float) -> void:
     if direction.length_squared() > 0.001:
         player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.y), minf(delta * 12.0, 1.0))
     player.move_and_slide()
-    if player.is_on_floor() and absf(player.global_position.x) < 25.0 and absf(player.global_position.z) < 19.0:
+    if player.is_on_floor() and _is_play_area(player.global_position):
         last_safe_position = player.global_position
+
+
+func _is_play_area(position: Vector3) -> bool:
+    if absf(position.x) < 28.0 and absf(position.z) < 22.0:
+        return true
+    # Campus is west of the small original district. Keep private interiors
+    # on the positive-X side out of this public-world collision/recovery area.
+    return position.x >= -170.0 and position.x <= 0.0 and position.z >= -145.0 and position.z <= 0.0
 
 
 func _movement_blocked() -> bool:
@@ -152,6 +175,8 @@ func _movement_blocked() -> bool:
         return true
     if controls_panel != null and controls_panel.visible:
         return true
+    if map_panel != null and map_panel.visible:
+        return true
     if social != null and social.get("panel") != null and social.get("panel").visible:
         return true
     var focused: Control = get_viewport().gui_get_focus_owner()
@@ -160,7 +185,7 @@ func _movement_blocked() -> bool:
 
 func _recover_if_needed() -> void:
     var position: Vector3 = player.global_position
-    if not position.is_finite() or position.y < -3.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
+    if not position.is_finite() or position.y < -3.0 or not _is_play_area(position):
         player.global_position = last_safe_position + Vector3.UP * 0.1
         player.velocity = Vector3.ZERO
         _stop_touch_axis()
@@ -180,6 +205,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
         if event.keycode == KEY_ESCAPE:
             if controls_panel != null and controls_panel.visible:
                 controls_panel.hide()
+            elif map_panel != null and map_panel.visible:
+                map_panel.hide()
             elif hud_modal != null and hud_modal.visible:
                 _close_quiz()
             elif social != null and social.get("panel").visible:
@@ -303,6 +330,15 @@ func _create_city() -> void:
         _add_visual_box(self, site + Vector3(0, 1.65, 0), Vector3(2.2, 1.8, 2.2), Color(0.20, 0.44, 0.27))
 
 
+## Loaded only when BLINK LIFE opens, never when normal BLINK pages load.
+func _create_futa_district() -> void:
+    var map_script: Script = load("res://scripts/futa_map.gd")
+    var map_builder: RefCounted = map_script.new()
+    futa_landmarks = map_builder.call("build", self)
+    # Keep starter businesses separate: Layout.entrance_for() requires col/row.
+    # FUTA destinations use their own entry coordinates in _nearest_place().
+
+
 func _create_player() -> void:
     player = CharacterBody3D.new()
     player.name = "Player"
@@ -372,6 +408,7 @@ func _create_hud() -> void:
     hud_status.text = "TESTLAB: all money is fictional. Walk using WASD/arrows or touch controls."
     hud_status.add_theme_font_size_override("font_size", 14)
     hud.add_child(hud_status)
+    _create_map_hud(hud)
 
     # Always offer a visible exit: Android's Godot instance runs in a
     # separate process, so quitting here returns the player to BLINK.
@@ -441,6 +478,67 @@ func _create_hud() -> void:
     _create_controls_panel(hud)
 
 
+## Navigation uses fictional in-game coordinates, not real-world GPS.
+func _create_map_hud(hud: Control) -> void:
+    var map_button := _new_button("CAMPUS MAP", 145)
+    map_button.position = Vector2(18, 115)
+    hud.add_child(map_button)
+
+    map_panel = PanelContainer.new()
+    map_panel.position = Vector2(18, 155)
+    map_panel.custom_minimum_size = Vector2(335, 0)
+    map_panel.visible = false
+    hud.add_child(map_panel)
+    map_button.pressed.connect(func():
+        if (controls_panel != null and controls_panel.visible) or (hud_modal != null and hud_modal.visible):
+            return
+        if social != null and social.get("panel") != null and social.get("panel").visible:
+            return
+        map_panel.visible = not map_panel.visible
+        _stop_touch_axis()
+    )
+
+    var layout := VBoxContainer.new()
+    map_panel.add_child(layout)
+    var title := Label.new()
+    title.text = "FUTA-inspired GAME map (fictional layout)"
+    title.add_theme_font_size_override("font_size", 15)
+    layout.add_child(title)
+    var hint := Label.new()
+    hint.text = "Tap a map marker or choose a named destination below."
+    layout.add_child(hint)
+
+    var view_script: Script = load("res://scripts/futa_minimap.gd")
+    map_view = view_script.new()
+    map_view.name = "CampusPlanView"
+    layout.add_child(map_view)
+    map_view.call("configure", futa_landmarks, player)
+    map_view.connect("waypoint_selected", _select_waypoint)
+
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(315, 110)
+    layout.add_child(scroll)
+    var destinations := VBoxContainer.new()
+    scroll.add_child(destinations)
+    for landmark in futa_landmarks:
+        var item := _new_button(str(landmark["name"]), 302)
+        destinations.add_child(item)
+        item.pressed.connect(_select_waypoint.bind(landmark))
+    var clear := _new_button("CLEAR WAYPOINT")
+    layout.add_child(clear)
+    clear.pressed.connect(func():
+        selected_waypoint = {}
+        map_panel.visible = false
+    )
+
+
+func _select_waypoint(landmark: Dictionary) -> void:
+    selected_waypoint = landmark.duplicate()
+    map_panel.visible = false
+    hud_status.text = "Waypoint selected: %s. This is a fictional game location." % landmark["name"]
+    _stop_touch_axis()
+
+
 func _set_touch_axis(axis: Vector2) -> void:
     if _movement_blocked():
         return
@@ -494,7 +592,7 @@ func _create_controls_panel(hud: Control) -> void:
     hud.add_child(controls_panel)
     controls_panel.hide()
     toggle.pressed.connect(func():
-        if hud_modal.visible or (social != null and social.get("panel").visible):
+        if hud_modal.visible or (map_panel != null and map_panel.visible) or (social != null and social.get("panel").visible):
             return
         controls_panel.visible = not controls_panel.visible
         _stop_touch_axis())
@@ -622,6 +720,13 @@ func _nearest_place() -> Dictionary:
         if distance < best_distance:
             nearest = place
             best_distance = distance
+    for site in futa_landmarks:
+        var entry: Vector3 = site["entry"]
+        var distance: float = Vector2(player.global_position.x - entry.x,
+            player.global_position.z - entry.z).length()
+        if distance < best_distance:
+            nearest = site
+            best_distance = distance
     return nearest
 
 
@@ -653,8 +758,15 @@ func _interact() -> void:
             if social != null:
                 social.call("open_social")
             hud_status.text = "Social homes: visiting requires the owner's approval."
+        "FUTA Campus Café":
+            _start_quiz("Campus café", "Three meals cost 70 GC each. A guest pays 250 GC. Change?", ["30 GC", "40 GC", "50 GC"], 1, 140)
+        "Campus Delivery Office":
+            _start_quiz("Campus courier", "What is the safest way to deliver a parcel?", ["Follow the marked path", "Speed through crossings", "Skip the destination"], 0, 160)
         _:
-            hud_status.text = "Campus unlocked. More missions will follow."
+            if str(place.get("kind", "")) == "futa":
+                hud_status.text = "%s: %s" % [place["name"], place["description"]]
+            else:
+                hud_status.text = "Campus unlocked. More missions will follow."
 
 
 func _preview_plant_purchase() -> void:

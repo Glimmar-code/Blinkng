@@ -2,6 +2,16 @@
 
 This is the **real 3D engine source** for BLINK LIFE, built in Godot 4 with the mobile-friendly **Compatibility** renderer.
 
+## FUTA-inspired district (Testlab preview, October 2026)
+
+The game also generates an **original fictional FUTA-inspired** campus/community district in the same Godot scene. It has 19 navigable landmarks (gate, academic blocks, libraries, hostels, sports, health, residential streets, bus stop, shops, café and delivery office), roads, houses, vegetation, a collapsible waypoint list and two optional local Game Cash quiz jobs. Map navigation uses only fictional local scene coordinates.
+
+**Accuracy:** The previous AI-generated illustrated map is a design reference, **not** a verified plan of the real Federal University of Technology Akure. The game's building locations, road junctions, scale and neighbouring houses are fictional; do not advertise the layout as an official or navigational map. Real map data and appropriate attribution/permissions require a separate mapping pass.
+
+**Delivery parity:** Both Android native Godot and Windows native Godot use `game3d/scenes/main.tscn`. Website/standalone Android users receive the separately exported WebGL scene only when they deliberately download BLINK LIFE. It must be re-exported and hash-published before users receive this district. Native LAN visits remain an experimental trusted-network preview; web exports do not support that protocol.
+
+**Release gate:** Godot parsing, 3D smoke tests, private home gate tests, Android/Windows package checks, release size, download/unpack and real low-end phone gameplay/heat/rotation require passing results before production promotion. No public online server or real GPS is enabled by this district.
+
 ## What runs in the native 3D scene
 
 - Walk freely around an original stylized Nigerian-campus-inspired 3D neighbourhood, not tile-by-tile.
