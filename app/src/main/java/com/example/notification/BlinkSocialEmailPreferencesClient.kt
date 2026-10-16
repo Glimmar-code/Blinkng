@@ -57,19 +57,19 @@ object BlinkSocialEmailPreferencesClient {
             SupabaseService.initialize(context.applicationContext)
             val token = SupabaseService.accessToken() ?: error("Sign in to manage email alerts.")
             val userId = SupabaseService().getCurrentUserId() ?: error("Sign in to manage email alerts.")
+            val category = type.column.removeSuffix("_enabled")
             val payload = JSONObject()
-                .put("user_id", userId)
-                .put(type.column, enabled)
+                .put("p_category", category)
+                .put("p_enabled", enabled)
                 .toString().toRequestBody(jsonType)
             val request = Request.Builder()
-                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/blink_social_email_preferences?on_conflict=user_id")
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_set_social_email_preference")
                 .header("apikey", SupabaseConfig.anonKey)
                 .header("Authorization", "Bearer $token")
                 .header("Content-Type", "application/json")
-                .header("Prefer", "resolution=merge-duplicates,return=minimal")
                 .post(payload).build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) error("Couldn't save email preferences (${response.code}).")
+                if (!response.isSuccessful || response.body?.string()?.trim() != "true") error("Couldn\'t save email preferences (${response.code}).")
             }
         }
     }
