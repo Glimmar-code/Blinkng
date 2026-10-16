@@ -24,7 +24,8 @@ static func fresh_state() -> Dictionary:
         "plant_custom": false, "plant_x": SoloHome.PLANT_DEFAULT_X,
         "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0,
         "chair_x": 2, "chair_z": -1, "chair_rotation": 0,
-        "table_x": 2, "table_z": 2, "table_rotation": 0}
+        "table_x": 2, "table_z": 2, "table_rotation": 0,
+        "bed_layout": 0, "wardrobe_layout": 0}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -99,7 +100,8 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
         "plant_x": x, "plant_z": z, "plant_rotation": rotation,
         "chair_x": furniture["chair_x"], "chair_z": furniture["chair_z"],
         "chair_rotation": furniture["chair_rotation"], "table_x": furniture["table_x"],
-        "table_z": furniture["table_z"], "table_rotation": furniture["table_rotation"]}
+        "table_z": furniture["table_z"], "table_rotation": furniture["table_rotation"],
+        "bed_layout": furniture["bed_layout"], "wardrobe_layout": furniture["wardrobe_layout"]}
 
 
 func _read_json(path: String) -> Variant:
