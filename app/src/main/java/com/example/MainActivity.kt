@@ -1628,6 +1628,8 @@ fun MainAppContent(
                     hasPostsLoadError = profilePostsLoadFailed,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
+                    arePrivateCollectionsLoading = profileKey in uiState.privateProfileCollectionsLoadingIds,
+                    havePrivateCollectionsError = profileKey in uiState.privateProfileCollectionsFailedIds,
                     userMarketItems = userMarketItems,
                     isMarketLoading = isProfileMarketLoading,
                     hasMarketLoadError = isProfileMarketFailed,
