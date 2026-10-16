@@ -23,7 +23,9 @@ func is_busy(peer_id: int) -> bool:
 func start(first: int, second: int, now_ms: int) -> Dictionary:
     if first <= 0 or second <= 0 or first == second or is_busy(first) or is_busy(second):
         return {}
-    var scores: Dictionary = {first: 0, second: 0}
+    var scores: Dictionary = {}
+    scores[first] = 0
+    scores[second] = 0
     var id := next_id
     next_id += 1
     matches[id] = {
