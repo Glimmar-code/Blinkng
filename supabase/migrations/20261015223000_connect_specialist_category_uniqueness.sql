@@ -9,7 +9,7 @@ begin;
 alter table public.connect_listings
   add column if not exists category_slug text;
 
-do $
+do $$
 begin
   if not exists (
     select 1 from pg_constraint
@@ -22,7 +22,7 @@ begin
       references public.connect_category_catalog(slug)
       on update cascade;
   end if;
-end $;
+end $$;
 
 create index if not exists idx_connect_listings_category_live_newest
   on public.connect_listings (category_slug, created_at desc)
