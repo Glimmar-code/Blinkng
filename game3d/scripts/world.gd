@@ -14,6 +14,17 @@ const NpcWorld = preload("res://scripts/npc_world.gd")
 const PublicSpaces = preload("res://scripts/public_spaces.gd")
 const SoloProgress = preload("res://scripts/solo_progress.gd")
 const SoloHome = preload("res://scripts/solo_home.gd")
+const STUDY_CARDS = [
+    {"question": "Which number completes 7 + 5?",
+     "choices": ["10", "12", "14"], "answer": 1,
+     "note": "Seven and five make twelve."},
+    {"question": "What is the next number: 2, 4, 6, ...?",
+     "choices": ["7", "8", "10"], "answer": 1,
+     "note": "The pattern increases by two."},
+    {"question": "Which sentence uses the correct plural?",
+     "choices": ["Two books", "Two book", "Two bookses"], "answer": 0,
+     "note": "The regular plural is books."}
+]
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -40,6 +51,9 @@ var home_plant_rotation: int = 0
 var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
 var home_layout_slots: Dictionary = {}
 var home_light_mode: int = 0
+var study_card: int = 0
+var study_answered: bool = false
+var study_correct: int = 0
 var decor_undo: Array[Dictionary] = []
 var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
@@ -925,6 +939,9 @@ func _enter_solo_home() -> void:
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
     solo_room.call("apply_light_mode", home_light_mode)
+    study_card = 0
+    study_answered = false
+    study_correct = 0
     decor_undo.clear()
     decor_redo.clear()
     home_inside = true
@@ -987,6 +1004,9 @@ func _show_home_decor() -> void:
     var heading := Label.new()
     heading.text = "Free solo-room decoration • saved locally"
     rows.add_child(heading)
+    var study := _new_button("Study desk • free quick practice")
+    rows.add_child(study)
+    study.pressed.connect(_show_study_panel)
     var lighting := _new_button("Lighting: " + ["Warm", "Bright", "Dim"][home_light_mode])
     rows.add_child(lighting)
     lighting.pressed.connect(_cycle_home_light)
