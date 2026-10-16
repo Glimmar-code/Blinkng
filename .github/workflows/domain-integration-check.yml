@@ -15,6 +15,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -27,6 +28,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
 
 permissions:
   contents: read
@@ -69,6 +71,9 @@ jobs:
 
       # Native Android verification targets the configured apex blink.com.ng domain.
       # Legacy GitHub Pages URLs remain supported as fallback.
+      - name: Verify canonical web OAuth and token-safe password reset redirects
+        run: node scripts/test_domain_auth_links.mjs
+
       - name: Validate existing Android signing association
         shell: bash
         run: |
