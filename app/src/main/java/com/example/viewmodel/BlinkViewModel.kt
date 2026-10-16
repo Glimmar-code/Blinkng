@@ -2210,6 +2210,52 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Reflect the authoritative balance returned by a successful Connect Match RPC. */
+    fun onConnectMatchSpinCoinsUpdated(remainingCoins: Long) {
+        if (remainingCoins >= 0L) {
+            _uiState.value = _uiState.value.copy(blinkCoinBalance = remainingCoins)
+        }
+    }
+
+    /** Re-fetch the profile directory without clearing previously loaded results on failure. */
+    private var connectStudentSearchEpoch: Long = 0
+
+    /** Search beyond the first directory page; stale results cannot replace newer queries. */
+    fun searchConnectStudents(query: String) {
+        val cleaned = query.trim()
+        val epoch = ++connectStudentSearchEpoch
+        if (cleaned.length < 2) return
+        val accountId = _uiState.value.myProfile.id
+        viewModelScope.launch {
+            val found = runCatching { supabaseService.searchProfilesPage(cleaned, limit = 60) }
+                .getOrDefault(emptyList())
+            if (epoch == connectStudentSearchEpoch &&
+                _uiState.value.myProfile.id == accountId && found.isNotEmpty()) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    profiles = (listOf(current.myProfile) + found + current.profiles)
+                        .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        .take(600)
+                )
+            }
+        }
+    }
+
+    fun refreshConnectStudents() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchProfiles() }
+                .onSuccess { fresh ->
+                    if (fresh.isNotEmpty()) {
+                        val own = _uiState.value.myProfile
+                        _uiState.value = _uiState.value.copy(
+                            profiles = (listOf(own) + fresh).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        )
+                    }
+                }
+                .onFailure { Log.w(TAG, "Connect students refresh failed", it) }
+        }
+    }
+
     fun refreshConnectHub() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
@@ -2229,21 +2275,79 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private fun runConnectAction(successMessage: String, action: suspend () -> Boolean) {
+    private val pendingConnectActions = mutableSetOf<String>()
+
+    /** Ignore rapid repeated taps while the same Connect request is in flight. */
+    private fun runConnectAction(
+        successMessage: String,
+        actionKey: String = successMessage,
+        action: suspend () -> Boolean
+    ) {
+        if (!pendingConnectActions.add(actionKey)) return
         viewModelScope.launch {
-            runCatching { action() }
-                .onSuccess { ok ->
-                    if (ok) {
-                        showToast(successMessage)
-                        refreshConnectHub()
-                    } else {
-                        showToast("That request is no longer available.")
+            try {
+                runCatching { action() }
+                    .onSuccess { ok ->
+                        if (ok) {
+                            showToast(successMessage)
+                            refreshConnectHub()
+                        } else {
+                            showToast("That request is no longer available.")
+                        }
                     }
+                    .onFailure {
+                        Log.e(TAG, "Connect Hub action failed", it)
+                        showToast(it.message ?: "Connect Hub action failed.")
+                    }
+            } finally {
+                pendingConnectActions.remove(actionKey)
+            }
+        }
+    }
+
+    /** Publish a Connect form with explicit acknowledgement so user input survives failures. */
+    fun submitConnectForm(
+        kind: String,
+        first: String,
+        second: String,
+        third: String,
+        fourth: String,
+        fifth: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val values = first.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val otherValues = second.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val budget = third.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                require(third.isBlank() || kind !in setOf("ROOMMATE", "HOUSING") ||
+                    (budget != null && budget.isFinite() && budget >= 0.0)) {
+                    "Enter a valid non-negative budget."
                 }
-                .onFailure {
-                    Log.e(TAG, "Connect Hub action failed", it)
-                    showToast(it.message ?: "Connect Hub action failed.")
+                when (kind) {
+                    "ROOMMATE" -> connectHubRepository.upsertRoommate(
+                        first, fourth, second, null, budget
+                    )
+                    "MENTOR" -> connectHubRepository.upsertMentor("mentor", values, second, third)
+                    "READING" -> connectHubRepository.upsertReadingMate(
+                        values, fourth.ifBlank { "Focused" }, otherValues, third, fifth
+                    )
+                    "AGENT" -> connectHubRepository.applyAsHousingAgent(first, otherValues, third)
+                    "HOUSING" -> connectHubRepository.createHousingRequest(first, second, null, budget, fourth)
+                    else -> throw IllegalArgumentException("Unknown Connect form.")
                 }
+            }
+            result.onSuccess { ok ->
+                if (ok) {
+                    refreshConnectHub()
+                    onResult(true, null)
+                } else {
+                    onResult(false, "The server did not confirm your submission.")
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Connect form submission failed", error)
+                onResult(false, error.message ?: "Connect submission failed. Try again.")
+            }
         }
     }
 
@@ -2258,7 +2362,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyForRoommate(profileId: String) =
-        runConnectAction("Roommate request sent.") {
+        runConnectAction("Roommate request sent.", actionKey = "roommate:$profileId") {
             connectHubRepository.applyRoommate(profileId)
         }
 
@@ -2272,7 +2376,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestMentor(profileId: String) =
-        runConnectAction("Mentor request sent.") {
+        runConnectAction("Mentor request sent.", actionKey = "mentor:$profileId") {
             connectHubRepository.requestMentor(profileId)
         }
 
@@ -2287,7 +2391,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestReadingMate(profileId: String) =
-        runConnectAction("Reading-mate request sent.") {
+        runConnectAction("Reading-mate request sent.", actionKey = "reading:$profileId") {
             connectHubRepository.requestReadingMate(profileId)
         }
 
@@ -2310,7 +2414,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyToHousingRequest(requestId: String, message: String) =
-        runConnectAction("Housing application sent.") {
+        runConnectAction("Housing application sent.", actionKey = "housing:$requestId") {
             connectHubRepository.applyToHousingRequest(requestId, message)
         }
 
@@ -2318,7 +2422,7 @@ private suspend fun restoreSupabaseSession() {
         userId: String,
         gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName
     ) =
-        runConnectAction("Game challenge sent.") {
+        runConnectAction("Game challenge sent.", actionKey = "challenge:$userId:$gameType") {
             connectHubRepository.challengeUser(userId, gameType)
         }
 
@@ -2344,12 +2448,12 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
-        runConnectAction(if (accept) "Request accepted." else "Request declined.") {
+        runConnectAction(if (accept) "Request accepted." else "Request declined.", actionKey = "respond:$kind:$requestId") {
             connectHubRepository.respondToConnectRequest(kind, requestId, accept)
         }
 
     fun submitChallengeScore(challengeId: String, score: Int) =
-        runConnectAction("Challenge score submitted.") {
+        runConnectAction("Challenge score submitted.", actionKey = "challenge-score:$challengeId") {
             connectHubRepository.submitChallengeScore(challengeId, score)
         }
 

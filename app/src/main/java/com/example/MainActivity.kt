@@ -713,6 +713,11 @@ fun MainAppContent(
     val connectHubActions = remember(viewModel) {
         ConnectHubActions(
             refresh = { viewModel.refreshConnectHub() },
+            refreshStudents = { viewModel.refreshConnectStudents() },
+            searchStudents = { query -> viewModel.searchConnectStudents(query) },
+            submitHubForm = { kind, a, b, c, d, e, onResult ->
+                viewModel.submitConnectForm(kind, a, b, c, d, e, onResult)
+            },
             publishRoommate = { title, description, location, minBudget, maxBudget ->
                 viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
             },
@@ -738,7 +743,8 @@ fun MainAppContent(
             respondChallenge = { challengeId, accept -> viewModel.respondToGameChallenge(challengeId, accept) },
             respondRequest = { kind, requestId, accept -> viewModel.respondToConnectRequest(kind, requestId, accept) },
             submitChallengeScore = { challengeId, score -> viewModel.submitChallengeScore(challengeId, score) },
-            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) }
+            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) },
+            onMatchSpinCoinsUpdated = { balance -> viewModel.onConnectMatchSpinCoinsUpdated(balance) }
         )
     }
 
@@ -898,6 +904,7 @@ fun MainAppContent(
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
+                        currentUserProfile = uiState.myProfile,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
