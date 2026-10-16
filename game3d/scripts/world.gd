@@ -1026,6 +1026,10 @@ func _apply_home_decor(candidate: Dictionary) -> bool:
         return false
     if SoloProgress.valid_state(candidate).is_empty():
         return false
+    # The decor editor may only change layout fields; undo cannot rewind
+    # currency, job count or ownership even if future activities are added.
+    if int(candidate["cash"]) != game_cash or int(candidate["jobs"]) != completed_jobs or bool(candidate["plant"]) != owns_plant:
+        return false
     if not bool(progress_store.call("save_state", candidate)):
         hud_status.text = "Decoration not saved: " + str(progress_store.get("warning"))
         return false
