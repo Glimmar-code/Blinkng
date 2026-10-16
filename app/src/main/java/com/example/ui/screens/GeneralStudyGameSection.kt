@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -103,6 +105,9 @@ fun GeneralStudyGameSection(
     var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    val gameListState = rememberLazyListState()
+    LaunchedEffect(pane, questionIndex) { gameListState.scrollToItem(0) }
 
     val questions = remember(difficulty, seed) {
         if (seed == 0L) emptyList()
@@ -111,7 +116,8 @@ fun GeneralStudyGameSection(
     val question = questions.getOrNull(questionIndex)
 
     fun startRound() {
-        seed = System.currentTimeMillis()
+        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
+        confirmExit = false
         questionIndex = 0
         score = 0
         selectedOption = -1
@@ -138,6 +144,7 @@ fun GeneralStudyGameSection(
     }
 
     LazyColumn(
+        state = gameListState,
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 120.dp),
     ) {
@@ -184,10 +191,7 @@ fun GeneralStudyGameSection(
                         score = score,
                         selectedOption = selectedOption,
                         answered = answered,
-                        onBack = {
-                            paneName = GeneralStudyPane.SETUP.name
-                            seed = 0L
-                        },
+                        onBack = { confirmExit = true },
                         onAnswer = ::answer,
                         onNext = ::next,
                     )
@@ -208,6 +212,23 @@ fun GeneralStudyGameSection(
                 }
             }
         }
+    }
+    if (confirmExit && pane == GeneralStudyPane.PLAY) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("Leave General Study?") },
+            text = { Text("Your unfinished quiz round will be discarded.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = false
+                    seed = 0L
+                    paneName = GeneralStudyPane.SETUP.name
+                }) { Text("Leave round") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text("Keep playing") }
+            },
+        )
     }
 }
 
@@ -483,7 +504,8 @@ private fun PlayPane(
             }
         }
 
-        val progress = if (totalQuestions == 0) 0f else questionNumber.toFloat() / totalQuestions
+        val completed = (questionNumber - 1 + (if (answered) 1 else 0)).coerceIn(0, totalQuestions)
+        val progress = if (totalQuestions == 0) 0f else completed.toFloat() / totalQuestions
         LinearProgressIndicator(
             progress = progress,
             modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
@@ -666,7 +688,7 @@ private fun GameHeader(
     onProfileClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 34.dp, bottom = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
