@@ -85,7 +85,8 @@ func _initialize() -> void:
     var stream := FileAccess.open(MAIN, FileAccess.READ)
     check(stream != null, "Future save remains present")
     if stream != null:
-        check(JSON.parse_string(stream.get_as_text()) == newer, "Future progress must survive an older client")
+        var future_data: Dictionary = JSON.parse_string(stream.get_as_text())
+        check(int(future_data.get("version", -1)) == 2 and int(future_data.get("jobs", -1)) == 7 and bool(future_data.get("plant", false)), "Future progress must survive an older client")
         stream.close()
 
     write_direct(MAIN, "invalid")
