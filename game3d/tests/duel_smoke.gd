@@ -24,6 +24,8 @@ func run_test() -> void:
     check(not first.has("correct"), "Correct answers must not be included in server messages")
     check(bool(duels.call("is_busy", 2)), "First player must be marked busy")
     check(bool(duels.call("is_busy", 3)), "Second player must be marked busy")
+    check(bool(duels.call("are_opponents", 2, 3)), "Only active paired players count as opponents")
+    check(not bool(duels.call("are_opponents", 2, 4)), "Unrelated player cannot be matched")
     check(duels.call("start", 2, 4, 1001).is_empty(), "A player cannot enter two matches")
     check(duels.call("start", 2, 2, 1001).is_empty(), "Cannot challenge oneself")
     check(duels.call("answer", 4, 1, 1100).is_empty(), "Unregistered player cannot score")
