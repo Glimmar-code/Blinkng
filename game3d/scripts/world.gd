@@ -30,6 +30,9 @@ var orbit_angle: float = 40.0
 var game_cash: int = 500
 var completed_jobs: int = 0
 var owns_plant: bool = false
+var home_wall_style: int = 0
+var home_floor_style: int = 0
+var home_plant_spot: int = 0
 var progress_store: RefCounted = SoloProgress.new()
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
@@ -67,6 +70,9 @@ func _ready() -> void:
     game_cash = int(recovered["cash"])
     completed_jobs = int(recovered["jobs"])
     owns_plant = bool(recovered["plant"])
+    home_wall_style = int(recovered["wall_style"])
+    home_floor_style = int(recovered["floor_style"])
+    home_plant_spot = int(recovered["plant_spot"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -127,7 +133,7 @@ func _process(delta: float) -> void:
     var nearby_public: Dictionary = _nearest_public_spot()
     var nearby: Dictionary = _nearest_place()
     if home_inside:
-        hud_location.text = "Your solo room • INTERACT or F to go outside"
+        hud_location.text = "Your solo room • INTERACT to decorate • F to leave"
     elif not seated_at.is_empty():
         hud_location.text = "Seated at %s • INTERACT or F to stand" % seated_at
     elif not nearby_public.is_empty():
@@ -796,7 +802,7 @@ func _open_community_board() -> void:
 func _interact() -> void:
     if home_inside:
         if not _movement_blocked():
-            _exit_solo_home()
+            _show_home_decor()
         return
     if not seated_at.is_empty():
         _leave_seat()
@@ -898,6 +904,7 @@ func _enter_solo_home() -> void:
         add_child(solo_room)
         solo_room.call("configure")
     solo_room.call("update_owned_decor", owns_plant)
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style, home_plant_spot)
     home_inside = true
     player.global_position = solo_room.call("spawn_position")
     player.velocity = Vector3.ZERO
@@ -909,6 +916,7 @@ func _enter_solo_home() -> void:
 func _exit_solo_home() -> void:
     if not home_inside:
         return
+    _close_quiz()
     _stop_touch_axis()
     home_inside = false
     player.global_position = home_return_position
@@ -919,6 +927,63 @@ func _exit_solo_home() -> void:
         solo_room = null
     _refresh_home_camera()
     hud_status.text = "Returned to the city. Your solo progress stays saved."
+
+
+
+func _home_save_snapshot() -> Dictionary:
+    return {"version": 1, "cash": game_cash, "jobs": completed_jobs, "plant": owns_plant,
+        "wall_style": home_wall_style, "floor_style": home_floor_style,
+        "plant_spot": home_plant_spot}
+
+
+func _show_home_decor() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Free solo-room decoration (saved locally)"
+    rows.add_child(heading)
+    var walls := _new_button("Wall palette: %d / 3" % (home_wall_style + 1))
+    rows.add_child(walls)
+    walls.pressed.connect(_cycle_home_decoration.bind("wall_style"))
+    var floors := _new_button("Floor palette: %d / 3" % (home_floor_style + 1))
+    rows.add_child(floors)
+    floors.pressed.connect(_cycle_home_decoration.bind("floor_style"))
+    var plants := _new_button("Plant position: %d / 3%s" % [home_plant_spot + 1, "" if owns_plant else " (buy at market)"])
+    rows.add_child(plants)
+    plants.disabled = not owns_plant
+    plants.pressed.connect(_cycle_home_decoration.bind("plant_spot"))
+    var close := _new_button("Done • F to leave room")
+    rows.add_child(close)
+    close.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
+func _cycle_home_decoration(field: String) -> void:
+    if not home_inside or solo_room == null or (social != null and bool(social.get("is_online"))):
+        return
+    if field not in ["wall_style", "floor_style", "plant_spot"]:
+        return
+    if field == "plant_spot" and not owns_plant:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[field] = (int(candidate[field]) + 1) % 3
+    if not bool(progress_store.call("save_state", candidate)):
+        hud_status.text = "Decoration was not saved: " + str(progress_store.get("warning"))
+        return
+    # Apply only after commit. No Game Cash is consumed by these cosmetic choices.
+    home_wall_style = int(candidate["wall_style"])
+    home_floor_style = int(candidate["floor_style"])
+    home_plant_spot = int(candidate["plant_spot"])
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style, home_plant_spot)
+    hud_status.text = "Saved your free offline room decoration."
+    _show_home_decor()
 
 
 func _preview_plant_purchase() -> void:
@@ -955,7 +1020,9 @@ func _confirm_plant_purchase() -> void:
         hud_status.text = "Solo market purchases are disabled during a shared session."
         _close_quiz()
         return
-    var after_purchase: Dictionary = {"version": 1, "cash": game_cash - 250, "jobs": completed_jobs, "plant": true}
+    var after_purchase: Dictionary = _home_save_snapshot()
+    after_purchase["cash"] = game_cash - 250
+    after_purchase["plant"] = true
     if not bool(progress_store.call("save_state", after_purchase)):
         hud_status.text = "Purchase not completed: " + str(progress_store.get("warning"))
         _close_quiz()
@@ -1010,7 +1077,9 @@ func _submit_quiz(choice_id: int) -> void:
         _close_quiz()
         return
     var payout: int = int(active_quiz["payout"])
-    var after_job: Dictionary = {"version": 1, "cash": game_cash + payout, "jobs": completed_jobs + 1, "plant": owns_plant}
+    var after_job: Dictionary = _home_save_snapshot()
+    after_job["cash"] = game_cash + payout
+    after_job["jobs"] = completed_jobs + 1
     if not bool(progress_store.call("save_state", after_job)):
         hud_status.text = "Job reward not saved: " + str(progress_store.get("warning"))
         return
