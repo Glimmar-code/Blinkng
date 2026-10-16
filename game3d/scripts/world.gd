@@ -958,7 +958,9 @@ func _home_save_snapshot() -> Dictionary:
         "chair_rotation": int(home_furniture["chair_rotation"]),
         "table_x": int(home_furniture["table_x"]),
         "table_z": int(home_furniture["table_z"]),
-        "table_rotation": int(home_furniture["table_rotation"])}
+        "table_rotation": int(home_furniture["table_rotation"]),
+        "bed_layout": int(home_furniture["bed_layout"]),
+        "wardrobe_layout": int(home_furniture["wardrobe_layout"])}
 
 
 func _show_home_decor() -> void:
@@ -1027,6 +1029,22 @@ func _show_home_decor() -> void:
         var turn := _new_button("Rotate %s 90°" % kind)
         rows.add_child(turn)
         turn.pressed.connect(_home_rotate_furniture.bind(kind))
+    var home_layout_title := Label.new()
+    home_layout_title.text = "Bed and wardrobe • curated safe placements"
+    rows.add_child(home_layout_title)
+    for fixture in ["bed", "wardrobe"]:
+        var fixture_button := _new_button("%s position %d/3" % [
+            fixture.capitalize(), int(home_furniture[fixture + "_layout"]) + 1])
+        fixture_button.pressed.connect(_cycle_home_fixture.bind(fixture))
+        rows.add_child(fixture_button)
+    var plans_label := Label.new()
+    plans_label.text = "Room layouts (sets bed, wardrobe, chair and table)"
+    rows.add_child(plans_label)
+    for index in range(SoloHome.ROOM_PLANS.size()):
+        var preset: Dictionary = SoloHome.ROOM_PLANS[index]
+        var plan := _new_button(str(preset["name"]))
+        rows.add_child(plan)
+        plan.pressed.connect(_apply_room_plan.bind(index))
     var history_row := HBoxContainer.new()
     rows.add_child(history_row)
     var undo := _new_button("Undo", 210)
@@ -1142,6 +1160,30 @@ func _home_rotate_furniture(kind: String) -> void:
         return
     var candidate: Dictionary = _home_save_snapshot()
     candidate[kind + "_rotation"] = (int(candidate[kind + "_rotation"]) + 1) % 4
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_fixture(kind: String) -> void:
+    if kind not in ["bed", "wardrobe"] or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var key: String = kind + "_layout"
+    var options: Array = SoloHome.BED_PLACEMENTS if kind == "bed" else SoloHome.WARDROBE_PLACEMENTS
+    candidate[key] = (int(candidate[key]) + 1) % options.size()
+    _commit_home_decor(candidate)
+
+
+func _apply_room_plan(index: int) -> void:
+    if not home_inside or index < 0 or index >= SoloHome.ROOM_PLANS.size():
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var plan: Dictionary = SoloHome.ROOM_PLANS[index]
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        candidate[key] = int(plan.get(key, SoloHome.FURNITURE_DEFAULTS[key]))
+    # Plants are put back in the existing display preset to keep room plans
+    # safe without requiring the user to own any paid cosmetics.
+    candidate["plant_custom"] = false
+    candidate["plant_spot"] = 0
     _commit_home_decor(candidate)
 
 
