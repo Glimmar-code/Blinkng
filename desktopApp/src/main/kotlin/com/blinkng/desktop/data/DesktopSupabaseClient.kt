@@ -4,6 +4,7 @@ import com.blinkng.shared.BlinkBackendDefaults
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -637,6 +638,35 @@ class DesktopSupabaseClient(
             dataSaver = false,
             reduceMotion = false,
         )
+    }
+
+    /**
+     * All social email flags are separate from user_settings.email_notifs_enabled.
+     * Defaults are false, and the server rejects cross-account writes with RLS.
+     */
+    suspend fun fetchSocialEmailPreferences(): Map<BlinkSocialEmailCategory, Boolean> =
+        withContext(Dispatchers.IO) {
+            val uid = requireSession().userId
+            val fields = BlinkSocialEmailCategory.allColumns.joinToString(",")
+            val list = getArray(
+                "/rest/v1/blink_social_email_preferences?user_id=eq.${encode(uid)}&select=${fields}"
+            )
+            val row = list.optJSONObject(0)
+            BlinkSocialEmailCategory.entries.associateWith { type ->
+                row?.optBoolean(type.column, false) ?: false
+            }
+        }
+
+    suspend fun updateSocialEmailPreference(
+        type: BlinkSocialEmailCategory,
+        enabled: Boolean,
+    ) = withContext(Dispatchers.IO) {
+        postArray(
+            "/rest/v1/blink_social_email_preferences?on_conflict=user_id",
+            JSONObject().put("user_id", requireSession().userId).put(type.column, enabled),
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+        Unit
     }
 
     suspend fun saveSettings(settings: DesktopUserSettings) = withContext(Dispatchers.IO) {
