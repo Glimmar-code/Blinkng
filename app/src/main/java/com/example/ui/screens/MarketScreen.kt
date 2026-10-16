@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -38,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -74,7 +76,7 @@ fun MarketScreen(
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String) -> Unit = { _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -92,6 +94,10 @@ fun MarketScreen(
     var verifiedOnly by remember { mutableStateOf(false) }
     var minPriceText by remember { mutableStateOf("") }
     var maxPriceText by remember { mutableStateOf("") }
+    var draftSavedOnly by remember { mutableStateOf(false) }
+    var draftVerifiedOnly by remember { mutableStateOf(false) }
+    var draftMinPriceText by remember { mutableStateOf("") }
+    var draftMaxPriceText by remember { mutableStateOf("") }
 
     val sortOptions = remember {
         listOf(
@@ -102,17 +108,24 @@ fun MarketScreen(
         )
     }
 
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort) {
-        delay(350)
-        onSearch(
-            searchQuery.trim(),
-            selectedCategory.takeUnless { it == "All Categories" },
-            selectedSort
-        )
-    }
-
     val minPrice = minPriceText.toLongOrNull()
     val maxPrice = maxPriceText.toLongOrNull()
+    val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly) {
+        if (validPriceRange) {
+            delay(350)
+            onSearch(
+                searchQuery.trim(),
+                selectedCategory.takeUnless { it == "All Categories" },
+                selectedSort,
+                minPrice,
+                maxPrice,
+                savedOnly,
+                verifiedOnly
+            )
+        }
+    }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
         items.filter { item ->
             (!savedOnly || item.isSaved) &&
@@ -204,6 +217,7 @@ fun MarketScreen(
                             )
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -261,7 +275,13 @@ fun MarketScreen(
 
                 FilterChip(
                     selected = activeFilterCount > 0,
-                    onClick = { showFilters = true },
+                    onClick = {
+                        draftSavedOnly = savedOnly
+                        draftVerifiedOnly = verifiedOnly
+                        draftMinPriceText = minPriceText
+                        draftMaxPriceText = maxPriceText
+                        showFilters = true
+                    },
                     leadingIcon = { Icon(Icons.Default.FilterList, null, modifier = Modifier.size(16.dp)) },
                     label = {
                         Text(if (activeFilterCount > 0) "Filters ($activeFilterCount)" else "Filters")
@@ -419,7 +439,7 @@ fun MarketScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${visibleItems.size} shown",
+                    "${visibleItems.size} loaded",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -454,7 +474,9 @@ fun MarketScreen(
                     )
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        if (searchQuery.isNotBlank() || activeFilterCount > 0)
+                        if (hasMore && (savedOnly || verifiedOnly))
+                            "More listings may match. Load another page below to keep looking."
+                        else if (searchQuery.isNotBlank() || activeFilterCount > 0)
                             "Try a different search or clear your filters."
                         else
                             "New listings will appear here when sellers publish them.",
@@ -500,20 +522,16 @@ fun MarketScreen(
                 }
             }
 
-            if (hasMore || isLoadingMore) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLoadingMore) {
-                            CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
-                        } else {
-                            OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
-                                Text("Load more listings")
-                            }
+        }
+        // Client-side saved/verified filters may hide an entire loaded page.
+        if (!isLoading && (hasMore || isLoadingMore)) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
+                    if (isLoadingMore) {
+                        CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                    } else {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                            Text("Load more listings")
                         }
                     }
                 }
@@ -522,6 +540,10 @@ fun MarketScreen(
     }
 
     if (showFilters) {
+        val draftMinPrice = draftMinPriceText.toLongOrNull()
+        val draftMaxPrice = draftMaxPriceText.toLongOrNull()
+        val draftPriceRangeValid = draftMinPrice == null || draftMaxPrice == null ||
+            draftMinPrice <= draftMaxPrice
         AlertDialog(
             onDismissRequest = { showFilters = false },
             title = { Text("Market filters", fontWeight = FontWeight.Black) },
@@ -529,44 +551,59 @@ fun MarketScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Saved only", modifier = Modifier.weight(1f))
-                        Switch(checked = savedOnly, onCheckedChange = { savedOnly = it })
+                        Switch(checked = draftSavedOnly, onCheckedChange = { draftSavedOnly = it })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Verified sellers only", modifier = Modifier.weight(1f))
-                        Switch(checked = verifiedOnly, onCheckedChange = { verifiedOnly = it })
+                        Switch(checked = draftVerifiedOnly, onCheckedChange = { draftVerifiedOnly = it })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
-                            value = minPriceText,
-                            onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMinPriceText,
+                            onValueChange = { draftMinPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Min ₦") },
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
-                            value = maxPriceText,
-                            onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMaxPriceText,
+                            onValueChange = { draftMaxPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Max ₦") },
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
+                    }
+                    if (!draftPriceRangeValid) {
+                        Text("Minimum price must not exceed maximum price.", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilters = false }) { Text("Apply") }
+                Button(
+                    enabled = draftPriceRangeValid,
+                    onClick = {
+                        savedOnly = draftSavedOnly
+                        verifiedOnly = draftVerifiedOnly
+                        minPriceText = draftMinPriceText
+                        maxPriceText = draftMaxPriceText
+                        showFilters = false
+                    }
+                ) { Text("Apply") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        savedOnly = false
-                        verifiedOnly = false
-                        minPriceText = ""
-                        maxPriceText = ""
-                    }
-                ) { Text("Reset") }
+                Row {
+                    TextButton(onClick = {
+                        draftSavedOnly = false
+                        draftVerifiedOnly = false
+                        draftMinPriceText = ""
+                        draftMaxPriceText = ""
+                    }) { Text("Reset") }
+                    TextButton(onClick = { showFilters = false }) { Text("Cancel") }
+                }
             }
         )
     }
@@ -619,6 +656,8 @@ fun ProductCard(
                     AsyncImage(
                         model = cover,
                         contentDescription = item.title,
+                        error = painterResource(android.R.drawable.ic_menu_gallery),
+                        fallback = painterResource(android.R.drawable.ic_menu_gallery),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -645,8 +684,8 @@ fun ProductCard(
                         onClick = onToggleSave,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
+                            .size(48.dp)
                             .padding(6.dp)
-                            .size(32.dp)
                             .background(Color.Black.copy(alpha = 0.56f), CircleShape)
                     ) {
                         Icon(

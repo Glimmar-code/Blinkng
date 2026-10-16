@@ -3446,22 +3446,24 @@ suspend fun uploadPostMedia(
         university: String? = null,
         minPrice: Long? = null,
         maxPrice: Long? = null,
-        sort: String = "newest"
+        sort: String = "newest",
+        savedOnly: Boolean = false,
+        verifiedOnly: Boolean = false
     ): List<MarketItem> = withContext(Dispatchers.IO) {
         try {
             val safeLimit = limit.coerceIn(1, 60)
             val safeOffset = offset.coerceAtLeast(0)
-            val order = when (sort.lowercase(Locale.US)) {
-                "price_low" -> "price.asc,created_at.desc"
-                "price_high" -> "price.desc,created_at.desc"
-                "popular" -> "views_count.desc,created_at.desc"
-                else -> "created_at.desc"
-            }
+            val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
+            val userId = if (savedOnly) getCurrentUserId() ?: return@withContext emptyList() else null
 
             val url = buildString {
-                append("/rest/v1/market_items?select=*")
+                append("/rest/v1/market_items?select=")
+                append(if (savedOnly) "*,marketplace_wishlist!inner(user_id)" else "*")
                 append("&status=eq.active")
                 append("&is_sold=eq.false")
+                append("&seller_id=not.is.null")
+                if (verifiedOnly) append("&seller_is_verified=eq.true")
+                if (savedOnly) append("&marketplace_wishlist.user_id=eq.").append(encodeValue(userId.orEmpty()))
                 category?.trim()?.takeIf { it.isNotBlank() && !it.equals("All Categories", true) }?.let {
                     append("&category=eq.").append(encodeValue(it))
                 }
@@ -3469,7 +3471,7 @@ suspend fun uploadPostMedia(
                     append("&university=eq.").append(encodeValue(it))
                 }
                 minPrice?.takeIf { it > 0L }?.let { append("&price=gte.").append(it) }
-                maxPrice?.takeIf { it > 0L }?.let { append("&price=lte.").append(it) }
+                maxPrice?.takeIf { it >= 0L }?.let { append("&price=lte.").append(it) }
                 query.trim().takeIf(String::isNotBlank)?.let { q ->
                     val pattern = "*${q.take(80)}*"
                     val expression = "(title.ilike.$pattern,description.ilike.$pattern,category.ilike.$pattern,seller_name.ilike.$pattern,seller_username.ilike.$pattern,location.ilike.$pattern,university.ilike.$pattern)"
@@ -3490,15 +3492,17 @@ suspend fun uploadPostMedia(
                 body
             }
 
-            val savedIds = fetchMyMarketWishlistIds()
             val array = JSONArray(if (raw.isBlank()) "[]" else raw)
-            buildList {
+            val parsed = buildList {
                 for (i in 0 until array.length()) {
-                    parseMarketItem(array.getJSONObject(i))?.let { item ->
-                        add(item.copy(isSaved = item.id in savedIds))
-                    }
+                    parseMarketItem(array.getJSONObject(i))?.let(::add)
                 }
             }
+            // The authenticated inner join already proves wishlist membership.
+            // Do not clear saved badges if an unnecessary second request fails.
+            val savedIds = if (savedOnly) parsed.mapTo(mutableSetOf()) { it.id }
+                else fetchMyMarketWishlistIds(parsed.map { it.id })
+            parsed.map { item -> item.copy(isSaved = item.id in savedIds) }
         } catch (e: Exception) {
             Log.e(TAG, "MARKET_FETCH exception", e)
             throw e
@@ -3521,7 +3525,7 @@ suspend fun uploadPostMedia(
                 val array = JSONArray(if (raw.isBlank()) "[]" else raw)
                 if (array.length() == 0) return@use null
                 val item = parseMarketItem(array.getJSONObject(0))
-                val saved = fetchMyMarketWishlistIds()
+                val saved = fetchMyMarketWishlistIds(listOf(item.id))
                 item.copy(isSaved = item.id in saved)
             }
         } catch (e: Exception) {
@@ -3537,7 +3541,6 @@ suspend fun uploadPostMedia(
     suspend fun fetchProfileMarketItems(sellerId: String): List<MarketItem> = withContext(Dispatchers.IO) {
         require(isValidUuid(sellerId)) { "Seller profile is required." }
         if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
-        val wishlistIds = fetchMyMarketWishlistIds()
         val items = mutableListOf<MarketItem>()
         var offset = 0
         while (true) {
@@ -3553,13 +3556,18 @@ suspend fun uploadPostMedia(
             }
             for (i in 0 until rows.length()) {
                 parseMarketItem(rows.getJSONObject(i))?.let { item ->
-                    items += item.copy(isSaved = item.id in wishlistIds)
+                    items += item
                 }
             }
             if (rows.length() < 100) break
             offset += rows.length()
         }
-        items
+        // Profile listings can span more than 200 items; fetch saved IDs only
+        // for the loaded results in bounded batches, without losing later saves.
+        val wishlistIds = items.chunked(200).flatMap { chunk ->
+            fetchMyMarketWishlistIds(chunk.map { it.id })
+        }.toSet()
+        items.map { item -> item.copy(isSaved = item.id in wishlistIds) }
     }
 
     suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
@@ -3572,15 +3580,14 @@ suspend fun uploadPostMedia(
             executeRequest(request).use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(body, "Your listings could not be loaded."))
-                val savedIds = fetchMyMarketWishlistIds()
                 val array = JSONArray(if (body.isBlank()) "[]" else body)
-                buildList {
+                val parsed = buildList {
                     for (i in 0 until array.length()) {
-                        parseMarketItem(array.getJSONObject(i))?.let { item ->
-                            add(item.copy(isSaved = item.id in savedIds))
-                        }
+                        parseMarketItem(array.getJSONObject(i))?.let(::add)
                     }
                 }
+                val savedIds = fetchMyMarketWishlistIds(parsed.map { it.id })
+                parsed.map { item -> item.copy(isSaved = item.id in savedIds) }
             }
         } catch (e: Exception) {
             Log.e(TAG, "MARKET_MINE exception", e)
@@ -3588,17 +3595,23 @@ suspend fun uploadPostMedia(
         }
     }
 
-    private suspend fun fetchMyMarketWishlistIds(): Set<String> = withContext(Dispatchers.IO) {
+    // Fetch the saved state only for visible listings. This avoids silently
+    // dropping items when a buyer has more than 1,000 saved listings.
+    private suspend fun fetchMyMarketWishlistIds(itemIds: List<String>): Set<String> = withContext(Dispatchers.IO) {
         if (getCurrentUserId().isNullOrBlank()) return@withContext emptySet()
+        val ids = itemIds.filter(::isValidUuid).distinct().take(200)
+        if (ids.isEmpty()) return@withContext emptySet()
         runCatching {
             executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/marketplace_wishlist?select=item_id&order=created_at.desc&limit=1000",
+                    "/rest/v1/marketplace_wishlist?select=item_id&item_id=in.(${ids.joinToString(",")})&limit=200",
                     authenticated = true
                 ).get().build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@use emptySet<String>()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Unable to retrieve saved listings."))
+                }
                 val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
                 buildSet {
                     for (i in 0 until arr.length()) {
@@ -3606,8 +3619,9 @@ suspend fun uploadPostMedia(
                     }
                 }
             }
-        }.getOrDefault(emptySet())
+        }.onFailure { Log.w(TAG, "MARKET_WISHLIST_LOOKUP exception", it) }.getOrDefault(emptySet())
     }
+
 
     suspend fun uploadMarketMedia(
         userId: String,
@@ -3645,6 +3659,24 @@ suspend fun uploadPostMedia(
             Log.e(TAG, "MARKET_MEDIA_UPLOAD exception", e)
             null
         }
+    }
+
+    // Best-effort cleanup for photos uploaded during a listing attempt that failed.
+    // Only delete objects in this authenticated user's own listings folder.
+    suspend fun deleteStagedMarketMedia(userId: String, publicUrl: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(userId)) return@withContext false
+        val prefix = "$baseUrl/storage/v1/object/public/market-media/users/$userId/listings/"
+        if (!publicUrl.startsWith(prefix)) return@withContext false
+        val filename = publicUrl.removePrefix(prefix)
+        if (!Regex("^[0-9a-fA-F-]{36}\\.(jpg|jpeg|png|webp|heic|heif)$").matches(filename)) return@withContext false
+        runCatching {
+            executeRequest(
+                newRequestBuilder(
+                    "/storage/v1/object/market-media/users/$userId/listings/$filename",
+                    authenticated = true
+                ).delete().build()
+            ).use { it.isSuccessful }
+        }.getOrDefault(false)
     }
 
     suspend fun createMarketItem(item: MarketItem): Boolean = withContext(Dispatchers.IO) {
@@ -4131,6 +4163,7 @@ suspend fun uploadPostMedia(
             sellerUsername = obj.optString("seller_username", ""),
             sellerAvatar = obj.optString("seller_avatar", ""),
             sellerName = obj.optString("seller_name", ""),
+            sellerId = obj.optString("seller_id", ""),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,

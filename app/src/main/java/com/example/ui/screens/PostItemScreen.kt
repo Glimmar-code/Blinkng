@@ -85,11 +85,13 @@ fun PostItemScreen(
     )
 
     val price = priceText.toLongOrNull() ?: 0L
-    val quantity = quantityText.toIntOrNull()?.coerceIn(1, 9999) ?: 1
+    val quantity = quantityText.toIntOrNull()?.takeIf { it in 1..9999 } ?: 0
     val canSubmit = title.trim().length >= 3 &&
         price > 0L &&
         description.trim().length >= 10 &&
         selectedImages.isNotEmpty() &&
+        quantity > 0 &&
+        (deliveryMethod == "delivery" || pickupLocation.trim().length >= 3) &&
         !isPublishing
 
     Scaffold(
@@ -161,9 +163,11 @@ fun PostItemScreen(
                     OutlinedTextField(
                         value = quantityText,
                         onValueChange = {
-                            quantityText = it.filter(Char::isDigit).take(4).ifBlank { "1" }
+                            quantityText = it.filter(Char::isDigit).take(4)
                         },
                         label = { Text("Qty") },
+                        isError = quantityText.isNotBlank() && quantity == 0,
+                        supportingText = { if (quantity == 0) Text("1–9999") },
                         leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Number,
@@ -375,6 +379,11 @@ fun PostItemScreen(
                         value = pickupLocation,
                         onValueChange = { if (it.length <= 120) pickupLocation = it },
                         label = { Text("Pickup / meetup location") },
+                        isError = deliveryMethod != "delivery" && pickupLocation.isNotBlank() && pickupLocation.trim().length < 3,
+                        supportingText = {
+                            if (deliveryMethod != "delivery" && pickupLocation.trim().length < 3)
+                                Text("Required for pickup or campus meetup")
+                        },
                         leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
                         placeholder = { Text("e.g. South Gate, FUTA") },
                         singleLine = true,

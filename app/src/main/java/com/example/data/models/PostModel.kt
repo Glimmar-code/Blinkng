@@ -198,7 +198,8 @@ data class MarketItem(
     val viewsCount: Long = 0L,
     val savesCount: Long = 0L,
     val isSaved: Boolean = false,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val sellerId: String = ""
 )
 
 data class LeaderboardUser(

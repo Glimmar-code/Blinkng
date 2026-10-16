@@ -52,6 +52,34 @@ try {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS reapply:', name);
   }
+  // Independent disposable DB validates marketplace order contracts against
+  // the actual tracked SQL migration; no production credentials are used.
+  await (await import('./marketplace-order-tests.mjs')).marketplaceOrderTests();
+  // PGlite has no Supabase-managed storage schema. Provide only the storage
+  // interfaces used by this migration, then apply the COMPLETE migration on
+  // the disposable fixture. Never target the production project here.
+  await db.exec(`reset role;
+    create schema if not exists storage;
+    create table if not exists storage.buckets (
+      id text primary key, name text not null, public boolean not null default false,
+      file_size_limit bigint, allowed_mime_types text[]
+    );
+    create table if not exists storage.objects (
+      id uuid primary key default gen_random_uuid(), bucket_id text not null,
+      name text not null
+    );
+    alter table storage.objects enable row level security;
+    create or replace function storage.foldername(p_path text)
+      returns text[] language sql immutable
+      as $$select (string_to_array(p_path, '/'))[1:array_length(string_to_array(p_path, '/'),1)-1]$$;
+  `);
+  const marketHardeningSql = fs.readFileSync(
+    new URL('../migrations/20261007005000_market_professional_hardening.sql', import.meta.url), 'utf8');
+  await db.exec(marketHardeningSql);
+  console.log('PASS full Market hardening migration against disposable fixture');
+  await db.exec(marketHardeningSql);
+  console.log('PASS reapply full Market hardening migration');
+
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);
   process.exitCode = 1;

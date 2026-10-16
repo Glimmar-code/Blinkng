@@ -1048,8 +1048,8 @@ fun MainAppContent(
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                         onOpenGetVerified = { viewModel.openGetVerified(true) },
                         onToggleSave = { viewModel.toggleMarketSaved(it) },
-                        onSearch = { query, category, sort ->
-                            viewModel.searchMarketItems(query, category, sort)
+                        onSearch = { query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly ->
+                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly)
                         },
                         onRefresh = { viewModel.refreshMarketItems() },
                         onLoadMore = { viewModel.loadMoreMarketItems() },
@@ -1565,11 +1565,13 @@ fun MainAppContent(
                     onReport = { listing, reason, details ->
                         viewModel.reportMarketItem(listing, reason, details)
                     },
-                    isOwner = viewModel.isMe(product.sellerUsername),
+                    isOwner = product.sellerId.isNotBlank() &&
+                        product.sellerId == uiState.myProfile.id,
                     onUpdateListingStatus = { listing, status ->
                         viewModel.updateMarketListingStatus(listing, status)
                     },
                     onDeleteListing = { viewModel.deleteMarketListing(it) },
+                    isSubmittingOrder = uiState.isRequestingMarketOrder,
                     isDark = uiState.isDarkMode
                 )
             }
