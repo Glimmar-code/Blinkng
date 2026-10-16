@@ -32,15 +32,28 @@ object BlinkDesignTokens {
 
     object Dark {
         const val Background: Long = 0xFF000000L
-        const val Surface: Long = 0xFF070707L
-        const val SurfaceElevated: Long = 0xFF0D0D0DL
-        const val Input: Long = 0xFF0A0A0AL
-        const val SurfaceHighest: Long = 0xFF121212L
-        const val Border: Long = 0xFF262626L
-        const val BorderSoft: Long = 0xFF1A1A1AL
+        // Match Auth's translucent white-on-black cards when viewed over #000000.
+        const val Surface: Long = 0xFF0E0E0EL
+        const val SurfaceElevated: Long = 0xFF151515L
+        const val Input: Long = 0xFF101010L
+        const val SurfaceHighest: Long = 0xFF1D1D1DL
+        const val Border: Long = 0xFF292929L
+        const val BorderSoft: Long = 0xFF151515L
         const val TextPrimary: Long = 0xFFF7F7FAL
         const val TextSecondary: Long = 0xFFA7ABB8L
         const val TextMuted: Long = 0xFF707583L
+    }
+
+    /**
+     * Dark component styling sampled from the real Auth screen, not a separate palette.
+     * Keep these in shared code so Android and Windows describe the same product.
+     */
+    object PremiumDark {
+        const val CardOverlayAlpha = 0.055f
+        const val RaisedOverlayAlpha = 0.075f
+        const val SubtleBorderAlpha = 0.08f
+        const val IconWellAlpha = 0.10f
+        const val ButtonCornerRadius = 100
     }
 
     object Light {
