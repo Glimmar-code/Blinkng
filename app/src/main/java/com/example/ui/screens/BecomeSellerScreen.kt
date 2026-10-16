@@ -253,6 +253,22 @@ fun BecomeSellerScreen(
             }
 
             item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Privacy: the phone and WhatsApp contact details you provide for a shop may be displayed to signed-in buyers on your public Market listings. Use business contact details you are comfortable sharing.",
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            item {
                 Row(
                     verticalAlignment = Alignment.Top,
                     modifier = Modifier
