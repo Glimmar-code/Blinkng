@@ -40,6 +40,24 @@ func _run() -> void:
     var places: Array = world.get("places")
     _assert_true(places.size() == 7, "World should include Homes and six original destinations")
 
+    var details: Node = world.get_node_or_null("NeighborhoodDetails")
+    _assert_true(details != null, "Shared neighborhood details must be present")
+    if details != null:
+        for place in places:
+            _assert_true(details.get_node_or_null("Address_" + str(place["id"])) != null, "Every destination needs its visible address")
+        _assert_true(details.get_node_or_null("Street_market_walk") != null, "Market Walk must have a street sign")
+        _assert_true(details.get_node_or_null("Street_campus_way") != null, "Campus Way must have a street sign")
+    if player != null:
+        var layout: Script = load("res://scripts/neighborhood_layout.gd")
+        for place in places:
+            player.global_position = layout.entrance_for(place) + Vector3.UP * 0.15
+            _assert_true(world.call("_nearest_place").get("id", "") == place["id"], "Every approach must select the correct destination")
+        player.global_position = Vector3(0, 0.15, 0)
+        _assert_true(world.call("_nearest_place").is_empty(), "The road intersection is not a building interaction")
+        player.global_position = Vector3(-18, 8, -3.25)
+        _assert_true(world.call("_nearest_place").is_empty(), "Interaction should not reach between floors")
+        player.global_position = Vector3.ZERO
+
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
 
@@ -66,10 +84,95 @@ func _run() -> void:
 
         player.global_position = Vector3(-18.0, 0.5, 6.0)
         world.call("_interact")
-        _assert_true(bool(world.get("owns_plant")), "Market interaction should buy the desk plant")
+        _assert_true(not bool(world.get("owns_plant")), "Preview must not buy without confirmation")
+        _assert_true(int(world.get("game_cash")) == 620, "Preview must not charge")
+        world.call("_close_quiz")
+        world.call("_confirm_plant_purchase")
+        _assert_true(int(world.get("game_cash")) == 620, "Cancelled purchase cannot be confirmed later")
+        world.call("_interact")
+        world.set("game_cash", 100)
+        world.call("_confirm_plant_purchase")
+        _assert_true(int(world.get("game_cash")) == 100, "Confirmation must recheck available funds")
+        _assert_true(not bool(world.get("owns_plant")), "Insufficient funds must not grant the item")
+        world.set("game_cash", 620)
+        world.call("_interact")
+        world.call("_confirm_plant_purchase")
+        _assert_true(bool(world.get("owns_plant")), "Confirmed market purchase should grant the plant")
+        world.call("_confirm_plant_purchase")
         _assert_true(int(world.get("game_cash")) == 370, "Market purchase should cost 250 fictional GC")
         world.call("_interact")
         _assert_true(int(world.get("game_cash")) == 370, "Purchasing a second time must not charge again")
+
+    # Controls must never move an avatar while UI input owns the interaction.
+    world.call("_set_touch_axis", Vector2.RIGHT)
+    world.call("_set_touch_axis", Vector2.UP)
+    _assert_true(float(world.get("touch_axis").length()) <= 1.001, "Diagonal touch must be normalized")
+    world.call("_release_touch_axis", Vector2.RIGHT)
+    _assert_true(world.get("touch_axis") == Vector2.UP, "Releasing one finger preserves the other direction")
+    world.call("_notification", MainLoop.NOTIFICATION_APPLICATION_FOCUS_OUT)
+    _assert_true(world.get("touch_axis") == Vector2.ZERO, "Focus loss must clear touch")
+    _assert_true(bool(world.call("_movement_blocked")), "Unfocused gameplay must be blocked")
+    world.call("_notification", MainLoop.NOTIFICATION_APPLICATION_FOCUS_IN)
+    var panel: Control = world.get("controls_panel")
+    panel.show()
+    world.call("_set_touch_axis", Vector2.RIGHT)
+    _assert_true(world.get("touch_axis") == Vector2.ZERO, "Settings must block movement input")
+    panel.hide()
+    var cash_before_cancel: int = int(world.get("game_cash"))
+    player.global_position = Vector3(-18.0, 0.5, -6.0)
+    world.call("_interact")
+    _assert_true(bool(world.call("_movement_blocked")), "Quiz must block movement input")
+    world.call("_close_quiz")
+    _assert_true(int(world.get("game_cash")) == cash_before_cancel, "Cancel must never pay rewards")
+    if player != null:
+        world.set("last_safe_position", Vector3(0, 0.15, 0))
+        player.global_position = Vector3(0, -10, 0)
+        world.call("_recover_if_needed")
+        _assert_true(player.global_position.y > 0, "Falling off the map must recover offline")
+        _assert_true(player.velocity == Vector3.ZERO, "Recovery must clear velocity")
+
+    var cycle: RefCounted = world.get("day_cycle")
+    cycle.set("enabled", true)
+    cycle.set("hour", 12.0)
+    world.call("_update_daylight")
+    _assert_true(float(world.get("sunlight").light_energy) > 1.0, "Shared scene must apply daylight")
+    cycle.set("hour", 0.0)
+    world.call("_update_daylight")
+    _assert_true(is_zero_approx(float(world.get("sunlight").light_energy)), "Shared scene must apply night lighting")
+    cycle.set("hour", 8.0)
+
+    var preferences: RefCounted = world.get("preferences")
+    var previous_saver: bool = preferences.get("battery_saver")
+    var previous_shadows: bool = preferences.get("shadows_enabled")
+    var lights: Array = world.get("neighborhood").get("lamp_lights")
+    player.global_position = Vector3(-11, 0.15, 3.5)
+    cycle.set("hour", 0.0)
+    preferences.set("battery_saver", false)
+    preferences.set("shadows_enabled", true)
+    world.call("_apply_graphics")
+    _assert_true(Engine.max_fps == 60, "Standard mode caps rendering at 60 FPS")
+    _assert_true(bool(world.get("sunlight").shadow_enabled), "Standard mode respects enabled shadows")
+    var visible_lamps: int = 0
+    for light in lights:
+        if light.visible:
+            visible_lamps += 1
+    _assert_true(visible_lamps > 0 and visible_lamps <= 2, "Night lighting must use at most two nearby lamps")
+    cycle.set("hour", 12.0)
+    world.call("_update_daylight")
+    for light in lights:
+        _assert_true(not light.visible, "Daylight must disable street lamps")
+    cycle.set("hour", 0.0)
+    preferences.set("battery_saver", true)
+    world.call("_apply_graphics")
+    _assert_true(Engine.max_fps == 30, "Saver caps rendering at 30 FPS")
+    _assert_true(not bool(world.get("sunlight").shadow_enabled), "Saver disables expensive shadows")
+    for light in lights:
+        _assert_true(not light.visible, "Saver disables all dynamic street lights")
+    preferences.set("battery_saver", previous_saver)
+    preferences.set("shadows_enabled", previous_shadows)
+    cycle.set("hour", 8.0)
+    world.call("_apply_graphics")
+    player.global_position = Vector3.ZERO
 
     # The game must remain offline until a player explicitly chooses Host/Join.
     var social: Node = world.get_node_or_null("SocialWorld")
@@ -114,3 +217,4 @@ func _run() -> void:
 
 func _initialize() -> void:
     call_deferred("_run")
+

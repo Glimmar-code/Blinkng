@@ -59,29 +59,13 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-apk-entry-list.txt"
-          for file in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd; do
+          for file in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd assets/scripts/neighborhood_layout.gd assets/scripts/neighborhood_details.gd assets/scripts/player_preferences.gd assets/scripts/day_cycle.gd; do
             if ! grep -Fxq "$file" "$RUNNER_TEMP/blink-apk-entry-list.txt"; then
               echo "::error::Missing native BLINK LIFE asset: $file"
               exit 1
             fi
           done
-          if ! grep -Eq '^lib/arm64-v8a/libgodot_android\\.so
-      - name: Upload debug App Bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: blinkng-debug-aab-${{ github.sha }}
-          path: app/build/outputs/bundle/debug/app-debug.aab
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload latest debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: blinkng-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
- "$RUNNER_TEMP/blink-apk-entry-list.txt"; then
+          if ! grep -Eq '^lib/arm64-v8a/libgodot_android\.so$' "$RUNNER_TEMP/blink-apk-entry-list.txt"; then
             echo "::error::The real Godot ARM64 native engine is missing from APK."
             exit 1
           fi
@@ -107,3 +91,4 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+

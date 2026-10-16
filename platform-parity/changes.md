@@ -197,6 +197,32 @@ Tests/validation: Android unit/lint/instrumentation/debug APK/AAB and release-sm
 Owner/reviewer note: This exception covers only Android AdMob/UMP presentation and AdMob callback verification. It cannot be used to waive Windows parity for shared product features or wallet rules.
 
 
+
+## 2026-10-16 — BLINK LIFE realism batch 1 (Testlab)
+
+- Shared: `game3d/scripts/neighborhood_layout.gd` and `neighborhood_details.gd` define metric locations, connected paths, address/street labels and frontage geometry. `world.gd` uses that layout and nearest-frontage selection.
+- Android/Windows: both native hosts use the same Godot project; no Android-only gameplay or second backend was introduced. Existing projected fallback is not claimed to receive this native-scene upgrade.
+- Validation: Godot 4.3 import; layout invariants; scene assertions; existing ticket/persistence checks; 1,000-row tracker validation. Local dummy renderer emits null-mesh diagnostics; rendered CI and device validation remain gates.
+- Delivery: feature branch targets Testlab. No main merge or app publication. Android/Windows package builds and physical-device acceptance remain outstanding.
+- Scope: five requirements implemented in source, ten partial, 985 pending audit; see `game3d/REALISM_IMPLEMENTATION.md`.
+
+- Follow-up: repaired the inherited malformed Android workflow and require both neighborhood scripts in Android/Windows package verification. YAML/Bash syntax checked locally; no build success inferred.
+
+
+## 2026-10-16 — BLINK LIFE controls and local day/night (Testlab batch 2)
+
+- Shared Godot code adds safe modal/focus input handling, diagonal touch tracking, smooth movement, offline fall recovery, configurable zoom/walking speed and saved preferences.
+- Shared local visual day/night clock adds adjustable duration, fixed daylight, dawn/dusk blending and sun rotation. It does not implement shared server time or weather.
+- Android and Windows receive identical gameplay code through existing script staging. Both packaging checks now require preferences and day-cycle scripts.
+- Local Godot 4.3 parse, control/time unit checks and scene assertions pass; dummy-renderer diagnostics mean OpenGL CI is still needed. Physical-device acceptance remains outstanding.
+- Batch-1 CI passed all six checks. Batch 2 remains in PR #303 targeting Testlab; main and production are unchanged.
+
+
+## 2026-10-16 — BLINK LIFE lighting and purchase controls (Testlab batch 3)
+
+- Shared Godot code adds a two-light night budget, saved 30/60 FPS targets and shadow controls. Battery mode disables dynamic lamp lights and sun shadows.
+- Both Android and Windows receive the same purchase preview/confirmation, duplicate-charge guard, current-balance/location recheck and visible job payouts.
+- Local preference and scene assertions pass. Fresh OpenGL and package CI plus physical usability/battery validation remain necessary; no production merge or real-economy changes.
 ---
 
 PARITY-FEATURE: shared-opt-in-social-email-notifications
@@ -208,3 +234,4 @@ Shared behavior: BlinkSocialEmailCategory defines one shared source for preferen
 Server behavior: Verified-account welcome events and server-owned social digest checks enqueue to a service-only outbox. The Brevo worker rechecks consent before any social send; social delivery defaults OFF pending staging rollout. Password recovery/email change remain Supabase Auth events, and signup confirmation emails are never activated/changed by this feature.
 Platform-specific exception: None needed. Both clients have equivalent social email preference controls; native push-notification channels are independent of email.
 Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, no message bodies, idempotent digests, unsubscribe on signed POST, deterministic sender source, email-sending daily cap, HTML safety regression tests. Production changes blocked until staging migrations, signup-policy checks, Brevo keys/sender verification, end-to-end Gmail/Outlook and Android/Windows CI validation.
+

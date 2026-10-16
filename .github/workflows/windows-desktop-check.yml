@@ -68,7 +68,7 @@ jobs:
         shell: pwsh
         run: |
           $base = 'desktopApp/build/nativeResources/windows/blink-life'
-          foreach ($file in @('BlinkLife.exe', 'game/project.godot', 'game/scenes/main.tscn', 'game/scripts/world.gd')) {
+          foreach ($file in @('BlinkLife.exe', 'game/project.godot', 'game/scenes/main.tscn', 'game/scripts/world.gd', 'game/scripts/neighborhood_layout.gd', 'game/scripts/neighborhood_details.gd', 'game/scripts/player_preferences.gd', 'game/scripts/day_cycle.gd')) {
             if (-not (Test-Path (Join-Path $base $file))) {
               throw "Windows BLINK LIFE native asset missing: $file"
             }
@@ -83,3 +83,4 @@ jobs:
             desktopApp/build/compose/binaries/main/msi/*.msi
           if-no-files-found: error
           retention-days: 14
+
