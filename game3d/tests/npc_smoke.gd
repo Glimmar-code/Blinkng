@@ -2,6 +2,7 @@ extends SceneTree
 ## No renderer/network needed for deterministic local resident schedule checks.
 
 const Routines = preload("res://scripts/npc_routines.gd")
+const Layout = preload("res://scripts/neighborhood_layout.gd")
 var failed: bool = false
 
 
@@ -18,8 +19,7 @@ func _initialize() -> void:
     check(Routines.quality_population(true) == 4, "Battery saver halves active resident population")
     var ids: Dictionary = {}
     var valid_places: Dictionary = {}
-    var layout: Script = load("res://scripts/neighborhood_layout.gd")
-    for place in layout.places():
+    for place in Layout.places():
         valid_places[place["id"]] = true
     for person in profiles:
         check(not ids.has(person["id"]), "NPC IDs must be unique")
@@ -49,9 +49,9 @@ func _initialize() -> void:
         # including the complete segment, rather than endpoints alone.
         var previous: Vector3 = Routines.entrance(str(person["home"])) + Vector3.UP * 0.15
         for point in route:
-            for block in layout.places():
-                var center: Vector3 = layout.position_for(int(block["col"]), int(block["row"]))
-                var half: float = layout.BUILDING_WIDTH / 2.0 + 0.28
+            for block in Layout.places():
+                var center: Vector3 = Layout.position_for(int(block["col"]), int(block["row"]))
+                var half: float = Layout.BUILDING_WIDTH / 2.0 + 0.28
                 var near_x: float = clampf(center.x, minf(previous.x, point.x), maxf(previous.x, point.x))
                 var near_z: float = clampf(center.z, minf(previous.z, point.z), maxf(previous.z, point.z))
                 # Axis-aligned walking segments, with a 0.28m safe radius.
