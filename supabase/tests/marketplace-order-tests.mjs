@@ -51,11 +51,12 @@ export async function marketplaceOrderTests() {
         constraint marketplace_orders_status_check check(status in
           ('pending','paid','shipped','delivered','cancelled','refunded'))
       );
+      grant select on public.market_items,public.marketplace_orders to authenticated;
       insert into public.profiles(id) values ('${seller}'),('${buyer}'),('${anotherBuyer}');
       insert into public.market_items(id,seller_id,price,quantity)
       values ('${itemId}','${seller}',200,3);
     `);
-    const statusPatchStart = migration.indexOf('ALTER TABLE public.marketplace_orders\\n  DROP CONSTRAINT');
+    const statusPatchStart = migration.indexOf('ALTER TABLE public.marketplace_orders');
     const statusPatchEnd = migration.indexOf('-- Prevent a missing seller contact', statusPatchStart);
     assert.ok(statusPatchStart >= 0 && statusPatchEnd > statusPatchStart, 'Missing legacy status compatibility patch');
     await db.exec(migration.slice(statusPatchStart, statusPatchEnd));
