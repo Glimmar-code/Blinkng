@@ -312,7 +312,7 @@
     const params=new URLSearchParams({provider:'google',redirect_to:`${redirectBase}/`});
     location.assign(`${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`);
   }
-  async function requestReset(email){ const redirect=location.origin+routeHref('/settings/password'); await api('/auth/v1/recover',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),redirect_to:redirect}}); }
+  async function requestReset(email){ const redirect=SITE_URL+'/settings/password'; await api('/auth/v1/recover',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),redirect_to:redirect}}); }
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
   function renderLanding(){
