@@ -10,6 +10,14 @@ const TEMP_PATH: String = "user://blink_life_solo_v1.json.tmp"
 const MAX_BYTES: int = 4096
 const MAX_CASH: int = 1000000
 const MAX_JOBS: int = 100000
+## Exactly two local-only room decoration bookmarks; no balance or entitlement.
+const DECOR_KEYS = [
+    "wall_style", "floor_style", "plant_spot", "plant_custom",
+    "plant_x", "plant_z", "plant_rotation",
+    "chair_x", "chair_z", "chair_rotation",
+    "table_x", "table_z", "table_rotation", "bed_layout", "wardrobe_layout"
+]
+const SLOT_NAMES = ["slot_1", "slot_2"]
 
 var save_path: String = SAVE_PATH
 var backup_path: String = BACKUP_PATH
@@ -25,7 +33,7 @@ static func fresh_state() -> Dictionary:
         "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0,
         "chair_x": 2, "chair_z": -1, "chair_rotation": 0,
         "table_x": 2, "table_z": 2, "table_rotation": 0,
-        "bed_layout": 0, "wardrobe_layout": 0}
+        "bed_layout": 0, "wardrobe_layout": 0, "layout_slots": {}}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -94,6 +102,33 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
     layout["plant_z"] = z
     if not SoloHome.layout_allowed(layout):
         return {}
+    var slots_raw: Variant = data.get("layout_slots", {})
+    if not (slots_raw is Dictionary):
+        return {}
+    var slots: Dictionary = {}
+    if slots_raw.size() > SLOT_NAMES.size():
+        return {}
+    for slot_key in slots_raw:
+        if typeof(slot_key) != TYPE_STRING or not SLOT_NAMES.has(str(slot_key)):
+            return {}
+        var source: Variant = slots_raw[slot_key]
+        if not (source is Dictionary) or source.size() != DECOR_KEYS.size():
+            return {}
+        # Nested layouts must contain only the known cosmetic fields.
+        # The validator is called on a synthetic wallet-free state with
+        # no nested slots, so the recursion depth is strictly one.
+        var isolated: Dictionary = {"version": 1, "cash": 0, "jobs": 0, "plant": true}
+        for key in DECOR_KEYS:
+            if not source.has(key):
+                return {}
+            isolated[key] = source[key]
+        var checked: Dictionary = valid_state(isolated, from_json)
+        if checked.is_empty():
+            return {}
+        var decor_only: Dictionary = {}
+        for key in DECOR_KEYS:
+            decor_only[key] = checked[key]
+        slots[slot_key] = decor_only
     return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"],
         "wall_style": styles["wall_style"], "floor_style": styles["floor_style"],
         "plant_spot": styles["plant_spot"], "plant_custom": plant_custom,
@@ -101,7 +136,8 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
         "chair_x": furniture["chair_x"], "chair_z": furniture["chair_z"],
         "chair_rotation": furniture["chair_rotation"], "table_x": furniture["table_x"],
         "table_z": furniture["table_z"], "table_rotation": furniture["table_rotation"],
-        "bed_layout": furniture["bed_layout"], "wardrobe_layout": furniture["wardrobe_layout"]}
+        "bed_layout": furniture["bed_layout"], "wardrobe_layout": furniture["wardrobe_layout"],
+        "layout_slots": slots}
 
 
 func _read_json(path: String) -> Variant:
