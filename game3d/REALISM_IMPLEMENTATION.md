@@ -221,3 +221,36 @@ APK preview and game-isolation checks also assert the public module exists.
 These tests and all hardware acceptance gates must pass at the exact
 candidate commit before Testlab promotion. Source work does not mean that
 BLINK LIFE's complete 1,000-feature roadmap is delivered.
+
+## Batch 7: durable SOLO Game Cash after app restarts (not online rewards)
+
+Previously the tutorial's fictional Game Cash and purchased desk plant reset
+to defaults whenever the 3D scene restarted. This slice adds a dedicated
+version-1 local JSON save to `user://blink_life_solo_v1.json` with a
+same-directory temporary write, prior-version backup, bounded typed input
+validation and corrupt/unknown-version read-only safeguards. The shared
+Android/Windows Godot scene now commits a **successful** solo job reward or
+desk-plant purchase to disk **before** changing the visible balance. If storage
+is unavailable the proposed reward or purchase is rejected with a visible
+message rather than silently claiming to be saved. Saved solo state loads on
+launch and can recover a previously saved backup.
+
+These are user-editable OFFLINE tutorial points, not securely earned money.
+The game explicitly blocks solo reward transactions in LAN/shared sessions,
+leaves the dedicated server persistence separate and never transforms this
+balance into BLINK Coins, server-authoritative inventory, cash or prizes.
+The design does not yet preserve camera/position, restore multiplayer
+sessions or migrate future schemas.
+
+Tests: `tests/solo_progress_smoke.gd` exercises new installs, aborted
+temporary files, two save commits, backup recovery, corrupt files,
+out-of-range/invalid fields, future-version read-only protection and reload.
+`tests/smoke.gd` injects a disposable save path and confirms a local job,
+plant purchase and persisted recovery without affecting other tests.
+The Godot CI and APK source/packaging checks include the new script.
+
+Honest tracker changes: requirements **874, 890, 891, 892 and 895 partial**.
+Now **36 implemented in source, 34 partial, 930 pending audit,
+0 device verified, 0 released**. No migration is claimed for #893.
+Android+Windows packaging, real-device app interruption, Android battery,
+low-storage behavior and production isolation still require verification.
