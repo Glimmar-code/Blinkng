@@ -28,6 +28,7 @@ BEGIN
    WHERE m.id=p_campaign.target_id AND m.seller_id=p_campaign.user_id
     AND m.status='active' AND NOT coalesce(m.is_sold,false)
     AND m.moderation_state='approved'
+    AND public.market_seller_has_approval(m.seller_id)
     AND p.is_seller_active AND p.seller_status='active' AND p.is_verified
     AND upper(p.verification_badge) IN('BLUE','GOLD')
     AND (p.verification_expires_at>now()
