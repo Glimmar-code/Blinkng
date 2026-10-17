@@ -98,6 +98,13 @@ class BlinkEconomyService {
         )
     }
 
+    suspend fun marketPromotedSlots(surface: String, limit: Int = 3) = runCatching {
+        val selected = surface.trim().uppercase()
+        require(selected in setOf("HOME","MARKET")) { "Invalid Market promotion placement." }
+        rpc("get_market_promoted_slots",
+            JSONObject().put("p_surface",selected).put("p_limit",limit.coerceIn(1,5)))
+    }
+
     suspend fun recordMarketQualifiedView(campaignId: String, stage: String) = runCatching {
         require(stage in setOf("START", "QUALIFIED")) { "Unknown visibility stage." }
         rpc("record_market_qualified_view",
