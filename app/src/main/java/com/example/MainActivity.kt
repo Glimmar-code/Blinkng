@@ -1694,6 +1694,9 @@ fun MainAppContent(
                     onBoostListing = { _ ->
                         feedUtilitySheet = "boost"
                     },
+                    onRequestModerationReview = { item, reason ->
+                        viewModel.requestMarketModerationReview(item, reason)
+                    },
                     isOwner = product.sellerId.isNotBlank() &&
                         product.sellerId == uiState.myProfile.id,
                     onUpdateListingStatus = { listing, status ->
