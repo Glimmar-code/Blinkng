@@ -74,7 +74,7 @@ func _process(delta: float) -> bool:
     if not bool(social.get("is_connected_to_authoritative_server")):
         return false
 
-    var my_id: int = multiplayer.get_unique_id()
+    var my_id: int = social.multiplayer.get_unique_id()
     var roster: Dictionary = social.get("people")
     if not roster.has(my_id):
         return false
