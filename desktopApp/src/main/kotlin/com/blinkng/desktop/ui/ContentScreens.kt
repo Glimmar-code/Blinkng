@@ -1181,7 +1181,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketError by remember { mutableStateOf<String?>(null) }
     var marketQuery by remember { mutableStateOf("") }
     var marketCategory by remember { mutableStateOf("All Categories") }
-    var marketSort by remember { mutableStateOf("newest") }
+    var marketSort by remember { mutableStateOf("recommended") }
     var minPriceText by remember { mutableStateOf("") }
     var maxPriceText by remember { mutableStateOf("") }
     var marketSavedOnly by remember { mutableStateOf(false) }
@@ -1285,7 +1285,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                     Text("Verified sellers")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("newest" to "Newest", "price_low" to "Lowest price", "price_high" to "Highest price").forEach { (code, label) ->
+                    listOf("recommended" to "Recommended", "newest" to "Newest", "price_low" to "Lowest price", "price_high" to "Highest price").forEach { (code, label) ->
                         FilterChip(selected = marketSort == code, onClick = { marketSort = code }, label = { Text(label) })
                     }
                     OutlinedButton(onClick = { refreshRevision++ }) { Text("Refresh") }
