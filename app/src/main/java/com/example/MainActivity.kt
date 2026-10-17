@@ -852,11 +852,11 @@ fun MainAppContent(
             ) return@collectLatest
             requestedPage = page
             when (page) {
-                0 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
-                1 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
-                2 -> viewModel.setTab(MainTab.MARKET)
-                3 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
-                4 -> viewModel.setTab(MainTab.MESSAGES)
+                0 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                1 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                2 -> viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                3 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                4 -> viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
             }
         }
     }
@@ -1007,10 +1007,7 @@ fun MainAppContent(
                         onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
-                        onBackToHome = {
-                            viewModel.setTab(MainTab.HOME)
-                            viewModel.setFeedSubTab(0)
-                        },
+                        onBackToHome = { viewModel.navigateToPrimaryTab(MainTab.HOME, 0) },
                         isDark = uiState.isDarkMode
                     )
                 }
@@ -1481,27 +1478,24 @@ fun MainAppContent(
                         if (uiState.activeViewingStory != null) viewModel.closeStory()
                         if (uiState.showSellerCongratulationsDialog) viewModel.dismissSellerCongratulations()
 
-                        viewModel.setTab(MainTab.HOME)
-                        viewModel.setFeedSubTab(0)
+                        viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
                     }
                 },
                 onReelsClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(1)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
                 },
                 onMarketClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.MARKET)
+                    viewModel.navigateToPrimaryTab(MainTab.MARKET)
                 },
                 onConnectClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(2)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
                 },
                 onMessageClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.MESSAGES)
+                    viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
                 },
                 isDark = uiState.isDarkMode,
                 onMenuClick = {
