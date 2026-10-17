@@ -1176,6 +1176,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var minPriceText by remember { mutableStateOf("") }
     var maxPriceText by remember { mutableStateOf("") }
     var marketSavedOnly by remember { mutableStateOf(false) }
+    var marketMyCampusOnly by remember { mutableStateOf(!state.profile?.university.isNullOrBlank()) }
     var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -1183,7 +1184,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
     }
 
-    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, refreshRevision) {
+    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
         val min = minPriceText.toLongOrNull()
         val max = maxPriceText.toLongOrNull()
         if (min != null && max != null && min > max) {
@@ -1202,7 +1203,8 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 minPrice = min,
                 maxPrice = max,
                 savedOnly = marketSavedOnly,
-                verifiedOnly = marketVerifiedOnly
+                verifiedOnly = marketVerifiedOnly,
+                university = state.profile?.university?.takeIf { marketMyCampusOnly && it.isNotBlank() }
             )
         }.onSuccess { itemsList = com.blinkng.shared.MarketTrustPolicy.diversify(it) { listing -> listing.sellerId ?: listing.sellerUsername } }
             .onFailure { marketError = it.message ?: "Unable to load Market listings." }
@@ -1249,6 +1251,20 @@ fun MarketplaceScreen(state: DesktopAppState) {
                             selected = marketCategory == option,
                             onClick = { marketCategory = option },
                             label = { Text(option) }
+                        )
+                    }
+                }
+                if (!state.profile?.university.isNullOrBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = marketMyCampusOnly,
+                            onClick = { marketMyCampusOnly = true },
+                            label = { Text("My University") }
+                        )
+                        FilterChip(
+                            selected = !marketMyCampusOnly,
+                            onClick = { marketMyCampusOnly = false },
+                            label = { Text("All Universities") }
                         )
                     }
                 }
