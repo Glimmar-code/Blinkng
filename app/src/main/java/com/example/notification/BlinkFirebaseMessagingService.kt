@@ -14,6 +14,7 @@ import com.example.call.IncomingCallNotification
 import com.example.data.repository.ChatRepository
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.blinkng.shared.notification.BlinkNotificationPresentation
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -204,10 +205,27 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
-        val title = data["title"] ?: message.notification?.title ?: "Blink"
-        val body = data["body"] ?: message.notification?.body ?: "You have a new notification."
-        val sender = data["sender_username"].orEmpty()
-        val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
+        // Payloads from older clients or database rows may contain the *literal*
+        // string "null". Never display that value or treat it as an account name.
+        val title = BlinkNotificationPresentation.title(
+            data["title"],
+            BlinkNotificationPresentation.title(
+                message.notification?.title,
+                BlinkNotificationPresentation.defaultTitle(type),
+            ),
+        )
+        val body = BlinkNotificationPresentation.body(
+            data["body"],
+            BlinkNotificationPresentation.body(
+                message.notification?.body,
+                if (type == BlinkNotificationType.MESSAGE) "New message" else "You have a new notification.",
+            ),
+        )
+        val sender = BlinkNotificationPresentation.username(data["sender_username"])
+        val senderName = BlinkNotificationPresentation.displayName(
+            data["sender_name"],
+            sender.ifBlank { "Blink user" },
+        )
         val senderAvatar = data["sender_avatar"].orEmpty()
         val conversationId = data["conversation_id"].orEmpty()
         val messageId = data["message_id"].orEmpty()
