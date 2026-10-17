@@ -19,6 +19,7 @@ const INVITE_MIN_INTERVAL_MS: int = 5000
 const MAX_WALK_SPEED_MPS: float = 8.0
 const MOVE_JITTER_METRES: float = 1.0
 const MAX_MOVE_DELTA_SECONDS: float = 0.50
+const HEALTH_PULSE_INTERVAL_SECONDS: float = 5.0
 
 var world: Node3D
 var local_player: CharacterBody3D
@@ -68,6 +69,10 @@ var last_invite_ms: Dictionary = {}
 ## Server-only peer-session invitation restrictions. Account-backed persistent
 ## blocking must be provided by the future privacy service before launch.
 var blocked_invites: Dictionary = {}
+## Only the dedicated server's container receives this filesystem path.
+## No open metrics port, account information or secrets are exposed.
+var server_health_file: String = ""
+var server_health_elapsed: float = 0.0
 
 
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
@@ -143,6 +148,9 @@ func _start_dedicated_server() -> void:
     pending_auth_ms.clear()
     people.clear()
     slot_counter = 0
+    server_health_file = OS.get_environment("BLINK_LIFE_HEALTH_FILE")
+    server_health_elapsed = 0.0
+    _emit_server_health()
     status_label.text = "Dedicated session online: authenticated tickets required."
     # No fake host appears in the roster; only authenticated human peers.
     print("BLINK LIFE dedicated authenticated WSS listening on TCP port %d" % port)
@@ -480,6 +488,9 @@ func _on_peer_left(peer_id: int) -> void:
 
 
 func _disconnect() -> void:
+    if secure_dedicated and not server_health_file.is_empty():
+        DirAccess.remove_absolute(server_health_file)
+        server_health_file = ""
     if multiplayer.multiplayer_peer != null:
         multiplayer.multiplayer_peer.close()
     multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
@@ -755,9 +766,30 @@ func _create_vehicle() -> Node3D:
     return vehicle
 
 
+## Container-only readiness heartbeat. Only emitted after TLS listener
+## creation AND successful persistent ledger verification. Never contains
+## player identities, signed tickets or game balance.
+func _emit_server_health() -> void:
+    if not secure_dedicated or not multiplayer.is_server() or server_health_file.is_empty():
+        return
+    if persistent_store == null or bool(persistent_store.get("write_blocked")):
+        return
+    var file := FileAccess.open(server_health_file, FileAccess.WRITE)
+    if file == null:
+        push_warning("Dedicated health file cannot be written.")
+        return
+    file.store_string("ready\\n")
+    file.flush()
+    file.close()
+
+
 func _process(delta: float) -> void:
     if secure_dedicated and multiplayer.is_server():
         _expire_authentication(Time.get_ticks_msec())
+        server_health_elapsed += delta
+        if server_health_elapsed >= HEALTH_PULSE_INTERVAL_SECONDS:
+            server_health_elapsed = 0.0
+            _emit_server_health()
     if not is_online or local_player == null:
         return
     var my_id := multiplayer.get_unique_id()
