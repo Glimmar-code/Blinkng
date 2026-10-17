@@ -781,7 +781,9 @@ func _allowed_position(sender: int, position: Vector3) -> bool:
     var profile: Dictionary = people[sender]
     var own_slot := int(profile["slot"])
     var visiting := int(profile.get("visiting", -1))
-    return _near_home(position, own_slot) or (visiting >= 0 and _near_home(position, visiting))
+    var permitted_own: bool = (not secure_dedicated or
+        bool(profile.get("home_owned", false))) and _near_home(position, own_slot)
+    return permitted_own or (visiting >= 0 and _near_home(position, visiting))
 
 
 func _near_home(position: Vector3, slot: int) -> bool:
@@ -863,6 +865,19 @@ func _block_invitations(sender: int, target: int, block: bool) -> bool:
     else:
         blocked.erase(target)
     blocked_invites[sender] = blocked
+    # Blocking a guest also revokes already-granted access immediately.
+    # Otherwise an accepted invitation would remain active indefinitely.
+    if block:
+        var target_profile: Dictionary = people[target]
+        if int(target_profile.get("visiting", -1)) == int(people[sender]["slot"]):
+            target_profile["visiting"] = -1
+            people[target] = target_profile
+            if multiplayer.is_server():
+                _teleport(target, -1, false)
+        if cars.has(sender) and int(cars[sender]) == target:
+            cars[sender] = -1
+        if cars.has(target) and int(cars[target]) == sender:
+            cars[target] = -1
     return true
 
 
@@ -884,7 +899,8 @@ func _server_action(sender: int, kind: String, target: int) -> void:
     match kind:
         "block":
             if _block_invitations(sender, target, true):
-                _notify(sender, "Future visit and ride requests from this player are blocked for this session.")
+                _notify(sender, "This session's visits, rides and invitations are blocked.")
+                _broadcast_roster()
             return
         "unblock":
             if _block_invitations(sender, target, false):
