@@ -90,6 +90,8 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.notification.BlinkNotificationKind
+import com.blinkng.shared.notification.BlinkNotificationPresenter
 import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
@@ -479,13 +481,13 @@ fun NotificationsScreen(state: DesktopAppState) {
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
+                                Text(BlinkNotificationPresenter.render(BlinkNotificationKind.fromWire(item.type), item.text, item.subText).title, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
                                 if (item.actorIsVip || item.vipPriority) {
                                     Spacer(Modifier.width(6.dp))
                                     Text("VIP", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
-                            item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            BlinkNotificationPresenter.clean(item.subText).takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

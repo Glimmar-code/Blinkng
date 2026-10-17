@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/blink_logo_foreground"
-    android:gravity="center"
-    android:antialias="true"
-    android:filter="true" />
+<!-- Monochrome alpha-only notification glyph; Android applies system tint. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M7.5,3.5 L7.5,20.5 M7.5,3.5 L13.5,3.5 C19,3.5 20,10.5 13.5,12 L7.5,12 M7.5,12 L14,12 C21,12 20,20.5 14,20.5 L7.5,20.5" />
+</vector>

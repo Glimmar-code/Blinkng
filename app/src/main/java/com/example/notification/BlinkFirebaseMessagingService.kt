@@ -7,6 +7,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.blinkng.shared.notification.BlinkNotificationPresenter
 import com.example.BuildConfig
 import com.example.call.CallTimeoutWorker
 import com.example.call.CallType
@@ -204,10 +205,18 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
-        val title = data["title"] ?: message.notification?.title ?: "Blink"
-        val body = data["body"] ?: message.notification?.body ?: "You have a new notification."
-        val sender = data["sender_username"].orEmpty()
-        val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
+        val sender = BlinkNotificationPresenter.clean(data["sender_username"]).removePrefix("@")
+        val senderName = BlinkNotificationPresenter.clean(data["sender_name"])
+            .ifBlank { sender.ifBlank { "BLINK user" } }
+        val copy = BlinkNotificationPresenter.render(
+            kind = type,
+            rawTitle = data["title"] ?: message.notification?.title,
+            rawBody = data["body"] ?: message.notification?.body,
+            senderName = senderName.takeUnless { it == "BLINK user" },
+            senderUsername = sender
+        )
+        val title = copy.title
+        val body = copy.body
         val senderAvatar = data["sender_avatar"].orEmpty()
         val conversationId = data["conversation_id"].orEmpty()
         val messageId = data["message_id"].orEmpty()

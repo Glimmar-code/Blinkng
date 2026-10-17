@@ -1,5 +1,7 @@
 package com.example.notification
 
+import com.blinkng.shared.notification.BlinkNotificationPresenter
+
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -200,10 +202,15 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                     SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
                 }
 
+                val copy = BlinkNotificationPresenter.render(
+                    kind = type,
+                    rawTitle = row.optString("text"),
+                    rawBody = row.optString("sub_text")
+                )
                 BlinkNotificationHelper.showSocialNotification(
                     applicationContext,
-                    row.optString("text", "Blink notification"),
-                    row.optString("sub_text", ""),
+                    copy.title,
+                    copy.body,
                     row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
                 )
             }

@@ -93,6 +93,8 @@ import androidx.compose.ui.window.rememberNotification
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.blinkng.desktop.data.DesktopCall
+import com.blinkng.shared.notification.BlinkNotificationPresenter
+import com.blinkng.shared.notification.BlinkNotificationKind
 import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
@@ -167,8 +169,9 @@ fun runBlinkDesktopApplication() = application {
     val trayNotification = rememberNotification(notificationTitle, notificationBody)
 
     fun showNativeNotification(title: String, body: String) {
-        notificationTitle = title
-        notificationBody = body
+        val copy = BlinkNotificationPresenter.render(BlinkNotificationKind.SOCIAL, title, body)
+        notificationTitle = copy.title
+        notificationBody = copy.body
         notificationSerial++
     }
 
@@ -216,8 +219,8 @@ fun runBlinkDesktopApplication() = application {
                     foregroundNotification = fresh
                     if (!isWindowVisible) {
                         showNativeNotification(
-                            fresh.text.ifBlank { "Blink notification" },
-                            fresh.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
+                            BlinkNotificationPresenter.render(BlinkNotificationKind.fromWire(fresh.type), fresh.text, fresh.subText).title,
+                            BlinkNotificationPresenter.render(BlinkNotificationKind.fromWire(fresh.type), fresh.text, fresh.subText).body,
                         )
                     }
                 }
@@ -387,12 +390,12 @@ private fun DesktopInAppNotificationBanner(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            notification.text.ifBlank { "Blink notification" },
+                            BlinkNotificationPresenter.render(BlinkNotificationKind.fromWire(notification.type), notification.text, notification.subText).title,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        notification.subText?.takeIf { it.isNotBlank() }?.let {
+                        BlinkNotificationPresenter.clean(notification.subText).takeIf { it.isNotBlank() }?.let {
                             Text(
                                 it,
                                 maxLines = 2,
