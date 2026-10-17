@@ -447,15 +447,6 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
-            // Admin access is sourced from the backend, never inferred from a profile label.
-            val adminAccessService = remember { AdminSupabaseService() }
-            var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
-            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
-                canOpenAdmin = false
-                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
-                    canOpenAdmin = adminAccessService.fetchCapability().getOrNull()?.isAdmin == true
-                }
-            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
 
             LaunchedEffect(uiState.destination) {
@@ -706,6 +697,16 @@ fun MainAppContent(
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
+    // MainAppContent hosts the Home feed: keep permission state in this scope.
+    val adminService = remember { AdminSupabaseService() }
+    val adminContext = androidx.compose.ui.platform.LocalContext.current
+    var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    LaunchedEffect(uiState.myProfile.id) {
+        canOpenAdmin = false
+        if (uiState.myProfile.id.isNotBlank()) {
+            canOpenAdmin = adminService.fetchCapability().getOrNull()?.isAdmin == true
+        }
+    }
     LaunchedEffect(feedUtilitySheet) {
         // Restored states and old navigation callers cannot reopen the paused Store.
         if (BlinkStoreAvailability.isPaused && feedUtilitySheet == "store") {
@@ -972,8 +973,8 @@ fun MainAppContent(
                         isAdmin = canOpenAdmin,
                         onAdminClick = {
                             if (canOpenAdmin) {
-                                startActivitySafely(
-                                    Intent(this@MainActivity, AdminControlCenterActivity::class.java),
+                                adminContext.startActivitySafely(
+                                    Intent(adminContext, AdminControlCenterActivity::class.java),
                                     "Unable to open admin dashboard."
                                 )
                             }
