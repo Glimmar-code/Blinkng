@@ -1814,7 +1814,7 @@ fun MainAppContent(
         ) {
             PostItemScreen(
                 onBack = { viewModel.openPostItem(false) },
-                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation ->
+                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation, videoSource ->
                     viewModel.addMarketItem(
                         title = title,
                         price = price,
@@ -1825,7 +1825,8 @@ fun MainAppContent(
                         quantity = quantity,
                         negotiable = negotiable,
                         deliveryMethod = deliveryMethod,
-                        pickupLocation = pickupLocation
+                        pickupLocation = pickupLocation,
+                        videoSource = videoSource
                     )
                 },
                 isPublishing = uiState.isPublishingMarketItem,
