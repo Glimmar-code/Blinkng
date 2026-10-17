@@ -454,6 +454,7 @@ private fun AdminSectionScreen(
     openHistory: () -> Unit
 ) {
     var query by rememberSaveable(section.key) { mutableStateOf("") }
+    var toolFilter by rememberSaveable(section.key) { mutableStateOf("All") }
     var features by remember(section.key) { mutableStateOf<List<AdminFeatureV3>>(emptyList()) }
     var loading by remember(section.key) { mutableStateOf(true) }
     var selectedFeature by remember { mutableStateOf<AdminFeatureV3?>(null) }
@@ -489,13 +490,35 @@ private fun AdminSectionScreen(
                 Button(onClick = ::load, enabled = !loading) { Text("Find", fontSize = 10.sp) }
             }
         }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf("All", "Insights", "Actions", "High risk", "Owner only").forEach { filter ->
+                FilterChip(
+                    selected = toolFilter == filter,
+                    onClick = { toolFilter = filter },
+                    label = { Text(filter, fontSize = 10.sp) }
+                )
+            }
+        }
+        val shownFeatures = features.filter { feature ->
+            when (toolFilter) {
+                "Insights" -> feature.inputKind == "insight"
+                "Actions" -> feature.inputKind != "insight"
+                "High risk" -> feature.riskLevel in setOf("high", "critical")
+                "Owner only" -> feature.ownerOnly
+                else -> true
+            }
+        }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = BlinkPink)
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(features, key = { it.featureId }) { feature ->
+            items(shownFeatures, key = { it.featureId }) { feature ->
                 AdminFeatureCard(
                     feature = feature,
                     capability = capability,
@@ -513,7 +536,7 @@ private fun AdminSectionScreen(
                     openHistory = openHistory
                 )
             }
-            if (!loading && features.isEmpty()) {
+            if (!loading && shownFeatures.isEmpty()) {
                 item {
                     Text("No tools match this search.", color = Color.Gray, modifier = Modifier.padding(14.dp))
                 }
@@ -819,7 +842,6 @@ private fun FeatureActionDialog(
             Column(Modifier.fillMaxWidth().padding(18.dp).verticalScroll(rememberScrollState())) {
                 Text(feature.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
                 Text(feature.description, color = Color.LightGray, fontSize = 10.sp)
-                Text(feature.routeKey, color = BlinkPink, fontSize = 8.sp)
                 Spacer(Modifier.height(12.dp))
 
                 if (needsUserPicker) {
