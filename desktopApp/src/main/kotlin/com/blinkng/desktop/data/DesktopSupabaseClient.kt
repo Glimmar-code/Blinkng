@@ -1389,6 +1389,24 @@ class DesktopSupabaseClient(
             JSONObject().put("p_user", id)) as JSONObject
     }
 
+    suspend fun fetchMyMarketOrders(): List<JSONObject> = withContext(Dispatchers.IO) {
+        val uid=requireSession().userId
+        val items=getArray(
+            "/rest/v1/marketplace_orders?select=id,item_id,buyer_id,seller_id,status,quantity,total_price,created_at&or=(buyer_id.eq.$uid,seller_id.eq.$uid)&order=created_at.desc&limit=60"
+        )
+        (0 until items.length()).mapNotNull(items::optJSONObject)
+    }
+
+    suspend fun openMarketDispute(orderId: String, reason: String, details: String): Boolean =
+        withContext(Dispatchers.IO) {
+            require(reason.trim().length in 8..200)
+            val response=postObject("/rest/v1/rpc/open_market_dispute",
+                JSONObject().put("p_order",orderId)
+                    .put("p_reason",reason.trim())
+                    .put("p_details",details.trim().take(2000)))
+            response.toString().isNotBlank()
+        }
+
     suspend fun fetchMarketOffers(): List<JSONObject> = withContext(Dispatchers.IO) {
         val userId=requireSession().userId
         val rows=getArray(
