@@ -74,6 +74,7 @@ fun MarketScreen(
     sellerStoreName: String = "",
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
     sellerVerificationActive: Boolean = false,
+    verificationExpiresAtMillis: Long = 0L,
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
@@ -292,6 +293,30 @@ fun MarketScreen(
                         Text(if (activeFilterCount > 0) "Filters ($activeFilterCount)" else "Filters")
                     }
                 )
+            }
+        }
+
+        if (isSellerActive && verificationExpiresAtMillis > 0L &&
+            verificationExpiresAtMillis <= System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Your verified seller badge expires soon. Renew it to keep listings eligible.",
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 13.sp
+                        )
+                        TextButton(onClick = onOpenGetVerified) { Text("Renew") }
+                    }
+                }
             }
         }
 
