@@ -11,6 +11,11 @@ const WORLD_LIMIT: float = 26.0
 const HOME_START_X: float = 53.0
 const HOME_Z: float = 32.0
 const HOME_GAP: float = 16.0
+## Public staging connection budgets, not full anti-DDoS protection.
+const AUTH_DEADLINE_MS: int = 10000
+const MAX_PENDING_AUTH: int = 4
+const ACTION_MIN_INTERVAL_MS: int = 250
+const INVITE_MIN_INTERVAL_MS: int = 5000
 
 var world: Node3D
 var local_player: CharacterBody3D
@@ -53,6 +58,9 @@ var is_connected_to_authoritative_server: bool = false
 var persistent_store: RefCounted
 var last_work_ms: Dictionary = {}
 var account_status: Label
+var pending_auth_ms: Dictionary = {}
+var last_action_ms: Dictionary = {}
+var last_invite_ms: Dictionary = {}
 
 
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
@@ -62,6 +70,7 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
     multiplayer.connection_failed.connect(_on_connection_failed)
     multiplayer.server_disconnected.connect(_on_server_lost)
     multiplayer.peer_disconnected.connect(_on_peer_left)
+    multiplayer.peer_connected.connect(_on_peer_arrived)
     _build_ui()
     var args := OS.get_cmdline_user_args()
     if args.has("--blink-dedicated"):
@@ -98,6 +107,10 @@ func _start_dedicated_server() -> void:
     var store_script: Script = load("res://scripts/persistent_state.gd")
     persistent_store = store_script.new()
     persistent_store.call("load_from_disk")
+    if bool(persistent_store.get("write_blocked")):
+        push_warning("BLINK LIFE dedicated account ledger is read-only: " +
+            str(persistent_store.get("warning")))
+    pending_auth_ms.clear()
     people.clear()
     slot_counter = 0
     status_label.text = "Dedicated session online: authenticated tickets required."
@@ -363,7 +376,32 @@ func _on_server_lost() -> void:
     status_label.text = "Host disconnected. BLINK LIFE remains playable offline."
 
 
+static func auth_timed_out(joined_ms: int, current_ms: int) -> bool:
+    return current_ms >= joined_ms and current_ms - joined_ms >= AUTH_DEADLINE_MS
+
+
+func _on_peer_arrived(peer_id: int) -> void:
+    if not secure_dedicated or not multiplayer.is_server() or peer_id < 2:
+        return
+    if pending_auth_ms.size() >= MAX_PENDING_AUTH:
+        multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+        return
+    pending_auth_ms[peer_id] = Time.get_ticks_msec()
+
+
+func _expire_authentication(current_ms: int) -> void:
+    if not secure_dedicated or not multiplayer.is_server():
+        return
+    for peer_id in pending_auth_ms.keys():
+        if auth_timed_out(int(pending_auth_ms[peer_id]), current_ms):
+            pending_auth_ms.erase(peer_id)
+            multiplayer.multiplayer_peer.disconnect_peer(int(peer_id))
+
+
 func _on_peer_left(peer_id: int) -> void:
+    pending_auth_ms.erase(peer_id)
+    last_action_ms.erase(peer_id)
+    last_invite_ms.erase(peer_id)
     if not multiplayer.is_server():
         return
     if not people.has(peer_id):
@@ -403,6 +441,9 @@ func _disconnect() -> void:
     used_ticket_nonces.clear()
     persistent_store = null
     last_work_ms.clear()
+    pending_auth_ms.clear()
+    last_action_ms.clear()
+    last_invite_ms.clear()
     people.clear()
     cars.clear()
     visit_requests.clear()
@@ -449,6 +490,11 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
         return
     var id := multiplayer.get_remote_sender_id()
     if id < 2 or people.has(id) or people.size() >= MAX_PLAYERS:
+        if secure_dedicated and id >= 2:
+            multiplayer.multiplayer_peer.disconnect_peer(id)
+        return
+    if secure_dedicated and not pending_auth_ms.has(id):
+        multiplayer.multiplayer_peer.disconnect_peer(id)
         return
     var actual_name := _clean_name(display_name)
     if secure_dedicated:
@@ -460,6 +506,7 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
             multiplayer.multiplayer_peer.disconnect_peer(id)
             return
         peer_auth_ids[id] = account_id
+        pending_auth_ms.erase(id)
         # The editable nickname cannot impersonate a verified BLINK profile.
         actual_name = "BLINK-" + account_id.substr(0, 8)
     var member := _make_profile(actual_name, slot_counter)
@@ -646,6 +693,8 @@ func _create_vehicle() -> Node3D:
 
 
 func _process(delta: float) -> void:
+    if secure_dedicated and multiplayer.is_server():
+        _expire_authentication(Time.get_ticks_msec())
     if not is_online or local_player == null:
         return
     var my_id := multiplayer.get_unique_id()
@@ -784,6 +833,17 @@ func _request_action(kind: String, target: int) -> void:
 func _server_action(sender: int, kind: String, target: int) -> void:
     if not people.has(sender):
         return
+    # Server-owned throttling limits packet floods/duplicate purchases.
+    # Trusted LAN demos preserve the existing immediate interactions.
+    if secure_dedicated:
+        var now_ms: int = Time.get_ticks_msec()
+        if last_action_ms.has(sender) and now_ms - int(last_action_ms[sender]) < ACTION_MIN_INTERVAL_MS:
+            return
+        last_action_ms[sender] = now_ms
+        if kind in ["visit", "ride"]:
+            if last_invite_ms.has(sender) and now_ms - int(last_invite_ms[sender]) < INVITE_MIN_INTERVAL_MS:
+                return
+            last_invite_ms[sender] = now_ms
     var profile: Dictionary = people[sender]
     match kind:
         "location":
@@ -1029,6 +1089,10 @@ func _wave(peer_id: int) -> void:
 
 
 func _send_chat_from_ui() -> void:
+    if joining_secure:
+        status_label.text = "Public world chat is disabled until moderation is ready."
+        chat_input.clear()
+        return
     if not is_online:
         status_label.text = "Join a trusted LAN session to chat."
         return
@@ -1050,6 +1114,11 @@ func _send_chat(message: String) -> void:
 
 func _server_chat(sender: int, message: String) -> void:
     if not people.has(sender):
+        return
+    # One-to-many free-text chat is a production moderation blocker.
+    # Keep it disabled for dedicated public sessions; LAN preview only.
+    if secure_dedicated:
+        _notify(sender, "Public chat is disabled until player safety checks are ready.")
         return
     var now := Time.get_ticks_msec()
     if last_chat_ms.has(sender) and now - int(last_chat_ms[sender]) < 1500:
