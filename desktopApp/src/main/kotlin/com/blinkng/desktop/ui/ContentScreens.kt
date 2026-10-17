@@ -1170,6 +1170,11 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerPickup by remember { mutableStateOf(true) }
     var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var marketOffers by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var marketOrders by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var disputeTarget by remember { mutableStateOf<String?>(null) }
+    var disputeReason by remember { mutableStateOf("") }
+    var disputeDetails by remember { mutableStateOf("") }
+
     var marketOfferAmounts by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
     var marketOfferError by remember { mutableStateOf<String?>(null) }
     var sellerSubmitting by remember { mutableStateOf(false) }
@@ -1196,6 +1201,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
         if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
         marketOffers = runCatching { state.client.fetchMarketOffers() }.getOrDefault(emptyList())
+        marketOrders = runCatching { state.client.fetchMyMarketOrders() }.getOrDefault(emptyList())
     }
 
     LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
@@ -1296,6 +1302,60 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (marketOrders.isNotEmpty()) {
+            item {
+                Card(modifier=Modifier.fillMaxWidth()) {
+                    Column(modifier=Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("My Orders & Buyer Protection",fontWeight=FontWeight.Bold)
+                        Text("BLINK does not hold payments or guarantee transactions.",
+                            color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        marketOrders.take(12).forEach { order ->
+                            Text("₦${order.optLong("total_price")} · ${order.optString("status")}",
+                                fontWeight=FontWeight.SemiBold)
+                            TextButton(onClick={disputeTarget=order.optString("id")}) {
+                                Text("Open a Dispute")
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+        disputeTarget?.let { orderId ->
+            item {
+                AlertDialog(
+                    onDismissRequest={disputeTarget=null},
+                    title={Text("Order Dispute")},
+                    text={
+                        Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(disputeReason,
+                                {disputeReason=it.take(200)},label={Text("Reason")})
+                            OutlinedTextField(disputeDetails,
+                                {disputeDetails=it.take(2000)},
+                                label={Text("Explain what happened")})
+                            Text("BLINK will review your complaint. No refund or escrow is promised.")
+                        }
+                    },
+                    confirmButton={
+                        TextButton(
+                            enabled=disputeReason.trim().length>=8,
+                            onClick={
+                                disputeTarget=null
+                                scope.launch {
+                                    runCatching { state.client.openMarketDispute(orderId,disputeReason,disputeDetails) }
+                                        .onSuccess { marketOfferError=if(it) "Dispute submitted." else "Dispute rejected." }
+                                        .onFailure { marketOfferError=it.message }
+                                    disputeReason=""
+                                    disputeDetails=""
+                                }
+                            }
+                        ) { Text("Submit") }
+                    },
+                    dismissButton={TextButton(onClick={disputeTarget=null}){Text("Cancel")}}
+                )
+            }
+        }
+
         if (marketOffers.isNotEmpty()) {
             item {
                 Surface(shape=RoundedCornerShape(16.dp),tonalElevation=1.dp) {
