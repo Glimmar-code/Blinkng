@@ -93,3 +93,30 @@ Only the rows explicitly described as implemented in source can be
 treated as completed development work. No public Internet server is
 running as a result of this PR; no Testlab/main promotion or Play Store
 release follows automatically.
+
+## Major milestone: owned homes retain permanent virtual addresses
+
+The earlier server used the **join order** to assign a home's virtual
+coordinate. This was wrong: logging out and rejoining could move an owned
+house and reuse a room slot for someone else. The new dedicated-world
+code allocates one unique **home_slot** the first time a signed-in
+account purchases its virtual home and records that plot ID with its
+fictional Game Cash and furnishings. Reconnecting or restarting this
+same server restores the same coordinates. Visitors still require
+permission and blocking immediately revokes their access.
+
+The existing disk-ledger reader migrates previously purchased V1 homes
+with no address by assigning nonoverlapping plots in deterministic
+account-ID order, then commits a versioned backup-protected checkpoint
+before admitting players. Duplicate plots, illegal slot assignments
+and future-format records fail closed. A player without a purchased
+home receives no dedicated-home building. The in-game private wallet
+status displays the owner's plot number; the virtual map still never
+uses real GPS or property addresses.
+
+The **staging-only** SQL proposal now includes a unique sequential
+home plot ID and private idempotent property transactions. It has not
+been deployed or connected to Godot and does not make the game
+multi-server persistent. The production-ready solution needs staging
+migration dry-runs, database adapter, encrypted networking, dedicated
+hosting and Android/Windows tests before any live launch.
