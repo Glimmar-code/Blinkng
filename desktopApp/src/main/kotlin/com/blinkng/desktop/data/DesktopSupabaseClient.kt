@@ -1295,7 +1295,7 @@ class DesktopSupabaseClient(
         val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
         val url = buildString {
             append("/rest/v1/market_items?status=eq.active&is_sold=eq.false&seller_id=not.is.null")
-            append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
+            append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,video_url,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
             if (savedOnly) append(",marketplace_wishlist!inner(user_id)")
             if (verifiedOnly) append("&seller_is_verified=eq.true")
             if (savedOnly) {
@@ -1387,10 +1387,42 @@ class DesktopSupabaseClient(
             JSONObject().put("p_item",id)))
     }
 
-    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String): DesktopMarketItem = withContext(Dispatchers.IO) {
+    suspend fun uploadMarketAttachment(path: String, video: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val file = java.nio.file.Path.of(path)
+            require(java.nio.file.Files.isRegularFile(file)) { "Select a valid media file." }
+            val ext = file.fileName.toString().substringAfterLast('.', "").lowercase()
+            val mime = if (video) when(ext) {
+                "mp4" -> "video/mp4"
+                "webm" -> "video/webm"
+                else -> throw IllegalArgumentException("Video must be MP4 or WebM.")
+            } else when(ext) {
+                "jpg","jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                else -> throw IllegalArgumentException("Photo must be JPEG, PNG or WebP.")
+            }
+            val size = java.nio.file.Files.size(file)
+            require(size in 1..(if (video) 25L * 1024 * 1024 else 10L * 1024 * 1024)) {
+                "Selected media exceeds the allowed upload size."
+            }
+            val bucket=if (video) "market-video" else "market-media"
+            val id=requireSession().userId
+            val key="users/$id/listings/${UUID.randomUUID()}.$ext"
+            val req=authenticatedRequest("/storage/v1/object/$bucket/$key")
+                .header("Content-Type",mime)
+                .header("x-upsert","false")
+                .post(java.nio.file.Files.readAllBytes(file).toRequestBody(mime.toMediaType()))
+                .build()
+            execute(req)
+            "$baseUrl/storage/v1/object/public/$bucket/$key"
+        }
+
+    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String, imageUrl: String, videoUrl: String? = null): DesktopMarketItem = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         require(price > 0) { "Price must be greater than zero." }
         require(description.trim().length >= 10) { "Describe the product accurately." }
+        require(imageUrl.startsWith("https://")) { "A product photo is required." }
         require(canPublishMarketItems()) { "Renew your verification and register as a seller before posting." }
         val profile = fetchProfile()
         val body = JSONObject()
@@ -1398,6 +1430,9 @@ class DesktopSupabaseClient(
             .put("description", description.trim())
             .put("price", price)
             .put("category", category.ifBlank { "Other" })
+            .put("image_url", imageUrl)
+            .put("image_urls", JSONArray().put(imageUrl))
+            .put("video_url", videoUrl ?: JSONObject.NULL)
             .put("seller_id", profile.id)
             .put("seller_name", profile.fullName)
             .put("seller_username", profile.username)
@@ -1843,6 +1878,7 @@ class DesktopSupabaseClient(
         location = row.optString("location"),
         isFeatured = row.optBoolean("is_featured"),
         isSold = row.optBoolean("is_sold"),
+        videoUrl = row.optNullableString("video_url"),
         imageUrls = row.optStringList("image_urls").ifEmpty {
             row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
         },
