@@ -778,7 +778,7 @@ func _emit_server_health() -> void:
     if file == null:
         push_warning("Dedicated health file cannot be written.")
         return
-    file.store_string("ready\\n")
+    file.store_string("ready\n")
     file.flush()
     file.close()
 
