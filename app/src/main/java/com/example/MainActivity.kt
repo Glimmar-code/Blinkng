@@ -91,6 +91,8 @@ class MainActivity : ComponentActivity() {
                     !getSharedPreferences(com.example.ui.components.BlinkBugPrefs.FILE, MODE_PRIVATE)
                         .getBoolean(com.example.ui.components.BlinkBugPrefs.SHAKE_ENABLED, true) ||
                     showBugReportSheet) return
+                // Malformed sensor events must not bring down the UI thread.
+                if (event.values.size < 3) return
                 val g = android.hardware.SensorManager.GRAVITY_EARTH
                 val x = event.values[0] / g
                 val y = event.values[1] / g
@@ -412,7 +414,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         // Save the exact navigation surface before Android backgrounds or kills the task.
-        viewModel.persistResumePoint()
+        try {
+            viewModel.persistResumePoint()
+        } catch (error: Exception) {
+            android.util.Log.e("MainActivity", "Failed to persist the resume route", error)
+            runCatching {
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance()
+                    .recordException(error)
+            }
+        }
         stopPresenceHeartbeat(markOffline = true)
         super.onStop()
     }
