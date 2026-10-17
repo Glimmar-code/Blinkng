@@ -89,7 +89,9 @@ BEGIN
    IF v_status='cancelled' THEN RAISE EXCEPTION 'SELLER_CANNOT_CANCEL'; END IF;
    v_recipient:=v_offer.buyer_id;
  ELSIF v_user=v_offer.buyer_id THEN
-   IF v_status<>'cancelled' THEN RAISE EXCEPTION 'BUYER_MAY_ONLY_CANCEL'; END IF;
+   IF NOT (v_status='cancelled' OR
+      (v_status='accepted' AND v_offer.status='countered'))
+   THEN RAISE EXCEPTION 'BUYER_MAY_ONLY_CANCEL_OR_ACCEPT_COUNTER'; END IF;
    v_recipient:=v_offer.seller_id;
  ELSE RAISE EXCEPTION 'NOT_A_PARTICIPANT'; END IF;
  v_new_amount:=CASE WHEN v_status='countered' THEN p_counter_amount ELSE v_offer.proposed_price END;
