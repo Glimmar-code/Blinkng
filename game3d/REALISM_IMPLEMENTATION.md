@@ -488,3 +488,32 @@ Counts: **40 implemented in source, 44 partial, 916 pending audit;
 offline study grading, duplicate-answer rejection, no reward mutation,
 lighting feedback and safe on-disk restoration. Real-world Android/Windows
 performance and accessibility tests remain necessary before deployment.
+
+## Batch 15: ceiling trim and offline home-screen moods
+
+The optional solo starter room now has three inexpensive **ceiling accent**
+colour choices and a small fictional **room display** with **Off**, **Nature**
+and **Campus Board** modes. The screen is a coloured mesh plus a short
+built-in label, not streamed or copyrighted video. Ceiling accents use four
+perimeter strips with an open centre so the overhead phone camera keeps the
+room visible. These additions instantiate only on demand with the private
+room; they do not increase downloaded game content significantly.
+
+The interior appearance choices use optional, strictly bounded V1 local
+save keys `ceiling_style` and `tv_mode`, defaulting to zero for older
+progress files. Both apply after successful local commits, support Undo/Redo
+and persist after re-entry. Previous two custom room bookmarks are left
+intact and intentionally don't override these independent preferences.
+No additional premium currency, public property, ads, network connection,
+media streaming, login or server-side property schema has been added.
+
+Godot saved-state checks verify default migration, strict integer/range
+rejection and persistence. Rendered scene smoke validates actual ceiling
+material changes, label and TV colour, invalid values, Undo/Redo and
+preservation of fictional Game Cash and job counts. Production screen
+readability and mobile lighting still need device checks.
+
+Roadmap: #268 remains **partial** for ceiling accent / light controls,
+#280 becomes **partial** for the offline fictional screen. Totals are
+**40 implemented in source, 45 partial, 915 pending audit,
+0 verified on device and 0 released**. CI is not a production deployment.
