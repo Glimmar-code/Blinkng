@@ -199,7 +199,8 @@ data class MarketItem(
     val savesCount: Long = 0L,
     val isSaved: Boolean = false,
     val createdAt: String = "",
-    val sellerId: String = ""
+    val sellerId: String = "",
+    val videoUrl: String = ""
 )
 
 data class LeaderboardUser(
