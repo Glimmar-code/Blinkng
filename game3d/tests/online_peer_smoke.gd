@@ -101,6 +101,12 @@ func _process(delta: float) -> bool:
                 return false
             owners[plot] = true
     if owners.size() < 2:
+        purchase_wait = 0.0
+        return false
+    # Give both independent clients time to observe the same authoritative
+    # roster before either disconnects and changes the shared player count.
+    purchase_wait += delta
+    if purchase_wait < 2.0:
         return false
     var own_plot: int = int(me["slot"])
     print("ONLINE_SMOKE_PASS:" + mode + ":plot=" + str(own_plot))
