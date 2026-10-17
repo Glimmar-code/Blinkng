@@ -118,16 +118,18 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
-private const val FEED_SPONSORED_INTERVAL = 8
+private const val FEED_SPONSORED_INTERVAL = 10
 
 private sealed interface PremiumHomeRow {
     data class PostRow(val post: FeedPost, val sourceIndex: Int) : PremiumHomeRow
     data class BoostedPostRow(val placement: BlinkPromotedFeedPlacement, val slot: Int) : PremiumHomeRow
+    data class MarketSponsoredRow(val placement: BlinkPromotedDiscoveryPlacement, val slot: Int) : PremiumHomeRow
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
     data class DropDiscoveryRow(val item: BlinkDropDiscovery, val slot: Int) : PremiumHomeRow
@@ -137,6 +139,7 @@ private fun premiumHomeRowKey(row: PremiumHomeRow): String =
     when (row) {
         is PremiumHomeRow.PostRow -> "post:${row.post.id}"
         is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
+        is PremiumHomeRow.MarketSponsoredRow -> "market_sponsored:${row.placement.campaignId}:${row.slot}"
         is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
         is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
         is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
@@ -146,6 +149,7 @@ private fun buildPremiumHomeRows(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     promotedPosts: List<BlinkPromotedFeedPlacement>,
+    marketPromotions: List<BlinkPromotedDiscoveryPlacement>,
     dropDiscovery: List<BlinkDropDiscovery>,
     seed: Int
 ): List<PremiumHomeRow> {
@@ -164,6 +168,7 @@ private fun buildPremiumHomeRows(
     var reelSlot = 0
     var sponsoredSlot = 0
     var promotedSlot = 0
+    var marketSponsoredSlot = 0
     var dropSlot = 0
     var postsSinceDrop = 0
     var nextDropGap = random.nextInt(8, 13)
@@ -210,7 +215,10 @@ private fun buildPremiumHomeRows(
             postsSincePreview = 0
             nextGap = random.nextInt(10, 21)
         } else if (shouldInsertSponsored) {
-            rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
+            if (marketSponsoredSlot < marketPromotions.size) {
+                rows += PremiumHomeRow.MarketSponsoredRow(marketPromotions[marketSponsoredSlot], marketSponsoredSlot)
+                marketSponsoredSlot += 1
+            } else rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
             postsSincePreview = 0
             nextGap = random.nextInt(10, 21)
         } else if (reels.isNotEmpty() && postsSincePreview >= nextGap) {
@@ -321,6 +329,7 @@ fun PremiumFeedScreen(
     onDropsClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
+    onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
     hasMoreFollowingPosts: Boolean = false,
@@ -888,6 +897,22 @@ private fun PremiumHomeFeed(
             .onFailure { promotedFeed = emptyList() }
     }
 
+    var marketSponsoredFeed by remember(laneResumeKey) {
+        mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
+    }
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
+        if (laneIndex != 0 || !isOnline) {
+            marketSponsoredFeed = emptyList()
+            return@LaunchedEffect
+        }
+        boostGrowthService.marketPromotedSlots("HOME",3)
+            .onSuccess { payload ->
+                marketSponsoredFeed = parseBlinkPromotedPlacements(payload)
+                    .filter { it.targetType == "LISTING" && it.listing != null }
+            }
+            .onFailure { marketSponsoredFeed = emptyList() }
+    }
+
     val visiblePromotedFeed = remember(promotedFeed, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
         promotedFeed.filterNot { placement ->
             shouldHideFrozenFeedPost(
@@ -899,11 +924,12 @@ private fun PremiumHomeFeed(
             )
         }
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, dropDiscovery, reelMixSeed) {
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed) {
         buildPremiumHomeRows(
             filteredPosts,
             rankedInlineReels,
             visiblePromotedFeed,
+            marketSponsoredFeed,
             dropDiscovery,
             reelMixSeed
         )
@@ -1579,6 +1605,7 @@ private fun PremiumHomeFeed(
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
                                             is PremiumHomeRow.BoostedPostRow -> 18
+                                            is PremiumHomeRow.MarketSponsoredRow -> 20
                                             is PremiumHomeRow.ReelPreviewRow -> 16
                                             is PremiumHomeRow.SponsoredRow -> 17
                                             is PremiumHomeRow.DropDiscoveryRow -> 19
@@ -1652,6 +1679,59 @@ private fun PremiumHomeFeed(
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
                                             )
+                                        }
+
+                                        is PremiumHomeRow.MarketSponsoredRow -> {
+                                            val placement = row.placement
+                                            val product = placement.listing
+                                            if (product != null) {
+                                                val key = premiumHomeRowKey(row)
+                                                LaunchedEffect(key) {
+                                                    // The view must be at least half visible continuously
+                                                    // for two seconds; the database independently enforces
+                                                    // session timing, uniqueness and paid-budget constraints.
+                                                    suspend fun visibleEnough(): Boolean {
+                                                        val info = listState.layoutInfo
+                                                        val entry = info.visibleItemsInfo.firstOrNull { it.key == key }
+                                                            ?: return false
+                                                        val visible = (
+                                                            minOf(entry.offset + entry.size, info.viewportEndOffset) -
+                                                            maxOf(entry.offset, info.viewportStartOffset)
+                                                        ).coerceAtLeast(0)
+                                                        return entry.size > 0 && visible * 2 >= entry.size
+                                                    }
+                                                    snapshotFlow {
+                                                        val info = listState.layoutInfo
+                                                        val entry = info.visibleItemsInfo.firstOrNull { it.key == key }
+                                                        entry != null && entry.size > 0 && (
+                                                            minOf(entry.offset + entry.size, info.viewportEndOffset) -
+                                                            maxOf(entry.offset, info.viewportStartOffset)
+                                                        ).coerceAtLeast(0) * 2 >= entry.size
+                                                    }.first { it }
+                                                    boostGrowthService.recordMarketQualifiedView(
+                                                        placement.campaignId,"START"
+                                                    ).getOrElse { return@LaunchedEffect }
+                                                    delay(2200)
+                                                    if (visibleEnough()) {
+                                                        boostGrowthService.recordMarketQualifiedView(
+                                                            placement.campaignId,"QUALIFIED"
+                                                        )
+                                                    }
+                                                }
+                                                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp)) {
+                                                    Text(
+                                                        "Sponsored · BLINK Market",
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(bottom = 5.dp)
+                                                    )
+                                                    ProductCard(
+                                                        item = product,
+                                                        onClick = { onOpenMarketListing(product) },
+                                                        isDark = isDark
+                                                    )
+                                                }
+                                            }
                                         }
 
                                         is PremiumHomeRow.ReelPreviewRow -> {
