@@ -16,6 +16,9 @@ const AUTH_DEADLINE_MS: int = 10000
 const MAX_PENDING_AUTH: int = 4
 const ACTION_MIN_INTERVAL_MS: int = 250
 const INVITE_MIN_INTERVAL_MS: int = 5000
+const MAX_WALK_SPEED_MPS: float = 8.0
+const MOVE_JITTER_METRES: float = 1.0
+const MAX_MOVE_DELTA_SECONDS: float = 0.50
 
 var world: Node3D
 var local_player: CharacterBody3D
@@ -526,6 +529,7 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
     else:
         member["home_owned"] = true # LAN demonstration has free temporary homes.
     people[id] = member
+    last_motion_ms[id] = Time.get_ticks_msec()
     slot_counter += 1
     if secure_dedicated:
         _send_private_wallet(id)
@@ -761,10 +765,11 @@ func _send_position(position: Vector3, yaw: float) -> void:
     var previous: Dictionary = people[sender]
     var earlier := int(last_motion_ms.get(sender, 0))
     if earlier > 0:
-        var elapsed := maxf(float(now - earlier) / 1000.0, 0.01)
+        var elapsed := clampf(float(now - earlier) / 1000.0, 0.01,
+            MAX_MOVE_DELTA_SECONDS)
         var previous_position: Vector3 = previous["pos"]
         var distance: float = position.distance_to(previous_position)
-        if distance > elapsed * 24.0 + 2.0:
+        if distance > elapsed * MAX_WALK_SPEED_MPS + MOVE_JITTER_METRES:
             return
     last_motion_ms[sender] = now
     previous["pos"] = position
@@ -774,7 +779,7 @@ func _send_position(position: Vector3, yaw: float) -> void:
 
 
 func _allowed_position(sender: int, position: Vector3) -> bool:
-    if position.y < -2.0 or position.y > 9.0:
+    if not position.is_finite() or position.y < -0.5 or position.y > 2.0:
         return false
     if absf(position.x) < WORLD_LIMIT and absf(position.z) < WORLD_LIMIT:
         return true
@@ -1048,7 +1053,8 @@ func _teleport(peer_id: int, slot: int, to_home: bool) -> void:
     var profile: Dictionary = people[peer_id]
     profile["pos"] = location
     people[peer_id] = profile
-    last_motion_ms.erase(peer_id)
+    # Server-driven teleport is an explicit, authoritative movement reset.
+    last_motion_ms[peer_id] = Time.get_ticks_msec()
     if peer_id == 1:
         local_player.global_position = location
         local_player.velocity = Vector3.ZERO
