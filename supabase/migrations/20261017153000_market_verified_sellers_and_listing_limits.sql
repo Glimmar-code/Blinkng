@@ -63,6 +63,19 @@ GRANT EXECUTE ON FUNCTION public.register_verified_market_seller(text,text,text,
 
 -- Never allow self-service activation via the retired paid method.
 REVOKE ALL ON FUNCTION public.activate_marketplace_profile(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.create_market_seller_activation_order(text) FROM PUBLIC, anon, authenticated;
+-- Reject even service-role attempts to start new paid enrollments through legacy
+-- Edge Functions, while retaining previously fulfilled payment records.
+CREATE OR REPLACE FUNCTION public.create_market_seller_activation_order(p_store_name text)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $retired_seller$
+BEGIN
+  RAISE EXCEPTION 'SELLER_ACTIVATION_PAYMENT_RETIRED';
+END;
+$retired_seller$;
+REVOKE ALL ON FUNCTION public.create_market_seller_activation_order(text) FROM PUBLIC, anon, authenticated, service_role;
 
 -- Existing listings stay owned by sellers after expiry, but expired/blocked sellers
 -- cannot publish or appear in public recommendations. Renewal restores eligibility.
@@ -167,6 +180,39 @@ FOR EACH ROW EXECUTE FUNCTION public.market_enforce_listing_limits();
 -- Existing saved/review/order/market reports RLS remains unchanged.
 CREATE INDEX IF NOT EXISTS market_items_seller_created_rate_idx
   ON public.market_items(seller_id,created_at DESC);
+
+-- Do not accept new purchase requests for listings whose seller has lost
+-- verification. Existing orders and refund/dispute records are preserved.
+CREATE OR REPLACE FUNCTION public.market_order_requires_active_seller()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $market_order$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.market_items i
+    JOIN public.profiles p ON p.id = i.seller_id
+    WHERE i.id = NEW.item_id
+      AND i.status = 'active'
+      AND not coalesce(i.is_sold,false)
+      AND p.is_seller_active
+      AND p.seller_status = 'active'
+      AND p.is_verified
+      AND upper(coalesce(p.verification_badge,'NONE')) IN ('BLUE','GOLD')
+      AND (
+        p.verification_expires_at > now()
+        OR (upper(coalesce(p.verification_badge,'NONE')) = 'GOLD'
+            AND p.verification_expires_at IS NULL)
+      )
+  ) THEN RAISE EXCEPTION 'SELLER_VERIFICATION_EXPIRED'; END IF;
+  RETURN NEW;
+END;
+$market_order$;
+DROP TRIGGER IF EXISTS market_order_requires_active_seller_trigger ON public.marketplace_orders;
+CREATE TRIGGER market_order_requires_active_seller_trigger
+BEFORE INSERT ON public.marketplace_orders
+FOR EACH ROW EXECUTE FUNCTION public.market_order_requires_active_seller();
 
 -- Ordinary feed content cannot be an unmistakable product listing.
 -- Sponsored placement is handled separately from feed_posts, with a visible ad label.
