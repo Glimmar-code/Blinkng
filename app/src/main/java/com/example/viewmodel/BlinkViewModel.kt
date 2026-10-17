@@ -6014,6 +6014,27 @@ private suspend fun restoreSupabaseSession() {
         supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
 
+    private suspend fun marketFirstPhotoSha256(source: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            runCatching {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 10 * 1024 * 1024) return@use null
+                        digest.update(buffer, 0, count)
+                    }
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+            }.getOrNull()
+        }
+
     private suspend fun uploadMarketVideo(source: String, userId: String): String? =
         withContext(Dispatchers.IO) {
             val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
@@ -6070,6 +6091,12 @@ private suspend fun restoreSupabaseSession() {
 
         _uiState.value = state.copy(isPublishingMarketItem = true)
         viewModelScope.launch {
+            val coverDigest = marketFirstPhotoSha256(cleanSources.first())
+            if (coverDigest == null) {
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Can't verify the product cover photo. Choose it again.")
+                return@launch
+            }
             val uploaded = mutableListOf<String>()
             for (source in cleanSources) {
                 val url = uploadMarketImage(source, p.id)
@@ -6116,7 +6143,8 @@ private suspend fun restoreSupabaseSession() {
                 isNegotiable = negotiable,
                 deliveryMethod = deliveryMethod,
                 pickupLocation = pickupLocation.trim(),
-                videoUrl = videoUrl.orEmpty()
+                videoUrl = videoUrl.orEmpty(),
+                mediaDigest = coverDigest
             )
 
             if (supabaseService.createMarketItem(listing)) {
