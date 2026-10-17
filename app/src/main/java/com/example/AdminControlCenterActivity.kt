@@ -31,6 +31,7 @@ import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
 import com.example.ui.components.BlinkAdminBugInbox
 import com.example.ui.components.BlinkMark
+import com.example.ui.screens.BlinkAdminAnnouncementManagerScreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -123,10 +124,11 @@ private fun AdminDashboardV3(
     var showHistory by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
     var showBugReports by remember { mutableStateOf(false) }
+    var showAnnouncementManager by remember { mutableStateOf(false) }
     var showMoreActions by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
-    BackHandler(onBack = onExit)
+    BackHandler { if (showAnnouncementManager) showAnnouncementManager = false else onExit() }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -167,6 +169,10 @@ private fun AdminDashboardV3(
                             onDismissRequest = { showMoreActions = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Announcements") },
+                                onClick = { showMoreActions = false; showAnnouncementManager = true }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Bug reports") },
                                 onClick = { showMoreActions = false; showBugReports = true }
                             )
@@ -206,7 +212,13 @@ private fun AdminDashboardV3(
                 }
             }
 
-            if (loading && sections.isEmpty()) {
+            if (showAnnouncementManager) {
+                BlinkAdminAnnouncementManagerScreen(
+                    service = service,
+                    onBack = { showAnnouncementManager = false },
+                    onSent = { status = it; showAnnouncementManager = false },
+                )
+            } else if (loading && sections.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BlinkPink)
                 }

@@ -959,7 +959,10 @@ fun SearchScreen(state: DesktopAppState) {
 
 @Composable
 fun NotificationsScreen(state: DesktopAppState) {
-    var notifications by remember { mutableStateOf<List<DesktopNotification>>(emptyList()) }
+    val accountId = state.session?.userId.orEmpty()
+    var notifications by remember(accountId) { mutableStateOf<List<DesktopNotification>>(emptyList()) }
+    var savedUpdates by remember(accountId) { mutableStateOf(DesktopOfflineUpdatesCache.read(accountId)) }
+    var showSavedUpdates by remember(accountId) { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -971,7 +974,12 @@ fun NotificationsScreen(state: DesktopAppState) {
     suspend fun reload() {
         loading = true
         runCatching { state.client.fetchNotifications() }
-            .onSuccess { notifications = it; loadError = false }
+            .onSuccess {
+                notifications = it
+                loadError = false
+                DesktopOfflineUpdatesCache.recordFromServer(accountId, it)
+                savedUpdates = DesktopOfflineUpdatesCache.read(accountId)
+            }
             .onFailure { loadError = true } // Preserve last known good activity on offline errors.
         loading = false
     }
@@ -1009,12 +1017,44 @@ fun NotificationsScreen(state: DesktopAppState) {
         else filtered.sortedBy { it.createdAt }
     }
 
+    if (showSavedUpdates) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                ScreenHeader("Saved Updates", "Official announcements previously received on this computer")
+                OutlinedButton(onClick = { showSavedUpdates = false }) { Text("Back to live notifications") }
+            }
+            if (savedUpdates.isEmpty()) {
+                item { Text("No official announcements saved yet.") }
+            }
+            items(savedUpdates, key = { it.id }) { item ->
+                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(item.title, fontWeight = FontWeight.Bold)
+                        Text(item.message)
+                        Text(item.publishedAt.replace('T', ' ').take(16), fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { ScreenHeader("Notifications", "Activity, messages and official updates") }
+        item {
+            ScreenHeader("Notifications", "Activity, messages and official updates")
+            OutlinedButton(onClick = {
+                savedUpdates = DesktopOfflineUpdatesCache.read(accountId)
+                showSavedUpdates = true
+            }) { Text("Saved Updates") }
+        }
         item {
             OutlinedTextField(
                 value = query,

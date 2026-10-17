@@ -1,3 +1,11 @@
+## 2026-10-17 — BLINK Smart Onboarding, Updates & Announcements (production-main port pending QA)
+
+- Shared guide, version policy, cached official-update policy and admin broadcast safety rules ported from verified Testlab work, preserving newer main UI and navigation.
+- Android: first login guide on idle Home, nonblocking latest **published** APK notice, official previously-delivered login announcements, Saved Updates in Notifications, and secure admin message composer under existing mobile-first admin menu.
+- Windows: guide, cached updates and admin message composer integrated into current Windows screens without reverting newer main changes.
+- Server delivery uses already-existing authenticated `admin_send_announcement` for immediate in-app campaigns. **New phone push/both and scheduled broadcasts are disabled**, not represented as working features; no Supabase schema or production data changed.
+- Gate: all main PR checks, signed Android release pipeline, production version metadata and website download validation, plus real-device tests. Never merge Testlab wholesale: 94 ahead and 857 behind at integration assessment.
+
 ## 2026-10-17 — Android five-tab navigation, loading placeholders and error copy (Testlab)
 
 - **PARITY-EXCEPTION: android-five-tab-compose-loading-20261017** — This change repairs native Jetpack Compose `HorizontalPager` / `FeedBottomBar` interactions, avoids redundant tab-state changes and broad mobile inbox refreshes, and adds Android Compose skeleton rendering for first-load Connect discovery. Android-only UI framework and performance details do not apply to Windows window/sidebar navigation.

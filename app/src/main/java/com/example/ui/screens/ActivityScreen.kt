@@ -36,6 +36,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.notification.BlinkOfflineAnnouncementCache
+import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -102,13 +105,22 @@ fun ActivityScreen(
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onMarkAllRead: () -> Unit = {},
-    onToggleRead: (ActivityItem) -> Unit = {}
+    onToggleRead: (ActivityItem) -> Unit = {},
+    accountId: String = "",
 ) {
     var filter by remember { mutableStateOf(NotificationCategory.ALL) }
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
     var newestFirst by remember { mutableStateOf(true) }
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var showSavedUpdates by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var savedUpdates by remember(accountId) {
+        mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
+    }
+    LaunchedEffect(accountId, activities, showSavedUpdates) {
+        if (showSavedUpdates) savedUpdates = BlinkOfflineAnnouncementCache.read(context, accountId)
+    }
 
     val profileService = remember { SupabaseService() }
     val announcementService = remember { AdminAnnouncementService() }
@@ -264,12 +276,22 @@ fun ActivityScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            NotificationControls(
-                filter = filter,
-                onFilterChange = { filter = it },
-                viewMode = viewMode,
-                onViewModeChange = { viewMode = it }
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { showSavedUpdates = !showSavedUpdates }) {
+                    Text(if (showSavedUpdates) "Live notifications" else "Saved Updates")
+                }
+            }
+            if (!showSavedUpdates) {
+                NotificationControls(
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    viewMode = viewMode,
+                    onViewModeChange = { viewMode = it }
+                )
+            }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
 
@@ -307,6 +329,11 @@ fun ActivityScreen(
             }
 
             when {
+                showSavedUpdates -> BlinkOfflineAnnouncementsPanel(
+                    announcements = savedUpdates,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
                 isLoading && activities.isEmpty() -> NotificationSkeletonList()
 
                 !errorMessage.isNullOrBlank() && activities.isEmpty() -> NotificationLoadError(

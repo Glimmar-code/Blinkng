@@ -105,6 +105,7 @@ import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
+import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
 import com.blinkng.desktop.ui.GamesScreen
@@ -336,6 +337,16 @@ fun runBlinkDesktopApplication() = application {
                             }
                         }
 
+                        if (appState.session != null) {
+                            DesktopDiscoveryGuide(
+                                userId = appState.session?.userId.orEmpty(),
+                                safeToShow = appState.selectedRoute == "home" &&
+                                    !appState.busy &&
+                                    incomingCall == null &&
+                                    foregroundNotification == null,
+                                onNavigate = { route -> appState.selectedRoute = route },
+                            )
+                        }
                         foregroundNotification?.let { item ->
                             DesktopInAppNotificationBanner(
                                 notification = item,

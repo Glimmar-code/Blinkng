@@ -2,6 +2,7 @@ package com.example
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -54,6 +55,8 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkUpdateCoordinator
+import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
@@ -200,6 +203,13 @@ class MainActivity : ComponentActivity() {
                 rewardedAdManager.load()
             }
         }
+    }
+
+    private fun openWebsiteUpdate() {
+        val browser = Intent(Intent.ACTION_VIEW, Uri.parse(WebsiteApkUpdateCoordinator.DOWNLOAD_PAGE))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+        runCatching { startActivity(browser) }
+            .onFailure { viewModel.showToast("Could not open BLINK website. Visit blink.com.ng.") }
     }
 
     private fun startPresenceHeartbeat() {
@@ -458,6 +468,41 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
+            var websiteUpdateDismissed by remember { mutableStateOf(false) }
+            var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            var adminAnnouncementOpen by remember { mutableStateOf(false) }
+
+            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
+                websiteRelease = null
+                websiteUpdateCheckFinished = false
+                websiteUpdateDismissed = false
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                    websiteUpdateCheckFinished = true
+                }
+            }
+
+            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
+                uiState.selectedTab == MainTab.HOME &&
+                uiState.feedSubTab == 0 &&
+                !uiState.isFeedLoading &&
+                !uiState.isMenuOpen &&
+                !uiState.isActivityOpen &&
+                !uiState.isCreatePostOpen &&
+                !uiState.isCreateStoryOpen &&
+                !uiState.isPostItemOpen &&
+                !uiState.isEditProfileOpen &&
+                !uiState.isBecomeSellerOpen &&
+                !uiState.isGetVerifiedOpen &&
+                !uiState.isConversationFullScreen &&
+                uiState.activeConversationPartner == null &&
+                uiState.activeCommentsPostId == null &&
+                uiState.activePostOptionsPost == null &&
+                uiState.activeViewingStory == null &&
+                uiState.deepLinkedPost == null &&
+                uiState.viewingProduct == null &&
+                uiState.viewingProfile == null
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -672,6 +717,52 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .zIndex(100f)
+                            )
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            BlinkLoginAnnouncementHost(
+                                accountId = uiState.myProfile.id,
+                                activities = uiState.activities,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed),
+                                onOpenNotifications = { viewModel.openActivity(true) },
+                                onShowingChanged = { adminAnnouncementOpen = it },
+                            )
+                            BlinkDiscoveryGuideHost(
+                                userId = uiState.myProfile.id,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed) &&
+                                    !adminAnnouncementOpen,
+                                onNavigate = { route ->
+                                    when (route) {
+                                        "reels" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(1)
+                                        }
+                                        "connect" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(2)
+                                        }
+                                        "games" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(3)
+                                        }
+                                        "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                        "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                    }
+                                },
+                            )
+                        }
+
+                        val newRelease = websiteRelease
+                        if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
+                            BlinkWebsiteUpdateDialog(
+                                release = newRelease,
+                                onUpdateNow = { websiteUpdateDismissed = true; openWebsiteUpdate() },
+                                onLater = { websiteUpdateDismissed = true },
                             )
                         }
                     }
@@ -1848,6 +1939,7 @@ fun MainAppContent(
         ) {
             ActivityScreen(
                 activities = uiState.activities,
+                accountId = uiState.myProfile.id,
                 onBack = { viewModel.openActivity(false) },
                 onProfileClick = { username ->
                     viewModel.openActivity(false)
