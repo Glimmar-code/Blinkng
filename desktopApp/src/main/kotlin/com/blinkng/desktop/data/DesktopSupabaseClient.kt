@@ -1438,6 +1438,24 @@ class DesktopSupabaseClient(
             JSONObject().put("p_item",id)))
     }
 
+    suspend fun marketPhotoFingerprint(path: String): String = withContext(Dispatchers.IO) {
+        val file = java.nio.file.Path.of(path)
+        require(java.nio.file.Files.isRegularFile(file)) { "Choose a product image." }
+        require(java.nio.file.Files.size(file) in 1..(10L * 1024 * 1024)) {
+            "Product cover photo exceeds the allowed limit."
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        java.nio.file.Files.newInputStream(file).use { input ->
+            val buffer=ByteArray(64*1024)
+            while(true) {
+                val length=input.read(buffer)
+                if(length<0) break
+                digest.update(buffer,0,length)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     suspend fun uploadMarketAttachment(path: String, video: Boolean): String =
         withContext(Dispatchers.IO) {
             val file = java.nio.file.Path.of(path)
@@ -1469,7 +1487,7 @@ class DesktopSupabaseClient(
             "$baseUrl/storage/v1/object/public/$bucket/$key"
         }
 
-    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String, imageUrl: String, videoUrl: String? = null): DesktopMarketItem = withContext(Dispatchers.IO) {
+    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String, imageUrl: String, videoUrl: String? = null, mediaDigest: String): DesktopMarketItem = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         require(price > 0) { "Price must be greater than zero." }
         require(description.trim().length >= 10) { "Describe the product accurately." }
@@ -1484,6 +1502,7 @@ class DesktopSupabaseClient(
             .put("image_url", imageUrl)
             .put("image_urls", JSONArray().put(imageUrl))
             .put("video_url", videoUrl ?: JSONObject.NULL)
+            .put("media_digest",mediaDigest)
             .put("seller_id", profile.id)
             .put("seller_name", profile.fullName)
             .put("seller_username", profile.username)
