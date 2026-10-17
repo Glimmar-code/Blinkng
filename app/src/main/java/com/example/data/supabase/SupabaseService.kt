@@ -3661,6 +3661,47 @@ suspend fun uploadPostMedia(
         }
     }
 
+    /** Bounded video upload; keep the main APK independent of optional media. */
+    suspend fun uploadMarketVideo(userId: String, bytes: ByteArray, mimeType: String): String? =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(userId) || bytes.isEmpty() ||
+                bytes.size > 25 * 1024 * 1024 ||
+                mimeType !in setOf("video/mp4", "video/webm")
+            ) return@withContext null
+            runCatching {
+                val ext = if (mimeType == "video/webm") "webm" else "mp4"
+                val path = "users/$userId/listings/${UUID.randomUUID()}.$ext"
+                val response = executeRequest(
+                    newRequestBuilder("/storage/v1/object/market-video/$path",true)
+                        .addHeader("Content-Type",mimeType)
+                        .addHeader("x-upsert","false")
+                        .post(bytes.toRequestBody(mimeType.toMediaType()))
+                        .build()
+                )
+                response.use { reply ->
+                    if (!reply.isSuccessful) {
+                        throw IllegalStateException("Market video upload was rejected.")
+                    }
+                }
+                "$baseUrl/storage/v1/object/public/market-video/$path"
+            }.onFailure { Log.w(TAG,"MARKET_VIDEO_UPLOAD failed",it) }.getOrNull()
+        }
+
+    suspend fun deleteStagedMarketVideo(userId: String, url: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val prefix = "$baseUrl/storage/v1/object/public/market-video/users/$userId/listings/"
+            val name = url.removePrefix(prefix)
+            if (!isValidUuid(userId) || !url.startsWith(prefix) ||
+                !Regex("^[a-fA-F0-9-]{36}\\.(mp4|webm)$").matches(name)
+            ) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/storage/v1/object/market-video/users/$userId/listings/$name",true)
+                        .delete().build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
     // Best-effort cleanup for photos uploaded during a listing attempt that failed.
     // Only delete objects in this authenticated user's own listings folder.
     suspend fun deleteStagedMarketMedia(userId: String, publicUrl: String): Boolean = withContext(Dispatchers.IO) {
@@ -3707,6 +3748,7 @@ suspend fun uploadPostMedia(
                 put("negotiable", item.isNegotiable)
                 put("delivery_method", item.deliveryMethod)
                 put("pickup_location", item.pickupLocation)
+                item.videoUrl.takeIf(String::isNotBlank)?.let { put("video_url", it) }
             }
 
             executeRequest(
@@ -4164,6 +4206,7 @@ suspend fun uploadPostMedia(
             sellerAvatar = obj.optString("seller_avatar", ""),
             sellerName = obj.optString("seller_name", ""),
             sellerId = obj.optString("seller_id", ""),
+            videoUrl = obj.cleanString("video_url"),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,
