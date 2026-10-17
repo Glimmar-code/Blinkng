@@ -1,3 +1,11 @@
+## 2026-10-17 — Phase 3: official announcement recovery and offline Saved Updates (Testlab candidate)
+
+- **Shared:** `BlinkAnnouncementInboxRules` filters only official admin/system notifications, bounds previews, deduplicates by authoritative notification ID and caps per-account history at 50 entries. No invented messages or unsourced reminders.
+- **Android:** reuse existing Supabase unread notification recovery and FCM infrastructure. Cache official notification previews from authenticated recovery and recipient-matched FCM packets, even on first baseline where replay of old heads-ups is suppressed. `Notifications → Saved Updates` reads only the active user's locally cached previews while offline. Other social/DM/coin items are excluded; messages are never persisted in this cache.
+- **Windows:** save official notifications from existing authenticated desktop refresh using the exact same shared filter and bounded previews. Notifications offers a Saved Updates view that works after disconnection, without rerendering cached notices as new system alerts.
+- **Scope limitations:** no new remote announcement authoring UI, push provider setup or send operation; online push still depends on configured Firebase and Supabase infrastructure. Offline cannot deliver an announcement never previously received. The full server notification database remains authoritative for current read state.
+- **Gate:** Android tests/lint/APK, Windows build/parity and real-device offline/account-switch checks. Supabase production data and schema are untouched, and `main` remains unchanged until verified.
+
 ## 2026-10-15 — Ad loader lifecycle repair (Testlab)
 
 - Android: bound rewarded loading to 30 seconds, reject stale callbacks, expire cached ads after 55 minutes, clear manager state on Activity destruction, and retry failed native placements at most twice with 30/60-second backoff. Preserve consent checks and SDK-owned video/click handling. Log native error domain/code/message/response for diagnosis.
