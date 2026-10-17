@@ -241,6 +241,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext: Context = application.applicationContext
     private var marketQuery: String = ""
     private var marketCategory: String? = null
+    private var marketUniversity: String? = null
     private var marketSort: String = "newest"
     private var marketMinPrice: Long? = null
     private var marketMaxPrice: Long? = null
@@ -5852,14 +5853,16 @@ private suspend fun restoreSupabaseSession() {
         minPrice: Long? = null,
         maxPrice: Long? = null,
         savedOnly: Boolean = false,
-        verifiedOnly: Boolean = false
+        verifiedOnly: Boolean = false,
+        university: String? = null
     ) {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
         val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
-            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
+            marketUniversity == university?.takeIf { it.isNotBlank() }
         // Restoring Market must not reissue identical in-flight or fresh queries.
         if (sameQuery && _uiState.value.marketErrorMessage == null &&
             (_uiState.value.isMarketLoading ||
@@ -5867,6 +5870,7 @@ private suspend fun restoreSupabaseSession() {
         ) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
+        marketUniversity = university?.trim()?.takeIf { it.isNotBlank() }
         marketSort = sort
         marketMinPrice = minPrice
         marketMaxPrice = maxPrice
@@ -5887,6 +5891,7 @@ private suspend fun restoreSupabaseSession() {
         }
         val requestQuery = marketQuery
         val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
@@ -5902,6 +5907,7 @@ private suspend fun restoreSupabaseSession() {
                     offset = 0,
                     query = requestQuery,
                     category = requestCategory,
+                    university = requestUniversity,
                     sort = requestSort,
                     minPrice = requestMin,
                     maxPrice = requestMax,
@@ -5939,6 +5945,7 @@ private suspend fun restoreSupabaseSession() {
         val offset = marketNextOffset.coerceAtLeast(current.marketItems.size)
         val requestQuery = marketQuery
         val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
@@ -5952,6 +5959,7 @@ private suspend fun restoreSupabaseSession() {
                     offset = offset,
                     query = requestQuery,
                     category = requestCategory,
+                    university = requestUniversity,
                     sort = requestSort,
                     minPrice = requestMin,
                     maxPrice = requestMax,
@@ -6073,7 +6081,7 @@ private suspend fun restoreSupabaseSession() {
             )
 
             if (supabaseService.createMarketItem(listing)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, university = marketUniversity, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 _uiState.value = _uiState.value.copy(
                     marketItems = live,
