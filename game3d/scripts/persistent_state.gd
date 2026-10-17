@@ -199,6 +199,10 @@ func update_profile(account_id: String, profile: Dictionary) -> bool:
         return false
     var previous: Dictionary = records.get(account_id, {}).duplicate(true)
     var previous_slot: int = int(previous.get("home_slot", -1))
+    # Old internal callers may still send the original three-value
+    # profile. Preserve its assigned address instead of rejecting a job.
+    if not profile.has("home_slot") and previous_slot >= 0:
+        clean["home_slot"] = previous_slot
     if previous_slot >= 0:
         if not bool(clean["house_owned"]) or (
             int(clean["home_slot"]) != previous_slot):
