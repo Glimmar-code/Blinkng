@@ -306,6 +306,7 @@ class MainActivity : ComponentActivity() {
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
+            var adminAnnouncementOpen by remember { mutableStateOf(false) }
             // A check is done on authenticated login, never on every recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 websiteRelease = null
@@ -527,7 +528,8 @@ class MainActivity : ComponentActivity() {
                                 userId = uiState.myProfile.id,
                                 safeToShow = idleHomeForPrompts &&
                                     websiteUpdateCheckFinished &&
-                                    (websiteRelease == null || websiteUpdateDismissed),
+                                    (websiteRelease == null || websiteUpdateDismissed) &&
+                                    !adminAnnouncementOpen,
                                 onNavigate = { route ->
                                     when (route) {
                                         "reels" -> {
@@ -546,6 +548,18 @@ class MainActivity : ComponentActivity() {
                                         "marketplace" -> viewModel.setTab(MainTab.MARKET)
                                     }
                                 },
+                            )
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            BlinkLoginAnnouncementHost(
+                                accountId = uiState.myProfile.id,
+                                activities = uiState.activities,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed),
+                                onOpenNotifications = { viewModel.openActivity(true) },
+                                onShowingChanged = { adminAnnouncementOpen = it },
                             )
                         }
 
