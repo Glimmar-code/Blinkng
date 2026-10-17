@@ -1547,12 +1547,13 @@ fun MarketplaceScreen(state: DesktopAppState) {
                         Button(onClick = {
                             scope.launch {
                                 runCatching {
+                                    val digest = state.client.marketPhotoFingerprint(marketImagePath)
                                     val image = state.client.uploadMarketAttachment(marketImagePath,false)
                                     val video = marketVideoPath.takeIf(String::isNotBlank)?.let {
                                         state.client.uploadMarketAttachment(it,true)
                                     }
                                     state.client.createMarketplaceItem(
-                                        title,description,price.toLongOrNull() ?: 0L,category,image,video
+                                        title,description,price.toLongOrNull() ?: 0L,category,image,video,digest
                                     )
                                 }.onSuccess {
                                     title = ""; description = ""; price = "";
