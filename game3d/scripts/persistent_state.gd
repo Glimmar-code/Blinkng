@@ -46,25 +46,35 @@ static func _int_value(value: Variant, from_json: bool) -> bool:
 
 
 static func normalize_profile(value: Variant, from_json: bool = false) -> Dictionary:
-    if not (value is Dictionary) or value.size() != 3:
+    if not (value is Dictionary) or value.size() < 3 or value.size() > 4:
         return {}
     for key in value.keys():
-        if not ["cash", "house_owned", "furniture"].has(str(key)):
+        if not ["cash", "house_owned", "furniture", "home_slot"].has(str(key)):
+            return {}
+    for required in ["cash", "house_owned", "furniture"]:
+        if not value.has(required):
             return {}
     var cash: Variant = value.get("cash", 500)
     var furniture: Variant = value.get("furniture", 0)
     var owned: Variant = value.get("house_owned", false)
-    if not _int_value(cash, from_json) or not _int_value(furniture, from_json):
+    var requested_slot: Variant = value.get("home_slot", -1)
+    if not _int_value(cash, from_json) or not _int_value(furniture, from_json) or not _int_value(requested_slot, from_json):
         return {}
     if typeof(owned) != TYPE_BOOL:
         return {}
     var balance: int = int(cash)
     var count: int = int(furniture)
+    var slot: int = int(requested_slot)
+    if slot < -1 or slot >= MAX_PROFILES:
+        return {}
     if balance < 0 or balance > MAX_CASH or count < 0 or count > 12:
         return {}
     if count > 0 and not bool(owned):
         return {}
-    return {"cash": balance, "house_owned": owned, "furniture": count}
+    if not bool(owned) and slot != -1:
+        return {}
+    return {"cash": balance, "house_owned": owned, "furniture": count,
+        "home_slot": slot}
 
 
 func _inspect_file(path: String) -> Dictionary:
@@ -98,14 +108,40 @@ func _inspect_file(path: String) -> Dictionary:
     if not (profiles is Dictionary) or profiles.size() > MAX_PROFILES:
         return {"status": "corrupt"}
     var clean: Dictionary = {}
-    for key in profiles.keys():
+    var occupied: Dictionary = {}
+    var needs_upgrade: bool = false
+    var keys: Array = profiles.keys()
+    keys.sort() # deterministic assignment for legacy house ownership
+    for key in keys:
         if typeof(key) != TYPE_STRING or not valid_account_id(str(key)):
             return {"status": "corrupt"}
         var profile: Dictionary = normalize_profile(profiles[key], true)
         if profile.is_empty():
             return {"status": "corrupt"}
+        if not profiles[key].has("home_slot"):
+            needs_upgrade = true
+        var slot: int = int(profile["home_slot"])
+        if slot >= 0:
+            if occupied.has(slot):
+                return {"status": "corrupt"}
+            occupied[slot] = true
         clean[key] = profile
-    return {"status": "ok", "records": clean}
+    # Migrate already-owned legacy houses to unique persistent coordinates.
+    for key in keys:
+        var item: Dictionary = clean[key]
+        if bool(item["house_owned"]) and int(item["home_slot"]) < 0:
+            var chosen: int = -1
+            for candidate in range(MAX_PROFILES):
+                if not occupied.has(candidate):
+                    chosen = candidate
+                    break
+            if chosen < 0:
+                return {"status": "corrupt"}
+            item["home_slot"] = chosen
+            clean[key] = item
+            occupied[chosen] = true
+            needs_upgrade = true
+    return {"status": "ok", "records": clean, "migration": needs_upgrade}
 
 
 func load_from_disk() -> void:
@@ -116,6 +152,9 @@ func load_from_disk() -> void:
     var main: Dictionary = _inspect_file(save_file)
     if main["status"] == "ok":
         records = main["records"]
+        if bool(main.get("migration", false)) and not save_to_disk():
+            write_blocked = true
+            warning = "Legacy home coordinates could not be durably migrated."
         return
     if main["status"] == "future":
         write_blocked = true
@@ -126,6 +165,9 @@ func load_from_disk() -> void:
         records = backup["records"]
         recovered_backup = true
         warning = "Restored previous valid server property checkpoint."
+        if bool(backup.get("migration", false)) and not save_to_disk():
+            write_blocked = true
+            warning = "Recovered legacy house positions cannot be durably saved."
         return
     if main["status"] == "missing" and backup["status"] == "missing":
         return
@@ -142,7 +184,8 @@ func get_profile(account_id: String) -> Dictionary:
             # Fail closed: never invent a player's balance or owned home
             # when the persisted database cannot be verified.
             return {}
-        records[account_id] = {"cash": 500, "house_owned": false, "furniture": 0}
+        records[account_id] = {"cash": 500, "house_owned": false, "furniture": 0,
+            "home_slot": -1}
     return records[account_id].duplicate(true)
 
 
@@ -155,6 +198,27 @@ func update_profile(account_id: String, profile: Dictionary) -> bool:
     if not records.has(account_id) and records.size() >= MAX_PROFILES:
         return false
     var previous: Dictionary = records.get(account_id, {}).duplicate(true)
+    var previous_slot: int = int(previous.get("home_slot", -1))
+    if previous_slot >= 0:
+        if not bool(clean["house_owned"]) or (
+            int(clean["home_slot"]) != previous_slot):
+            return false # no transfers/sales until explicitly designed
+    elif int(clean["home_slot"]) >= 0:
+        return false # callers may not claim another person's plot
+    if bool(clean["house_owned"]) and previous_slot == -1:
+        var used: Dictionary = {}
+        for id in records.keys():
+            var occupied_slot: int = int(records[id].get("home_slot", -1))
+            if occupied_slot >= 0:
+                used[occupied_slot] = true
+        var allocated: int = -1
+        for candidate in range(MAX_PROFILES):
+            if not used.has(candidate):
+                allocated = candidate
+                break
+        if allocated < 0:
+            return false
+        clean["home_slot"] = allocated
     records[account_id] = clean
     if save_to_disk():
         return true
