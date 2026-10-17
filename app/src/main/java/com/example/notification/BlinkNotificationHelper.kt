@@ -19,6 +19,7 @@ import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
+import com.blinkng.shared.notification.BlinkNotificationPresentation
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.absoluteValue
@@ -111,10 +112,7 @@ object BlinkNotificationHelper {
     // COLORS
     // ================================================================
 
-    private const val PINK_COLOR = 0xFFE02B6D.toInt()
-    private const val PURPLE_COLOR = 0xFF8A2BE2.toInt()
-    private const val GOLD_COLOR = 0xFFFFB800.toInt()
-    private const val GREEN_COLOR = 0xFF22C55E.toInt()
+    private const val BRAND_COLOR = 0xFF171717.toInt()
 
     // ================================================================
     // PUBLIC CHANNEL INITIALIZATION
@@ -168,7 +166,7 @@ object BlinkNotificationHelper {
 
                 enableLights(true)
                 lightColor =
-                    Color.parseColor("#E02B6D")
+                    Color.parseColor("#777777")
 
                 enableVibration(true)
                 vibrationPattern =
@@ -205,7 +203,7 @@ object BlinkNotificationHelper {
 
                 enableLights(true)
                 lightColor =
-                    Color.parseColor("#8A2BE2")
+                    Color.parseColor("#777777")
 
                 enableVibration(true)
                 vibrationPattern =
@@ -243,7 +241,7 @@ object BlinkNotificationHelper {
 
                 enableLights(true)
                 lightColor =
-                    Color.parseColor("#FFB800")
+                    Color.parseColor("#777777")
 
                 enableVibration(true)
                 vibrationPattern =
@@ -354,7 +352,7 @@ object BlinkNotificationHelper {
 
                 enableLights(true)
                 lightColor =
-                    Color.parseColor("#FFB800")
+                    Color.parseColor("#777777")
 
                 enableVibration(true)
 
@@ -663,7 +661,7 @@ object BlinkNotificationHelper {
             .setStyle(messagingStyle)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setColor(PINK_COLOR)
+            .setColor(BRAND_COLOR)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
@@ -747,7 +745,7 @@ object BlinkNotificationHelper {
                         .PRIORITY_HIGH
                 )
                 .setColor(
-                    PINK_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -796,6 +794,8 @@ object BlinkNotificationHelper {
         createNotificationChannels(
             context
         )
+        val safeTitle = BlinkNotificationPresentation.title(title)
+        val safeBody = BlinkNotificationPresentation.body(body, "")
 
         val notification =
             NotificationCompat.Builder(
@@ -804,15 +804,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    title
+                    safeTitle
                 )
                 .setContentText(
-                    body
+                    safeBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(body)
+                        .bigText(safeBody)
                 )
                 .setCategory(
                     NotificationCompat
@@ -823,7 +823,7 @@ object BlinkNotificationHelper {
                         .PRIORITY_DEFAULT
                 )
                 .setColor(
-                    PURPLE_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -859,10 +859,11 @@ object BlinkNotificationHelper {
         postId: String
     ) {
 
+        val actor = BlinkNotificationPresentation.username(username)
         showSocialNotification(
             context = context,
             title =
-                "❤️ @$username liked your post",
+                if (actor.isBlank()) "Someone liked your post" else "❤️ @$actor liked your post",
             body =
                 "Someone interacted with your campus post.",
             targetPostId =
@@ -892,6 +893,8 @@ object BlinkNotificationHelper {
         createNotificationChannels(
             context
         )
+        val actor = BlinkNotificationPresentation.username(username)
+        val safeComment = BlinkNotificationPresentation.body(comment, "New comment on your post")
 
         val notification =
             NotificationCompat.Builder(
@@ -900,15 +903,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username commented on your post"
+                    if (actor.isBlank()) "Someone commented on your post" else "@$actor commented on your post"
                 )
                 .setContentText(
-                    comment
+                    safeComment
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(comment)
+                        .bigText(safeComment)
                 )
                 .setCategory(
                     NotificationCompat
@@ -919,7 +922,7 @@ object BlinkNotificationHelper {
                         .PRIORITY_DEFAULT
                 )
                 .setColor(
-                    PURPLE_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -967,6 +970,8 @@ object BlinkNotificationHelper {
         createNotificationChannels(
             context
         )
+        val actor = BlinkNotificationPresentation.username(username)
+        val safeBody = BlinkNotificationPresentation.body(body, "You were mentioned in a post.")
 
         val notification =
             NotificationCompat.Builder(
@@ -975,22 +980,22 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username mentioned you"
+                    if (actor.isBlank()) "Someone mentioned you" else "@$actor mentioned you"
                 )
                 .setContentText(
-                    body
+                    safeBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(body)
+                        .bigText(safeBody)
                 )
                 .setCategory(
                     NotificationCompat
                         .CATEGORY_SOCIAL
                 )
                 .setColor(
-                    PURPLE_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -1036,28 +1041,26 @@ object BlinkNotificationHelper {
         createNotificationChannels(
             context
         )
+        val actor = BlinkNotificationPresentation.username(username)
 
         val notification =
             NotificationCompat.Builder(
                 context,
                 CHANNEL_FOLLOWS
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_menu_add
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     "New follower"
                 )
                 .setContentText(
-                    "@$username started following you"
+                    if (actor.isBlank()) "Someone started following you" else "@$actor started following you"
                 )
                 .setCategory(
                     NotificationCompat
                         .CATEGORY_SOCIAL
                 )
                 .setColor(
-                    GREEN_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -1126,7 +1129,7 @@ object BlinkNotificationHelper {
                         .PRIORITY_HIGH
                 )
                 .setColor(
-                    GOLD_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -1226,7 +1229,7 @@ object BlinkNotificationHelper {
                         .PRIORITY_HIGH
                 )
                 .setColor(
-                    GOLD_COLOR
+                    BRAND_COLOR
                 )
                 .setAutoCancel(
                     true
@@ -1262,7 +1265,7 @@ object BlinkNotificationHelper {
         title: String,
         body: String,
         notificationId: Int,
-        color: Int = PINK_COLOR
+        color: Int = BRAND_COLOR
     ) {
 
         if (
