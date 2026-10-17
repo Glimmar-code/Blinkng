@@ -1,1 +1,18 @@
-<!doctype html><meta charset="utf-8"><title>Blink</title><script>var p=location.pathname+location.search+location.hash;location.replace((location.hostname.endsWith('github.io')?'/Blinkng/':'/')+'?p='+encodeURIComponent(p.replace(/^\/Blinkng/,'')));</script><noscript><a href="./">Open Blink</a></noscript>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>BLINK – Opening link</title>
+</head>
+<body>
+<script>
+  // GitHub Pages serves this document for unknown SPA routes.
+  // Keep OAuth/recovery fragments out of query parameters and HTTP requests.
+  var base = location.hostname.endsWith('github.io')?'/Blinkng/':'/';
+  var route = location.pathname.replace(/^\/Blinkng(?=\/|$)/, '') + location.search;
+  location.replace(base + '?p=' + encodeURIComponent(route) + location.hash);
+</script>
+<noscript><a href="./">Open BLINK</a></noscript>
+</body>
+</html>
