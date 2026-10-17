@@ -184,3 +184,15 @@ the 3D overhead camera. Screen options are static fictional visuals,
 not video streaming. Both preferences save locally, survive re-entry
 and support Undo/Redo without affecting BLINK Coins or Game Cash.
 These are development-branch features, not yet available in the live app.
+
+## Free private-room activities (development branch only)
+
+Enter your **solo starter home**, press **INTERACT**, then choose
+**Everyday home**. You can freely toggle the cosmetic bed-rest indicator,
+or select one of three fictional dishes at a small wall-mounted kitchen
+shelf. The meal appears instantly as a local coloured 3D dish and label.
+There are no food costs, forced sleep, timed challenges, resource
+requirements, real cooking instructions or BLINK Coins. The selections
+reset on room exit; this is not yet an avatar sleeping animation or
+ingredient-based cooking game. Nothing connects to a public property
+server or increases the normal app's required game download.
