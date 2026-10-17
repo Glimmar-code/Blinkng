@@ -93,7 +93,7 @@ fun MarketScreen(
 ) {
     var selectedCategory by rememberSaveable { mutableStateOf("All Categories") }
     var searchQuery by rememberPersistentTextState(key = "market_search_query")
-    var selectedSort by rememberSaveable { mutableStateOf("newest") }
+    var selectedSort by rememberSaveable { mutableStateOf("recommended") }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var savedOnly by rememberSaveable { mutableStateOf(false) }
@@ -108,6 +108,7 @@ fun MarketScreen(
 
     val sortOptions = remember {
         listOf(
+            MarketSortOption("recommended", "Recommended"),
             MarketSortOption("newest", "Newest"),
             MarketSortOption("popular", "Popular"),
             MarketSortOption("price_low", "Price: low to high"),
