@@ -214,6 +214,8 @@ func run_test() -> void:
         "Unrecoverably invalid property records fail closed")
     check(not bool(protected.call("update_profile", uid, changed)),
         "Corrupt server storage cannot create a phantom balance")
+    check((protected.call("get_profile", uid) as Dictionary).is_empty(),
+        "Read-only corrupt storage cannot invent an offline property wallet")
     DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_swap))
