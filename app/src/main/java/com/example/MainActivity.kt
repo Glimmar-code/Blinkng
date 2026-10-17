@@ -1164,13 +1164,14 @@ fun MainAppContent(
                         verificationBadge = uiState.myProfile.verificationBadge,
                         sellerVerificationActive = uiState.myProfile.hasActiveMarketVerification(),
                         verificationExpiresAtMillis = uiState.myProfile.verificationExpiresAtMillis,
+                        viewerUniversity = uiState.myProfile.university,
                         onItemClick = { viewModel.openProductDetail(it) },
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                         onOpenGetVerified = { viewModel.openGetVerified(true) },
                         onToggleSave = { viewModel.toggleMarketSaved(it) },
-                        onSearch = { query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly ->
-                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly)
+                        onSearch = { query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly, university ->
+                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly, university)
                         },
                         onRefresh = { viewModel.refreshMarketItems() },
                         onLoadMore = { viewModel.loadMoreMarketItems() },
