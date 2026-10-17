@@ -200,7 +200,7 @@
     if(!state.session)return;
     try{
       const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
-      await loadMyProfile(); await loadFollowing(); await refreshUnreadCount();
+      await Promise.all([loadMyProfile(),loadFollowing(),refreshUnreadCount()]);
     }catch(e){
       console.warn('session bootstrap',e);
       // Keep a refreshable session through offline/timeout/5xx/profile failures.
@@ -316,7 +316,7 @@
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
   function renderLanding(){
-    setTitle('Blink'); ROOT.innerHTML=`<div class="auth-wrap"><div style="width:min(100%,1000px)"><div class="hero"><img class="mark hero-mark" src="${LOGO_URL}" alt="BLINK"><h1><span class="gradient-text">BLINK Nigeria</span> — Connect &amp; Discover</h1><p>BLINK is a social and campus community app in Nigeria. Explore public profiles, posts and reels, or sign in to connect with people on the web.</p><div class="hero-actions"><button class="btn primary" data-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open feed':'Sign in to Blink'}</button><a class="btn download-app" href="${APK_URL}">↓ Download Android app</a></div><form id="public-search" class="landing-search"><input class="field" name="username" placeholder="Open @username" autocomplete="off"><button class="btn">View profile</button></form></div><div class="feature-grid"><div class="card feature"><b>Public links</b><p>Profiles, posts and reels open directly in Chrome and still use Blink view counting.</p></div><div class="card feature"><b>Full account</b><p>Feed, follows, comments, messages, scheduled posts, market, Connect and games share the same backend.</p></div><div class="card feature"><b>App handoff</b><p>Open the same content in the Android app with deep links whenever Blink is installed.</p></div></div><p style="text-align:center;margin:22px 0 0"><a href="${routeHref('/about/')}">About BLINK Nigeria</a> · <a href="${routeHref('/features/')}">Features</a> · <a href="${routeHref('/download/')}">Download BLINK App</a> · <a href="${routeHref('/faq/')}">FAQ</a> · <a href="${routeHref('/privacy/')}">Privacy Policy</a> · <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a></p></div></div>`;
+    setTitle('Blink'); ROOT.innerHTML=`<div class="auth-wrap"><div style="width:min(100%,1000px)"><div class="hero"><img class="mark hero-mark" src="${LOGO_URL}" alt="BLINK" width="62" height="62" fetchpriority="high" decoding="async"><h1><span class="gradient-text">BLINK Nigeria</span> — Connect &amp; Discover</h1><p>BLINK is a social and campus community app in Nigeria. Explore public profiles, posts and reels, or sign in to connect with people on the web.</p><div class="hero-actions"><button class="btn primary" data-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open feed':'Sign in to Blink'}</button><a class="btn download-app" href="${APK_URL}">↓ Download Android app</a></div><form id="public-search" class="landing-search"><input class="field" name="username" placeholder="Open @username" autocomplete="off"><button class="btn">View profile</button></form></div><div class="feature-grid"><div class="card feature"><b>Public links</b><p>Profiles, posts and reels open directly in Chrome and still use Blink view counting.</p></div><div class="card feature"><b>Full account</b><p>Feed, follows, comments, messages, scheduled posts, market, Connect and games share the same backend.</p></div><div class="card feature"><b>App handoff</b><p>Open the same content in the Android app with deep links whenever Blink is installed.</p></div></div><p style="text-align:center;margin:22px 0 0"><a href="${routeHref('/about/')}">About BLINK Nigeria</a> · <a href="${routeHref('/features/')}">Features</a> · <a href="${routeHref('/download/')}">Download BLINK App</a> · <a href="${routeHref('/faq/')}">FAQ</a> · <a href="${routeHref('/privacy/')}">Privacy Policy</a> · <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a></p></div></div>`;
     document.querySelector('[data-nav]')?.addEventListener('click',e=>{e.preventDefault();navigate(e.currentTarget.dataset.nav);}); document.getElementById('public-search').onsubmit=e=>{e.preventDefault();const u=new FormData(e.currentTarget).get('username').trim().replace(/^@/,'');if(u)navigate(`/@${encodeURIComponent(u)}`);};
   }
 
@@ -984,11 +984,24 @@
     ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Page not found</h2><p>That Blink link does not exist.</p><button type="button" class="btn" data-nav="/">Go home</button></div></div>`;bindCommon();
   }
 
+  // On slow mobile connections, avoid competing with first paint and auth API requests
+  // while the service worker pre-caches the application shell.
+  function scheduleServiceWorkerRegistration(){
+    if(!('serviceWorker' in navigator) || location.protocol!=='https:')return;
+    const register=()=>navigator.serviceWorker.register(routeHref('/sw.js')).catch(()=>{});
+    const whenIdle=()=>{
+      if('requestIdleCallback' in window)window.requestIdleCallback(register,{timeout:4000});
+      else window.setTimeout(register,1500);
+    };
+    if(document.readyState==='complete')whenIdle();
+    else window.addEventListener('load',whenIdle,{once:true});
+  }
+
   async function init(){
     if(!SUPABASE_URL||!KEY){ROOT.innerHTML='<div class="auth-wrap"><div class="card empty"><h2>Web configuration missing</h2></div></div>';return;}
     if(relayDesktopOAuth())return;
     try{await bootstrapSession();}catch(e){console.warn(e);} await render(currentPath());
-    if('serviceWorker'in navigator && location.protocol==='https:')navigator.serviceWorker.register(routeHref('/sw.js')).catch(()=>{});
+    scheduleServiceWorkerRegistration();
   }
 
   init();
