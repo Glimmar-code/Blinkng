@@ -1,4 +1,6 @@
 -- BLINK Market seller trust and fair-listing controls (staging only).
+-- destructive-change-reviewed
+-- rollback-plan: disable new seller RPC, remove insertion and Feed routing triggers, restore previous Market RLS policies after exporting affected data; never delete existing orders.
 -- Depends on 20261007005000_market_professional_hardening.sql.
 -- Do not apply to production before the prerequisite migration and staging validation.
 -- Rollback: revoke the new registration RPC, remove the spam trigger/function,
