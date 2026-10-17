@@ -242,7 +242,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketQuery: String = ""
     private var marketCategory: String? = null
     private var marketUniversity: String? = null
-    private var marketSort: String = "newest"
+    private var marketSort: String = "recommended"
     private var marketMinPrice: Long? = null
     private var marketMaxPrice: Long? = null
     private var marketSavedOnly: Boolean = false
