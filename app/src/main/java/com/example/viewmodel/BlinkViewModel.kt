@@ -280,6 +280,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
+    // An inbox visit must never refetch the entire feed, Market and Connect payload.
+    private var inboxEntryJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     // Ignore pagination results started before a user-initiated lane refresh.
     private var postPageEpoch = 0
@@ -1869,7 +1871,7 @@ private suspend fun restoreSupabaseSession() {
                         marketItems = market,
                         isMarketLoading = false,
                         marketHasMore = marketResult.isSuccess && market.size >= 40,
-                        marketErrorMessage = marketResult.exceptionOrNull()?.message,
+                        marketErrorMessage = if (marketResult.isFailure) "Couldn't update Marketplace. Tap to retry." else null,
                         conversations = conversations,
                         chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
@@ -2299,7 +2301,7 @@ private suspend fun restoreSupabaseSession() {
                 .onFailure {
                     Log.e(TAG, "Connect Hub refresh failed", it)
                     _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
-                    showToast(it.message ?: "Couldn't refresh Connect Hub.")
+                    showToast("Couldn't refresh Connect. Please try again.")
                 }
         }
     }
@@ -2326,7 +2328,7 @@ private suspend fun restoreSupabaseSession() {
                     }
                     .onFailure {
                         Log.e(TAG, "Connect Hub action failed", it)
-                        showToast(it.message ?: "Connect Hub action failed.")
+                        showToast("Couldn't complete this action. Please try again.")
                     }
             } finally {
                 pendingConnectActions.remove(actionKey)
@@ -2375,7 +2377,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             }.onFailure { error ->
                 Log.w(TAG, "Connect form submission failed", error)
-                onResult(false, error.message ?: "Connect submission failed. Try again.")
+                onResult(false, "Couldn't submit your request. Please try again.")
             }
         }
     }
@@ -2471,7 +2473,7 @@ private suspend fun restoreSupabaseSession() {
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Game challenge response failed", error)
-                    showToast(error.message ?: "Couldn't update the challenge.")
+                    showToast("Couldn't update the challenge. Please try again.")
                 }
         }
     }
@@ -2840,27 +2842,64 @@ private suspend fun restoreSupabaseSession() {
 
     fun setDestination(destination: AppDestination) { _uiState.value = _uiState.value.copy(destination = destination) }
     fun navigateTo(destination: AppDestination) = setDestination(destination)
-    fun selectTab(tab: MainTab) {
-        val nextFeedSubTab = if (tab == MainTab.HOME) 0 else _uiState.value.feedSubTab
-        _uiState.value = _uiState.value.copy(
-            selectedTab = tab,
-            feedSubTab = nextFeedSubTab,
-            routedReelId = null,
-            viewingProfile = null,
-            viewingProduct = null,
-            isConversationFullScreen = false,
-            isConversationsLoading = if (
-                tab == MainTab.MESSAGES &&
-                _uiState.value.conversations.isEmpty() &&
-                _uiState.value.isOnline
-            ) true else _uiState.value.isConversationsLoading
-        )
-        persistUiPreferences()
-        if (tab == MainTab.MESSAGES && _uiState.value.conversations.isEmpty() && _uiState.value.isOnline) {
-            fetchSupabaseData()
+    /**
+     * One state transition per primary navigation action. Reels and Connect are
+     * Home sub-tabs, but must not briefly render Home before their destination.
+     */
+    fun navigateToPrimaryTab(tab: MainTab, homeSubTab: Int = 0) {
+        val current = _uiState.value
+        val nextFeedSubTab = if (tab == MainTab.HOME) homeSubTab.coerceIn(0, 3) else current.feedSubTab
+        if (
+            current.selectedTab != tab || current.feedSubTab != nextFeedSubTab ||
+            current.routedReelId != null || current.viewingProfile != null ||
+            current.viewingProduct != null || current.isConversationFullScreen
+        ) {
+            _uiState.value = current.copy(
+                selectedTab = tab,
+                feedSubTab = nextFeedSubTab,
+                routedReelId = null,
+                viewingProfile = null,
+                viewingProduct = null,
+                isConversationFullScreen = false
+            )
+            persistUiPreferences()
+        }
+        if (tab == MainTab.MESSAGES) loadInboxOnEntry()
+    }
+
+    fun selectTab(tab: MainTab) = navigateToPrimaryTab(tab)
+    fun setTab(tab: MainTab) = selectTab(tab)
+
+    /** Fetch only the inbox when it has no cached summaries and no full sync is active. */
+    private fun loadInboxOnEntry() {
+        val state = _uiState.value
+        if (!state.isOnline || state.conversations.isNotEmpty() ||
+            inboxEntryJob?.isActive == true || syncJob?.isActive == true
+        ) return
+        val accountId = state.myProfile.id
+        _uiState.value = state.copy(isConversationsLoading = true)
+        inboxEntryJob = viewModelScope.launch {
+            try {
+                runCatching { chatRepository.fetchConversations() }
+                    .onSuccess { summaries ->
+                        if (_uiState.value.myProfile.id != accountId) return@onSuccess
+                        val latest = _uiState.value
+                        _uiState.value = latest.copy(
+                            conversations = mergeConversationSummaries(
+                                summaries = summaries,
+                                local = latest.conversations
+                            )
+                        )
+                        persistConversations()
+                    }
+                    .onFailure { Log.w(TAG, "Inbox-only refresh failed", it) }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
         }
     }
-    fun setTab(tab: MainTab) = selectTab(tab)
     fun setFeedSubTab(tab: Int) {
         _uiState.value = _uiState.value.copy(
             feedSubTab = tab.coerceIn(0, 3),
@@ -4425,7 +4464,7 @@ private suspend fun restoreSupabaseSession() {
                     onFailure = { error ->
                         withContext(Dispatchers.Main) {
                             updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                            showToast(error.message ?: "Message couldn't be sent. It will retry when you're online.")
+                            showToast("Message couldn't be sent. It will retry when you're online.")
                         }
                     }
                 )
@@ -4506,7 +4545,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment couldn't be sent. Tap to retry.")
+                        showToast("Attachment couldn't be sent. Tap to retry.")
                     }
                 }
             )
@@ -4546,7 +4585,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment retry failed.")
+                        showToast("Attachment retry failed. Please try again.")
                     }
                 }
             )
@@ -5751,7 +5790,7 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(
                     isMarketLoading = false,
                     isLoadingMoreMarket = false,
-                    marketErrorMessage = error.message ?: "Couldn't refresh Market."
+                    marketErrorMessage = "Couldn't refresh Marketplace. Tap to retry."
                 )
             }
         }
@@ -5799,7 +5838,7 @@ private suspend fun restoreSupabaseSession() {
                 Log.w(TAG, "Market pagination failed", error)
                 _uiState.value = _uiState.value.copy(
                     isLoadingMoreMarket = false,
-                    marketErrorMessage = error.message ?: "Couldn't load more listings."
+                    marketErrorMessage = "Couldn't load more listings. Tap to retry."
                 )
             }
         }
