@@ -42,6 +42,15 @@ func run_test() -> void:
     )
     check(old.is_empty(), "Expired ticket must be denied")
 
+    var online_script: Script = load("res://scripts/social_world.gd")
+    check(online_script != null, "Authoritative dedicated server script imports")
+    check(not bool(online_script.call("auth_timed_out", 500, 10499)),
+        "Public game authentication retains its fixed ten-second window")
+    check(bool(online_script.call("auth_timed_out", 500, 10500)),
+        "Unauthenticated network peers must expire after ten seconds")
+    check(not bool(online_script.call("auth_timed_out", 500, 499)),
+        "Clock anomalies cannot prematurely expire network admission")
+
     var state_script: Script = load("res://scripts/persistent_state.gd")
     check(state_script != null, "Persistent state script must import")
     var store: RefCounted = state_script.new()
