@@ -1355,6 +1355,38 @@ class DesktopSupabaseClient(
         rpcBoolean(postObject("/rest/v1/rpc/register_verified_market_seller", payload))
     }
 
+    suspend fun completeMarketSellerProfile(
+        kind: String, description: String, category: String,
+        delivery: Boolean, pickup: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("p_kind", kind).put("p_description", description)
+            .put("p_categories", JSONArray().put(category))
+            .put("p_delivery", delivery).put("p_pickup", pickup)
+        rpcBoolean(postObject("/rest/v1/rpc/complete_market_seller_profile", payload))
+    }
+
+    suspend fun getMyMarketDashboard(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/get_my_market_dashboard", JSONObject()) as JSONObject
+    }
+
+    suspend fun getMarketSellerCard(id: String): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/get_market_public_seller_card",
+            JSONObject().put("p_user", id)) as JSONObject
+    }
+
+    suspend fun makeMarketOffer(id: String, amount: Long, note: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val result=postObject("/rest/v1/rpc/make_market_offer",
+                JSONObject().put("p_item",id).put("p_amount",amount).put("p_note",note))
+            result.toString().isNotBlank()
+        }
+
+    suspend fun confirmMarketAvailability(id: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/confirm_market_listing_availability",
+            JSONObject().put("p_item",id)))
+    }
+
     suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String): DesktopMarketItem = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         require(price > 0) { "Price must be greater than zero." }
