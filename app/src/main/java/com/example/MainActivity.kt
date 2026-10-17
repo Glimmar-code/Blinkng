@@ -823,7 +823,7 @@ fun MainAppContent(
     }
     val pagerState = rememberPagerState(
         initialPage = selectedPage,
-        pageCount = { 8 }
+        pageCount = { if (selectedPage in 0..4) 5 else 8 }
     )
     var requestedPage by remember { mutableIntStateOf(selectedPage) }
     val latestSelectedPage by rememberUpdatedState(selectedPage)
