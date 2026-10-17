@@ -968,3 +968,11 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - Newer atomic `navigateToPrimaryTab`, guarded inbox-entry loading, nontechnical error messages and Connect skeletons from current main are deliberately preserved during integration.
 - Android-specific Compose list/pager and Activity lifecycle are not directly applicable to Windows; the existing desktop navigation and backend data contract are unchanged.
 - Android/Windows quality, runtime and release checks must pass against this rebased commit before release.
+
+
+## 2026-10-17 — Android native admin workspace (mobile-specific access and readability)
+
+- **PARITY-EXCEPTION: android-admin-mobile-workspace-20261017** — The changed surfaces are the Android Jetpack Compose feed-toolbar admin shortcut, touch-friendly tool grouping, Android modal account picker, and Android font scaling. These are native phone UI adaptations, not a shared account, reward, feed, or marketplace feature; no Windows navigation or business rule is being removed or replaced.
+- **Security/back end:** Admin privileges continue to be decided by the existing authenticated Supabase capability/RPC and checked again by the admin activity and backend; this PR does not add an Android-only server endpoint or bypass role permissions.
+- **Windows status / limitation:** The Windows client does not currently offer a matching native admin-dashboard interface. This PR does **not** claim desktop feature parity or imply Android admin tools are available on Windows. A separate Windows admin interface with equivalent permission checks, section navigation and searchable user targeting is necessary if Windows admin access is required. Existing Windows flows remain unchanged.
+- **Verification:** Android instrumentation compilation, accessibility sizing, backend authorization checks, Windows build, and other repository merge gates must pass before main release.
