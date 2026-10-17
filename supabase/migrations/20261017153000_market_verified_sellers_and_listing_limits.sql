@@ -184,6 +184,60 @@ CREATE TRIGGER market_enforce_listing_limits_trigger
 BEFORE INSERT ON public.market_items
 FOR EACH ROW EXECUTE FUNCTION public.market_enforce_listing_limits();
 
+-- Stop owner edits from resetting freshness, boosting metrics or changing seller.
+-- Privileged, server-authorized RPCs may still update legitimate counters.
+CREATE OR REPLACE FUNCTION public.market_guard_listing_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $market_update$
+DECLARE
+  v_title text;
+BEGIN
+  IF current_user IN ('authenticated','anon') THEN
+    IF NEW.seller_id IS DISTINCT FROM OLD.seller_id THEN
+      RAISE EXCEPTION 'CANNOT_TRANSFER_MARKET_LISTING';
+    END IF;
+    NEW.created_at := OLD.created_at;
+    NEW.views_count := OLD.views_count;
+    NEW.saves_count := OLD.saves_count;
+    NEW.seller_rating := OLD.seller_rating;
+    NEW.seller_review_count := OLD.seller_review_count;
+    NEW.seller_is_verified := OLD.seller_is_verified;
+    NEW.is_featured := OLD.is_featured;
+
+    IF NEW.status = 'active' AND OLD.status <> 'active' AND NOT EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = NEW.seller_id AND p.is_seller_active
+        AND p.seller_status = 'active' AND p.is_verified
+        AND upper(coalesce(p.verification_badge,'NONE')) IN ('BLUE','GOLD')
+        AND (
+          p.verification_expires_at > now()
+          OR (upper(coalesce(p.verification_badge,'NONE')) = 'GOLD'
+              AND p.verification_expires_at IS NULL)
+        )
+    ) THEN RAISE EXCEPTION 'VERIFICATION_REQUIRED_TO_REACTIVATE'; END IF;
+
+    IF NEW.title IS DISTINCT FROM OLD.title THEN
+      v_title := lower(regexp_replace(trim(coalesce(NEW.title,'')),'[[:space:]]+',' ','g'));
+      IF EXISTS (
+        SELECT 1 FROM public.market_items i
+        WHERE i.seller_id = NEW.seller_id AND i.id <> OLD.id
+          AND i.created_at >= now() - interval '30 days'
+          AND i.status <> 'removed'
+          AND lower(regexp_replace(trim(coalesce(i.title,'')),'[[:space:]]+',' ','g')) = v_title
+      ) THEN RAISE EXCEPTION 'DUPLICATE_MARKET_LISTING'; END IF;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$market_update$;
+DROP TRIGGER IF EXISTS market_guard_listing_update_trigger ON public.market_items;
+CREATE TRIGGER market_guard_listing_update_trigger
+BEFORE UPDATE ON public.market_items
+FOR EACH ROW EXECUTE FUNCTION public.market_guard_listing_update();
+
 -- Viewer-first public sort: no seller should purchase a credibility ranking.
 -- Existing saved/review/order/market reports RLS remains unchanged.
 CREATE INDEX IF NOT EXISTS market_items_seller_created_rate_idx
