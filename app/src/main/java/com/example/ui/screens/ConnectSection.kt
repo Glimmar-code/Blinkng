@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -81,6 +82,7 @@ import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.ui.components.BlinkSkeletonPersonCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
@@ -124,6 +126,7 @@ fun ConnectSection(
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isProfilesLoading: Boolean = false,
     isLiveDataAvailable: Boolean = true,
     activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
@@ -339,6 +342,7 @@ fun ConnectSection(
         connectHubActions.searchStudents(search)
     }
 
+    val connectListState = rememberLazyListState()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -362,6 +366,7 @@ fun ConnectSection(
             }
         ) {
             LazyColumn(
+                state = connectListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
@@ -595,27 +600,38 @@ fun ConnectSection(
                             }
 
                             if (visible.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
+                                if ((isConnectHubLoading || isProfilesLoading) && liveProfiles.isEmpty() &&
+                                    query.isBlank() && filter == LivePeopleFilter.ALL
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        LivePeopleEmptyState(
-                                            hasProfiles = liveProfiles.isNotEmpty(),
-                                            query = query,
-                                            filter = filter
-                                        )
-                                        if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
-                                            TextButton(
-                                                onClick = {
-                                                    query = ""
-                                                    filter = LivePeopleFilter.ALL
-                                                    sort = LivePeopleSort.RECOMMENDED
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        repeat(4) {
+                                            BlinkSkeletonPersonCard()
+                                        }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            LivePeopleEmptyState(
+                                                hasProfiles = liveProfiles.isNotEmpty(),
+                                                query = query,
+                                                filter = filter
+                                            )
+                                            if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
+                                                TextButton(
+                                                    onClick = {
+                                                        query = ""
+                                                        filter = LivePeopleFilter.ALL
+                                                        sort = LivePeopleSort.RECOMMENDED
+                                                    }
+                                                ) {
+                                                    Text("Clear filters")
                                                 }
-                                            ) {
-                                                Text("Clear filters")
                                             }
                                         }
                                     }
@@ -1049,7 +1065,7 @@ private fun LivePeopleEmptyState(
         Spacer(Modifier.height(6.dp))
 
         Text(
-            "This screen only shows profiles returned by Supabase. No sample users are inserted.",
+            "Try adjusting your filters or check back for new people.",
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

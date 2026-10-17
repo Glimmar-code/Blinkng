@@ -273,6 +273,7 @@ fun PremiumFeedScreen(
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isProfilesLoading: Boolean = false,
     currentUsername: String,
     userAvatar: String,
     currentSubTab: Int,
@@ -530,6 +531,7 @@ fun PremiumFeedScreen(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isProfilesLoading = isProfilesLoading,
             isLiveDataAvailable = isServerConnected,
             activityPulsePolicy = activityPulsePolicy,
             onActivityPulseEvent = onActivityPulseEvent,
@@ -860,7 +862,7 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey, homeReselectSignal) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
@@ -1211,9 +1213,8 @@ private fun PremiumHomeFeed(
                 } else {
                     listState.scrollToItem(0)
                 }
-            } else {
-                requestSafeRefresh()
             }
+            // Home reselect is not an implicit network refresh; pull refresh explicitly.
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
@@ -1879,6 +1880,7 @@ private fun PremiumConnectHost(
     connectHub: ConnectHubSnapshot,
     connectHubActions: ConnectHubActions,
     isConnectHubLoading: Boolean,
+    isProfilesLoading: Boolean,
     isLiveDataAvailable: Boolean,
     activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit,
@@ -1905,6 +1907,7 @@ private fun PremiumConnectHost(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isProfilesLoading = isProfilesLoading,
             isLiveDataAvailable = isLiveDataAvailable,
             activityPulsePolicy = activityPulsePolicy,
             onActivityPulseEvent = onActivityPulseEvent,

@@ -41,6 +41,7 @@ import com.example.notification.ConversationMuteExpiryWorker
 import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkRefreshPolicy
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.example.util.safeBoolean
@@ -247,6 +248,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketVerifiedOnly: Boolean = false
     // Reject late network responses after the user changes search, sort or price.
     private var marketRequestVersion = 0L
+    private var lastMarketQueryCompletedAt = 0L
     private var marketNextOffset = 0
     private val marketplaceSaveInFlight = mutableSetOf<String>()
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -280,7 +282,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
+    // An inbox visit must never refetch the entire feed, Market and Connect payload.
+    private var inboxEntryJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
+    private val visibleRefreshAt = mutableMapOf<String, Long>()
+    private var visibleFeedRefreshJob: Job? = null
+    private var visibleConversationsRefreshJob: Job? = null
     // Ignore pagination results started before a user-initiated lane refresh.
     private var postPageEpoch = 0
     private var reelPageEpoch = 0
@@ -1324,7 +1331,7 @@ private suspend fun restoreSupabaseSession() {
             },
             onFailure = { error ->
                 Log.w(TAG, "Rewarded ad claim start failed", error)
-                showToast(error.message ?: "Unable to prepare the ad reward. Please try again.")
+                showToast("Unable to prepare the ad reward. Please try again.")
                 null
             }
         )
@@ -1400,7 +1407,7 @@ private suspend fun restoreSupabaseSession() {
                             if (detail.contains("REWARDED_AD_CLAIM_EXPIRED", ignoreCase = true) ||
                                 detail.contains("REWARDED_AD_DAILY_LIMIT", ignoreCase = true)
                             ) clearPendingRewardedAdClaim(userId)
-                            showToast(error.message ?: "Coin credit could not be confirmed. BLINK will check again.")
+                            showToast("Coin credit could not be confirmed. BLINK will check again.")
                             refreshProfileRewards()
                             return@launch
                         }
@@ -1452,7 +1459,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Daily mission claim failed", error)
-                    showToast(error.message ?: "Couldn't claim this mission.")
+                    showToast("Couldn't claim this mission. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1481,7 +1488,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack coin checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1502,7 +1509,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack verification checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1602,7 +1609,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Blink Coin verification purchase failed", error)
-                    showToast(error.message ?: "Couldn't activate BLINK Verified.")
+                    showToast("Couldn't activate BLINK Verified. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1625,10 +1632,111 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
-        val lastSync = lastSuccessfulSyncAt
-        val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
-        if (!isFresh) fetchSupabaseData()
+    /**
+     * Resuming BLINK must not reload the whole app. Only the visible surface
+     * may quietly revalidate its data, retaining the current rows and scroll.
+     */
+    fun refreshIfStale(maxAgeMillis: Long = BlinkRefreshPolicy.FOREGROUND_REFRESH_INTERVAL_MS) {
+        val state = _uiState.value
+        if (state.destination != AppDestination.MAIN || !state.isOnline ||
+            state.myProfile.username.isBlank() || syncJob?.isActive == true
+        ) return
+
+        val scope = when (state.selectedTab) {
+            MainTab.HOME -> when (state.feedSubTab) {
+                0 -> "feed"
+                1 -> "reels"
+                2 -> "connect"
+                else -> return // The optional game has its own data lifecycle.
+            }
+            MainTab.MARKET -> "market"
+            MainTab.MESSAGES -> "messages"
+            MainTab.LEADERBOARD -> "leaderboard"
+            MainTab.SEARCH -> return // Preserve the current search without new requests.
+        }
+        val ownerKey = state.myProfile.id.ifBlank { state.myProfile.username.lowercase() }
+        val key = "$ownerKey:$scope"
+        val now = SystemClock.elapsedRealtime()
+        val lastRefresh = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
+        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, maxAgeMillis)) return
+        // Reserve this scope immediately to coalesce repeated onResume callbacks.
+        visibleRefreshAt[key] = now
+
+        when (scope) {
+            "feed" -> refreshVisibleFeedQuietly(isReel = false)
+            "reels" -> refreshVisibleFeedQuietly(isReel = true)
+            "connect" -> {
+                refreshConnectStudents()
+                refreshConnectHub()
+            }
+            "market" -> refreshMarketItems()
+            "messages" -> refreshVisibleConversationsQuietly()
+            "leaderboard" -> refreshLeaderboardQuietly()
+        }
+    }
+
+    private fun refreshVisibleFeedQuietly(isReel: Boolean) {
+        if (visibleFeedRefreshJob?.isActive == true) return
+        val accountId = _uiState.value.myProfile.id
+        visibleFeedRefreshJob = viewModelScope.launch {
+            try {
+                syncMutex.withLock {
+                    val fresh = postRepository.fetchFeed(isReel = isReel)
+                    if (fresh.isEmpty() || _uiState.value.myProfile.id != accountId) return@withLock
+                    val current = _uiState.value
+                    _uiState.value = if (isReel) {
+                        current.copy(reels = reconcileRefreshedFeed(current.reels, fresh))
+                    } else {
+                        current.copy(posts = reconcileRefreshedFeed(current.posts, fresh))
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Feed refresh failed", error)
+                // Existing cached content remains untouched.
+            }
+        }
+    }
+
+    private fun refreshVisibleConversationsQuietly() {
+        if (visibleConversationsRefreshJob?.isActive == true || inboxEntryJob?.isActive == true || !_uiState.value.isOnline) return
+        val accountId = _uiState.value.myProfile.id
+        if (_uiState.value.conversations.isEmpty()) {
+            _uiState.value = _uiState.value.copy(isConversationsLoading = true)
+        }
+        visibleConversationsRefreshJob = viewModelScope.launch {
+            try {
+                val fresh = chatRepository.fetchConversations()
+                if (_uiState.value.myProfile.id != accountId) return@launch
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = mergeConversationSummaries(fresh, current.conversations),
+                    isConversationsLoading = false
+                )
+                persistConversations()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Messages refresh failed", error)
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
+        }
+    }
+
+    private fun refreshLeaderboardQuietly() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchLeaderboard() }
+                .onSuccess { live ->
+                    _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+                    persistExtendedCache()
+                }
+                .onFailure { Log.w(TAG, "Quiet leaderboard refresh failed", it) }
+        }
     }
 
     private fun reconcileRefreshedFeed(
@@ -1663,6 +1771,11 @@ private suspend fun restoreSupabaseSession() {
 
             syncMutex.withLock {
                 val before = _uiState.value
+                val marketVersionAtSyncStart = marketRequestVersion
+                val marketWasUnfilteredAtSyncStart =
+                    marketQuery.isBlank() && marketCategory == null && marketSort == "newest" &&
+                        marketMinPrice == null && marketMaxPrice == null &&
+                        !marketSavedOnly && !marketVerifiedOnly
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
@@ -1723,7 +1836,7 @@ private suspend fun restoreSupabaseSession() {
                         feedErrorMessage = if (postsResult.isFailure && normalPosts.isEmpty()) {
                             "Posts couldn't load right now. Pull to retry."
                         } else if (!feedSucceeded) {
-                            "Couldn't refresh live Supabase data. Check your connection and try again."
+                            "Couldn't update your feed. Check your connection and try again."
                         } else null,
                         followingFeedErrorMessage = if (followingResult.isFailure && fetchedFollowing.isEmpty()) {
                             "Following posts couldn't load right now. Pull to retry."
@@ -1811,7 +1924,17 @@ private suspend fun restoreSupabaseSession() {
                     }
 
                     val marketResult = marketRequest.await()
-                    val market = marketResult.getOrDefault(before.marketItems)
+                    // Do not overwrite a newer filtered Market query with a default sync.
+                    val marketSyncIsRelevant =
+                        marketWasUnfilteredAtSyncStart && marketVersionAtSyncStart == marketRequestVersion
+                    if (marketSyncIsRelevant && marketResult.isSuccess) {
+                        lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
+                    }
+                    val market = if (marketSyncIsRelevant) {
+                        marketResult.getOrDefault(before.marketItems)
+                    } else {
+                        _uiState.value.marketItems
+                    }
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
@@ -1867,9 +1990,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
                         marketItems = market,
-                        isMarketLoading = false,
-                        marketHasMore = marketResult.isSuccess && market.size >= 40,
-                        marketErrorMessage = marketResult.exceptionOrNull()?.message,
+                        isMarketLoading = if (marketSyncIsRelevant) false else _uiState.value.isMarketLoading,
+                        marketHasMore = if (marketSyncIsRelevant) {
+                            marketResult.isSuccess && market.size >= 40
+                        } else _uiState.value.marketHasMore,
+                        marketErrorMessage = if (marketSyncIsRelevant) {
+                            if (marketResult.isFailure) "Couldn't update Marketplace. Tap to retry." else null
+                        } else _uiState.value.marketErrorMessage,
                         conversations = conversations,
                         chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
@@ -1894,7 +2021,7 @@ private suspend fun restoreSupabaseSession() {
                                 { error ->
                                     _uiState.value = _uiState.value.copy(
                                         activitiesLoading = false,
-                                        activitiesError = error.message
+                                        activitiesError = "Couldn't load notifications. Please try again."
                                     )
                                 }
                             )
@@ -1902,7 +2029,7 @@ private suspend fun restoreSupabaseSession() {
                         .onFailure { error ->
                             _uiState.value = _uiState.value.copy(
                                 activitiesLoading = false,
-                                activitiesError = error.message
+                                activitiesError = "Couldn't load notifications. Please try again."
                             )
                         }
 
@@ -1920,7 +2047,9 @@ private suspend fun restoreSupabaseSession() {
                         isRefreshingContent = false,
                         isSyncingContent = false,
                         isConversationsLoading = false,
-                        isMarketLoading = false
+                        isMarketLoading = if (marketWasUnfilteredAtSyncStart &&
+                            marketVersionAtSyncStart == marketRequestVersion
+                        ) false else _uiState.value.isMarketLoading
                     )
                     persistExtendedCache()
                 }
@@ -2094,7 +2223,7 @@ private suspend fun restoreSupabaseSession() {
                 .onSuccess { live ->
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
                     persistExtendedCache()
-                    showToast("Leaderboard refreshed from Supabase.")
+                    showToast("Leaderboard is up to date.")
                 }
                 .onFailure {
                     Log.e(TAG, "Leaderboard refresh failed", it)
@@ -2299,7 +2428,7 @@ private suspend fun restoreSupabaseSession() {
                 .onFailure {
                     Log.e(TAG, "Connect Hub refresh failed", it)
                     _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
-                    showToast(it.message ?: "Couldn't refresh Connect Hub.")
+                    showToast("Couldn't refresh Connect. Please try again.")
                 }
         }
     }
@@ -2326,7 +2455,7 @@ private suspend fun restoreSupabaseSession() {
                     }
                     .onFailure {
                         Log.e(TAG, "Connect Hub action failed", it)
-                        showToast(it.message ?: "Connect Hub action failed.")
+                        showToast("Couldn't complete this action. Please try again.")
                     }
             } finally {
                 pendingConnectActions.remove(actionKey)
@@ -2375,7 +2504,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             }.onFailure { error ->
                 Log.w(TAG, "Connect form submission failed", error)
-                onResult(false, error.message ?: "Connect submission failed. Try again.")
+                onResult(false, "Couldn't submit your request. Please try again.")
             }
         }
     }
@@ -2471,7 +2600,7 @@ private suspend fun restoreSupabaseSession() {
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Game challenge response failed", error)
-                    showToast(error.message ?: "Couldn't update the challenge.")
+                    showToast("Couldn't update the challenge. Please try again.")
                 }
         }
     }
@@ -2554,7 +2683,7 @@ private suspend fun restoreSupabaseSession() {
                         else "Choose your BLINK username to continue."
                     )
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
-            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast(e.message ?: "Google authentication failed.") }
+            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast("Google sign-in didn't complete. Please try again.") }
         }
     }
 
@@ -2612,7 +2741,7 @@ private suspend fun restoreSupabaseSession() {
                         else "Account created! Set up your BLINK profile."
                     )
                 } else showToast(result.errorMessage ?: "Sign up failed.")
-            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
+            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast("Couldn't create your account. Please try again.") }
         }
     }
 
@@ -2832,35 +2961,72 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
         viewModelScope.launch {
             val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
-            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally, but Supabase sync failed.") }
+            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device. Sign in to sync it."); return@launch }
+            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("Profile created and synced successfully.") }
+            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device, but sync failed. Please try again.") }
         }
     }
 
     fun setDestination(destination: AppDestination) { _uiState.value = _uiState.value.copy(destination = destination) }
     fun navigateTo(destination: AppDestination) = setDestination(destination)
-    fun selectTab(tab: MainTab) {
-        val nextFeedSubTab = if (tab == MainTab.HOME) 0 else _uiState.value.feedSubTab
-        _uiState.value = _uiState.value.copy(
-            selectedTab = tab,
-            feedSubTab = nextFeedSubTab,
-            routedReelId = null,
-            viewingProfile = null,
-            viewingProduct = null,
-            isConversationFullScreen = false,
-            isConversationsLoading = if (
-                tab == MainTab.MESSAGES &&
-                _uiState.value.conversations.isEmpty() &&
-                _uiState.value.isOnline
-            ) true else _uiState.value.isConversationsLoading
-        )
-        persistUiPreferences()
-        if (tab == MainTab.MESSAGES && _uiState.value.conversations.isEmpty() && _uiState.value.isOnline) {
-            fetchSupabaseData()
+    /**
+     * One state transition per primary navigation action. Reels and Connect are
+     * Home sub-tabs, but must not briefly render Home before their destination.
+     */
+    fun navigateToPrimaryTab(tab: MainTab, homeSubTab: Int = 0) {
+        val current = _uiState.value
+        val nextFeedSubTab = if (tab == MainTab.HOME) homeSubTab.coerceIn(0, 3) else current.feedSubTab
+        if (
+            current.selectedTab != tab || current.feedSubTab != nextFeedSubTab ||
+            current.routedReelId != null || current.viewingProfile != null ||
+            current.viewingProduct != null || current.isConversationFullScreen
+        ) {
+            _uiState.value = current.copy(
+                selectedTab = tab,
+                feedSubTab = nextFeedSubTab,
+                routedReelId = null,
+                viewingProfile = null,
+                viewingProduct = null,
+                isConversationFullScreen = false
+            )
+            persistUiPreferences()
+        }
+        if (tab == MainTab.MESSAGES) loadInboxOnEntry()
+    }
+
+    fun selectTab(tab: MainTab) = navigateToPrimaryTab(tab)
+    fun setTab(tab: MainTab) = selectTab(tab)
+
+    /** Fetch only the inbox when it has no cached summaries and no full sync is active. */
+    private fun loadInboxOnEntry() {
+        val state = _uiState.value
+        if (!state.isOnline || state.conversations.isNotEmpty() ||
+            inboxEntryJob?.isActive == true || syncJob?.isActive == true
+        ) return
+        val accountId = state.myProfile.id
+        _uiState.value = state.copy(isConversationsLoading = true)
+        inboxEntryJob = viewModelScope.launch {
+            try {
+                runCatching { chatRepository.fetchConversations() }
+                    .onSuccess { summaries ->
+                        if (_uiState.value.myProfile.id != accountId) return@onSuccess
+                        val latest = _uiState.value
+                        _uiState.value = latest.copy(
+                            conversations = mergeConversationSummaries(
+                                summaries = summaries,
+                                local = latest.conversations
+                            )
+                        )
+                        persistConversations()
+                    }
+                    .onFailure { Log.w(TAG, "Inbox-only refresh failed", it) }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
         }
     }
-    fun setTab(tab: MainTab) = selectTab(tab)
     fun setFeedSubTab(tab: Int) {
         _uiState.value = _uiState.value.copy(
             feedSubTab = tab.coerceIn(0, 3),
@@ -3191,7 +3357,7 @@ private suspend fun restoreSupabaseSession() {
                     onProfilePersisted(authoritative)
                     showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
-            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
+            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("Couldn't update your profile. Please try again.") }
         }
     }
     /**
@@ -3428,7 +3594,7 @@ private suspend fun restoreSupabaseSession() {
             } catch (e: Exception) {
                 Log.e(TAG, "Schedule post failed", e)
                 withContext(Dispatchers.Main) {
-                    showToast(e.message ?: "Couldn't schedule the post.")
+                    showToast("Couldn't schedule the post. Please try again.")
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -3449,7 +3615,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Cancel scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't cancel scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't cancel the scheduled post. Please try again.") }
             }
         }
     }
@@ -3466,7 +3632,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Publish scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't publish scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't publish the scheduled post. Please try again.") }
             }
         }
     }
@@ -3581,7 +3747,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation failed", e)
-                showToast(e.message ?: "Couldn't publish the post. Please try again.")
+                showToast("Couldn't publish the post. Please try again.")
             } finally {
                 _uiState.value = _uiState.value.copy(isCreatingPost = false)
             }
@@ -4425,7 +4591,7 @@ private suspend fun restoreSupabaseSession() {
                     onFailure = { error ->
                         withContext(Dispatchers.Main) {
                             updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                            showToast(error.message ?: "Message couldn't be sent. It will retry when you're online.")
+                            showToast("Message couldn't be sent. It will retry when you're online.")
                         }
                     }
                 )
@@ -4506,7 +4672,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment couldn't be sent. Tap to retry.")
+                        showToast("Attachment couldn't be sent. Tap to retry.")
                     }
                 }
             )
@@ -4546,7 +4712,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment retry failed.")
+                        showToast("Attachment retry failed. Please try again.")
                     }
                 }
             )
@@ -5687,10 +5853,14 @@ private suspend fun restoreSupabaseSession() {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
-        if (marketQuery == cleanQuery && marketCategory == cleanCategory &&
+        val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
-            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
-            !_uiState.value.isMarketLoading && _uiState.value.marketErrorMessage == null) return
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly
+        // Restoring Market must not reissue identical in-flight or fresh queries.
+        if (sameQuery && _uiState.value.marketErrorMessage == null &&
+            (_uiState.value.isMarketLoading ||
+                !BlinkRefreshPolicy.isStale(lastMarketQueryCompletedAt, SystemClock.elapsedRealtime()))
+        ) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
         marketSort = sort
@@ -5737,6 +5907,7 @@ private suspend fun restoreSupabaseSession() {
             }
             if (generation != marketRequestVersion) return@launch
             result.onSuccess { fresh ->
+                lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
                 marketNextOffset = fresh.size
                 _uiState.value = _uiState.value.copy(
                     marketItems = fresh,
@@ -5751,7 +5922,7 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(
                     isMarketLoading = false,
                     isLoadingMoreMarket = false,
-                    marketErrorMessage = error.message ?: "Couldn't refresh Market."
+                    marketErrorMessage = "Couldn't refresh Marketplace. Tap to retry."
                 )
             }
         }
@@ -5799,7 +5970,7 @@ private suspend fun restoreSupabaseSession() {
                 Log.w(TAG, "Market pagination failed", error)
                 _uiState.value = _uiState.value.copy(
                     isLoadingMoreMarket = false,
-                    marketErrorMessage = error.message ?: "Couldn't load more listings."
+                    marketErrorMessage = "Couldn't load more listings. Tap to retry."
                 )
             }
         }
@@ -6130,7 +6301,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     Log.w(TAG, "Market seller checkout failed to initialize", error)
                     _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                    showToast(error.message ?: "Couldn't start seller activation checkout.")
+                    showToast("Couldn't start seller activation checkout. Please try again.")
                 }
             )
         }
@@ -6393,7 +6564,7 @@ private suspend fun restoreSupabaseSession() {
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
                 showToast("✨ Story published!")
-            }else showToast("Failed to persist story to Supabase.")
+            }else showToast("Couldn't save your story. Please try again.")
         }
     }
 
@@ -6414,7 +6585,7 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
-                showToast(e.message?:"Unable to share story.")
+                showToast("Unable to share your story. Please try again.")
             }finally{
                 _uiState.value=_uiState.value.copy(isCreatingStory=false)
             }

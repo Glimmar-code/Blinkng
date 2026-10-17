@@ -1,3 +1,10 @@
+## 2026-10-17 — Android five-tab navigation, loading placeholders and error copy (Testlab)
+
+- **PARITY-EXCEPTION: android-five-tab-compose-loading-20261017** — This change repairs native Jetpack Compose `HorizontalPager` / `FeedBottomBar` interactions, avoids redundant tab-state changes and broad mobile inbox refreshes, and adds Android Compose skeleton rendering for first-load Connect discovery. Android-only UI framework and performance details do not apply to Windows window/sidebar navigation.
+- **Windows equivalent:** The Windows desktop app retains its existing native desktop navigation, independently loaded authenticated message lists, loading feedback and search/discovery UI. This patch neither removes those features nor changes shared API contracts, user accounts, messages, search, ranking or data semantics.
+- **Customer-facing error copy:** Android error messages from network and backend exceptions are converted to nontechnical retry text. Desktop continues to use its own existing error copy and logs. No sensitive technical details or schema changes are deliberately exposed.
+- **Validation:** Android unit tests, instrumented test compilation, static Android lint, debug build, release smoke and runtime verification; Windows build/parity; manual five-tab swipe/tap tests, inbox under weak network, Connect placeholders, and verification that no raw developer text reaches users. Do not merge until the required checks pass.
+
 ## 2026-10-16 — Legacy dark-color cleanup, Android and Windows (Testlab)
 
 - **Per-screen dark backgrounds replaced:** Feed home, post cards, reels skeleton/disc, profile skeleton/avatar, admin sidebar/dialogs, verified panels, market-seller header, seller confirmation, message action menus and story media fallback now consume semantic colors or shared platform-neutral design tokens.
@@ -953,6 +960,14 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
 - **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
 - **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
+
+## 2026-10-17 — Scoped foreground refresh and list continuity (Testlab candidate)
+
+- Shared monotonic refresh-age policy suppresses repeated foreground network requests without changing backend semantics.
+- Android resume refreshes only the active Feed, Reels, Connect, Market, Messages or Leaderboard screen, preserving cached UI while requests complete. Market filters and scrolling, Connect scroll and Messages scroll are retained across navigation.
+- Newer atomic `navigateToPrimaryTab`, guarded inbox-entry loading, nontechnical error messages and Connect skeletons from current main are deliberately preserved during integration.
+- Android-specific Compose list/pager and Activity lifecycle are not directly applicable to Windows; the existing desktop navigation and backend data contract are unchanged.
+- Android/Windows quality, runtime and release checks must pass against this rebased commit before release.
 
 ## 2026-10-17 — Android crash protection (Testlab; not released)
 
