@@ -99,6 +99,7 @@ import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
+import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -293,6 +294,19 @@ fun runBlinkDesktopApplication() = application {
                                 }
                                 AuthenticatedShell(appState)
                             }
+                        }
+
+                        // Shared guide sequence; Windows uses native dialog and per-account
+                        // desktop preferences instead of Android's SharedPreferences.
+                        if (appState.session != null) {
+                            DesktopDiscoveryGuide(
+                                userId = appState.session?.userId.orEmpty(),
+                                safeToShow = appState.selectedRoute == "home" &&
+                                    !appState.busy &&
+                                    incomingCall == null &&
+                                    foregroundNotification == null,
+                                onNavigate = { route -> appState.selectedRoute = route },
+                            )
                         }
 
                         foregroundNotification?.let { item ->
