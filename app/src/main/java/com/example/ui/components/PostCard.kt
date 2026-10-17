@@ -128,7 +128,7 @@ fun PostCard(
     onLike: () -> Unit,
     onComment: () -> Unit,
     onBookmark: () -> Unit,
-    onRepost: () -> Unit = {},
+    onRepost: (() -> Unit)? = null,
     onShare: () -> Unit,
     onOptionsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
@@ -145,6 +145,7 @@ fun PostCard(
     hasActiveStory: Boolean = false,
     authorProfileId: String = "",
     isFollowingAuthor: Boolean = false,
+    isFollowMutationPending: Boolean = false,
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
@@ -340,7 +341,7 @@ fun PostCard(
                             .heightIn(min = 40.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .border(1.dp, dividerColor, RoundedCornerShape(16.dp))
-                            .clickable(role = Role.Button) {
+                            .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
                                 if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
                                 else onFollowAuthor(authorProfileId)
                             }
@@ -348,7 +349,7 @@ fun PostCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isFollowingAuthor) "Following" else "Follow",
+                            text = if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
                             color = primaryText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -510,7 +511,7 @@ fun PostCard(
                         onLike()
                     }
                 )
-                if (isAuthor) {
+                if (isAuthor || onRepost == null) {
                     ReadOnlyMetricAction(
                         icon = Icons.Default.Repeat,
                         value = BlinkPostFormat.count(post.repostsCount),
@@ -523,7 +524,7 @@ fun PostCard(
                         value = BlinkPostFormat.count(post.repostsCount),
                         tint = repostTint,
                         description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                        onClick = onRepost
+                        onClick = { onRepost?.invoke() }
                     )
                 }
                 PremiumPostAction(
