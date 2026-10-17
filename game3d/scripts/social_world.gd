@@ -1138,20 +1138,24 @@ func _send_private_wallet(peer_id: int) -> void:
     if saved.is_empty():
         return
     if peer_id == 1:
-        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]))
+        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]),
+            int(saved["furniture"]), int(saved.get("home_slot", -1)))
     else:
         _receive_private_wallet.rpc_id(
-            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"])
+            peer_id, int(saved["cash"]), bool(saved["house_owned"]),
+            int(saved["furniture"]), int(saved.get("home_slot", -1))
         )
 
 
 @rpc("authority", "reliable")
-func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int) -> void:
+func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int,
+        plot_slot: int = -1) -> void:
     if multiplayer.get_remote_sender_id() != 1:
         return
     if account_status != null:
-        account_status.text = "My private Game Cash: %d GC · Home: %s · Furniture: %d" % [
-            cash, "owned" if owns_home else "not owned", furnishing
+        account_status.text = "Game Cash: %d GC · Home: %s · Furniture: %d · Plot: %s" % [
+            cash, "owned" if owns_home else "not owned", furnishing,
+            str(plot_slot + 1) if owns_home and plot_slot >= 0 else "none"
         ]
 
 
