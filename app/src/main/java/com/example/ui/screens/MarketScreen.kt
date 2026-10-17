@@ -73,6 +73,7 @@ fun MarketScreen(
     isSellerActive: Boolean,
     sellerStoreName: String = "",
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    sellerVerificationActive: Boolean = false,
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
@@ -129,12 +130,12 @@ fun MarketScreen(
         }
     }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
-        items.filter { item ->
+        com.blinkng.shared.MarketTrustPolicy.diversify(items.filter { item ->
             (!savedOnly || item.isSaved) &&
                 (!verifiedOnly || item.verificationBadge != VerificationBadge.NONE || item.sellerIsVerified) &&
                 (minPrice == null || item.price >= minPrice) &&
                 (maxPrice == null || item.price <= maxPrice)
-        }
+        }) { item -> item.sellerUsername }
     }
     val marketRows = remember(visibleItems) { visibleItems.chunked(2) }
     val activeFilterCount = listOf(
@@ -302,7 +303,7 @@ fun MarketScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .clickable { onOpenBecomeSeller() }
+                        .clickable { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -310,24 +311,24 @@ fun MarketScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Start selling on BLINK",
+                                if (sellerVerificationActive) "Become a BLINK Seller — Free" else "Verify to Sell on BLINK",
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.inverseOnSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Activate a seller profile before publishing listings.",
+                                if (sellerVerificationActive) "Complete seller registration to publish products." else "An active blue tick is required. Renew if your verification expired.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.75f)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
-                            onClick = onOpenBecomeSeller,
+                            onClick = { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
                             shape = RoundedCornerShape(100.dp),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
-                            Text("Activate", fontWeight = FontWeight.Bold)
+                            Text(if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
