@@ -129,3 +129,86 @@ jobs:
             exit 1
           fi
 
+  staging-container:
+    needs: godot3d
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+      - name: Generate disposable localhost TLS certificate and volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
+            -keyout "$RUNNER_TEMP/blink-life-cert/key.pem" \
+            -out "$RUNNER_TEMP/blink-life-cert/cert.pem" \
+            -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' \
+            >/dev/null 2>&1
+          sudo chown -R 10001:65534 "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
+          sudo chmod 0700 "$RUNNER_TEMP/blink-life-cert"
+          sudo chmod 0400 "$RUNNER_TEMP/blink-life-cert/key.pem"
+          sudo chmod 0444 "$RUNNER_TEMP/blink-life-cert/cert.pem"
+          sudo chmod 0750 "$RUNNER_TEMP/blink-life-state"
+      - name: Build production-like unprivileged Godot container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -f game3d/Dockerfile -t blink-life-ci:${GITHUB_SHA} .
+      - name: Start real TLS container with persistent ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name blink-life-staging-ci \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --pids-limit 128 --memory 768m \
+            --mount type=bind,source="$RUNNER_TEMP/blink-life-state",target=/var/lib/blinklife \
+            --mount type=bind,source="$RUNNER_TEMP/blink-life-cert",target=/run/blinklife/tls,readonly \
+            -p 127.0.0.1:24567:24567/tcp \
+            -e BLINK_LIFE_SERVER_PORT=24567 \
+            -e BLINK_LIFE_AUTH_SECRET=ci-only-example-secret-never-use-in-production-987654321 \
+            -e BLINK_LIFE_TLS_CERT_PATH=/run/blinklife/tls/cert.pem \
+            -e BLINK_LIFE_TLS_KEY_PATH=/run/blinklife/tls/key.pem \
+            -e BLINK_LIFE_HEALTH_FILE=/var/lib/blinklife/server.health \
+            blink-life-ci:${GITHUB_SHA}
+      - name: Assert container health and verified WebSocket connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_ready() {
+            for i in $(seq 1 60); do
+              status="$(docker inspect -f '{{.State.Health.Status}}' blink-life-staging-ci)"
+              if [ "$status" = healthy ]; then return 0; fi
+              if [ "$(docker inspect -f '{{.State.Running}}' blink-life-staging-ci)" != true ]; then
+                docker logs --tail 80 blink-life-staging-ci
+                return 1
+              fi
+              sleep 1
+            done
+            docker logs --tail 80 blink-life-staging-ci
+            echo 'Game container never became healthy'
+            return 1
+          }
+          check_ready
+          python3 scripts/blink_life_staging_preflight.py \
+            --host localhost --port 24567 --loopback-only \
+            --cafile "$RUNNER_TEMP/blink-life-cert/cert.pem"
+          if python3 scripts/blink_life_staging_preflight.py \
+              --host localhost --port 24567 --loopback-only; then
+            echo 'Self-signed game server unexpectedly trusted without CA!'
+            exit 1
+          fi
+          docker restart blink-life-staging-ci >/dev/null
+          check_ready
+          python3 scripts/blink_life_staging_preflight.py \
+            --host localhost --port 24567 --loopback-only \
+            --cafile "$RUNNER_TEMP/blink-life-cert/cert.pem"
+          echo 'PASS: unprivileged staging Docker container healthy, encrypted and restartable'
+      - name: Always discard test container and certificates
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f blink-life-staging-ci >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
+
