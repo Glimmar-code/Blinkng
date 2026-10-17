@@ -51,6 +51,8 @@ var home_plant_rotation: int = 0
 var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
 var home_layout_slots: Dictionary = {}
 var home_light_mode: int = 0
+var home_ceiling_style: int = 0
+var home_tv_mode: int = 0
 var study_card: int = 0
 var study_answered: bool = false
 var study_correct: int = 0
@@ -104,6 +106,8 @@ func _ready() -> void:
         home_furniture[key] = int(recovered[key])
     home_layout_slots = recovered["layout_slots"].duplicate(true)
     home_light_mode = int(recovered["light_mode"])
+    home_ceiling_style = int(recovered["ceiling_style"])
+    home_tv_mode = int(recovered["tv_mode"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -939,6 +943,8 @@ func _enter_solo_home() -> void:
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
     solo_room.call("apply_light_mode", home_light_mode)
+    solo_room.call("apply_ceiling_style", home_ceiling_style)
+    solo_room.call("apply_tv_mode", home_tv_mode)
     study_card = 0
     study_answered = false
     study_correct = 0
@@ -983,7 +989,8 @@ func _home_save_snapshot() -> Dictionary:
         "table_rotation": int(home_furniture["table_rotation"]),
         "bed_layout": int(home_furniture["bed_layout"]),
         "wardrobe_layout": int(home_furniture["wardrobe_layout"]),
-        "layout_slots": home_layout_slots.duplicate(true), "light_mode": home_light_mode}
+        "layout_slots": home_layout_slots.duplicate(true), "light_mode": home_light_mode,
+        "ceiling_style": home_ceiling_style, "tv_mode": home_tv_mode}
 
 
 func _show_home_decor() -> void:
@@ -1010,6 +1017,12 @@ func _show_home_decor() -> void:
     var lighting := _new_button("Lighting: " + ["Warm", "Bright", "Dim"][home_light_mode])
     rows.add_child(lighting)
     lighting.pressed.connect(_cycle_home_light)
+    var ceiling := _new_button("Ceiling accents: " + ["Ivory", "Blue-grey", "Sand"][home_ceiling_style])
+    rows.add_child(ceiling)
+    ceiling.pressed.connect(_cycle_home_ceiling)
+    var home_screen := _new_button("Room screen: " + ["Off", "Nature still", "Campus notice"][home_tv_mode])
+    rows.add_child(home_screen)
+    home_screen.pressed.connect(_cycle_home_tv)
     var wall := _new_button("Wall palette %d/3" % (home_wall_style + 1))
     rows.add_child(wall)
     wall.pressed.connect(_cycle_home_decoration.bind("wall_style"))
@@ -1131,7 +1144,11 @@ func _apply_home_decor(candidate: Dictionary) -> bool:
         home_furniture[key] = int(candidate[key])
     home_layout_slots = candidate["layout_slots"].duplicate(true)
     home_light_mode = int(candidate["light_mode"])
+    home_ceiling_style = int(candidate["ceiling_style"])
+    home_tv_mode = int(candidate["tv_mode"])
     solo_room.call("apply_light_mode", home_light_mode)
+    solo_room.call("apply_ceiling_style", home_ceiling_style)
+    solo_room.call("apply_tv_mode", home_tv_mode)
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
@@ -1162,6 +1179,22 @@ func _cycle_home_decoration(field: String) -> void:
     candidate[field] = (int(candidate[field]) + 1) % 3
     if field == "plant_spot":
         candidate["plant_custom"] = false
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_ceiling() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["ceiling_style"] = (home_ceiling_style + 1) % 3
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_tv() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["tv_mode"] = (home_tv_mode + 1) % 3
     _commit_home_decor(candidate)
 
 
