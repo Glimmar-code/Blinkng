@@ -71,7 +71,7 @@ fun SellerCongratulationsDialog(
                     .border(
                         width = 1.5.dp,
                         brush = Brush.linearGradient(
-                            listOf(BlinkGold, BlinkPink, BlinkPurple)
+                            listOf(MaterialTheme.colorScheme.outline, MaterialTheme.colorScheme.onSurface)
                         ),
                         shape = RoundedCornerShape(28.dp)
                     )
@@ -107,13 +107,13 @@ fun SellerCongratulationsDialog(
                                 .clip(CircleShape)
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(BlinkGold, Color(0xFFFFA000))
+                                        listOf(Color(0xFF444444), Color.Black)
                                     )
                                 )
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Storefront,
-                                contentDescription = "Verified Store",
+                                contentDescription = "Seller application",
                                 tint = Color.Black,
                                 modifier = Modifier.size(36.dp)
                             )
@@ -123,7 +123,7 @@ fun SellerCongratulationsDialog(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "🎉 Congratulations!",
+                        text = "Application Submitted",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = if (isDark) Color.White else Color(0xFF1E1B26),
@@ -133,7 +133,7 @@ fun SellerCongratulationsDialog(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "You're now an official Aluta Market Seller!",
+                        text = "BLINK Market will review your seller details before you can publish.",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = BlinkGold,
@@ -160,7 +160,7 @@ fun SellerCongratulationsDialog(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = storeName.ifBlank { "Verified Campus Store" },
+                                text = storeName.ifBlank { "My Campus Store" },
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Color(0xFF2C103D)
@@ -178,20 +178,20 @@ fun SellerCongratulationsDialog(
                         FeaturePerkItem(
                             icon = Icons.Default.AddBusiness,
                             iconTint = BlinkPink,
-                            title = "Create a Post Anytime",
-                            description = "Your 'Become a Seller' button is now 'Create a Post' to list items instantly."
+                            title = "Approval Required",
+                            description = "Registration is free. Publishing is available after a separate Market approval."
                         )
                         FeaturePerkItem(
                             icon = Icons.Default.Chat,
                             iconTint = Color(0xFF25D366),
-                            title = "Direct WhatsApp & Call Inquiries",
-                            description = "Interested campus buyers can contact you directly with one tap."
+                            title = "Private Buyer Contact",
+                            description = "Share business contact details only when you choose to. BLINK messages are available."
                         )
                         FeaturePerkItem(
                             icon = Icons.Default.WorkspacePremium,
                             iconTint = BlinkGold,
-                            title = "Verified Merchant Badge",
-                            description = "Your listings display trusted verification to maximize buyer confidence."
+                            title = "Separate Seller Badge",
+                            description = "Only approved sellers receive the Market badge. A blue tick is not a safety guarantee."
                         )
                     }
 
@@ -199,24 +199,24 @@ fun SellerCongratulationsDialog(
 
                     // Action buttons: Create a Post & Explore Market
                     Button(
-                        onClick = onCreatePost,
+                        onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = BlinkPink,
-                            contentColor = if (isDark) Color.Black else Color.White
+                            containerColor = MaterialTheme.colorScheme.onSurface,
+                            contentColor = MaterialTheme.colorScheme.surface
                         ),
                         shape = RoundedCornerShape(100.dp),
                         contentPadding = PaddingValues(vertical = 13.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("seller_congrats_create_post_btn")
+                            .testTag("seller_application_received_btn")
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(20.dp))
                             Text(
-                                text = "Create a Post Now",
+                                text = "Explore BLINK Market"
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -233,7 +233,7 @@ fun SellerCongratulationsDialog(
                             .testTag("seller_congrats_dismiss_btn")
                     ) {
                         Text(
-                            text = "Explore Aluta Market",
+                            text = "Close"
                             color = if (isDark) Color.White.copy(alpha = 0.8f) else Color.DarkGray,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
