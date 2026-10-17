@@ -968,3 +968,9 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - Newer atomic `navigateToPrimaryTab`, guarded inbox-entry loading, nontechnical error messages and Connect skeletons from current main are deliberately preserved during integration.
 - Android-specific Compose list/pager and Activity lifecycle are not directly applicable to Windows; the existing desktop navigation and backend data contract are unchanged.
 - Android/Windows quality, runtime and release checks must pass against this rebased commit before release.
+
+## 2026-10-17 — Android crash protection (Testlab; not released)
+
+- **Platform adapter exception:** PARITY-EXCEPTION: android-startup-crash-hardening-20261017 — Android Application startup (FCM, notifications, WorkManager, Telecom and device refresh-rate), low-memory Coil image cache, Activity stop lifecycle and Android sensor events are platform-specific and have no corresponding Android lifecycle or sensor API on Windows. Existing Windows account, messaging, cache, and startup contracts remain unchanged.
+- **Shared/backend behavior:** Supabase and Drops business rules have not changed; Android Drops now tolerates an empty policy action list without crashing. Windows must continue rejecting any action absent from the same shared policy. No synthetic rewards, user data or backend contracts were added.
+- **Validation required:** Android unit, lint, release compilation, runtime smoke, Windows build/parity, native crash testing on Android 15 and a real-device low-memory regression. Keep main unchanged until all relevant gates are verified.
