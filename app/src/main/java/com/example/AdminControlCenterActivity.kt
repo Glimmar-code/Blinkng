@@ -629,6 +629,8 @@ private fun FeatureActionDialog(
 
     var userQuery by remember { mutableStateOf("") }
     var userResults by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
+    var showUserPicker by remember { mutableStateOf(false) }
+    var userPickerError by remember { mutableStateOf<String?>(null) }
     var selectedUsers by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
     var postQuery by remember { mutableStateOf("") }
     var postResults by remember { mutableStateOf<List<AdminPostSummary>>(emptyList()) }
@@ -695,14 +697,19 @@ private fun FeatureActionDialog(
         }
     }
 
-    fun searchUsers() {
-        scope.launch {
-            targetBusy = true
-            service.searchUsersV2(userQuery, 20)
-                .onSuccess { userResults = it }
-                .onFailure { error = it.message }
-            targetBusy = false
-        }
+    // Load suggested accounts on open; debounce typing so admin search is responsive.
+    LaunchedEffect(showUserPicker, userQuery) {
+        if (!showUserPicker) return@LaunchedEffect
+        delay(if (userQuery.isBlank()) 0L else 280L)
+        targetBusy = true
+        userPickerError = null
+        service.searchUsersV2(userQuery.trim(), 30)
+            .onSuccess { userResults = it }
+            .onFailure {
+                userResults = emptyList()
+                userPickerError = it.message ?: "Could not find users."
+            }
+        targetBusy = false
     }
 
     fun searchPosts() {
@@ -847,38 +854,34 @@ private fun FeatureActionDialog(
                 if (needsUserPicker) {
                     Text(
                         when {
-                            needsAssigneeUser -> "Select assignee"
-                            needsProfileLinkUser -> "Select profile"
-                            else -> "Select user"
+                            needsAssigneeUser -> "Assigned account"
+                            needsProfileLinkUser -> "Linked profile"
+                            isBulkUsers -> "Recipients"
+                            else -> "User"
                         },
                         fontWeight = FontWeight.Bold
                     )
-                    OutlinedTextField(
-                        userQuery,
-                        { userQuery = it },
-                        Modifier.fillMaxWidth(),
-                        label = { Text("Search name, @username, email or user ID") },
-                        singleLine = true
-                    )
-                    Button(onClick = ::searchUsers, enabled = !targetBusy, modifier = Modifier.padding(top = 6.dp)) {
-                        Text("Search users")
+                    OutlinedButton(
+                        onClick = {
+                            userQuery = ""
+                            showUserPicker = true
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            when {
+                                selectedUsers.isEmpty() -> "Choose user — search by name or @username"
+                                isBulkUsers -> "${selectedUsers.size} users selected — change"
+                                else -> "@${selectedUsers.first().username} — change"
+                            },
+                            fontSize = 12.sp
+                        )
                     }
                     selectedUsers.forEach { user ->
                         SelectedUserRow(user) {
                             selectedUsers = selectedUsers.filterNot { it.id == user.id }
                         }
-                    }
-                    userResults.take(8).forEach { user ->
-                        UserSearchRow(
-                            user = user,
-                            selected = selectedUsers.any { it.id == user.id },
-                            onClick = {
-                                selectedUsers = if (isBulkUsers && !needsAssigneeUser && !needsProfileLinkUser) {
-                                    if (selectedUsers.any { it.id == user.id }) selectedUsers.filterNot { it.id == user.id }
-                                    else selectedUsers + user
-                                } else listOf(user)
-                            }
-                        )
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -1080,6 +1083,94 @@ private fun FeatureActionDialog(
                         else Text("Run tool")
                     }
                     OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Close") }
+                }
+            }
+        }
+    }
+
+    if (showUserPicker) {
+        Dialog(
+            onDismissRequest = { if (!busy) showUserPicker = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 670.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("Select Blink user", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text(
+                        if (isBulkUsers) "Search and select multiple accounts."
+                        else "Select one account. The user ID is filled automatically.",
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = userQuery,
+                        onValueChange = { userQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Name, @username or email") },
+                        singleLine = true
+                    )
+                    if (targetBusy) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+                    }
+                    userPickerError?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    }
+                    Text(
+                        if (userQuery.isBlank()) "Suggested users" else "Search results",
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        color = Color.LightGray,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                    LazyColumn(
+                        Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 100.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(userResults, key = { it.id }) { user ->
+                            UserSearchRow(
+                                user = user,
+                                selected = selectedUsers.any { it.id == user.id },
+                                onClick = {
+                                    selectedUsers = if (isBulkUsers && !needsAssigneeUser && !needsProfileLinkUser) {
+                                        if (selectedUsers.any { it.id == user.id }) {
+                                            selectedUsers.filterNot { it.id == user.id }
+                                        } else selectedUsers + user
+                                    } else listOf(user)
+                                    if (!isBulkUsers || needsAssigneeUser || needsProfileLinkUser) {
+                                        showUserPicker = false
+                                    }
+                                }
+                            )
+                        }
+                        if (!targetBusy && userPickerError == null && userResults.isEmpty()) {
+                            item {
+                                Text(
+                                    if (userQuery.isBlank()) "No suggested users. Search by username."
+                                    else "No users match this search.",
+                                    Modifier.padding(12.dp),
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isBulkUsers) {
+                            Text("${selectedUsers.size} selected", fontSize = 11.sp)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        TextButton(onClick = { showUserPicker = false }) {
+                            Text(if (isBulkUsers) "Done" else "Close")
+                        }
+                    }
                 }
             }
         }
