@@ -1,5 +1,5 @@
 extends SceneTree
-## Integration harness ONLY: real local ENet sockets, authenticated tickets,
+## Integration harness ONLY: real local TLS WebSockets, authenticated tickets,
 ## two independent client processes and process-restart property ownership.
 ## This test never calls public services or accesses BLINK coin balances.
 
@@ -48,7 +48,7 @@ func _bootstrap() -> void:
         print("ONLINE_SMOKE_SERVER_READY")
     else:
         if not bool(social.get("is_online")):
-            _fail("Client ENet session failed to start")
+            _fail("Client authenticated WSS session failed to start")
 
 
 func _process(delta: float) -> bool:
