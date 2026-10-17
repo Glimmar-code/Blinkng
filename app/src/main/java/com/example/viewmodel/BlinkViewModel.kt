@@ -6177,6 +6177,15 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun requestMarketModerationReview(item: MarketItem, reason: String) {
+        if (item.id.isBlank() || reason.trim().length < 15) return
+        viewModelScope.launch {
+            val sent = supabaseService.requestMarketModerationReview(item.id, reason)
+            showToast(if (sent) "Your listing has been submitted for a moderation review."
+                else "Couldn't submit the review. Please try again.")
+        }
+    }
+
     fun confirmMarketAvailability(item: MarketItem) {
         if (item.id.isBlank()) return
         viewModelScope.launch {
