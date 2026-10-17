@@ -76,6 +76,20 @@ jobs:
             exit 1
           fi
 
+      - name: Exercise real local UDP multiplayer sockets and server restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Real Godot ENet processes (host + two independent clients), not
+          # mocked RPCs. Exercises identity tickets, two unique owned homes,
+          # an invalid-signature client and durable homes after server restart.
+          # Loopback-only: NOT Internet / cloud hosting or encryption evidence.
+          timeout 120s python3 game3d/tests/online_network_smoke.py 2>&1 | tee /tmp/blink-life-online-network.log
+          if grep -Ei '(ONLINE_SMOKE_FAILURE:|SCRIPT ERROR:|Parse Error)' /tmp/blink-life-online-network.log; then
+            echo 'BLINK LIFE two-client network integration failed.'
+            exit 1
+          fi
+
       - name: Run native 3D interactive scene smoke tests
         shell: bash
         run: |
