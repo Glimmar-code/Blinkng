@@ -3,7 +3,7 @@ package com.blinkng.shared
 /** Shared, display-only post metadata. Never changes backend timestamps or counts. */
 object BlinkPostFormat {
     private val verboseAge = Regex(
-        """^(\\d+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)(?:\\s+ago)?$""",
+        """^(\d+)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)(?:\s+ago)?$""",
         RegexOption.IGNORE_CASE
     )
 
@@ -11,7 +11,7 @@ object BlinkPostFormat {
         val age = value.trim()
         if (age.isEmpty()) return ""
         if (age.equals("just now", ignoreCase = true) || age.equals("now", ignoreCase = true)) return "now"
-        if (Regex("""^\\d+(?:s|m|h|d|w|mo|y)$""", RegexOption.IGNORE_CASE).matches(age)) return age
+        if (Regex("""^\d+(?:s|m|h|d|w|mo|y)$""", RegexOption.IGNORE_CASE).matches(age)) return age
         val parts = verboseAge.matchEntire(age) ?: return age
         val unit = parts.groupValues[2].lowercase()
         val short = when {
