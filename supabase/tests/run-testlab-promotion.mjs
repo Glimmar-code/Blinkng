@@ -91,6 +91,7 @@ try {
     '20261017180000_market_seller_trust_lifecycle.sql',
     '20261017181500_market_offers_disputes_moderation.sql',
     '20261017183000_market_admin_discovery_v2.sql',
+    '20261017184500_market_qualified_promotions.sql',
   ]) {
     const sql = fs.readFileSync(new URL('../migrations/' + migration, import.meta.url), 'utf8');
     await db.exec(sql);
