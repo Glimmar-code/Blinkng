@@ -3456,6 +3456,36 @@ suspend fun uploadPostMedia(
             val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
             val userId = if (savedOnly) getCurrentUserId() ?: return@withContext emptyList() else null
 
+            // Recommended rankings are calculated on Supabase so pagination and
+            // seller diversity remain consistent between Android and Windows.
+            if (sort == "recommended" && !savedOnly && !verifiedOnly) {
+                val payload = JSONObject()
+                    .put("p_query", query.trim().take(80))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                    .put("p_category", category?.takeUnless { it.equals("All Categories", true) } ?: JSONObject.NULL)
+                    .put("p_limit", safeLimit)
+                    .put("p_offset", safeOffset)
+                    .put("p_min_price", minPrice ?: JSONObject.NULL)
+                    .put("p_max_price", maxPrice ?: JSONObject.NULL)
+                val records = executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/discover_market_items_v2",true)
+                        .post(payload.toString().toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(
+                        parseSupabaseError(raw,"Recommended Market items could not be loaded.")
+                    )
+                    JSONArray(raw.ifBlank { "[]" })
+                }
+                val ranked = buildList {
+                    for (i in 0 until records.length()) {
+                        parseMarketItem(records.getJSONObject(i)).let(::add)
+                    }
+                }
+                val saved = fetchMyMarketWishlistIds(ranked.map { it.id })
+                return@withContext ranked.map { it.copy(isSaved=it.id in saved) }
+            }
+
             val url = buildString {
                 append("/rest/v1/market_items?select=")
                 append(if (savedOnly) "*,marketplace_wishlist!inner(user_id)" else "*")
