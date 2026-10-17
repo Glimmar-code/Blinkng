@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://www.blink.com.ng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
@@ -23,7 +23,7 @@ def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(read("CNAME").strip() == "www.blink.com.ng", "Pages CNAME")
+check(read("CNAME").strip() == "blink.com.ng", "Pages CNAME")
 config = read("config.js")
 check(f'siteUrl: "{SITE}"' in config, "web client siteUrl")
 index = read("index.html")
@@ -99,19 +99,19 @@ check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-l
 check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
 check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
-check("blink-web-v22-mobile-pagespeed" in read("sw.js"), "new service worker version")
-check('href="./blink-logo-v2.png" as="image" fetchpriority="high"' in index, "mobile logo preload")
-check('class="boot-logo" src="./blink-logo-v2.png" alt="BLINK" width="72" height="72"' in index, "boot logo dimensions")
-check('class="mark hero-mark" src="${LOGO_URL}" alt="BLINK" width="62" height="62"' in app, "hero logo dimensions")
-check("await Promise.all([loadMyProfile(),loadFollowing(),refreshUnreadCount()]);" in app, "parallel independent auth startup calls")
-check("scheduleServiceWorkerRegistration();" in app and "requestIdleCallback(register,{timeout:4000})" in app, "delayed SW registration")
-check('src="${esc(video)}" controls playsinline preload="none"' in app, "feed videos do not eagerly download")
-check('data-src="${esc(src)}" playsinline controls muted preload="none"' in app, "lazy reel video source")
-check('src="${esc(media)}" muted preload="none"' in app, "profile video does not eagerly download")
-check('entry.isIntersecting && video.dataset.src' in app, "reel videos load near viewport")
-check("navigator.connection?.saveData!==true" in app, "data saver disables reel autoplay")
-check("video.addEventListener('canplay'" in app, "autoplay resumes after lazy video becomes ready")
-check("Keep tap-to-play available on older browsers" in app, "fallback on old devices")
+check("blink-web-v22-go54-mobile-pagespeed" in read("sw.js"), "new service worker version")
+check('href="./blink-logo-v2.png" as="image" fetchpriority="high"' in index, "logo preload")
+check('class="boot-logo" src="./blink-logo-v2.png" alt="BLINK" width="72" height="72"' in index, "boot logo size")
+check('class="mark hero-mark" src="${LOGO_URL}" alt="BLINK" width="62" height="62"' in app, "hero logo size")
+check("await Promise.all([loadMyProfile(),loadFollowing(),refreshUnreadCount()]);" in app, "parallel startup auth")
+check("scheduleServiceWorkerRegistration();" in app and "requestIdleCallback(register,{timeout:4000})" in app, "deferred SW registration")
+check('src="${esc(video)}" controls playsinline preload="none"' in app, "video feed no eager download")
+check('data-src="${esc(src)}" playsinline controls muted preload="none"' in app, "reel lazy loading")
+check('src="${esc(media)}" muted preload="none"' in app, "profile preview lazy video")
+check('entry.isIntersecting && video.dataset.src' in app, "load reel near viewport")
+check("navigator.connection?.saveData!==true" in app, "respect Data Saver")
+check("video.addEventListener('canplay'" in app, "autoplay on canplay")
+check("Keep tap-to-play available on older browsers" in app, "browser fallback")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
 check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
 check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")
