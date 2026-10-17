@@ -1437,7 +1437,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Become a BLINK Seller — Free", fontWeight = FontWeight.Bold)
-                        Text("Active blue or gold verification is required. Renew expired verification before registering.")
+                        Text("Seller approval is separate from blue/gold verification. Registration is free. Existing applicants must wait for approval before publishing.")
                         OutlinedTextField(sellerStore, { sellerStore = it.take(80) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business / Store name") })
                         OutlinedTextField(sellerUniversity, { sellerUniversity = it.take(140) }, modifier = Modifier.fillMaxWidth(), label = { Text("University") })
                         OutlinedTextField(sellerState, { sellerState = it.take(100) }, modifier = Modifier.fillMaxWidth(), label = { Text("State") })
