@@ -507,6 +507,23 @@ class AdminSupabaseService {
         Unit
     }
 
+    suspend fun fetchMarketModerationQueue(): Result<JSONObject> = runCatching {
+        JSONObject(rpc("admin_market_queue",JSONObject().put("p_limit",50)))
+    }
+
+    suspend fun reviewMarketRecord(
+        kind: String, id: String, action: String, reason: String
+    ): Result<Boolean> = runCatching {
+        require(kind in setOf("seller","report","appeal","dispute"))
+        require(id.isNotBlank())
+        val response = rpc(
+            "admin_market_review",
+            JSONObject().put("p_kind",kind).put("p_id",id)
+                .put("p_action",action).put("p_reason",reason.take(1000))
+        )
+        response.trim().trim('"').equals("true",ignoreCase=true)
+    }
+
     private fun parseUsers(array: JSONArray): List<AdminUserSummary> = buildList {
         for (i in 0 until array.length()) {
             val json = array.getJSONObject(i)
