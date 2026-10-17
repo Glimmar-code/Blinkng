@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Genuine loopback ENet integration smoke: 1 dedicated host + 2 clients.
+"""Genuine encrypted WSS multiplayer smoke: dedicated host + 2 clients.
 
-Development CI ONLY, not proof of public Internet deployment or encryption.
-Each Godot process has a real independent SceneTree and UDP socket.
+Development CI ONLY, not proof of public Internet deployment.
+Each Godot process has an independent SceneTree and verified TLS socket.
 No Supabase tokens, production accounts, secrets or public endpoints are used.
 """
 import hashlib
@@ -26,7 +26,7 @@ ACCOUNT_B = "87654321-4321-4321-8321-abcdefabcdef"
 
 
 def fresh_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
 
@@ -111,12 +111,24 @@ def main() -> None:
     secret = secrets.token_hex(32)
     with tempfile.TemporaryDirectory(prefix="blink-life-net-") as workspace:
         temp = Path(workspace)
+        # Create short-lived local TLS keys and a matching localhost SAN.
+        # Test private keys stay outside the repository and are discarded.
+        cert_path, key_path = temp / "cert.pem", temp / "key.pem"
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-sha256", "-days", "1", "-keyout", str(key_path),
+            "-out", str(cert_path), "-subj", "/CN=localhost",
+            "-addext", "subjectAltName=DNS:localhost",
+        ], check=True, capture_output=True)
         data_dir = temp / "godot-data"
         data_dir.mkdir()
         env = os.environ.copy()
         env.update({
             "BLINK_LIFE_SERVER_PORT": str(port),
             "BLINK_LIFE_AUTH_SECRET": secret,
+            "BLINK_LIFE_TLS_CERT_PATH": str(cert_path),
+            "BLINK_LIFE_TLS_KEY_PATH": str(key_path),
+            "BLINK_LIFE_TEST_CA_FILE": str(cert_path),
             "XDG_DATA_HOME": str(data_dir),
         })
         peers: list[Peer] = []
@@ -128,7 +140,8 @@ def main() -> None:
                 opts = ["--blink-dedicated"]
             else:
                 opts = [
-                    "--blink-host=127.0.0.1",
+                    "--blink-host=localhost",
+                    "--blink-transport=wss",
                     f"--blink-port={port}",
                     "--blink-ticket=" + ticket(uid, secret, invalid=invalid),
                 ]
@@ -159,14 +172,14 @@ def main() -> None:
             server.end()
             peers.remove(server)
             # The server's user:// backing directory survives this restart.
-            # Godot may need a short interval to relinquish the UDP port.
+            # Godot may need a short interval to relinquish the TCP port.
             time.sleep(0.4)
             server2 = make("server")
             ready(server2, "ONLINE_SMOKE_SERVER_READY")
             reconnect = make("reconnect", ACCOUNT_A, restart_plot=home_a)
             finish(reconnect)
             print(
-                "PASS: real local UDP host, two independent authenticated "
+                "PASS: verified encrypted WSS host, two independent authenticated "
                 "players, rejected invalid ticket, unique server-owned houses "
                 "and account home persistence after host restart."
             )
