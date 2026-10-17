@@ -1090,6 +1090,7 @@ fun MainAppContent(
                         onDropsClick = { feedUtilitySheet = "drops" },
                         onGameClick = { feedUtilitySheet = "game" },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
+                        onOpenMarketListing = { item -> viewModel.openProductDetail(item) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         unreadNotificationCount = uiState.activities.count { it.isUnread },
