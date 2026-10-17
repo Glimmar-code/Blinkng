@@ -57,7 +57,7 @@ assert "ProcessBuilder" in (
     root / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/BlinkLifeNativeLauncher.kt"
 ).read_text()
 
-for file in ("project.godot", "scenes/main.tscn", "scripts/world.gd"):
+for file in ("project.godot", "scenes/main.tscn", "scripts/world.gd", "scripts/weather_cycle.gd", "scripts/weather_visuals.gd", "scripts/npc_routines.gd", "scripts/npc_world.gd", "scripts/public_spaces.gd", "scripts/solo_progress.gd", "scripts/solo_home.gd"):
     assert (root / "game3d" / file).is_file(), f"Missing native game file: {file}"
 
 print("PASS: BLINK LIFE native engine stays opt-in and process-isolated.")

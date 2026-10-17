@@ -35,7 +35,7 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 
 ## Economy and safety
 
-The native prototype's **GC** balance is fiction, exists only for its local session, and cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
+The native prototype's **GC** balance is fictional solo-tutorial currency, saved only on the current device and never accepted by multiplayer servers; it cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
 
 ## Social multiplayer foundation (Testlab, not public release)
 
@@ -65,3 +65,134 @@ The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is st
 ## Realism roadmap (16 October 2026)
 
 `REALISM_1000.csv` tracks the owner's 1,000 requested improvements with stable IDs and honest statuses. `REALISM_IMPLEMENTATION.md` describes the first shared-world batch, exact acceptance and release gaps. The scene now includes connected footpaths, street signs, building addresses and closer frontage interaction selection. These additions are Testlab source work, not a confirmed production update.
+
+## Local weather preview (Testlab batch 4)
+
+Controls → Local weather provides automatic changing skies, manually selected
+clear conditions, light showers or capped tropical rain. Moving low-poly clouds
+and batched raindrops are fictional visual effects, with no gameplay penalty,
+real-world weather permission or production economy impact. Weather is not
+synchronized between players and has not passed physical-device graphics checks.
+
+## Local neighborhood residents (Testlab batch 5)
+
+Eight fictional, always-labeled NPC residents follow predictable local
+home/work/leisure routines along the starter city's sidewalks. They can give
+brief text greetings and show umbrellas when they walk in rain. Battery-saver
+mode limits the visible cast to four. Residents are decorative and use no
+BLINK social identity, online-server attendance or production wallet.
+This is still a staging prototype, not a finished population or live economy.
+
+## Offline progress checkpoints (Testlab source)
+
+Successful offline job earnings and the fictional desk-plant purchase are
+saved locally with a versioned file and a recovery backup. Failed storage
+writes reject the transaction instead of claiming the reward is preserved.
+This progress is a **solo demo only**: it is not BLINK Coins, never redeemable,
+never moved to multiplayer accounts or accepted by the dedicated server,
+and must not be used for competitive scoring. The engine still starts only
+when the player deliberately launches BLINK LIFE; shared sessions do not
+pay local demo rewards.
+
+## Offline home preview (staging)
+
+Walk to **Homes** and select **Enter free starter room (offline)**. The
+room is a lightweight 3D interior constructed only on entry and destroyed
+on exit. Walk with the existing controls, and use **INTERACT**, **F**, or
+**Escape** to return to the same city doorway. A fictional desk plant
+purchased at the solo Market appears on the room desk after relaunch.
+
+The solo room is free: it has no rent, property title, online trading or
+synchronized world ownership. It does not modify the separate approved
+multiplayer homes system. Bed and desk are visual furnishings for now, not
+functional sleeping or study activities. Offline Game Cash never becomes
+BLINK Coins, cashable funds or network-authoritative rewards.
+
+## Free offline home customization
+
+At the **Homes** location enter your optional solo starter room and tap
+**INTERACT** to open its decoration menu. Cycle among three free wall
+palettes, three floor colour variants and, after purchasing the cosmetic
+desk plant, three safe plant positions. Choices save locally before
+being applied. Press **Done** to return to the room or **F** to exit.
+Older solo saves load using the original design. This is a small offline
+demo; it is not a multiplayer property editor, free-form furniture
+placement, server account progress or redeemable currency.
+
+## Offline starter-room furniture controls
+
+Inside the optional private starter room, tap **INTERACT** for a scrollable
+decoration menu. Move the purchased desk plant to a safe one-metre floor
+grid, adjust by directional buttons, turn it in 90-degree steps, and
+**Undo/Redo** edits (up to 20 recent edits while the room is open).
+Blocked cells cannot be saved. Existing wall/floor palette selection and
+three plant display presets still work. Floor-grid position and orientation
+survive restart; the undo history intentionally resets between sessions.
+No virtual Game Cash is charged, and this offline feature does not alter
+BLINK Coins or any public online property.
+
+## Free chair and table placement (staging source)
+
+The offline starter room's **INTERACT** decoration menu now offers
+directional positioning and 90-degree rotation for the original chair
+and an additional small side table, alongside the purchased desk plant.
+All three are restricted to a low-poly 1-metre floor grid with blocking
+rules for walls, permanent furniture and the doorway. Room editing is
+free and reversible with Undo/Redo; new furniture positions save
+locally and survive restarting the game. These changes do not operate
+inside shared homes or award any BLINK Coins. This is not yet arbitrary
+bed placement, furniture physics or a full online property editor.
+
+## Optional solo room layouts
+
+Open Homes, choose the private offline starter room and tap INTERACT.
+The furniture editor now provides **Bed position** and **Wardrobe
+position** (three collision-checked options each), plus three prepared
+arrangements: **Original room**, **Study corner** and **Open floor**.
+Layouts reposition the existing chair and side table too. Edits are
+free, undoable and written to the local solo save before being applied.
+Applying a plan resets the cosmetic plant's display position, but does
+not remove its ownership or modify Game Cash. This is not customizable
+online property, arbitrary bed dragging, public multiplayer housing or
+production in-game currency.
+
+## Your own saved room arrangements (Testlab preview)
+
+Inside your free private starter room, open **INTERACT** and use
+**Save layout 1** or **Save layout 2**. Later use **Apply layout 1/2**
+to restore your favourite furniture positions and wall/floor colours.
+Both slots persist in the solo local save, survive game restarts and
+remain available after using Undo/Redo. Saving or applying is free and
+doesn't change Game Cash, completed jobs or purchased items. Layouts
+are **not** server-backed, public, tradeable or cross-device synced.
+
+## Solo home lighting and study practice
+
+Inside the optional starter room, use **INTERACT** to open room controls.
+Choose **Study desk** for three brief offline, reward-free practice questions
+and explanatory answers. No fictional cash or BLINK Coins are paid.
+Use **Lighting** to switch among Warm, Bright and Dim; the choice saves on
+this device and supports Undo/Redo. Room-light settings use one existing
+low-cost light and do not connect to multiplayer or change ownership.
+
+## Optional ceiling accents and home screen (staged)
+
+In the private solo starter home, tap **INTERACT** for **Ceiling accents**
+(Ivory / Blue-grey / Sand) and **Room screen** (Off / Nature still /
+Campus notice). The centre of the ceiling stays open to avoid obscuring
+the 3D overhead camera. Screen options are static fictional visuals,
+not video streaming. Both preferences save locally, survive re-entry
+and support Undo/Redo without affecting BLINK Coins or Game Cash.
+These are development-branch features, not yet available in the live app.
+
+## Free private-room activities (development branch only)
+
+Enter your **solo starter home**, press **INTERACT**, then choose
+**Everyday home**. You can freely toggle the cosmetic bed-rest indicator,
+or select one of three fictional dishes at a small wall-mounted kitchen
+shelf. The meal appears instantly as a local coloured 3D dish and label.
+There are no food costs, forced sleep, timed challenges, resource
+requirements, real cooking instructions or BLINK Coins. The selections
+reset on room exit; this is not yet an avatar sleeping animation or
+ingredient-based cooking game. Nothing connects to a public property
+server or increases the normal app's required game download.

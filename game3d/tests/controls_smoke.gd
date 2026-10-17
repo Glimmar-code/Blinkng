@@ -2,6 +2,8 @@ extends SceneTree
 
 const Preferences = preload("res://scripts/player_preferences.gd")
 const DayCycle = preload("res://scripts/day_cycle.gd")
+const WeatherCycle = preload("res://scripts/weather_cycle.gd")
+const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
 const TEST_PATH: String = "user://blink_controls_test.cfg"
 var failed: bool = false
 
@@ -19,6 +21,7 @@ func _initialize() -> void:
     settings.reduced_motion = true
     settings.battery_saver = true
     settings.shadows_enabled = false
+    settings.weather_mode = "heavy"
     check(settings.write_settings(TEST_PATH) == OK, "Preferences should save")
     var restored := Preferences.new()
     restored.read_settings(TEST_PATH)
@@ -27,15 +30,18 @@ func _initialize() -> void:
     check(restored.battery_saver, "Battery mode survives relaunch")
     check(not restored.shadows_enabled, "Shadow preference survives relaunch")
     check(restored.reduced_motion, "Reduced motion survives relaunch")
+    check(restored.weather_mode == "heavy", "Weather preview choice survives relaunch")
     var corrupt := ConfigFile.new()
     corrupt.set_value("controls", "camera_distance", "bad")
     corrupt.set_value("controls", "movement_scale", INF)
     corrupt.set_value("controls", "reduced_motion", "true")
+    corrupt.set_value("weather", "mode", "untrusted-weather-mode")
     corrupt.save(TEST_PATH)
     restored.read_settings(TEST_PATH)
     check(is_equal_approx(restored.camera_distance, 13.0), "Wrong-type zoom falls back")
     check(is_equal_approx(restored.movement_scale, 1.0), "Infinite speed falls back")
     check(not restored.reduced_motion, "Wrong-type boolean falls back")
+    check(restored.weather_mode == "auto", "Unsupported weather mode resets to auto")
     check(Preferences._bounded(-200, 8, 20, 13) == 8, "Zoom cannot pass near limit")
     check(Preferences._bounded(500, 8, 20, 13) == 20, "Zoom cannot pass far limit")
     var slow_frames := Vector2.ZERO
@@ -78,6 +84,22 @@ func _initialize() -> void:
     cycle.enabled = true
     cycle.advance(NAN)
     check(is_finite(cycle.hour), "Invalid delta must not corrupt the clock")
+    var weather := WeatherCycle.new()
+    check(weather.condition() == "clear", "Weather previews start clear")
+    weather.advance(95.0)
+    check(weather.condition() == "light", "Local cycle moves to a shower")
+    weather.advance(90.0)
+    check(weather.condition() == "heavy", "Local cycle moves to tropical rain")
+    weather.advance(90.0)
+    check(weather.condition() == "clear", "Local weather wraps to clear")
+    weather.advance(NAN)
+    check(weather.condition() == "clear", "Invalid timing cannot corrupt weather")
+    weather.mode = "heavy"
+    check(weather.condition() == "heavy", "Manual weather mode overrides auto")
+    check(WeatherCycle.validated_mode("unknown") == "auto", "Invalid modes never enter renderer")
+    check(WeatherVisuals.budget_for("clear") == 0, "Clear preview draws no rain")
+    check(WeatherVisuals.budget_for("light") == 24, "Light rain stays within a small effect budget")
+    check(WeatherVisuals.budget_for("heavy") == 80, "Tropical rain is capped at 80 drops")
     DirAccess.remove_absolute(TEST_PATH)
     if not failed:
         print("BLINK LIFE control math and settings checks passed.")
