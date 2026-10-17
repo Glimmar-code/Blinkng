@@ -43,6 +43,7 @@ import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
+import com.example.data.supabase.AdminSupabaseService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkInAppNotification
@@ -706,6 +707,16 @@ fun MainAppContent(
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
+    // MainAppContent hosts the Home feed: keep permission state in this scope.
+    val adminService = remember { AdminSupabaseService() }
+    val adminContext = androidx.compose.ui.platform.LocalContext.current
+    var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    LaunchedEffect(uiState.myProfile.id) {
+        canOpenAdmin = false
+        if (uiState.myProfile.id.isNotBlank()) {
+            canOpenAdmin = adminService.fetchCapability().getOrNull()?.isAdmin == true
+        }
+    }
     LaunchedEffect(feedUtilitySheet) {
         // Restored states and old navigation callers cannot reopen the paused Store.
         if (BlinkStoreAvailability.isPaused && feedUtilitySheet == "store") {
@@ -969,6 +980,15 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
+                        isAdmin = canOpenAdmin,
+                        onAdminClick = {
+                            if (canOpenAdmin) {
+                                adminContext.startActivitySafely(
+                                    Intent(adminContext, AdminControlCenterActivity::class.java),
+                                    "Unable to open admin dashboard."
+                                )
+                            }
+                        },
                         onItemsClick = { feedUtilitySheet = "items" },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {

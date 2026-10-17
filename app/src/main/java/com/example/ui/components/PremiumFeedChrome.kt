@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
@@ -92,6 +93,8 @@ fun FeedTopBar(
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int = 0,
     onSearchClick: () -> Unit,
+    isAdmin: Boolean = false,
+    onAdminClick: () -> Unit = {},
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit,
@@ -112,7 +115,7 @@ fun FeedTopBar(
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 10.dp
         // Reserve proper 48dp minimum targets for all four toolbar buttons.
         // On narrow devices collapse the decorative title, not the actions.
-        val showHomeTitle = maxWidth >= 350.dp
+        val showHomeTitle = maxWidth >= (if (isAdmin) 430.dp else 350.dp)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -134,6 +137,8 @@ fun FeedTopBar(
                 hasUnreadNotifications = hasUnreadNotifications,
                 unreadNotificationCount = unreadNotificationCount,
                 onSearchClick = onSearchClick,
+                isAdmin = isAdmin,
+                onAdminClick = onAdminClick,
                 onItemsClick = onItemsClick,
                 onNotificationClick = onNotificationClick,
                 onMenuClick = onMenuClick
@@ -204,6 +209,8 @@ private fun FeedHeaderActions(
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int,
     onSearchClick: () -> Unit,
+    isAdmin: Boolean,
+    onAdminClick: () -> Unit,
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit
@@ -218,6 +225,14 @@ private fun FeedHeaderActions(
             onClick = onSearchClick,
             modifier = Modifier.testTag("feed_search_action")
         )
+        if (isAdmin) {
+            FeedRadialHeaderAction(
+                imageVector = Icons.Outlined.Security,
+                contentDescription = "Open admin dashboard",
+                onClick = onAdminClick,
+                modifier = Modifier.testTag("feed_admin_action")
+            )
+        }
         FeedRadialHeaderAction(
             imageVector = Icons.Default.Widgets,
             contentDescription = "Open Items",
