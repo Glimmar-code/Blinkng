@@ -82,6 +82,15 @@ func run_test() -> void:
         "Blocked invites can be re-enabled explicitly")
     check(bool(social.call("_invitations_allowed", 3, 2)),
         "Unblock makes new requests possible without restoring old visits")
+    social.set("secure_dedicated", true)
+    check(not bool(social.call("_allowed_position", 3, Vector3(69.0, 0.55, 32.0))),
+        "Unauthorised player cannot enter a dedicated home without ownership")
+    check(bool(social.call("_allowed_position", 2, Vector3(53.0, 0.55, 32.0))),
+        "A verified house owner can enter their virtual property")
+    check(not bool(social.call("_allowed_position", 2, Vector3(0, 8, 0))),
+        "Server rejects unbounded vertical position injection")
+    check(bool(social.call("_allowed_position", 2, Vector3(2.0, 0.55, 3.0))),
+        "Normal walking around the virtual city remains available")
     social.queue_free()
 
     var state_script: Script = load("res://scripts/persistent_state.gd")
