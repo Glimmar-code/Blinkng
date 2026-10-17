@@ -81,6 +81,7 @@ fun ProductDetailScreen(
     onMakeOffer: (MarketItem, Long, String) -> Unit = { _, _, _ -> },
     onConfirmAvailability: (MarketItem) -> Unit = {},
     onBoostListing: (MarketItem) -> Unit = {},
+    onRequestModerationReview: (MarketItem, String) -> Unit = { _, _ -> },
 
     isOwner: Boolean = false,
     onUpdateListingStatus: (MarketItem, String) -> Unit = { _, _ -> },
@@ -93,6 +94,8 @@ fun ProductDetailScreen(
     var selectedImageIndex by remember(item.id) { mutableIntStateOf(0) }
     var showOrderDialog by remember { mutableStateOf(false) }
     var showOfferDialog by remember { mutableStateOf(false) }
+    var showModerationAppeal by remember { mutableStateOf(false) }
+    var moderationAppealReason by remember { mutableStateOf("") }
     var offerPrice by remember(item.id) { mutableStateOf("") }
     var offerMessage by remember(item.id) { mutableStateOf("") }
     var sellerCard by remember(item.sellerId) { mutableStateOf<org.json.JSONObject?>(null) }
@@ -512,6 +515,16 @@ fun ProductDetailScreen(
                         )
                     }
                     if (isOwner) {
+                        if (item.moderationState != "approved") {
+                            Text(
+                                "This listing is paused for moderation. You can request a review.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            OutlinedButton(
+                                onClick = { showModerationAppeal = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Request a Moderation Review") }
+                        }
                         OutlinedButton(
                             onClick = { onConfirmAvailability(item) },
                             modifier = Modifier.fillMaxWidth()
@@ -615,6 +628,38 @@ fun ProductDetailScreen(
                 }
             }
         }
+    }
+
+    if (showModerationAppeal) {
+        AlertDialog(
+            onDismissRequest = { showModerationAppeal = false },
+            title = { Text("Request a Market Review") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Tell moderators why this listing should be reconsidered.")
+                    OutlinedTextField(
+                        value = moderationAppealReason,
+                        onValueChange = { moderationAppealReason = it.take(1000) },
+                        label = { Text("Review explanation") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRequestModerationReview(item, moderationAppealReason.trim())
+                        showModerationAppeal = false
+                        moderationAppealReason = ""
+                    },
+                    enabled = moderationAppealReason.trim().length >= 15
+                ) { Text("Submit for Review") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showModerationAppeal = false }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showOfferDialog) {
