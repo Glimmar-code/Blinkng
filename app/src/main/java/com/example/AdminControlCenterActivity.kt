@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -194,17 +195,53 @@ private fun AdminDashboardV3(
                     CircularProgressIndicator(color = BlinkPink)
                 }
             } else {
-                Row(Modifier.fillMaxSize()) {
-                    AdminSidebar(
-                        sections = sections.filter { it.showInSidebar },
-                        selectedKey = selectedKey,
-                        onSelect = { selectedKey = it }
-                    )
-                    Divider(
-                        modifier = Modifier.fillMaxHeight().width(1.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                val enabledSections = sections.filter { it.showInSidebar && it.enabled }.sortedBy { it.sortOrder }
+                val activeGroup = adminNavigationGroup(selectedKey)
+                val groups = listOf(
+                    "Overview", "People & access", "Content", "Safety", "Messaging",
+                    "Coins & commerce", "Campus & connect", "System & insights"
+                ).filter { group -> enabledSections.any { adminNavigationGroup(it.key) == group } || group == "Overview" }
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        groups.forEach { group ->
+                            FilterChip(
+                                selected = activeGroup == group,
+                                onClick = {
+                                    selectedKey = if (group == "Overview") "dashboard"
+                                    else enabledSections.firstOrNull { adminNavigationGroup(it.key) == group }?.key ?: "dashboard"
+                                },
+                                label = { Text(group, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                    val groupSections = enabledSections.filter { adminNavigationGroup(it.key) == activeGroup }
+                    if (groupSections.size > 1) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            groupSections.forEach { section ->
+                                FilterChip(
+                                    selected = selectedKey == section.key,
+                                    onClick = { selectedKey = section.key },
+                                    label = {
+                                        Text(
+                                            if (section.featureCount > 0) "${section.title} (${section.featureCount})"
+                                            else section.title,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
                         val selected = sections.firstOrNull { it.key == selectedKey }
                         if (selectedKey == "dashboard") {
                             AdminOverviewV3(service, capability, sections) { status = it }
@@ -244,46 +281,18 @@ private fun AdminDashboardV3(
     }
 }
 
-@Composable
-private fun AdminSidebar(
-    sections: List<AdminSection>,
-    selectedKey: String,
-    onSelect: (String) -> Unit
-) {
-    LazyColumn(
-        Modifier.width(122.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surface),
-        contentPadding = PaddingValues(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        items(sections, key = { it.key }) { section ->
-            val selected = section.key == selectedKey
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 5.dp)
-                    .clickable { onSelect(section.key) },
-                color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                    Text(
-                        section.title,
-                        fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.LightGray,
-                        maxLines = 2
-                    )
-                    if (section.featureCount > 0) {
-                        Text(
-                            "${section.featureCount} tools",
-                            fontSize = 8.sp,
-                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .7f) else Color.Gray
-                        )
-                    }
-                }
-            }
-        }
-    }
+// Group by task rather than squeezing dozens of admin sections into a 122dp sidebar.
+private fun adminNavigationGroup(key: String): String = when (key) {
+    "dashboard" -> "Overview"
+    "users", "accounts", "profiles", "sessions_devices", "universities",
+    "verification", "admins", "roles_permissions" -> "People & access"
+    "posts", "reels", "stories", "comments", "scheduled_content", "engagement" -> "Content"
+    "reports", "moderation_queue", "support_appeals", "safety_restrictions" -> "Safety"
+    "messages", "conversations", "notifications", "announcements" -> "Messaging"
+    "coins_balances", "points_rewards", "transactions", "marketplace", "orders_sellers" -> "Coins & commerce"
+    "connect_hub", "housing", "mentorship", "reading_mate", "study_circles",
+    "games", "leaderboards" -> "Campus & connect"
+    else -> "System & insights"
 }
 
 @Composable
