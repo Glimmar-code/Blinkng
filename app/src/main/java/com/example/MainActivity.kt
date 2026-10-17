@@ -1831,8 +1831,11 @@ fun MainAppContent(
         ) {
             BecomeSellerScreen(
                 onBack = { viewModel.openBecomeSeller(false) },
-                onSuccess = { storeName, phone, whatsapp, state, city, university ->
-                    viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city, university)
+                onSuccess = { storeName, phone, whatsapp, state, city, university, sellerKind, description, category, delivery, pickup ->
+                    viewModel.activateSellerAccount(
+                        storeName, phone, whatsapp, state, city, university,
+                        sellerKind, description, category, delivery, pickup
+                    )
                 },
                 initialStoreName = uiState.myProfile.sellerStoreName,
                 initialPhone = uiState.myProfile.phone.value,
