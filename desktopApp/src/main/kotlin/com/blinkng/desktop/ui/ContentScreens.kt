@@ -1169,6 +1169,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerDelivery by remember { mutableStateOf(false) }
     var sellerPickup by remember { mutableStateOf(true) }
     var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var marketOffers by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var marketOfferAmounts by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
+    var marketOfferError by remember { mutableStateOf<String?>(null) }
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var marketImagePath by remember { mutableStateOf("") }
@@ -1192,6 +1195,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     LaunchedEffect(state.client) {
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
         if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
+        marketOffers = runCatching { state.client.fetchMarketOffers() }.getOrDefault(emptyList())
     }
 
     LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
@@ -1292,6 +1296,64 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (marketOffers.isNotEmpty()) {
+            item {
+                Surface(shape=RoundedCornerShape(16.dp),tonalElevation=1.dp) {
+                    Column(modifier=Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("My Private Market Offers",fontWeight=FontWeight.Bold)
+                        Text("Accepting an offer does not collect payment or guarantee a sale.")
+                        marketOfferError?.let { InlineError(it) }
+                        marketOffers.take(15).forEach { offer ->
+                            val offerId=offer.optString("id")
+                            val seller=offer.optString("seller_id")==state.profile?.id
+                            val status=offer.optString("status")
+                            Text("Offer ₦${offer.optLong("proposed_price")} · $status",fontWeight=FontWeight.SemiBold)
+                            if (status in setOf("offered","countered")) {
+                                if (seller) {
+                                    OutlinedTextField(
+                                        value=marketOfferAmounts[offerId].orEmpty(),
+                                        onValueChange={v->marketOfferAmounts=marketOfferAmounts+(offerId to v.filter(Char::isDigit).take(12))},
+                                        label={Text("Counter price ₦")},singleLine=true
+                                    )
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    if (seller || status=="countered") {
+                                        TextButton(onClick={
+                                            scope.launch {
+                                                runCatching { state.client.respondMarketOffer(offerId,"accepted") }
+                                                    .onFailure { marketOfferError=it.message }
+                                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                            }
+                                        }) { Text("Accept") }
+                                    }
+                                    if (seller) {
+                                        TextButton(onClick={
+                                            scope.launch {
+                                                val amount=marketOfferAmounts[offerId]?.toLongOrNull()
+                                                if (amount==null || amount<1) marketOfferError="Enter a valid counter price."
+                                                else runCatching { state.client.respondMarketOffer(offerId,"countered",amount) }
+                                                    .onFailure { marketOfferError=it.message }
+                                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                            }
+                                        }) { Text("Counter") }
+                                    }
+                                    TextButton(onClick={
+                                        scope.launch {
+                                            runCatching { state.client.respondMarketOffer(
+                                                offerId,if(seller) "declined" else "cancelled") }
+                                                .onFailure { marketOfferError=it.message }
+                                            marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                        }
+                                    }) { Text(if(seller) "Decline" else "Cancel") }
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+
         if (sellerReady) {
             item {
                 Surface(shape=RoundedCornerShape(14.dp),tonalElevation=1.dp) {
@@ -1463,6 +1525,26 @@ fun MarketplaceScreen(state: DesktopAppState) {
                     VerifiedName(market.sellerName, market.sellerVerified)
                     Text("${market.university} • ${market.location} • ${market.condition}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (market.isFeatured) Text("Featured", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (!market.isSold && market.sellerId != state.profile?.id && market.sellerId != null) {
+                        OutlinedTextField(
+                            value=marketOfferAmounts[market.id].orEmpty(),
+                            onValueChange={v->marketOfferAmounts=marketOfferAmounts+(market.id to v.filter(Char::isDigit).take(12))},
+                            label={Text("Offer in naira")},singleLine=true
+                        )
+                        OutlinedButton(onClick={
+                            scope.launch {
+                                val amount=marketOfferAmounts[market.id]?.toLongOrNull() ?: 0L
+                                runCatching { state.client.makeMarketOffer(market.id,amount,"Private buyer offer") }
+                                    .onFailure { marketOfferError=it.message }
+                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                            }
+                        },enabled=(marketOfferAmounts[market.id]?.toLongOrNull() ?: 0L)>0L) {
+                            Text("Make Private Offer")
+                        }
+                    }
+                    if (!market.videoUrl.isNullOrBlank()) {
+                        Text("Product video available",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
