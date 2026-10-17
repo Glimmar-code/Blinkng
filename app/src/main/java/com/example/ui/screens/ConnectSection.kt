@@ -125,6 +125,7 @@ fun ConnectSection(
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isProfilesLoading: Boolean = false,
     isLiveDataAvailable: Boolean = true,
     activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
@@ -596,7 +597,7 @@ fun ConnectSection(
                             }
 
                             if (visible.isEmpty()) {
-                                if (isConnectHubLoading && liveProfiles.isEmpty() &&
+                                if ((isConnectHubLoading || isProfilesLoading) && liveProfiles.isEmpty() &&
                                     query.isBlank() && filter == LivePeopleFilter.ALL
                                 ) {
                                     Column(
