@@ -9,6 +9,9 @@ const HEIGHT: float = 2.8
 const SPAWN_LOCAL: Vector3 = Vector3(0.0, 0.23, 1.25)
 const WALL_COLORS = [Color(0.80, 0.84, 0.85), Color(0.78, 0.70, 0.61), Color(0.55, 0.69, 0.75)]
 const FLOOR_COLORS = [Color(0.71, 0.61, 0.48), Color(0.46, 0.46, 0.48), Color(0.68, 0.59, 0.47)]
+const CEILING_COLORS = [Color(0.89, 0.89, 0.85), Color(0.67, 0.72, 0.80), Color(0.77, 0.69, 0.55)]
+const TV_COLORS = [Color(0.07, 0.09, 0.12), Color(0.18, 0.42, 0.62), Color(0.18, 0.43, 0.29)]
+const TV_LABELS = ["OFF", "NATURE", "CAMPUS BOARD"]
 const PLANT_SPOTS = [Vector3(3.0, 0.95, -2.5), Vector3(0.0, 0.25, -3.65), Vector3(3.2, 0.25, 2.6)]
 const PLANT_DEFAULT_X: int = 0
 const PLANT_DEFAULT_Z: int = 3
@@ -47,6 +50,9 @@ var movable_table: Node3D
 var movable_bed: Node3D
 var movable_wardrobe: Node3D
 var interior_light: OmniLight3D
+var ceiling_visuals: Array[MeshInstance3D] = []
+var tv_screen: MeshInstance3D
+var tv_caption: Label3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
 
@@ -87,6 +93,26 @@ func configure() -> void:
     _box(movable_wardrobe, Vector3(0, 1.2, 0), Vector3(0.65, 2.4, 1.45), Color(0.49, 0.40, 0.34))
     _box(self, Vector3(0.0, 1.8, -4.25), Vector3(2.1, 1.0, 0.05), Color(0.46, 0.68, 0.78))
     _box(self, Vector3(0.0, 1.8, -4.19), Vector3(0.08, 1.1, 0.06), Color(0.92, 0.92, 0.90))
+    # Only perimeter ceiling trim is modeled: a complete opaque ceiling
+    # would block the overhead mobile camera from seeing the room.
+    for edge in [
+        [Vector3(0, 2.72, -3.94), Vector3(7.7, 0.16, 0.45)],
+        [Vector3(0, 2.72, 3.94), Vector3(7.7, 0.16, 0.45)],
+        [Vector3(-3.94, 2.72, 0), Vector3(0.45, 0.16, 7.7)],
+        [Vector3(3.94, 2.72, 0), Vector3(0.45, 0.16, 7.7)]
+    ]:
+        ceiling_visuals.append(_box(self, edge[0], edge[1], CEILING_COLORS[0]))
+    # Fictional, static content only; no network streaming or external media.
+    tv_screen = _box(self, Vector3(1.80, 1.65, 4.00),
+        Vector3(1.45, 0.78, 0.10), TV_COLORS[0])
+    tv_caption = Label3D.new()
+    tv_caption.name = "TVCaption"
+    tv_caption.text = TV_LABELS[0]
+    tv_caption.font_size = 22
+    tv_caption.pixel_size = 0.009
+    tv_caption.position = Vector3(1.80, 1.65, 3.88)
+    tv_caption.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    add_child(tv_caption)
     _caption("YOUR SOLO STARTER ROOM", Vector3(0, 2.5, -3.9))
     _caption("BED", Vector3(0, 1.5, 0), 21, movable_bed)
     _caption("STUDY DESK", Vector3(2.3, 1.8, -2.5), 21)
@@ -108,6 +134,25 @@ func configure() -> void:
     desk_plant.position = PLANT_SPOTS[0]
     desk_plant.visible = false
     apply_decoration(0, 0, 0)
+
+
+## Open-roof ceiling trim can be recoloured without hiding gameplay.
+func apply_ceiling_style(style: int) -> bool:
+    if style < 0 or style >= CEILING_COLORS.size():
+        return false
+    for trim in ceiling_visuals:
+        _repaint(trim, CEILING_COLORS[style])
+    return true
+
+
+## Fictional three-position screen: dark, nature still, or campus notice.
+## Never downloads videos, opens links, or accrues rewards.
+func apply_tv_mode(mode: int) -> bool:
+    if mode < 0 or mode >= TV_COLORS.size() or tv_screen == null or tv_caption == null:
+        return false
+    _repaint(tv_screen, TV_COLORS[mode])
+    tv_caption.text = TV_LABELS[mode]
+    return true
 
 
 ## Three fixed-cost light options. This never spawns more real-time lights.
