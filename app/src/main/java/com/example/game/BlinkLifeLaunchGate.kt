@@ -92,7 +92,9 @@ object BlinkLifeLaunchGate {
                 val host = json.optString("host")
                 val port = json.optInt("port")
                 val ticket = json.optString("ticket")\n                val transport = json.optString("transport")
-                if (transport != "wss" || host.isBlank() || host.length > 253 ||\n                    host.any { it.isWhitespace() || it == '/' || it == '\\\\' || it == ':' } ||\n                    port !in 1024..65535 ||
+                if (transport != "wss" || host.isBlank() || host.length > 253 ||
+                    host.any { it.isWhitespace() || it == '/' || it == ':' } ||
+                    port !in 1024..65535 ||
                     ticket.length !in 110..240 || ticket.split('.').size != 4
                 ) null else JoinDetails(host, port, ticket)
             }
