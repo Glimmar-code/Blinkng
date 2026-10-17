@@ -122,6 +122,7 @@ def main() -> None:
         ], check=True, capture_output=True)
         data_dir = temp / "godot-data"
         data_dir.mkdir()
+        heartbeat = temp / "dedicated.health"
         env = os.environ.copy()
         env.update({
             "BLINK_LIFE_SERVER_PORT": str(port),
@@ -129,6 +130,7 @@ def main() -> None:
             "BLINK_LIFE_TLS_CERT_PATH": str(cert_path),
             "BLINK_LIFE_TLS_KEY_PATH": str(key_path),
             "BLINK_LIFE_TEST_CA_FILE": str(cert_path),
+            "BLINK_LIFE_HEALTH_FILE": str(heartbeat),
             "XDG_DATA_HOME": str(data_dir),
         })
         peers: list[Peer] = []
@@ -159,6 +161,19 @@ def main() -> None:
         try:
             server = make("server")
             ready(server, "ONLINE_SMOKE_SERVER_READY")
+            if not heartbeat.is_file() or heartbeat.read_text().strip() != "ready":
+                raise AssertionError("Dedicated host did not create its safe ready heartbeat")
+            # Independent WSS preflight, without sending user tickets or JWTs.
+            preflight = [
+                sys.executable, str(ROOT / "scripts/blink_life_staging_preflight.py"),
+                "--host", "localhost", "--port", str(port), "--loopback-only",
+            ]
+            subprocess.run(preflight + ["--cafile", str(cert_path)],
+                check=True, capture_output=True, text=True, timeout=8)
+            untrusted = subprocess.run(preflight,
+                capture_output=True, text=True, timeout=8)
+            if untrusted.returncode == 0:
+                raise AssertionError("Untrusted self-signed WSS host passed the preflight")
             a = make("owner", ACCOUNT_A)
             b = make("peer", ACCOUNT_B)
             out_a = finish(a)
@@ -185,13 +200,15 @@ def main() -> None:
             time.sleep(0.4)
             server2 = make("server")
             ready(server2, "ONLINE_SMOKE_SERVER_READY")
+            if not heartbeat.is_file() or heartbeat.read_text().strip() != "ready":
+                raise AssertionError("Restarted server did not restore its readiness heartbeat")
             reconnect = make("reconnect", ACCOUNT_A, restart_plot=home_a)
             finish(reconnect)
             print(
                 "PASS: verified encrypted WSS host, two independent authenticated "
                 "players, rejected invalid tickets and untrusted TLS certificates, "
                 "unique server-owned houses "
-                "and account home persistence after host restart."
+                "account home persistence after host restart, and TLS readiness probes."
             )
         except Exception:
             for peer in peers:
