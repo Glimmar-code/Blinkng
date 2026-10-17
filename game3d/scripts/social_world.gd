@@ -872,7 +872,7 @@ func _block_invitations(sender: int, target: int, block: bool) -> bool:
         if int(target_profile.get("visiting", -1)) == int(people[sender]["slot"]):
             target_profile["visiting"] = -1
             people[target] = target_profile
-            if multiplayer.is_server():
+            if is_online and multiplayer.is_server():
                 _teleport(target, -1, false)
         if cars.has(sender) and int(cars[sender]) == target:
             cars[sender] = -1
