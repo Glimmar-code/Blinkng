@@ -56,6 +56,8 @@ var home_tv_mode: int = 0
 var study_card: int = 0
 var study_answered: bool = false
 var study_correct: int = 0
+var home_resting: bool = false
+var home_meal_choice: int = -1
 var decor_undo: Array[Dictionary] = []
 var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
@@ -948,6 +950,9 @@ func _enter_solo_home() -> void:
     study_card = 0
     study_answered = false
     study_correct = 0
+    home_resting = false
+    home_meal_choice = -1
+    solo_room.call("set_resting", false)
     decor_undo.clear()
     decor_redo.clear()
     home_inside = true
@@ -963,6 +968,8 @@ func _exit_solo_home() -> void:
         return
     _close_quiz()
     _stop_touch_axis()
+    home_resting = false
+    home_meal_choice = -1
     home_inside = false
     player.global_position = home_return_position
     player.velocity = Vector3.ZERO
@@ -1014,6 +1021,9 @@ func _show_home_decor() -> void:
     var study := _new_button("Study desk • free quick practice")
     rows.add_child(study)
     study.pressed.connect(_show_study_panel)
+    var everyday := _new_button("Everyday home • bed rest & meals")
+    rows.add_child(everyday)
+    everyday.pressed.connect(_show_home_life_panel)
     var lighting := _new_button("Lighting: " + ["Warm", "Bright", "Dim"][home_light_mode])
     rows.add_child(lighting)
     lighting.pressed.connect(_cycle_home_light)
@@ -1269,6 +1279,75 @@ func _next_study_card() -> void:
     study_card = (study_card + 1) % STUDY_CARDS.size()
     study_answered = false
     _show_study_panel()
+
+
+## Small optional everyday-life interactions for the PRIVATE room only.
+## These are cosmetic session actions, with no game money, hunger meters
+## or account/server writes. Returning to the city clears this preview.
+func _show_home_life_panel() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Free home activities • optional & offline"
+    rows.add_child(heading)
+    var rest := _new_button("Get up from bed" if home_resting else "Relax on bed")
+    rows.add_child(rest)
+    rest.pressed.connect(_home_toggle_rest)
+    var note := Label.new()
+    note.text = "Resting is cosmetic. It never blocks play or requires a timer."
+    note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(note)
+    var heading_meal := Label.new()
+    heading_meal.text = "Kitchenette • choose a fictional meal"
+    rows.add_child(heading_meal)
+    for option in ["Jollof bowl", "Beans plate", "Fruit snack"]:
+        var meal := _new_button(option)
+        rows.add_child(meal)
+        meal.pressed.connect(_home_prepare_meal.bind(
+            ["Jollof bowl", "Beans plate", "Fruit snack"].find(option)))
+    var meal_feedback := Label.new()
+    meal_feedback.text = "Meal shown: " + (
+        ["Jollof bowl", "Beans plate", "Fruit snack"][home_meal_choice]
+        if home_meal_choice >= 0 else "None")
+    rows.add_child(meal_feedback)
+    var done := _new_button("Back to room controls")
+    rows.add_child(done)
+    done.pressed.connect(_show_home_decor)
+    hud_modal.show()
+
+
+func _home_toggle_rest() -> bool:
+    if not home_inside or solo_room == null:
+        return false
+    if social != null and bool(social.get("is_online")):
+        return false
+    home_resting = not home_resting
+    solo_room.call("set_resting", home_resting)
+    hud_status.text = "Relaxing at home." if home_resting else "You can keep exploring."
+    _show_home_life_panel()
+    return home_resting
+
+
+func _home_prepare_meal(selection: int) -> bool:
+    if not home_inside or solo_room == null:
+        return false
+    if social != null and bool(social.get("is_online")):
+        return false
+    if selection < 0 or selection > 2:
+        return false
+    if not bool(solo_room.call("show_meal", selection)):
+        return false
+    home_meal_choice = selection
+    hud_status.text = "Fictional meal preview ready. No cash or supplies required."
+    _show_home_life_panel()
+    return true
 
 
 func _home_move_plant(delta_x: int, delta_z: int) -> void:
