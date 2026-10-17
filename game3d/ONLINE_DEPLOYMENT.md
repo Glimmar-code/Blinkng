@@ -96,3 +96,21 @@ write protection, and no changes to regular BLINK app startup.
 Never enable unmoderated dedicated-world chat to simulate a complete
 launch. No real-money transactions, BLINK Coins or cashout are part of
 this milestone.
+
+## Permanent plot addressing: staging development update
+
+The Godot dedicated host no longer relies on current player join order
+to determine owned-house coordinates. A `home_slot` is allocated on a
+validated house purchase, uniquely reserved per account and stored in
+the local authoritative ledger. Old three-field owned-property records
+are migrated to stable plots and atomically saved before accepting
+game sessions. Purchases and furnishing updates preserve the slot;
+failing disk migration prevents the dedicated host starting, rather
+than resetting ownership or offering a fake default balance.
+
+The staging-only `game3d/sql/online_ledger_staging.sql` contract
+proposes a unique home plot ID for use after a real database migration.
+**Do not execute against production**. Run it only after careful
+staging review and build the missing server-to-Postgres adapter.
+Concurrent cross-instance assignments, staging migration reconciliation,
+disaster recovery and encrypted public connections remain incomplete.
