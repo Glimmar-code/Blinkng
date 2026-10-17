@@ -1,3 +1,10 @@
+## 2026-10-17 — BLINK Guide discovery phase 1 (Testlab only)
+
+- **Shared:** `BlinkDiscoveryPolicy` defines guide IDs, routes, deterministic order, safe eligibility and a three-per-session rate limit. The same catalog is compiled into Android and Windows.
+- **Android:** first-login/feature discovery dialog appears over the idle authenticated Home feed only. Completed tips and Skip Introduction persist in a per-account device preference; navigation routes use existing ViewModel actions. No remote announcements or push-message changes in this phase.
+- **Windows:** the shared catalog drives a matching desktop dialog with account-scoped local progress and native keyboard/mouse support. No Android-only functionality is silently promised.
+- **Release gate:** both Android and Windows builds, automated policy tests, accessibility/device UI checks, and Testlab/main divergence reconciliation. See `docs/blink-smart-discovery-rollout.md`.
+
 ## 2026-10-15 — Ad loader lifecycle repair (Testlab)
 
 - Android: bound rewarded loading to 30 seconds, reject stale callbacks, expire cached ads after 55 minutes, clear manager state on Activity destruction, and retry failed native placements at most twice with 30/60-second backoff. Preserve consent checks and SDK-owned video/click handling. Log native error domain/code/message/response for diagnosis.
