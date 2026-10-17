@@ -25,6 +25,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
 import com.example.ui.components.BlinkMark
+import com.example.ui.screens.BlinkAdminAnnouncementManagerScreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -114,9 +115,10 @@ private fun AdminDashboardV3(
     var status by remember { mutableStateOf<String?>(null) }
     var showHistory by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
+    var showAnnouncements by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
-    BackHandler(onBack = onExit)
+    BackHandler { if (showAnnouncements) showAnnouncements = false else onExit() }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -145,6 +147,9 @@ private fun AdminDashboardV3(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { showAnnouncements = true }) {
+                        Text("Announcements", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                     TextButton(onClick = { showGlobalSearch = true }) {
                         Text("Search", fontSize = 10.sp)
                     }
@@ -180,7 +185,13 @@ private fun AdminDashboardV3(
                 }
             }
 
-            if (loading && sections.isEmpty()) {
+            if (showAnnouncements) {
+                BlinkAdminAnnouncementManagerScreen(
+                    service = service,
+                    onBack = { showAnnouncements = false },
+                    onSent = { status = it; showAnnouncements = false },
+                )
+            } else if (loading && sections.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BlinkPink)
                 }
