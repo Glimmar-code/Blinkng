@@ -953,3 +953,9 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
 - **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
 - **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
+
+## 2026-10-17 — Android crash protection (Testlab; not released)
+
+- **Platform adapter exception:** PARITY-EXCEPTION: android-startup-crash-hardening-20261017 — Android Application startup (FCM, notifications, WorkManager, Telecom and device refresh-rate), low-memory Coil image cache, Activity stop lifecycle and Android sensor events are platform-specific and have no corresponding Android lifecycle or sensor API on Windows. Existing Windows account, messaging, cache, and startup contracts remain unchanged.
+- **Shared/backend behavior:** Supabase and Drops business rules have not changed; Android Drops now tolerates an empty policy action list without crashing. Windows must continue rejecting any action absent from the same shared policy. No synthetic rewards, user data or backend contracts were added.
+- **Validation required:** Android unit, lint, release compilation, runtime smoke, Windows build/parity, native crash testing on Android 15 and a real-device low-memory regression. Keep main unchanged until all relevant gates are verified.
