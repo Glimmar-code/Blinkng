@@ -1,3 +1,11 @@
+## 2026-10-17 — BLINK Smart Onboarding, Updates & Announcements (production-main port pending QA)
+
+- Shared guide, version policy, cached official-update policy and admin broadcast safety rules ported from verified Testlab work, preserving newer main UI and navigation.
+- Android: first login guide on idle Home, nonblocking latest **published** APK notice, official previously-delivered login announcements, Saved Updates in Notifications, and secure admin message composer under existing mobile-first admin menu.
+- Windows: guide, cached updates and admin message composer integrated into current Windows screens without reverting newer main changes.
+- Server delivery uses already-existing authenticated `admin_send_announcement` for immediate in-app campaigns. **New phone push/both and scheduled broadcasts are disabled**, not represented as working features; no Supabase schema or production data changed.
+- Gate: all main PR checks, signed Android release pipeline, production version metadata and website download validation, plus real-device tests. Never merge Testlab wholesale: 94 ahead and 857 behind at integration assessment.
+
 ## 2026-10-17 — Android five-tab navigation, loading placeholders and error copy (Testlab)
 
 - **PARITY-EXCEPTION: android-five-tab-compose-loading-20261017** — This change repairs native Jetpack Compose `HorizontalPager` / `FeedBottomBar` interactions, avoids redundant tab-state changes and broad mobile inbox refreshes, and adds Android Compose skeleton rendering for first-load Connect discovery. Android-only UI framework and performance details do not apply to Windows window/sidebar navigation.
@@ -968,6 +976,14 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - Newer atomic `navigateToPrimaryTab`, guarded inbox-entry loading, nontechnical error messages and Connect skeletons from current main are deliberately preserved during integration.
 - Android-specific Compose list/pager and Activity lifecycle are not directly applicable to Windows; the existing desktop navigation and backend data contract are unchanged.
 - Android/Windows quality, runtime and release checks must pass against this rebased commit before release.
+
+
+## 2026-10-17 — Android native admin workspace (mobile-specific access and readability)
+
+- **PARITY-EXCEPTION: android-admin-mobile-workspace-20261017** — The changed surfaces are the Android Jetpack Compose feed-toolbar admin shortcut, touch-friendly tool grouping, Android modal account picker, and Android font scaling. These are native phone UI adaptations, not a shared account, reward, feed, or marketplace feature; no Windows navigation or business rule is being removed or replaced.
+- **Security/back end:** Admin privileges continue to be decided by the existing authenticated Supabase capability/RPC and checked again by the admin activity and backend; this PR does not add an Android-only server endpoint or bypass role permissions.
+- **Windows status / limitation:** The Windows client does not currently offer a matching native admin-dashboard interface. This PR does **not** claim desktop feature parity or imply Android admin tools are available on Windows. A separate Windows admin interface with equivalent permission checks, section navigation and searchable user targeting is necessary if Windows admin access is required. Existing Windows flows remain unchanged.
+- **Verification:** Android instrumentation compilation, accessibility sizing, backend authorization checks, Windows build, and other repository merge gates must pass before main release.
 
 ## 2026-10-17 — Android crash protection (Testlab; not released)
 
