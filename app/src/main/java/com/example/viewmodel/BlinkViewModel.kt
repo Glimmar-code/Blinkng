@@ -6100,6 +6100,25 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun makeMarketOffer(item: MarketItem, price: Long, message: String) {
+        if (item.id.isBlank() || price <= 0L) return
+        viewModelScope.launch {
+            val created = supabaseService.makeMarketOffer(item.id, price, message)
+            showToast(if (created) "Your offer was sent privately to the seller."
+                else "Couldn't send this offer. Check that you have no other pending offer.")
+        }
+    }
+
+    fun confirmMarketAvailability(item: MarketItem) {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            val confirmed = supabaseService.confirmMarketAvailability(item.id)
+            showToast(if (confirmed) "Availability confirmed for another 30 days."
+                else "Couldn't renew availability. Check your seller verification.")
+            if (confirmed) refreshMarketItems()
+        }
+    }
+
     fun openProductDetail(item: MarketItem) {
         _uiState.value = _uiState.value.copy(viewingProduct = item)
         if (item.id.isBlank() || !_uiState.value.isOnline) return
