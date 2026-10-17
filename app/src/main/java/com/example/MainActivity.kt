@@ -908,6 +908,7 @@ fun MainAppContent(
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
+                        isProfilesLoading = uiState.isSyncingContent && uiState.profiles.isEmpty(),
                         connectHubActions = connectHubActions,
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
