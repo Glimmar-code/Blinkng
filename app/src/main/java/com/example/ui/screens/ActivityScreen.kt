@@ -30,6 +30,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.example.notification.BlinkOfflineAnnouncementCache
+import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,7 +61,8 @@ import kotlinx.coroutines.launch
 
 private enum class NotificationViewMode(val label: String) {
     ALL("All"),
-    UNREAD("Unread")
+    UNREAD("Unread"),
+    SAVED_UPDATES("Saved Updates")
 }
 
 private data class NotificationSection(
@@ -71,6 +75,7 @@ private data class NotificationSection(
 @Composable
 fun ActivityScreen(
     activities: List<ActivityItem>,
+    accountId: String = "",
     onBack: () -> Unit,
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit,
@@ -85,6 +90,13 @@ fun ActivityScreen(
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    var savedUpdates by remember(accountId) {
+        mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
+    }
+    LaunchedEffect(accountId, activities, isConnected) {
+        savedUpdates = BlinkOfflineAnnouncementCache.read(context, accountId)
+    }
 
     val profileService = remember { SupabaseService() }
     val announcementService = remember { AdminAnnouncementService() }
@@ -134,7 +146,7 @@ fun ActivityScreen(
     val filtered = remember(activities, actorProfiles, filter, viewMode, searchQuery) {
         activities.filter { item ->
             val categoryMatches = filter == NotificationFilter.ALL || resolvedNotificationCategory(item) == filter
-            val unreadMatches = viewMode == NotificationViewMode.ALL || item.isUnread
+            val unreadMatches = viewMode != NotificationViewMode.UNREAD || item.isUnread
             val query = searchQuery.trim().lowercase()
             val profile = actorProfiles[item.user]
             val searchable = buildString {
@@ -271,6 +283,11 @@ fun ActivityScreen(
             }
 
             when {
+                viewMode == NotificationViewMode.SAVED_UPDATES -> BlinkOfflineAnnouncementsPanel(
+                    announcements = savedUpdates,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
                 isLoading && activities.isEmpty() -> NotificationSkeletonList()
 
                 !errorMessage.isNullOrBlank() && activities.isEmpty() -> NotificationLoadError(

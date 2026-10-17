@@ -236,6 +236,25 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             SupabaseService().getCurrentUserId().orEmpty()
         }.getOrDefault("")
 
+        // Only persist official previews with an explicit matching recipient.
+        // Historical FCM packets without recipient IDs retain their old display
+        // behavior but must never contaminate another account's offline inbox.
+        if (
+            (type == BlinkNotificationType.ADMIN || type == BlinkNotificationType.SYSTEM) &&
+            currentUid.isNotBlank() &&
+            data["recipient_id"] == currentUid &&
+            notificationId.isNotBlank()
+        ) {
+            BlinkOfflineAnnouncementCache.record(
+                context = applicationContext,
+                userId = currentUid,
+                id = notificationId,
+                title = title,
+                message = body,
+                publishedAt = data["created_at"].orEmpty(),
+            )
+        }
+
         // Social/admin pushes can arrive from both realtime recovery and FCM. Claim their
         // server id before rendering so only one path can alert on this installation.
         if (type != BlinkNotificationType.MESSAGE && notificationId.isNotBlank()) {
