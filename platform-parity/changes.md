@@ -1,3 +1,10 @@
+## 2026-10-17 — Android five-tab navigation, loading placeholders and error copy (Testlab)
+
+- **PARITY-EXCEPTION: android-five-tab-compose-loading-20261017** — This change repairs native Jetpack Compose `HorizontalPager` / `FeedBottomBar` interactions, avoids redundant tab-state changes and broad mobile inbox refreshes, and adds Android Compose skeleton rendering for first-load Connect discovery. Android-only UI framework and performance details do not apply to Windows window/sidebar navigation.
+- **Windows equivalent:** The Windows desktop app retains its existing native desktop navigation, independently loaded authenticated message lists, loading feedback and search/discovery UI. This patch neither removes those features nor changes shared API contracts, user accounts, messages, search, ranking or data semantics.
+- **Customer-facing error copy:** Android error messages from network and backend exceptions are converted to nontechnical retry text. Desktop continues to use its own existing error copy and logs. No sensitive technical details or schema changes are deliberately exposed.
+- **Validation:** Android unit tests, instrumented test compilation, static Android lint, debug build, release smoke and runtime verification; Windows build/parity; manual five-tab swipe/tap tests, inbox under weak network, Connect placeholders, and verification that no raw developer text reaches users. Do not merge until the required checks pass.
+
 ## 2026-10-16 — Legacy dark-color cleanup, Android and Windows (Testlab)
 
 - **Per-screen dark backgrounds replaced:** Feed home, post cards, reels skeleton/disc, profile skeleton/avatar, admin sidebar/dialogs, verified panels, market-seller header, seller confirmation, message action menus and story media fallback now consume semantic colors or shared platform-neutral design tokens.
