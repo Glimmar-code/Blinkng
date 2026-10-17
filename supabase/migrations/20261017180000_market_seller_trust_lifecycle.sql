@@ -34,6 +34,28 @@ CREATE TABLE IF NOT EXISTS private.market_seller_approvals (
 );
 REVOKE ALL ON private.market_seller_approvals FROM PUBLIC,anon,authenticated;
 
+-- Merchant approval is independent of the blue/gold profile badge.
+-- A SECURITY DEFINER predicate lets RLS check this private moderation record
+-- without exposing applicant data to other users.
+CREATE OR REPLACE FUNCTION public.market_seller_has_approval(p_user uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=public,private,pg_temp
+AS $merchant_eligible$
+  SELECT EXISTS(
+    SELECT 1 FROM private.market_seller_approvals a
+    JOIN public.profiles p ON p.id=a.user_id
+    WHERE a.user_id=p_user AND a.decision='approved'
+      AND p.is_seller_active=true AND p.seller_status='active'
+      AND p.is_verified=true AND upper(coalesce(p.verification_badge,'NONE')) IN ('BLUE','GOLD')
+      AND (p.verification_expires_at>now()
+        OR (upper(coalesce(p.verification_badge,'NONE'))='GOLD'
+          AND p.verification_expires_at IS NULL))
+  );
+$merchant_eligible$;
+REVOKE ALL ON FUNCTION public.market_seller_has_approval(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.market_seller_has_approval(uuid) TO authenticated;
+
+
 CREATE OR REPLACE FUNCTION public.complete_market_seller_profile(
   p_kind text, p_description text, p_categories text[],
   p_delivery boolean, p_pickup boolean, p_logo_url text DEFAULT NULL
