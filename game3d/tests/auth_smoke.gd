@@ -114,6 +114,31 @@ func run_test() -> void:
     check(bool(restored.get("house_owned", false)), "Virtual house ownership survives restart")
     check(int(restored.get("furniture", -1)) == 2, "Furniture survives restart")
     check(int(restored.get("cash", -1)) == 100, "Fictional balance survives restart")
+    var fixed_slot: int = int(restored.get("home_slot", -1))
+    check(fixed_slot >= 0, "Purchased server house receives a real durable plot")
+    check(int(default["home_slot"]) == -1,
+        "Account does not reserve land before purchasing a home")
+    var another_uid: String = "87654321-4321-4321-8321-abcdefabcdef"
+    var another: Dictionary = reopened.call("get_profile", another_uid)
+    check(int(another["home_slot"]) == -1,
+        "Another account initially owns no house or plot")
+    another["house_owned"] = true
+    another["cash"] = 100
+    check(bool(reopened.call("update_profile", another_uid, another)),
+        "Second account may purchase a different dedicated property")
+    var another_slot: int = int(reopened.call("get_profile", another_uid)["home_slot"])
+    check(another_slot >= 0 and another_slot != fixed_slot,
+        "Two owners must never share a physical virtual home position")
+    check(not bool(reopened.call("update_profile", another_uid, {
+        "cash": 10, "house_owned": true, "furniture": 0, "home_slot": fixed_slot
+    })), "An account cannot overwrite another player's plot")
+    var plot_restart: RefCounted = state_script.new()
+    plot_restart.set("save_file", temp_path)
+    plot_restart.set("temp_file", temp_swap)
+    plot_restart.call("load_from_disk")
+    check(int(plot_restart.call("get_profile", uid)["home_slot"]) == fixed_slot and
+        int(plot_restart.call("get_profile", another_uid)["home_slot"]) == another_slot,
+        "Both purchased properties keep their address across game server restart")
     check(not bool(reopened.call("update_profile", uid,
         {"cash": -2, "house_owned": true, "furniture": 2})),
         "Negative fictional server cash cannot enter the trusted ledger")
@@ -194,9 +219,21 @@ func run_test() -> void:
     imported.call("load_from_disk")
     check(int(imported.call("get_profile", uid)["cash"]) == 50,
         "Original bare-dictionary server home saves still load")
+    var migrated_slot: int = int(imported.call("get_profile", uid)["home_slot"])
+    check(migrated_slot >= 0,
+        "Already-owned legacy homes are migrated to a permanent plot")
+    var migrated_check: RefCounted = state_script.new()
+    migrated_check.set("save_file", temp_path)
+    migrated_check.set("temp_file", temp_swap)
+    migrated_check.set("backup_file", backup_path)
+    migrated_check.call("load_from_disk")
+    check(int(migrated_check.call("get_profile", uid)["home_slot"]) == migrated_slot,
+        "Legacy home plot migration is durable before any gameplay transactions")
     check(bool(imported.call("update_profile", uid,
         {"cash": 40, "house_owned": true, "furniture": 1})),
         "Legacy ledger transparently upgrades when it next saves")
+    check(int(imported.call("get_profile", uid)["home_slot"]) == migrated_slot,
+        "Old trusted game operations cannot accidentally move a home")
     # No backup must mean corrupted primary cannot be silently reset.
     DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
     var poisoned_profiles: Dictionary = {}
