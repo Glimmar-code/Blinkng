@@ -46,7 +46,7 @@ static func _int_value(value: Variant, from_json: bool) -> bool:
 
 
 static func normalize_profile(value: Variant, from_json: bool = false) -> Dictionary:
-    if not (value is Dictionary):
+    if not (value is Dictionary) or value.size() != 3:
         return {}
     for key in value.keys():
         if not ["cash", "house_owned", "furniture"].has(str(key)):
