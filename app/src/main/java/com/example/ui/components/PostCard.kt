@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkPostFormat
 
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -204,17 +205,17 @@ fun PostCard(
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
-        targetValue = if (post.isLiked) socialBlue else secondaryText,
+        targetValue = if (post.isLiked && xFeedStyle) primaryText else if (post.isLiked) socialBlue else secondaryText,
         animationSpec = tween(150),
         label = "simplePostLikeTint"
     )
     val repostTint by animateColorAsState(
-        targetValue = if (post.isRepostedByMe) socialBlue else secondaryText,
+        targetValue = if (post.isRepostedByMe && xFeedStyle) primaryText else if (post.isRepostedByMe) socialBlue else secondaryText,
         animationSpec = tween(150),
         label = "simplePostRepostTint"
     )
     val savedTint by animateColorAsState(
-        targetValue = if (post.isBookmarked) socialBlue else secondaryText,
+        targetValue = if (post.isBookmarked && xFeedStyle) primaryText else if (post.isBookmarked) socialBlue else secondaryText,
         animationSpec = tween(150),
         label = "simplePostSavedTint"
     )
@@ -230,14 +231,14 @@ fun PostCard(
             .then(exposureModifier)
             .fillMaxWidth()
             .padding(
-                horizontal = if (xFeedStyle) 10.dp else 12.dp,
-                vertical = 6.dp
+                horizontal = if (xFeedStyle) 0.dp else 12.dp,
+                vertical = if (xFeedStyle) 0.dp else 6.dp
             ),
-        shape = RoundedCornerShape(if (xFeedStyle) 18.dp else 16.dp),
+        shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = if (xFeedStyle && !isDark) 3.dp else 0.dp,
-        border = BorderStroke(1.dp, dividerColor.copy(alpha = if (xFeedStyle && isDark) 0.76f else 0.52f))
+        shadowElevation = 0.dp,
+        border = BorderStroke(if (xFeedStyle) 0.5.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.72f else 0.52f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -285,6 +286,125 @@ fun PostCard(
                 }
             }
 
+            // Full-width compact X-like identity strip: no store crown or VIP chrome.
+            if (xFeedStyle) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 10.dp, top = 8.dp, end = 4.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val compactAvatar = if (hasActiveStory) {
+                        Modifier.size(40.dp)
+                            .background(primaryText, CircleShape)
+                            .padding(2.dp)
+                            .background(surfaceColor, CircleShape)
+                            .padding(2.dp)
+                    } else Modifier.size(40.dp)
+                    Box(modifier = Modifier.size(43.dp)) {
+                        AsyncImage(
+                            model = authorAvatar,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
+                            contentDescription = "$resolvedAuthorName profile picture",
+                            contentScale = ContentScale.Crop,
+                            modifier = compactAvatar.align(Alignment.TopStart).clip(CircleShape)
+                                .clickable(role = Role.Button) { onProfileClick(profileTarget) }
+                        )
+                        if (authorOnline == true) {
+                            Box(
+                                modifier = Modifier.size(12.dp).align(Alignment.BottomEnd)
+                                    .background(Color(BlinkDesignTokens.Semantic.Success), CircleShape)
+                                    .border(2.dp, surfaceColor, CircleShape)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = resolvedAuthorName,
+                            color = primaryText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                                .clickable { onProfileClick(profileTarget) }
+                        )
+                        if (authorVerificationBadge != VerificationBadge.NONE) {
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Verified account",
+                                tint = primaryText,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        if (resolvedAuthorUsername.isNotBlank()) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "@$resolvedAuthorUsername",
+                                color = secondaryText,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                                    .clickable { onProfileClick(profileTarget) }
+                            )
+                        }
+                        if (post.timeAgo.isNotBlank()) {
+                            Text(
+                                text = " · ${BlinkPostFormat.age(post.timeAgo)}",
+                                color = secondaryText,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    if (!isAuthor && authorProfileId.isNotBlank()) {
+                        Spacer(Modifier.width(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = surfaceColor,
+                            border = BorderStroke(1.dp, dividerColor),
+                            modifier = Modifier
+                                .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
+                                    if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
+                                    else onFollowAuthor(authorProfileId)
+                                }
+                        ) {
+                            Box(
+                                modifier = Modifier.heightIn(min = 40.dp)
+                                    .padding(horizontal = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
+                                    color = primaryText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = onOptionsClick, modifier = Modifier.size(35.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "Post options",
+                            tint = primaryText,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                if (post.audience.isNotBlank() && !post.audience.equals("Everyone", ignoreCase = true)) {
+                    Text(
+                        text = "Audience: ${post.audience}",
+                        color = secondaryText,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 59.dp, bottom = 4.dp)
+                    )
+                }
+            } else {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -371,11 +491,7 @@ fun PostCard(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
-                        BlinkVipMarkForUsername(
-                            username = resolvedAuthorUsername,
-                            knownVip = if (post.authorIsVip) true else null,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
+
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -490,6 +606,8 @@ fun PostCard(
                         modifier = Modifier.size(23.dp)
                     )
                 }
+            }
+
             }
 
             if (post.text.isNotBlank()) {
@@ -647,18 +765,18 @@ fun PostCard(
             }
 
             if (xFeedStyle) {
-                // Stable, compact priority: views -> likes -> comments -> reposts
+                // Stable, compact priority: views -> likes -> reposts -> comments
                 // -> save -> share. Counter updates never re-order the row.
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     // Redmi-class phones have six actions competing for a narrow
                     // metric rail. Always prioritize visible views and likes; show
                     // extra counts only where each touch target has enough width.
                     val showCoreCounts = maxWidth >= 300.dp
-                    val showSecondaryCounts = maxWidth >= 350.dp
+                    val showSecondaryCounts = maxWidth >= 330.dp
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 52.dp, end = 5.dp, bottom = 2.dp),
+                            .padding(start = 4.dp, end = 4.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -685,14 +803,6 @@ fun PostCard(
                                 onLike()
                             }
                         )
-                        PremiumPostAction(
-                            icon = Icons.Default.ChatBubbleOutline,
-                            value = if (showSecondaryCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
-                            tint = secondaryText,
-                            description = if (post.allowComments) "${post.commentsCount} comments" else "Comments disabled",
-                            enabled = post.allowComments,
-                            onClick = onComment
-                        )
                         // Keep the six-icon rail stable even on the author's own
                         // posts. Reposting oneself remains disabled by policy.
                         PremiumPostAction(
@@ -704,6 +814,14 @@ fun PostCard(
                                 else "Repost · ${post.repostsCount} reposts",
                             enabled = !isAuthor && onRepost != null,
                             onClick = { onRepost?.invoke() }
+                        )
+                        PremiumPostAction(
+                            icon = Icons.Default.ChatBubbleOutline,
+                            value = if (showSecondaryCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
+                            tint = secondaryText,
+                            description = if (post.allowComments) "${post.commentsCount} comments" else "Comments disabled",
+                            enabled = post.allowComments,
+                            onClick = onComment
                         )
                         PremiumPostAction(
                             icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
