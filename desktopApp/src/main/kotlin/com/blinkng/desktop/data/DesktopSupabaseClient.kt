@@ -1332,21 +1332,11 @@ class DesktopSupabaseClient(
     }
 
     suspend fun canPublishMarketItems(): Boolean = withContext(Dispatchers.IO) {
-        val me = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/profiles?select=is_seller_active,seller_status,is_verified,verification_badge,verification_expires_at&id=eq.${encode(me)}&limit=1"
-        )
-        val record = rows.optJSONObject(0) ?: return@withContext false
-        val expiresAt = record.optString("verification_expires_at")
-        val expiryValid = runCatching {
-            java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now())
-        }.getOrDefault(false)
-        record.optBoolean("is_seller_active") &&
-            record.optString("seller_status") == "active" &&
-            record.optBoolean("is_verified") &&
-            record.optString("verification_badge").uppercase() in listOf("BLUE","GOLD") &&
-            (expiryValid || (record.optString("verification_badge").uppercase() == "GOLD" &&
-                (expiresAt.isBlank() || expiresAt == "null")))
+        val myId = requireSession().userId
+        rpcBoolean(postObject(
+            "/rest/v1/rpc/market_seller_has_approval",
+            JSONObject().put("p_user", myId)
+        ))
     }
 
     suspend fun registerVerifiedMarketSeller(
