@@ -21,7 +21,7 @@ class ShareLinkContractTest {
     fun `every post uses the canonical public Blink URL and routes back to that post`() {
         val link = ShareLinkManager.generateShareLink(ShareContentType.POST, postId)
 
-        assertEquals("https://www.blink.com.ng/post/$postId", link)
+        assertEquals("https://blink.com.ng/post/$postId", link)
         assertEquals(
             AppDeepLink(ShareContentType.POST, postId),
             DeepLinkRouter.parse(Uri.parse(link))
@@ -32,7 +32,7 @@ class ShareLinkContractTest {
     fun `every reel uses the canonical public Blink URL and routes back to that reel`() {
         val link = ShareLinkManager.generateShareLink(ShareContentType.REEL, reelId)
 
-        assertEquals("https://www.blink.com.ng/reel/$reelId", link)
+        assertEquals("https://blink.com.ng/reel/$reelId", link)
         assertEquals(
             AppDeepLink(ShareContentType.REEL, reelId),
             DeepLinkRouter.parse(Uri.parse(link))
@@ -44,7 +44,7 @@ class ShareLinkContractTest {
         val marketId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
         val link = ShareLinkManager.generateShareLink(ShareContentType.MARKET, marketId)
 
-        assertEquals("https://www.blink.com.ng/market/$marketId", link)
+        assertEquals("https://blink.com.ng/market/$marketId", link)
         assertEquals(
             AppDeepLink(ShareContentType.MARKET, marketId),
             DeepLinkRouter.parse(Uri.parse(link))
@@ -54,7 +54,11 @@ class ShareLinkContractTest {
 
     @Test
     fun `canonical share base remains the production Blink domain`() {
-        assertEquals("https://www.blink.com.ng", BuildConfig.SHARE_BASE_URL)
+        assertEquals("https://blink.com.ng", BuildConfig.SHARE_BASE_URL)
+        assertEquals(
+            AppDeepLink(ShareContentType.POST, postId),
+            DeepLinkRouter.parse(Uri.parse("https://www.blink.com.ng/post/$postId"))
+        )
         assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://post/$postId")))
         assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://reel/$reelId")))
     }

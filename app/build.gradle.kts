@@ -120,7 +120,7 @@ val resolvedShareBaseUrl = configuredShareBaseUrl
   ?.trim()
   ?.trimEnd('/')
   ?.takeIf { it.startsWith("https://") }
-  ?: "https://www.blink.com.ng"
+  ?: "https://blink.com.ng"
 val resolvedShareUri = URI(resolvedShareBaseUrl)
 val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
