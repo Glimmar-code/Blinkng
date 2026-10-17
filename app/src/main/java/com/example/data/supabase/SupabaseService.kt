@@ -4239,6 +4239,7 @@ suspend fun uploadPostMedia(
             sellerId = obj.optString("seller_id", ""),
             videoUrl = obj.cleanString("video_url"),
             mediaDigest = obj.cleanString("media_digest"),
+            moderationState = obj.cleanString("moderation_state","approved"),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,
@@ -5268,6 +5269,23 @@ suspend fun uploadPostMedia(
             }
         }.getOrDefault(false)
     }
+
+    suspend fun requestMarketModerationReview(itemId: String, reason: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId) || reason.trim().length !in 15..1000) {
+                return@withContext false
+            }
+            runCatching {
+                val payload = JSONObject()
+                    .put("p_item", itemId)
+                    .put("p_post", JSONObject.NULL)
+                    .put("p_reason", reason.trim())
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/request_market_content_review",true)
+                        .post(payload.toString().toRequestBody(jsonMediaType)).build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
 
     suspend fun getMarketSellerDashboard(): JSONObject? = withContext(Dispatchers.IO) {
         runCatching {
