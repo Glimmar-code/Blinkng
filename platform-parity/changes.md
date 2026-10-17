@@ -960,3 +960,11 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
 - **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
 - **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
+
+## 2026-10-17 — Scoped foreground refresh and list continuity (Testlab candidate)
+
+- Shared monotonic refresh-age policy suppresses repeated foreground network requests without changing backend semantics.
+- Android resume refreshes only the active Feed, Reels, Connect, Market, Messages or Leaderboard screen, preserving cached UI while requests complete. Market filters and scrolling, Connect scroll and Messages scroll are retained across navigation.
+- Newer atomic `navigateToPrimaryTab`, guarded inbox-entry loading, nontechnical error messages and Connect skeletons from current main are deliberately preserved during integration.
+- Android-specific Compose list/pager and Activity lifecycle are not directly applicable to Windows; the existing desktop navigation and backend data contract are unchanged.
+- Android/Windows quality, runtime and release checks must pass against this rebased commit before release.
