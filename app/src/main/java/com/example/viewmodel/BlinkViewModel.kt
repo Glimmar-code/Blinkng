@@ -6100,8 +6100,10 @@ private suspend fun restoreSupabaseSession() {
                 sellerUsername = p.username,
                 sellerAvatar = p.avatarUrl,
                 sellerName = p.fullName.ifBlank { p.username },
-                sellerPhone = p.phone.value,
-                sellerWhatsapp = p.whatsapp.value,
+                // Never publish private profile or enrollment contact details.
+                // Buyers can contact the seller through the in-app DM.
+                sellerPhone = "",
+                sellerWhatsapp = "",
                 sellerIsVerified = p.verificationBadge != VerificationBadge.NONE,
                 verificationBadge = p.verificationBadge,
                 university = p.university,
