@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.kNigerianStatesList
+import com.example.data.models.kNigerianUniversitiesList
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
 import com.blinkng.shared.BlinkDesignTokens
@@ -33,11 +34,12 @@ import com.blinkng.shared.BlinkDesignTokens
 @Composable
 fun BecomeSellerScreen(
     onBack: () -> Unit,
-    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String) -> Unit,
+    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String) -> Unit,
     initialStoreName: String = "",
     initialPhone: String = "",
     initialWhatsapp: String = "",
-    cashCheckoutEnabled: Boolean = false,
+    isVerified: Boolean = false,
+    initialUniversity: String = "",
     isSubmitting: Boolean = false,
     isDark: Boolean
 ) {
@@ -46,6 +48,8 @@ fun BecomeSellerScreen(
     var whatsapp by remember(initialWhatsapp) { mutableStateOf(initialWhatsapp) }
     var selectedState by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
+    var university by remember(initialUniversity) { mutableStateOf(initialUniversity) }
+    var universityDropdownOpen by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var stateDropdownOpen by remember { mutableStateOf(false) }
 
@@ -56,8 +60,9 @@ fun BecomeSellerScreen(
         whatsappDigits.length in 10..15 &&
         selectedState.isNotBlank() &&
         city.trim().length >= 2 &&
+        university.trim().length >= 3 &&
         agreedToTerms
-    val canSubmit = detailsValid && cashCheckoutEnabled && !isSubmitting
+    val canSubmit = detailsValid && isVerified && !isSubmitting
 
     Scaffold(
         topBar = {
@@ -126,35 +131,23 @@ fun BecomeSellerScreen(
 
             item {
                 Surface(
-                    color = if (cashCheckoutEnabled) BlinkGold.copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            if (cashCheckoutEnabled) Icons.Default.Lock else Icons.Default.Verified,
-                            contentDescription = null,
-                            tint = if (cashCheckoutEnabled) BlinkGold else MaterialTheme.colorScheme.error
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            if (isVerified) "Verified account • Free seller registration"
+                            else "An active blue or gold verification badge is required",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
                         )
-                        Column {
-                            Text(
-                                if (cashCheckoutEnabled) "Secure Paystack activation • ₦5,000" else "Seller payments are not live yet",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                if (cashCheckoutEnabled)
-                                    "Activation happens only after BLINK verifies the Paystack transaction on the server."
-                                else
-                                    "BLINK will not activate a paid seller account until secure cash checkout is enabled on the backend.",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            if (isVerified) "No seller activation fee. Complete your campus details to start listing."
+                            else "Get verified or renew an expired badge before enrolling as a seller.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -242,6 +235,37 @@ fun BecomeSellerScreen(
             }
 
             item {
+                ExposedDropdownMenuBox(
+                    expanded = universityDropdownOpen,
+                    onExpandedChange = { universityDropdownOpen = !universityDropdownOpen }
+                ) {
+                    OutlinedTextField(
+                        value = university,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("University") },
+                        placeholder = { Text("Select your university") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = universityDropdownOpen,
+                        onDismissRequest = { universityDropdownOpen = false }
+                    ) {
+                        kNigerianUniversitiesList.forEach { entry ->
+                            DropdownMenuItem(
+                                text = { Text(entry) },
+                                onClick = {
+                                    university = entry
+                                    universityDropdownOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
                 OutlinedTextField(
                     value = city,
                     onValueChange = { if (it.length <= 120) city = it },
@@ -305,7 +329,8 @@ fun BecomeSellerScreen(
                             phone.trim(),
                             whatsapp.trim(),
                             selectedState,
-                            city.trim()
+                            city.trim(),
+                            university.trim()
                         )
                     },
                     enabled = canSubmit,
@@ -317,7 +342,7 @@ fun BecomeSellerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
-                        .testTag("become_seller_pay_btn")
+                        .testTag("become_seller_register_btn")
                 ) {
                     if (isSubmitting) {
                         CircularProgressIndicator(
@@ -326,10 +351,10 @@ fun BecomeSellerScreen(
                             color = Color.Black
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Starting secure checkout…", fontWeight = FontWeight.Black)
+                        Text("Registering seller…", fontWeight = FontWeight.Black)
                     } else {
                         Text(
-                            if (cashCheckoutEnabled) "Pay ₦5,000 securely with Paystack" else "Paystack activation unavailable",
+                            if (isVerified) "Register as Seller — Free" else "Verify Your Account to Continue",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black
                         )

@@ -80,6 +80,14 @@ try {
   await db.exec(marketHardeningSql);
   console.log('PASS reapply full Market hardening migration');
 
+  const marketTrustSql = fs.readFileSync(
+    new URL('../migrations/20261017153000_market_verified_sellers_and_listing_limits.sql', import.meta.url), 'utf8');
+  await db.exec(marketTrustSql);
+  console.log('PASS full verified-seller Market migration against disposable fixture');
+  await db.exec(marketTrustSql);
+  console.log('PASS reapply verified-seller Market migration');
+  await (await import('./market-seller-trust-tests.mjs')).marketSellerTrustTests(db);
+
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);
   process.exitCode = 1;

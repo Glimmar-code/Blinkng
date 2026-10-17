@@ -4347,6 +4347,7 @@ suspend fun uploadPostMedia(
             relationshipStatus = obj.cleanString("relationship_status").ifBlank { "Single" },
             lastSeenAt = obj.cleanString("last_seen_at").ifBlank { obj.cleanString("last_seen") },
             verifiedAtMillis = verifiedAtMillis,
+            verificationExpiresAtMillis = parseTimestampMillis(obj.cleanString("verification_expires_at")),
             createdAt = obj.cleanString("created_at"),
             joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
@@ -5134,22 +5135,36 @@ suspend fun uploadPostMedia(
             }
         }
 
-    suspend fun activateMarketplaceProfile(storeName: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().put("p_store_name", storeName.trim())
+    suspend fun registerVerifiedMarketSeller(
+        storeName: String,
+        phone: String,
+        whatsapp: String,
+        state: String,
+        city: String,
+        university: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = JSONObject()
+                .put("p_store_name", storeName.trim())
+                .put("p_phone", phone.trim())
+                .put("p_whatsapp", whatsapp.trim())
+                .put("p_state", state.trim())
+                .put("p_city", city.trim())
+                .put("p_university", university.trim())
             executeRequest(
-                newRequestBuilder("/rest/v1/rpc/activate_marketplace_profile", true)
+                newRequestBuilder("/rest/v1/rpc/register_verified_market_seller", true)
                     .post(body.toString().toRequestBody(jsonMediaType))
                     .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Seller activation failed."))
+                    Log.w(TAG, "Seller registration rejected: ${response.code}")
+                    return@use false
                 }
-                true
+                raw.trim().trim('"').equals("true", ignoreCase = true)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "activateMarketplaceProfile failed", e)
+        }.getOrElse {
+            Log.w(TAG, "Seller registration unavailable", it)
             false
         }
     }

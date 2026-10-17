@@ -73,12 +73,15 @@ fun MarketScreen(
     isSellerActive: Boolean,
     sellerStoreName: String = "",
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    sellerVerificationActive: Boolean = false,
+    verificationExpiresAtMillis: Long = 0L,
+    viewerUniversity: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean, university: String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -93,6 +96,7 @@ fun MarketScreen(
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var savedOnly by rememberSaveable { mutableStateOf(false) }
+    var myCampusOnly by rememberSaveable(viewerUniversity) { mutableStateOf(viewerUniversity.isNotBlank()) }
     var verifiedOnly by rememberSaveable { mutableStateOf(false) }
     var minPriceText by rememberSaveable { mutableStateOf("") }
     var maxPriceText by rememberSaveable { mutableStateOf("") }
@@ -114,7 +118,7 @@ fun MarketScreen(
     val maxPrice = maxPriceText.toLongOrNull()
     val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
     val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly) {
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly, myCampusOnly, viewerUniversity) {
         if (validPriceRange) {
             delay(350)
             onSearch(
@@ -124,17 +128,18 @@ fun MarketScreen(
                 minPrice,
                 maxPrice,
                 savedOnly,
-                verifiedOnly
+                verifiedOnly,
+                viewerUniversity.takeIf { myCampusOnly && it.isNotBlank() }
             )
         }
     }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
-        items.filter { item ->
+        com.blinkng.shared.MarketTrustPolicy.diversify(items.filter { item ->
             (!savedOnly || item.isSaved) &&
                 (!verifiedOnly || item.verificationBadge != VerificationBadge.NONE || item.sellerIsVerified) &&
                 (minPrice == null || item.price >= minPrice) &&
                 (maxPrice == null || item.price <= maxPrice)
-        }
+        }) { item -> item.sellerUsername }
     }
     val marketRows = remember(visibleItems) { visibleItems.chunked(2) }
     val activeFilterCount = listOf(
@@ -294,6 +299,50 @@ fun MarketScreen(
             }
         }
 
+        if (isSellerActive && verificationExpiresAtMillis > 0L &&
+            verificationExpiresAtMillis <= System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Your verified seller badge expires soon. Renew it to keep listings eligible.",
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 13.sp
+                        )
+                        TextButton(onClick = onOpenGetVerified) { Text("Renew") }
+                    }
+                }
+            }
+        }
+
+        if (viewerUniversity.isNotBlank()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = myCampusOnly,
+                        onClick = { myCampusOnly = true },
+                        label = { Text("My University") }
+                    )
+                    FilterChip(
+                        selected = !myCampusOnly,
+                        onClick = { myCampusOnly = false },
+                        label = { Text("All Universities") }
+                    )
+                }
+            }
+        }
+
         item {
             if (!isSellerActive) {
                 Card(
@@ -302,7 +351,7 @@ fun MarketScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .clickable { onOpenBecomeSeller() }
+                        .clickable { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -310,24 +359,24 @@ fun MarketScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Start selling on BLINK",
+                                if (sellerVerificationActive) "Become a BLINK Seller — Free" else "Verify to Sell on BLINK",
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.inverseOnSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Activate a seller profile before publishing listings.",
+                                if (sellerVerificationActive) "Complete seller registration to publish products." else "An active blue tick is required. Renew if your verification expired.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.75f)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
-                            onClick = onOpenBecomeSeller,
+                            onClick = { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
                             shape = RoundedCornerShape(100.dp),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
-                            Text("Activate", fontWeight = FontWeight.Bold)
+                            Text(if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
