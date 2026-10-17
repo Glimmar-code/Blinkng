@@ -47,6 +47,30 @@ fun BlinkSkeletonList(
     }
 }
 
+/**
+ * Mirrors a real person/search result: avatar, identity, secondary details
+ * and an action button. Keep genuine navigation icons rendered during load.
+ */
+@Composable
+fun BlinkSkeletonPersonCard(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BlinkSkeletonBlock(Modifier.size(48.dp), CircleShape)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            BlinkSkeletonBlock(Modifier.fillMaxWidth(0.72f).height(13.dp))
+            BlinkSkeletonBlock(Modifier.fillMaxWidth(0.50f).height(10.dp))
+            BlinkSkeletonBlock(Modifier.fillMaxWidth(0.80f).height(10.dp))
+        }
+        BlinkSkeletonBlock(Modifier.width(66.dp).height(32.dp), RoundedCornerShape(12.dp))
+    }
+}
+
 @Composable
 fun BlinkSkeletonChatHistory(modifier: Modifier = Modifier, rows: Int = 6) {
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
