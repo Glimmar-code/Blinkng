@@ -63,6 +63,102 @@ func run_test() -> void:
     check(bool(restored.get("house_owned", false)), "Virtual house ownership survives restart")
     check(int(restored.get("furniture", -1)) == 2, "Furniture survives restart")
     check(int(restored.get("cash", -1)) == 100, "Fictional balance survives restart")
+    check(not bool(reopened.call("update_profile", uid,
+        {"cash": -2, "house_owned": true, "furniture": 2})),
+        "Negative fictional server cash cannot enter the trusted ledger")
+    check(not bool(reopened.call("update_profile", uid,
+        {"cash": 100, "house_owned": "yes", "furniture": 2})),
+        "String property ownership is not valid")
+    check(not bool(reopened.call("update_profile", uid,
+        {"cash": 100, "house_owned": false, "furniture": 1})),
+        "Furniture cannot exist without an owned home")
+    check(not bool(reopened.call("update_profile", uid,
+        {"cash": 100, "house_owned": true, "furniture": 2, "admin": true})),
+        "Unknown or privileged player-record fields cannot be saved")
+    var backup_path: String = temp_path + ".bak"
+    reopened.set("backup_file", backup_path)
+    var changed: Dictionary = restored.duplicate()
+    changed["cash"] = 80
+    check(bool(reopened.call("update_profile", uid, changed)),
+        "Second valid transaction commits with backup")
+    check(FileAccess.file_exists(backup_path),
+        "Previous committed ledger is saved as backup checkpoint")
+    # A corrupt current snapshot must never erase the last good state.
+    var broken := FileAccess.open(temp_path, FileAccess.WRITE)
+    check(broken != null, "Server test harness can simulate a corrupt primary")
+    if broken != null:
+        broken.store_string("{bad-property-json")
+        broken.close()
+    var fallback: RefCounted = state_script.new()
+    fallback.set("save_file", temp_path)
+    fallback.set("temp_file", temp_swap)
+    fallback.set("backup_file", backup_path)
+    fallback.call("load_from_disk")
+    check(bool(fallback.get("recovered_backup")), "Previous valid property checkpoint is recovered")
+    check(int(fallback.call("get_profile", uid)["cash"]) == 100,
+        "Recovery restores account's prior server-owned balance")
+    check(bool(fallback.call("update_profile", uid, changed)),
+        "Recovered property state can safely commit again")
+    var reread: RefCounted = state_script.new()
+    reread.set("save_file", temp_path)
+    reread.set("temp_file", temp_swap)
+    reread.set("backup_file", backup_path)
+    reread.call("load_from_disk")
+    check(int(reread.call("get_profile", uid)["cash"]) == 80,
+        "Property changes survive another dedicated-server restart")
+    # Newer clients may persist a future incompatible record schema.
+    # Old dedicated servers must fail closed instead of overwriting it.
+    var future := FileAccess.open(temp_path, FileAccess.WRITE)
+    if future != null:
+        future.store_string(JSON.stringify({"schema": 2, "profiles": {uid: changed}}))
+        future.close()
+    var stale_server: RefCounted = state_script.new()
+    stale_server.set("save_file", temp_path)
+    stale_server.set("temp_file", temp_swap)
+    stale_server.set("backup_file", backup_path)
+    stale_server.call("load_from_disk")
+    check(bool(stale_server.get("write_blocked")),
+        "Future property schema blocks all writes, even if backup exists")
+    check(not bool(stale_server.call("update_profile", uid, changed)),
+        "Server cannot overwrite a newer ledger")
+    var check_future := FileAccess.open(temp_path, FileAccess.READ)
+    if check_future != null:
+        check(int(JSON.parse_string(check_future.get_as_text())["schema"]) == 2,
+            "Newer property's actual file remains untouched")
+        check_future.close()
+    # Backwards compatibility: original saved records had a bare UUID map.
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+    var legacy := FileAccess.open(temp_path, FileAccess.WRITE)
+    if legacy != null:
+        legacy.store_string(JSON.stringify({uid: {"cash": 50, "house_owned": true, "furniture": 1}}))
+        legacy.close()
+    var imported: RefCounted = state_script.new()
+    imported.set("save_file", temp_path)
+    imported.set("temp_file", temp_swap)
+    imported.set("backup_file", backup_path)
+    imported.call("load_from_disk")
+    check(int(imported.call("get_profile", uid)["cash"]) == 50,
+        "Original bare-dictionary server home saves still load")
+    check(bool(imported.call("update_profile", uid,
+        {"cash": 40, "house_owned": true, "furniture": 1})),
+        "Legacy ledger transparently upgrades when it next saves")
+    # No backup must mean corrupted primary cannot be silently reset.
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+    var poisoned := FileAccess.open(temp_path, FileAccess.WRITE)
+    if poisoned != null:
+        poisoned.store_string(JSON.stringify({"schema": 1, "profiles": {
+            uid: {"cash": "infinite", "house_owned": true, "furniture": 2}}}))
+        poisoned.close()
+    var protected: RefCounted = state_script.new()
+    protected.set("save_file", temp_path)
+    protected.set("temp_file", temp_swap)
+    protected.set("backup_file", backup_path)
+    protected.call("load_from_disk")
+    check(bool(protected.get("write_blocked")),
+        "Unrecoverably invalid property records fail closed")
+    check(not bool(protected.call("update_profile", uid, changed)),
+        "Corrupt server storage cannot create a phantom balance")
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_swap))
     if failed:
