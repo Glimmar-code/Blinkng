@@ -1,3 +1,11 @@
+## 2026-10-17 — Compact X-inspired PostCard (Testlab candidate; not production-ready)
+
+- **Shared:** new `BlinkPostFormat` applies bounded short time/count labels without altering server data.
+- **Android:** full-width square-edge card with thin dividers, compact single-line identity (name, verified mark, username, relative time), real Follow/Unfollow lookup through known profile UUIDs, overflow menu, and six balanced view/like/repost/comment/save/share cells. Crown/VIP decoration is removed from this PostCard surface while BLINK Store remains frozen; existing entitlement data is not deleted.
+- **Windows:** matching compact monochrome PostCard header and six-position action rail. Views, Likes, Comments and link Share use existing desktop data/actions. Repost and Save are explicitly disabled in this prototype because desktop currently lacks their live data, permissions and mutation API; no fake success.
+- **Follow gate:** Android shows Follow only when the authenticated feed has a trusted cached author UUID; unknown profiles require an async server lookup before always-visible Follow can be claimed. Windows also needs the equivalent author follow state and authenticated mutation wiring.
+- **Release gate / hold:** add real Windows follow, repost and bookmark parity; ensure compact typography/tap targets and long-name rendering on Android 15, desktop resize and font scaling; run shared unit tests, Android debug/lint/build, Windows desktop checks and physical-device review. Reconcile Testlab with the much-newer production `main` without overwriting its improvements. **Do not merge to main or publish APK yet.**
+
 ## 2026-10-17 — Phase 4B: official login announcement popup (staging integration)
 
 - **Shared:** validated server-campaign-only popup policy; deduplicate by durable notification ID; never elevate arbitrary social activities into an official BLINK alert.
