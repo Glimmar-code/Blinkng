@@ -1,3 +1,11 @@
+## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
+
+- **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
+- **Android:** FCM foreground/background rendering and social notifications use safe text; follower notifications use the official monochrome BLINK status icon instead of an Android stock icon. Notification styling uses a neutral BLINK accent rather than inconsistent pink/purple/green UI. Existing Android 13 notification permission, privacy controls, deduplication and MessagingStyle reply mechanism are retained.
+- **Windows:** Supabase notification lists use the same shared sanitizer and do not display missing-value placeholders. Official cached announcements use the shared presentation fallback on both clients.
+- **Safety:** no production database, subscription billing, push sender, secrets, notification settings or rollout changed.
+- **Verification gate:** run Android unit/lint/APK tests, desktop build/parity tests, then validate real device FCM (foreground, background, denied permission, missing actor), Android monochrome icon rendering, and Supabase notification record integrity. No main merge until verification is complete.
+
 ## 2026-10-17 — Compact X-inspired PostCard (Testlab candidate; not production-ready)
 
 - **Shared:** new `BlinkPostFormat` applies bounded short time/count labels without altering server data.
