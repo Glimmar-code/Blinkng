@@ -1,3 +1,11 @@
+## 2026-10-17 — Compact PostCard promotion from verified Testlab (#337)
+
+- **Promotion strategy:** because Testlab diverged from main, selectively reimplement the X-inspired layout on the latest production ancestor instead of merging the entire outdated Testlab branch. The original Testlab code and CI were reviewed in PR #337.
+- **Android:** x-style Home PostCards now have square, near-edge-to-edge borders, one-line name / verification / @username / abbreviated age, compact follow and options controls, no Store/VIP crown, and six actions ordered views/likes/repost/comments/save/share. Existing author lookup, pending-follow state, media caching, scroll performance and non-x PostCard functionality remain unchanged.
+- **Windows:** preserves current real like/comment/repost/bookmark/share API integrations and media rendering while matching the compact x-style header and reordered controls. No fake controls or mocked account state.
+- **Shared:** `BlinkPostFormat` is used for display-only short ages and metrics and has focused unit tests; no Supabase/database changes.
+- **Quality gates:** both client builds, Android tests/lint, Windows parity, short/long names, different font sizes, narrow-device header and six-icon layout, offline behavior, release signing, and exact website APK publication verification. This is not production-ready until all applicable tests pass and the production PR is reviewed.
+
 ## 2026-10-17 — BLINK Smart Onboarding, Updates & Announcements (production-main port pending QA)
 
 - Shared guide, version policy, cached official-update policy and admin broadcast safety rules ported from verified Testlab work, preserving newer main UI and navigation.
