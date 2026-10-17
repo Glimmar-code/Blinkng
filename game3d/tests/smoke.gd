@@ -353,6 +353,33 @@ func _run() -> void:
             _assert_true(int(world.get("home_light_mode")) == 0, "Undo restores lighting preference")
             world.call("_redo_home_decor")
             _assert_true(int(world.get("home_light_mode")) == 1, "Redo reapplies lighting preference")
+            var ceiling_mesh: MeshInstance3D = reopened_room.get("ceiling_visuals")[0]
+            var original_ceiling: Color = (ceiling_mesh.material_override as StandardMaterial3D).albedo_color
+            var screen_caption: Label3D = reopened_room.get_node("TVCaption")
+            _assert_true(screen_caption.text == "OFF", "Room starts with fictional TV screen off")
+            world.call("_cycle_home_ceiling")
+            _assert_true(int(world.get("home_ceiling_style")) == 1, "Ceiling trim cycles palette")
+            _assert_true((ceiling_mesh.material_override as StandardMaterial3D).albedo_color != original_ceiling,
+                "Ceiling accent visibly changes in 3D")
+            world.call("_cycle_home_tv")
+            _assert_true(int(world.get("home_tv_mode")) == 1 and screen_caption.text == "NATURE",
+                "Room screen shows optional offline nature channel")
+            var saved_interior: Dictionary = demo_progress.load_state()
+            _assert_true(int(saved_interior["ceiling_style"]) == 1 and int(saved_interior["tv_mode"]) == 1,
+                "Ceiling and room screen both persist after disk reload")
+            _assert_true(not bool(reopened_room.call("apply_ceiling_style", 4)),
+                "Unknown ceiling materials cannot change the room")
+            _assert_true(not bool(reopened_room.call("apply_tv_mode", -1)),
+                "Unknown entertainment channels cannot change the room")
+            _assert_true(screen_caption.text == "NATURE", "Invalid screen mode leaves content untouched")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_tv_mode")) == 0 and screen_caption.text == "OFF",
+                "Undo restores switched-off fictional screen")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_tv_mode")) == 1 and screen_caption.text == "NATURE",
+                "Redo reapplies the offline screen channel")
+            _assert_true(int(world.get("game_cash")) == 370 and int(world.get("completed_jobs")) == 1,
+                "Appearance and entertainment controls cannot affect earnings")
             var cash_before_study: int = int(world.get("game_cash"))
             var jobs_before_study: int = int(world.get("completed_jobs"))
             world.call("_show_study_panel")
