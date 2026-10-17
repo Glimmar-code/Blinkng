@@ -90,6 +90,32 @@ jobs:
             exit 1
           fi
 
+      - name: Test dedicated staging healthcheck fail-closed behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$(mktemp)"
+          trap 'rm -f "$file"' EXIT
+          healthcheck="game3d/scripts/server_healthcheck.sh"
+          rm -f "$file"
+          if BLINK_LIFE_HEALTH_FILE="$file" sh "$healthcheck"; then
+            echo "Missing game server heartbeat was incorrectly considered healthy"
+            exit 1
+          fi
+          printf 'ready\\n' > "$file"
+          BLINK_LIFE_HEALTH_FILE="$file" sh "$healthcheck"
+          touch -d '40 seconds ago' "$file"
+          if BLINK_LIFE_HEALTH_FILE="$file" sh "$healthcheck"; then
+            echo "Stale/failed game server heartbeat was incorrectly considered healthy"
+            exit 1
+          fi
+          printf 'offline\\n' > "$file"
+          if BLINK_LIFE_HEALTH_FILE="$file" sh "$healthcheck"; then
+            echo "Non-ready server was incorrectly considered healthy"
+            exit 1
+          fi
+          echo "PASS: Dedicated server healthcheck is readiness-aware and fails closed"
+
       - name: Run native 3D interactive scene smoke tests
         shell: bash
         run: |
