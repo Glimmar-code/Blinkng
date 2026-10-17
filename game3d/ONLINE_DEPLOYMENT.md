@@ -38,3 +38,61 @@ Status: **source code prepared; not deployed or production validated**. Do not m
 - No unrestricted public chat or proximity voice until moderation and privacy controls are complete.
 
 See `ROADMAP_110.md` for all the requested features and their current scope.
+
+
+## Major multiplayer staging hardening — online core branch
+
+A separate draft Testlab pull request implements the first **critical
+infrastructure gate** toward a real Internet world. It is not a live
+server and does not change the release APK or deploy Supabase secrets.
+
+**Server-owned home ledger:** existing UUID-scoped virtual home ownership,
+fictional Game Cash and purchased furnishing counts now use a versioned
+JSON envelope with an atomic write, strictly validated data, two rotating
+checkpoints (primary plus previous-good backup), and startup recovery.
+Unrecoverably corrupted saves or unknown future schema versions block
+all writes rather than resetting purchases. Previously deployed flat
+UUID-to-record V1 saves remain readable and are upgraded when a trusted
+transaction writes. Recoveries should be logged and backups preserved.
+
+**Admission controls:** dedicated sessions cap not-yet-authenticated
+connections at four, allow only 10 seconds for a signed ticket, and
+discard unauthenticated peers. Existing one-time HMAC tickets, duplicate
+account rejection and server-authoritative purchases/jobs remain in
+place. The dedicated server throttles actions (250 ms) and invitations
+(5 seconds). Public, cross-user free-text chat is **OFF** until
+block/report tooling, moderation and abuse escalation are verified.
+Trusted private LAN preview remains separate. Do not expose user
+addresses, tickets or account IDs through logs.
+
+**Failure and recovery acceptance tests** must demonstrate: valid
+old-format saves, new-format reloads, crash fallback to a valid backup,
+recovery re-commit, arbitrary field injection refusal, negative or
+malformed wallet refusal, expired unauthenticated peers, future-format
+write protection, and no changes to regular BLINK app startup.
+
+### Still blocking a real public online launch
+1. **Server hosting:** provision and operate a real UDP-accessible
+   test server; configuration alone is not a deployment.
+2. **Encrypted transport:** Godot's current ENet UDP packets are
+   **not encrypted**. Ticket-authenticated connection admission does
+   not supply confidentiality or prevent on-path attacks. Use an
+   authenticated encrypted transport before a public launch.
+3. **Durable multi-instance database:** this file backend is one server
+   only. Implement account-keyed transactions, idempotent economy
+   events, backups and migration tooling in staging Postgres before
+   public shared-world scaling.
+4. **Player protection:** add block/report workflows, an operator
+   moderation queue, chat/invitation privacy restrictions, appeals
+   and spam controls before making social features public.
+5. **Operations:** server health checks, structured safe logging,
+   deployment secret rotation, instance allocation/recovery, load
+   testing and latency/packet-loss observability.
+6. **Device QA:** real Android and Windows login/join/disconnect, poor
+   network, restarts, performance, opt-in coordinates, logout and
+   background-app behavior.
+
+**Fail closed:** property writes must stay disabled on disk errors.
+Never enable unmoderated dedicated-world chat to simulate a complete
+launch. No real-money transactions, BLINK Coins or cashout are part of
+this milestone.
