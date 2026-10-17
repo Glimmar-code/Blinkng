@@ -81,6 +81,7 @@ import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.ui.components.BlinkSkeletonPersonCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
@@ -595,27 +596,38 @@ fun ConnectSection(
                             }
 
                             if (visible.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
+                                if (isConnectHubLoading && liveProfiles.isEmpty() &&
+                                    query.isBlank() && filter == LivePeopleFilter.ALL
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        LivePeopleEmptyState(
-                                            hasProfiles = liveProfiles.isNotEmpty(),
-                                            query = query,
-                                            filter = filter
-                                        )
-                                        if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
-                                            TextButton(
-                                                onClick = {
-                                                    query = ""
-                                                    filter = LivePeopleFilter.ALL
-                                                    sort = LivePeopleSort.RECOMMENDED
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        repeat(4) {
+                                            BlinkSkeletonPersonCard()
+                                        }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            LivePeopleEmptyState(
+                                                hasProfiles = liveProfiles.isNotEmpty(),
+                                                query = query,
+                                                filter = filter
+                                            )
+                                            if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
+                                                TextButton(
+                                                    onClick = {
+                                                        query = ""
+                                                        filter = LivePeopleFilter.ALL
+                                                        sort = LivePeopleSort.RECOMMENDED
+                                                    }
+                                                ) {
+                                                    Text("Clear filters")
                                                 }
-                                            ) {
-                                                Text("Clear filters")
                                             }
                                         }
                                     }
