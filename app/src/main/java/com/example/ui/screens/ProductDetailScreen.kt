@@ -538,6 +538,20 @@ fun ProductDetailScreen(
             }
         }
 
+        if (item.videoUrl.contains("/storage/v1/object/public/market-video/")) {
+            OutlinedButton(
+                onClick = {
+                    context.startActivitySafely(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(item.videoUrl)),
+                        "Couldn't open the product video."
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (isOwner) 12.dp else 92.dp)
+            ) { Text("Watch Product Video") }
+        }
+
         if (!isOwner) {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
