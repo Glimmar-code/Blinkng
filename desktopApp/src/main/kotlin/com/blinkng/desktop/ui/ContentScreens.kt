@@ -1171,6 +1171,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
+    var marketImagePath by remember { mutableStateOf("") }
+    var marketVideoPath by remember { mutableStateOf("") }
+    var showListingPreview by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Other") }
@@ -1381,14 +1384,63 @@ fun MarketplaceScreen(state: DesktopAppState) {
                             OutlinedTextField(price, { price = it.filter(Char::isDigit) }, label = { Text("Price (NGN)") })
                             OutlinedTextField(category, { category = it }, label = { Text("Category") })
                         }
+                        OutlinedButton(onClick = {
+                            val chooser = javax.swing.JFileChooser()
+                            chooser.dialogTitle = "Choose a product photo"
+                            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                                marketImagePath = chooser.selectedFile.absolutePath
+                            }
+                        }) { Text(if (marketImagePath.isBlank()) "Choose product photo" else "Replace product photo") }
+                        if (marketImagePath.isNotBlank()) Text(java.io.File(marketImagePath).name)
+                        OutlinedButton(onClick = {
+                            val chooser = javax.swing.JFileChooser()
+                            chooser.dialogTitle = "Choose an optional product video"
+                            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                                marketVideoPath = chooser.selectedFile.absolutePath
+                            }
+                        }) { Text(if (marketVideoPath.isBlank()) "Choose optional video" else "Replace product video") }
+                        if (marketVideoPath.isNotBlank()) {
+                            Text(java.io.File(marketVideoPath).name)
+                            TextButton(onClick = { marketVideoPath = "" }) { Text("Remove video") }
+                        }
+                        OutlinedButton(onClick = { showListingPreview = true }) { Text("Preview Listing") }
+                        if (showListingPreview) {
+                            AlertDialog(
+                                onDismissRequest = { showListingPreview = false },
+                                title = { Text(title.ifBlank { "Listing Preview" }) },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Text("₦$price · $category",fontWeight = FontWeight.Bold)
+                                        Text(description.take(500))
+                                        if (marketImagePath.isNotBlank()) Text("Photo: " + java.io.File(marketImagePath).name)
+                                        if (marketVideoPath.isNotBlank()) Text("Video: " + java.io.File(marketVideoPath).name)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { showListingPreview = false }) { Text("Continue editing") }
+                                }
+                            )
+                        }
                         error?.let { InlineError(it) }
                         Button(onClick = {
                             scope.launch {
-                                runCatching { state.client.createMarketplaceItem(title, description, price.toLongOrNull() ?: 0L, category) }
-                                    .onSuccess { title = ""; description = ""; price = ""; showCreate = false; refreshRevision++ }
-                                    .onFailure { error = it.message }
+                                runCatching {
+                                    val image = state.client.uploadMarketAttachment(marketImagePath,false)
+                                    val video = marketVideoPath.takeIf(String::isNotBlank)?.let {
+                                        state.client.uploadMarketAttachment(it,true)
+                                    }
+                                    state.client.createMarketplaceItem(
+                                        title,description,price.toLongOrNull() ?: 0L,category,image,video
+                                    )
+                                }.onSuccess {
+                                    title = ""; description = ""; price = "";
+                                    marketImagePath = ""; marketVideoPath = "";
+                                    showCreate = false; refreshRevision++
+                                }.onFailure { error = it.message }
                             }
-                        }, enabled = title.isNotBlank() && price.isNotBlank()) { Text("Publish listing") }
+                        }, enabled = title.trim().length >= 3 && description.trim().length >= 10 &&
+                            (price.toLongOrNull() ?: 0L) > 0L && marketImagePath.isNotBlank()
+                        ) { Text("Publish listing • Free") }
                     }
                 }
             }
