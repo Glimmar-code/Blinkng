@@ -302,6 +302,29 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return AdminDashboardSnapshot(stats, sections)
     }
 
+    suspend fun adminSearchAnnouncementUsers(query: String): JSONArray {
+        requireAdmin()
+        return rpcAny(
+            "admin_search_users_v2",
+            JSONObject().put("p_query", query.take(100)).put("p_limit", 20),
+        ) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminSendInAppAnnouncement(
+        message: String,
+        userId: String? = null,
+        university: String? = null,
+    ): Int {
+        requireAdmin()
+        require(message.isNotBlank() && message.length <= 2_000)
+        val result = rpc("admin_send_announcement", JSONObject()
+            .put("p_message", message.trim())
+            .put("p_target_user_id", userId ?: JSONObject.NULL)
+            .put("p_target_university", university ?: JSONObject.NULL)
+            .put("p_verification_filter", "all"))
+        return result.optInt("delivered", 0)
+    }
+
     suspend fun adminGlobalSearch(query: String): JSONObject {
         requireAdmin()
         return rpc("admin_global_search_v2", JSONObject().put("p_query", query.trim()))
