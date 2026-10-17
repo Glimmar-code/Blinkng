@@ -43,6 +43,7 @@ import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
+import com.example.data.supabase.AdminSupabaseService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkInAppNotification
@@ -446,6 +447,15 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            // Admin access is sourced from the backend, never inferred from a profile label.
+            val adminAccessService = remember { AdminSupabaseService() }
+            var canOpenAdmin by remember(uiState.myProfile.id) { mutableStateOf(false) }
+            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
+                canOpenAdmin = false
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    canOpenAdmin = adminAccessService.fetchCapability().getOrNull()?.isAdmin == true
+                }
+            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
 
             LaunchedEffect(uiState.destination) {
@@ -959,6 +969,15 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
+                        isAdmin = canOpenAdmin,
+                        onAdminClick = {
+                            if (canOpenAdmin) {
+                                startActivitySafely(
+                                    Intent(this@MainActivity, AdminControlCenterActivity::class.java),
+                                    "Unable to open admin dashboard."
+                                )
+                            }
+                        },
                         onItemsClick = { feedUtilitySheet = "items" },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
