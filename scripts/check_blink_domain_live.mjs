@@ -38,7 +38,7 @@ async function main() {
   console.log('PASS HTTPS apex canonical');
 
   await checkUrl('/', body => {
-    assert.ok(body.includes('Blink'), 'BLINK homepage missing');
+    assert.ok(body.includes('BLINK'), 'BLINK homepage missing');
     assert.ok(body.includes('<link rel="canonical" href="https://blink.com.ng/"'), 'Canonical tag mismatch');
   });
   await checkUrl('/about/', body => assert.ok(body.includes('BLINK'), 'About BLINK page missing'));
