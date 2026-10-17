@@ -1,3 +1,10 @@
+## 2026-10-17 — Website APK update notice (Phase 2, Testlab validation)
+
+- **Shared:** `BlinkReleasePolicy` validates the official publisher's release-info metadata and compares numeric Android version codes; malformed/unavailable metadata is ignored without blocking app use.
+- **Android:** on authenticated login, fetch read-only metadata from BLINK's official GitHub latest-release artifact with bounded network timeouts; show a monochrome Update Now / Remind Me on Next Login dialog only for a newer, actually published release. Guide tips yield to that update dialog. The Update action opens the website and leaves Android installation to the user. No silent APK installation, direct package writes, mandatory lockout, or secret credentials.
+- **Windows parity exception:** the notice is specifically for an **Android APK** and should not prompt Windows users to install that package. Windows continues using its existing EXE/MSI release process; common version metadata policy is in shared code for future desktop-release adaptation.
+- **Release gate:** Android unit tests/lint/build and Windows compile/parity checks, website/GitHub release asset accessibility, physical Android 15 user flow, negative cases (offline/no release/same version/malformed release), and staged-to-main divergence review. Production main and Supabase remain unchanged until verified.
+
 ## 2026-10-15 — Ad loader lifecycle repair (Testlab)
 
 - Android: bound rewarded loading to 30 seconds, reject stale callbacks, expire cached ads after 55 minutes, clear manager state on Activity destruction, and retry failed native placements at most twice with 30/60-second backoff. Preserve consent checks and SDK-owned video/click handling. Log native error domain/code/message/response for diagnosis.
