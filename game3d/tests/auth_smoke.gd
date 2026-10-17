@@ -117,9 +117,11 @@ func run_test() -> void:
         "Property changes survive another dedicated-server restart")
     # Newer clients may persist a future incompatible record schema.
     # Old dedicated servers must fail closed instead of overwriting it.
+    var future_profiles: Dictionary = {}
+    future_profiles[uid] = changed
     var future := FileAccess.open(temp_path, FileAccess.WRITE)
     if future != null:
-        future.store_string(JSON.stringify({"schema": 2, "profiles": {uid: changed}}))
+        future.store_string(JSON.stringify({"schema": 2, "profiles": future_profiles}))
         future.close()
     var stale_server: RefCounted = state_script.new()
     stale_server.set("save_file", temp_path)
@@ -137,9 +139,11 @@ func run_test() -> void:
         check_future.close()
     # Backwards compatibility: original saved records had a bare UUID map.
     DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+    var legacy_profiles: Dictionary = {}
+    legacy_profiles[uid] = {"cash": 50, "house_owned": true, "furniture": 1}
     var legacy := FileAccess.open(temp_path, FileAccess.WRITE)
     if legacy != null:
-        legacy.store_string(JSON.stringify({uid: {"cash": 50, "house_owned": true, "furniture": 1}}))
+        legacy.store_string(JSON.stringify(legacy_profiles))
         legacy.close()
     var imported: RefCounted = state_script.new()
     imported.set("save_file", temp_path)
@@ -153,10 +157,11 @@ func run_test() -> void:
         "Legacy ledger transparently upgrades when it next saves")
     # No backup must mean corrupted primary cannot be silently reset.
     DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+    var poisoned_profiles: Dictionary = {}
+    poisoned_profiles[uid] = {"cash": "infinite", "house_owned": true, "furniture": 2}
     var poisoned := FileAccess.open(temp_path, FileAccess.WRITE)
     if poisoned != null:
-        poisoned.store_string(JSON.stringify({"schema": 1, "profiles": {
-            uid: {"cash": "infinite", "house_owned": true, "furniture": 2}}}))
+        poisoned.store_string(JSON.stringify({"schema": 1, "profiles": poisoned_profiles}))
         poisoned.close()
     var protected: RefCounted = state_script.new()
     protected.set("save_file", temp_path)
