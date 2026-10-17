@@ -32,7 +32,7 @@ class PrimaryBottomBarNavigationTest {
         }
 
         listOf("home", "reels", "market", "connect", "message").forEach { destination ->
-            rule.onNodeWithTag("feed_nav_$" + "{destination}").performClick()
+            rule.onNodeWithTag("feed_nav_${destination}").performClick()
         }
         rule.runOnIdle {
             assertEquals(listOf("home", "reels", "market", "connect", "message"), tapped)
