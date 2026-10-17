@@ -64,7 +64,13 @@ REVOKE ALL ON FUNCTION public.register_verified_market_seller(text,text,text,tex
 GRANT EXECUTE ON FUNCTION public.register_verified_market_seller(text,text,text,text,text,text) TO authenticated;
 
 -- Never allow self-service activation via the retired paid method.
-REVOKE ALL ON FUNCTION public.activate_marketplace_profile(text) FROM PUBLIC, anon, authenticated;
+DO $legacy_seller_activation$
+BEGIN
+  IF to_regprocedure('public.activate_marketplace_profile(text)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.activate_marketplace_profile(text) FROM PUBLIC, anon, authenticated;
+  END IF;
+END;
+$legacy_seller_activation$;
 REVOKE ALL ON FUNCTION public.create_market_seller_activation_order(text) FROM PUBLIC, anon, authenticated;
 -- Reject even service-role attempts to start new paid enrollments through legacy
 -- Edge Functions, while retaining previously fulfilled payment records.
