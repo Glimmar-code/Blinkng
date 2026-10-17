@@ -37,7 +37,7 @@ class BlinkReleasePolicyTest {
         assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good.replace("applicationId=com.aistudio.blink.appvtwo", "applicationId=com.fake.app")))
         assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good.replace("versionCode=202610170", "versionCode=0")))
         assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good.replace("apkSha256=${"c".repeat(64)}", "apkSha256=bad")))
-        assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good + "\\nversionCode=400"))
+        assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good + "\nversionCode=400"))
         assertNull(BlinkReleasePolicy.parseVerifiedPublisherMetadata(good.repeat(100)))
     }
 
