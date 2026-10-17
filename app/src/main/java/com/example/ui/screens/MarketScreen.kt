@@ -81,7 +81,7 @@ fun MarketScreen(
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean, String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean, university: String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
