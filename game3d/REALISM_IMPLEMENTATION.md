@@ -517,3 +517,35 @@ Roadmap: #268 remains **partial** for ceiling accent / light controls,
 #280 becomes **partial** for the offline fictional screen. Totals are
 **40 implemented in source, 45 partial, 915 pending audit,
 0 verified on device and 0 released**. CI is not a production deployment.
+
+## Batch 16: free optional rest and kitchenette previews (solo)
+
+The small **Everyday home** panel in the private starter room now lets
+the player **Relax on bed / Get up from bed** and choose one of three
+fictional dishes (**Jollof bowl**, **Beans plate**, **Fruit snack**) at
+a wall-mounted kitchenette. Rest and the 3D meal preview use only a tiny
+material/label update and one optional low-poly mesh. The shelf is mounted
+above the ground: it does not occupy or invalidate existing floor-grid
+plant and furniture positions. Home UI controls remain touch accessible.
+
+The rest status is **cosmetic**, not an avatar lying-down animation. Meals
+are simple visual selections, **not a full cooking system**. No ingredients,
+recipes, hunger/energy deficits, nutrition claims, real-world cooking
+instructions, cooldowns, compulsory sleep, Game Cash, BLINK Coins,
+paywalls, server writes or multimedia downloads. The activity resets
+when leaving the room; decoration saves and offline bookmarks remain
+untouched. The existing fictional screen options are static, not
+streamed content.
+
+Regression coverage includes a visible bed status, changing meals,
+invalid selection rejection, free immediate end of rest, safe menu,
+unchanged cash/jobs, and isolation from multiplayer. Room geometry,
+settings migrations and Android/Windows builds remain under CI checks;
+real-device visual/usability validation and production release have
+not happened.
+
+Roadmap #227, #229 and #277 are **partial** only, reflecting the
+difference between a simple interactive prototype and complete
+beds, fictional television shows, and functional kitchens.
+**40 source implemented; 48 partial; 912 pending audit;
+0 device verified; 0 released.**
