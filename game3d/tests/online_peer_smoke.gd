@@ -27,7 +27,7 @@ func _bootstrap() -> void:
             mode = option.trim_prefix("--blink-test-role=")
         elif option.begins_with("--blink-test-expected-plot="):
             expected_plot = int(option.trim_prefix("--blink-test-expected-plot="))
-    if not ["server", "owner", "peer", "reconnect", "invalid"].has(mode):
+    if not ["server", "owner", "peer", "reconnect", "invalid", "bad_tls"].has(mode):
         _fail("Unknown test role")
         return
     game_world = Node3D.new()
@@ -63,10 +63,10 @@ func _process(delta: float) -> bool:
         return false
     if mode == "server":
         return false
-    if mode == "invalid":
+    if mode == "invalid" or mode == "bad_tls":
         if elapsed > 3.0:
             if bool(social.get("is_connected_to_authoritative_server")):
-                _fail("Invalid HMAC ticket was admitted")
+                _fail("Unauthorized or untrusted TLS client was admitted")
             else:
                 print("ONLINE_SMOKE_PASS:invalid")
                 quit(0)
