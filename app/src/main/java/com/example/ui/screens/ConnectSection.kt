@@ -1061,7 +1061,7 @@ private fun LivePeopleEmptyState(
         Spacer(Modifier.height(6.dp))
 
         Text(
-            "This screen only shows profiles returned by Supabase. No sample users are inserted.",
+            "Try adjusting your filters or check back for new people.",
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
