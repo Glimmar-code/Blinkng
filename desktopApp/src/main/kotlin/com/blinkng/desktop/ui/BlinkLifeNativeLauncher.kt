@@ -23,7 +23,14 @@ internal object BlinkLifeNativeLauncher {
         if (!executable.isFile || !File(gameProject, "project.godot").isFile) return false
 
         return runCatching {
-            ProcessBuilder(executable.absolutePath, "--path", gameProject.absolutePath)
+            // Windows uses the same TLS-only signed-ticket public world
+            // as Android. Manual staging ticket entry is still required.
+            // No authenticated Internet play may downgrade to ENet UDP.
+            ProcessBuilder(
+                executable.absolutePath,
+                "--path", gameProject.absolutePath,
+                "--", "--blink-transport=wss"
+            )
                 .directory(gameProject)
                 .start()
             true
