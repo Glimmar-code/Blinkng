@@ -52,6 +52,7 @@ var secure_dedicated: bool = false
 var joining_secure: bool = false
 var auth_secret: String = ""
 var online_ticket: String = ""
+var online_transport: String = "wss"
 var ticket_input: LineEdit
 var online_host_input: LineEdit
 var online_port_input: LineEdit
@@ -89,6 +90,8 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
                 online_port_input.text = arg.trim_prefix("--blink-port=")
             elif arg.begins_with("--blink-ticket="):
                 ticket_input.text = arg.trim_prefix("--blink-ticket=")
+            elif arg.begins_with("--blink-transport="):
+                online_transport = arg.trim_prefix("--blink-transport=")
         # A ticket is only useful after deliberate Play; it must never trigger
         # a network connection merely because the main BLINK app opens.
         if not ticket_input.text.is_empty():
@@ -102,10 +105,23 @@ func _start_dedicated_server() -> void:
     if auth_secret.length() < 32 or port < 1024 or port > 65535:
         push_error("Dedicated server disabled: missing secret or invalid configured port.")
         return
-    var peer := ENetMultiplayerPeer.new()
-    var result := peer.create_server(port, MAX_PLAYERS)
+    # Internet connections MUST be TLS-authenticated WebSocket. Do not
+    # accept public tickets over the old unencrypted LAN-only ENet socket.
+    var certificate_path: String = OS.get_environment("BLINK_LIFE_TLS_CERT_PATH")
+    var key_path: String = OS.get_environment("BLINK_LIFE_TLS_KEY_PATH")
+    if certificate_path.is_empty() or key_path.is_empty():
+        push_error("Dedicated WSS server disabled: missing TLS certificate/key paths.")
+        return
+    var certificate := X509Certificate.new()
+    var key := CryptoKey.new()
+    if certificate.load(certificate_path) != OK or key.load(key_path) != OK:
+        push_error("Dedicated WSS server disabled: invalid TLS certificate or key.")
+        return
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.max_queued_packets = 128
+    var result := peer.create_server(port, "*", TLSOptions.server(key, certificate))
     if result != OK:
-        push_error("Dedicated server unable to bind UDP port (code: %d)." % result)
+        push_error("Dedicated WSS server unable to bind TCP port (code: %d)." % result)
         return
     multiplayer.multiplayer_peer = peer
     secure_dedicated = true
@@ -129,7 +145,7 @@ func _start_dedicated_server() -> void:
     slot_counter = 0
     status_label.text = "Dedicated session online: authenticated tickets required."
     # No fake host appears in the roster; only authenticated human peers.
-    print("BLINK LIFE dedicated session listening on UDP port %d" % port)
+    print("BLINK LIFE dedicated authenticated WSS listening on TCP port %d" % port)
 
 
 func _make_button(title: String, callback: Callable, container: Node) -> Button:
@@ -348,6 +364,18 @@ func _join_lan() -> void:
     status_label.text = "Connecting to trusted LAN host %s..." % address
 
 
+func _trusted_online_tls_options(host: String) -> TLSOptions:
+    # Production always validates the public CA chain AND host name.
+    # A local loopback-only CA override enables ephemeral certs in CI.
+    # Never use TLSOptions.client_unsafe() with signed BLINK tickets.
+    var dev_ca_file: String = OS.get_environment("BLINK_LIFE_TEST_CA_FILE")
+    if host == "localhost" and not dev_ca_file.is_empty():
+        var local_ca := X509Certificate.new()
+        if local_ca.load(dev_ca_file) == OK:
+            return TLSOptions.client(local_ca)
+    return TLSOptions.client()
+
+
 func _join_online() -> void:
     if is_online:
         status_label.text = "Disconnect first before opening another world."
@@ -356,15 +384,20 @@ func _join_online() -> void:
     var port := int(online_port_input.text) if online_port_input.text.is_valid_int() else 0
     var ticket := ticket_input.text.strip_edges()
     if host.is_empty() or host.length() > 253 or host.contains("/") or host.contains(" ") or port < 1024 or port > 65535:
-        status_label.text = "The dedicated game host or UDP port is invalid."
+        status_label.text = "The dedicated secure game hostname or TCP port is invalid."
+        return
+    if online_transport != "wss":
+        status_label.text = "This game version only accepts encrypted public worlds."
         return
     if ticket.length() < 110 or ticket.length() > 240 or ticket.split(".").size() != 4:
         status_label.text = "Request a new short-lived ticket while signed into BLINK."
         return
-    var peer := ENetMultiplayerPeer.new()
-    var code := peer.create_client(host, port)
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.max_queued_packets = 128
+    var code := peer.create_client("wss://%s:%d" % [host, port],
+        _trusted_online_tls_options(host))
     if code != OK:
-        status_label.text = "Could not connect to the dedicated game server."
+        status_label.text = "Could not connect securely to the dedicated game server."
         return
     joining_secure = true
     online_ticket = ticket
