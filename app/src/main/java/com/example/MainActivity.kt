@@ -2,6 +2,7 @@ package com.example
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +47,8 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkUpdateCoordinator
+import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
@@ -102,6 +105,14 @@ class MainActivity : ComponentActivity() {
                 rewardedAdManager.load()
             }
         }
+    }
+
+    /** Website-distributed APKs require explicit download and Android installation approval. */
+    private fun openWebsiteUpdate() {
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(WebsiteApkUpdateCoordinator.DOWNLOAD_PAGE))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+        runCatching { startActivity(browserIntent) }
+            .onFailure { viewModel.showToast("Unable to open the BLINK website. Visit www.blink.com.ng.") }
     }
 
     private fun startPresenceHeartbeat() {
@@ -292,6 +303,40 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
+            var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            var websiteUpdateDismissed by remember { mutableStateOf(false) }
+            // A check is done on authenticated login, never on every recomposition.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
+                websiteRelease = null
+                websiteUpdateCheckFinished = false
+                websiteUpdateDismissed = false
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                    websiteUpdateCheckFinished = true
+                }
+            }
+
+            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
+                uiState.selectedTab == MainTab.HOME &&
+                uiState.feedSubTab == 0 &&
+                !uiState.isFeedLoading &&
+                !uiState.isMenuOpen &&
+                !uiState.isActivityOpen &&
+                !uiState.isCreatePostOpen &&
+                !uiState.isCreateStoryOpen &&
+                !uiState.isPostItemOpen &&
+                !uiState.isEditProfileOpen &&
+                !uiState.isBecomeSellerOpen &&
+                !uiState.isGetVerifiedOpen &&
+                !uiState.isConversationFullScreen &&
+                uiState.activeConversationPartner == null &&
+                uiState.activeCommentsPostId == null &&
+                uiState.activePostOptionsPost == null &&
+                uiState.activeViewingStory == null &&
+                uiState.deepLinkedPost == null &&
+                uiState.viewingProduct == null &&
+                uiState.viewingProfile == null
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -480,24 +525,9 @@ class MainActivity : ComponentActivity() {
                         if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
                             BlinkDiscoveryGuideHost(
                                 userId = uiState.myProfile.id,
-                                safeToShow = uiState.selectedTab == MainTab.HOME &&
-                                    uiState.feedSubTab == 0 &&
-                                    !uiState.isFeedLoading &&
-                                    !uiState.isMenuOpen &&
-                                    !uiState.isActivityOpen &&
-                                    !uiState.isCreatePostOpen &&
-                                    !uiState.isCreateStoryOpen &&
-                                    !uiState.isPostItemOpen &&
-                                    !uiState.isEditProfileOpen &&
-                                    !uiState.isBecomeSellerOpen &&
-                                    !uiState.isGetVerifiedOpen &&
-                                    uiState.activeConversationPartner == null &&
-                                    uiState.activeCommentsPostId == null &&
-                                    uiState.activePostOptionsPost == null &&
-                                    uiState.activeViewingStory == null &&
-                                    uiState.deepLinkedPost == null &&
-                                    uiState.viewingProduct == null &&
-                                    uiState.viewingProfile == null,
+                                safeToShow = idleHomeForPrompts &&
+                                    websiteUpdateCheckFinished &&
+                                    (websiteRelease == null || websiteUpdateDismissed),
                                 onNavigate = { route ->
                                     when (route) {
                                         "reels" -> {
@@ -516,6 +546,20 @@ class MainActivity : ComponentActivity() {
                                         "marketplace" -> viewModel.setTab(MainTab.MARKET)
                                     }
                                 },
+                            )
+                        }
+
+                        // A newer, already-published official APK takes precedence over
+                        // normal first-run tips. Declining never blocks the current app.
+                        val newRelease = websiteRelease
+                        if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
+                            BlinkWebsiteUpdateDialog(
+                                release = newRelease,
+                                onUpdateNow = {
+                                    websiteUpdateDismissed = true
+                                    openWebsiteUpdate()
+                                },
+                                onLater = { websiteUpdateDismissed = true },
                             )
                         }
                     }
