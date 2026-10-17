@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -121,6 +123,7 @@ private fun AdminDashboardV3(
     var showHistory by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
     var showBugReports by remember { mutableStateOf(false) }
+    var showMoreActions by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
     BackHandler(onBack = onExit)
@@ -142,27 +145,40 @@ private fun AdminDashboardV3(
                         BlinkMark(size = 30.dp, showText = false)
                         Spacer(Modifier.width(9.dp))
                         Column {
-                        Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                        Text(
-                            if (capability.isOwner) "Overall owner • permanent" else "${capability.role} • backend protected",
-                            fontSize = 9.sp,
-                            color = Color.LightGray
-                        )
+                            Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                            Text(
+                                if (capability.isOwner) "Owner workspace" else "Admin workspace",
+                                fontSize = 10.sp,
+                                color = Color.LightGray
+                            )
                         }
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showBugReports = true }) {
-                        Text("Bugs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
                     TextButton(onClick = { showGlobalSearch = true }) {
-                        Text("Search", fontSize = 10.sp)
+                        Text("Search", fontSize = 12.sp)
                     }
-                    TextButton(onClick = { showHistory = true }) {
-                        Text("History", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = onExit) {
-                        Text("Personal", fontSize = 10.sp)
+                    Box {
+                        IconButton(onClick = { showMoreActions = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More admin actions")
+                        }
+                        DropdownMenu(
+                            expanded = showMoreActions,
+                            onDismissRequest = { showMoreActions = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Bug reports") },
+                                onClick = { showMoreActions = false; showBugReports = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Action history") },
+                                onClick = { showMoreActions = false; showHistory = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Back to BLINK") },
+                                onClick = { showMoreActions = false; onExit() }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -282,7 +298,7 @@ private fun AdminDashboardV3(
 }
 
 // Group by task rather than squeezing dozens of admin sections into a 122dp sidebar.
-private fun adminNavigationGroup(key: String): String = when (key) {
+internal fun adminNavigationGroup(key: String): String = when (key) {
     "dashboard" -> "Overview"
     "users", "accounts", "profiles", "sessions_devices", "universities",
     "verification", "admins", "roles_permissions" -> "People & access"
@@ -322,7 +338,7 @@ private fun AdminOverviewV3(
         item {
             Text("Control Center", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
             Text(
-                "700 backend-routed admin tools • ${sections.count { it.showInSidebar }} vertical sections • searchable resources • reversible audit history",
+                "Manage people, content, campus activity and BLINK operations in one place.",
                 color = Color.LightGray,
                 fontSize = 11.sp
             )
