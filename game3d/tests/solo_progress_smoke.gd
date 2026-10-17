@@ -145,6 +145,24 @@ func _initialize() -> void:
         "Rejected light choices preserve valid saved preferences")
     check(int(Progress.valid_state(second)["light_mode"]) == 0,
         "Older solo saves without lighting preferences use default warm light")
+    var entertainment: Dictionary = bright_home.merged({
+        "ceiling_style": 2, "tv_mode": 1}, true)
+    check(store.call("save_state", entertainment), "Free ceiling and room-screen preferences can be saved")
+    check(_store().call("load_state") == Progress.valid_state(entertainment),
+        "Room-screen and ceiling choices survive file reload with older bookmarks")
+    check(not store.call("save_state", entertainment.merged({"ceiling_style": 3}, true)),
+        "Out-of-range ceiling colours cannot overwrite valid state")
+    check(not store.call("save_state", entertainment.merged({"tv_mode": -1}, true)),
+        "Negative entertainment mode cannot overwrite valid state")
+    check(not store.call("save_state", entertainment.merged({"tv_mode": 0.5}, true)),
+        "Fractional screen modes cannot overwrite valid state")
+    check(not store.call("save_state", entertainment.merged({"ceiling_style": "red"}, true)),
+        "Non-numeric room appearance data is rejected")
+    check(_store().call("load_state") == Progress.valid_state(entertainment),
+        "Invalid interior settings preserve a user's last good save")
+    check(int(Progress.valid_state(second)["ceiling_style"]) == 0 and
+        int(Progress.valid_state(second)["tv_mode"]) == 0,
+        "Old version-one progress defaults to neutral ceiling and screen off")
     check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
