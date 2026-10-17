@@ -116,7 +116,7 @@ SET search_path = public, pg_temp
 AS $market_limits$
 DECLARE
   v_profile public.profiles%ROWTYPE;
-  v_normalized text := lower(regexp_replace(trim(coalesce(NEW.title,'')),'\\s+',' ','g'));
+  v_normalized text := lower(regexp_replace(trim(coalesce(NEW.title,'')),'[[:space:]]+',' ','g'));
 BEGIN
   IF NEW.seller_id IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'SELLER_OWNERSHIP_REQUIRED';
@@ -148,7 +148,7 @@ BEGIN
   IF EXISTS(
     SELECT 1 FROM public.market_items
     WHERE seller_id = NEW.seller_id
-      AND lower(regexp_replace(trim(coalesce(title,'')),'\\s+',' ','g')) = v_normalized
+      AND lower(regexp_replace(trim(coalesce(title,'')),'[[:space:]]+',' ','g')) = v_normalized
       AND created_at >= now() - interval '30 days'
       AND status <> 'removed'
   ) THEN RAISE EXCEPTION 'DUPLICATE_MARKET_LISTING'; END IF;
