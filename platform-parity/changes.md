@@ -953,3 +953,11 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - **Android:** Marketplace request state carries saved/verified filters through initial search, refresh, lazy paging and post-publish refresh, including visible-only wishlist lookups that do not truncate results at 1,000 saved items.
 - **Windows:** Equivalent Saved only and Verified sellers checkboxes query the same server schema. No mock listings or secondary backend.
 - **Backend:** Existing order statuses are preserved while adding accepted/declined/completed, with isolated PGlite tests for stock reservation, authorization, idempotency and the full versioned migration. Production deployment remains a separate staged safety gate.
+
+## 2026-10-17 — Android foreground refresh and navigation stability (Testlab candidate)
+
+- **Shared rule:** `BlinkRefreshPolicy` defines a monotonic, testable 3-minute foreground refresh age and supports scope-specific thresholds. No Supabase API, permissions, ranking, media records, or database rules change.
+- **Android:** Resume-time revalidation updates only the currently visible Feed, Reels, Connect, Market, Messages, or Leaderboard screen. It no longer invokes a full-account sync solely because the Activity resumes. Existing content remains visible while quiet requests complete. Entering an empty Messages view fetches conversations rather than the entire app.
+- **Android navigation:** Main pager page count is stable, Home/Reels/Connect transitions update state atomically, Home reselect no longer silently requests a network refresh, and Market remembers UI filters/scroll while suppressing duplicate identical searches.
+- **Desktop parity / platform exception:** Android `Activity.onResume`, Media3/Compose Android paging, and on-device bottom-tab state are not present on Windows. Windows retains its own desktop navigation and existing cached data state; the shared freshness policy is available for reuse. No user data, feature entitlement, query semantics, or cross-platform backend contracts change.
+- **Verification required before main:** Shared unit tests, Android unit/lint/debug APK checks, Windows build/parity checks, and real-device poor-network resume and navigation smoke tests. No production merge is authorized by this note alone.

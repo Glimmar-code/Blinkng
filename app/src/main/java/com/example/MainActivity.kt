@@ -293,14 +293,12 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkNotificationHelper.ACTION_OPEN_ITEMS -> {
-                viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(0)
+                viewModel.selectHomeSubTab(0)
                 itemsOpenSignal += 1
             }
 
             BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
-                viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(0)
+                viewModel.selectHomeSubTab(0)
                 boostOpenSignal += 1
             }
         }
@@ -366,14 +364,12 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkInAppNotificationDestination.BOOST -> {
-                viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(0)
+                viewModel.selectHomeSubTab(0)
                 boostOpenSignal += 1
             }
 
             BlinkInAppNotificationDestination.ITEMS -> {
-                viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(0)
+                viewModel.selectHomeSubTab(0)
                 itemsOpenSignal += 1
             }
 
@@ -852,10 +848,10 @@ fun MainAppContent(
             ) return@collectLatest
             requestedPage = page
             when (page) {
-                0 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
-                1 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                0 -> viewModel.selectHomeSubTab(0)
+                1 -> viewModel.selectHomeSubTab(1)
                 2 -> viewModel.setTab(MainTab.MARKET)
-                3 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                3 -> viewModel.selectHomeSubTab(2)
                 4 -> viewModel.setTab(MainTab.MESSAGES)
             }
         }
@@ -1008,8 +1004,7 @@ fun MainAppContent(
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
                         onBackToHome = {
-                            viewModel.setTab(MainTab.HOME)
-                            viewModel.setFeedSubTab(0)
+                            viewModel.selectHomeSubTab(0)
                         },
                         isDark = uiState.isDarkMode
                     )
@@ -1303,20 +1298,17 @@ fun MainAppContent(
                             selectedTopTab = 3,
                             onHomeClick = {
                                 dismissUtility {
-                                    viewModel.setTab(MainTab.HOME)
-                                    viewModel.setFeedSubTab(0)
+                                    viewModel.selectHomeSubTab(0)
                                 }
                             },
                             onReelClick = {
                                 dismissUtility {
-                                    viewModel.setTab(MainTab.HOME)
-                                    viewModel.setFeedSubTab(1)
+                                    viewModel.selectHomeSubTab(1)
                                 }
                             },
                             onConnectClick = {
                                 dismissUtility {
-                                    viewModel.setTab(MainTab.HOME)
-                                    viewModel.setFeedSubTab(2)
+                                    viewModel.selectHomeSubTab(2)
                                 }
                             },
                             onGameClick = {},
@@ -1481,14 +1473,12 @@ fun MainAppContent(
                         if (uiState.activeViewingStory != null) viewModel.closeStory()
                         if (uiState.showSellerCongratulationsDialog) viewModel.dismissSellerCongratulations()
 
-                        viewModel.setTab(MainTab.HOME)
-                        viewModel.setFeedSubTab(0)
+                        viewModel.selectHomeSubTab(0)
                     }
                 },
                 onReelsClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(1)
+                    viewModel.selectHomeSubTab(1)
                 },
                 onMarketClick = {
                     isBottomBarVisibleByScroll = true
@@ -1496,8 +1486,7 @@ fun MainAppContent(
                 },
                 onConnectClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(2)
+                    viewModel.selectHomeSubTab(2)
                 },
                 onMessageClick = {
                     isBottomBarVisibleByScroll = true

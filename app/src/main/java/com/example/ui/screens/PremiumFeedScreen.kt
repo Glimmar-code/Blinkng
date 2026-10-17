@@ -860,7 +860,7 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey, homeReselectSignal) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
@@ -1211,9 +1211,9 @@ private fun PremiumHomeFeed(
                 } else {
                     listState.scrollToItem(0)
                 }
-            } else {
-                requestSafeRefresh()
             }
+            // Selecting an already visible Home tab never triggers a network refresh.
+            // Users can pull to refresh explicitly without interrupting their reading.
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
