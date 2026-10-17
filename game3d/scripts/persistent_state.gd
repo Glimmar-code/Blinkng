@@ -138,8 +138,10 @@ func get_profile(account_id: String) -> Dictionary:
     if not valid_account_id(account_id):
         return {}
     if not records.has(account_id):
-        # Read-only recovery may still show a harmless default, but cannot
-        # buy, furnish or earn persistent rewards until storage is repaired.
+        if write_blocked:
+            # Fail closed: never invent a player's balance or owned home
+            # when the persisted database cannot be verified.
+            return {}
         records[account_id] = {"cash": 500, "house_owned": false, "furniture": 0}
     return records[account_id].duplicate(true)
 
