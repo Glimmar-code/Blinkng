@@ -35,6 +35,17 @@ export async function marketProfessionalTests(db) {
        array['Books & Study Materials'],true,true,null)`),
       /SELLER_REGISTRATION_REQUIRED/);
     await as(owner);
+    await assert.rejects(q(`insert into public.market_items(
+      seller_id,title,description,price,category,image_url,university,location)
+      values('${owner}','Unapproved Sample','Do not sell before Market approval',
+       2500,'Books & Study Materials','https://example.invalid/preview.png','FUTA','Akure')`),
+      /MARKET_SELLER_APPROVAL_REQUIRED/);
+    await exec(`reset role;update private.market_seller_approvals
+      set decision='approved' where user_id='${owner}';`);
+    await as(owner);
+    assert.equal(
+      (await q(`select public.get_market_public_seller_card('${owner}') as card`))
+        .rows[0].card.verified_seller,true);
     const listing=await q(`insert into public.market_items(
       seller_id,title,description,price,category,image_url,university,location)
       values('${owner}','Professional Textbooks','Genuine university textbooks in good condition',
