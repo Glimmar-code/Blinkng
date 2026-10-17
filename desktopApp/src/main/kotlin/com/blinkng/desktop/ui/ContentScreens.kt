@@ -458,6 +458,10 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(composer)) {
+                                        error = "This is a product ad. List it in BLINK Market, or request a review."
+                                        return@launch
+                                    }
                                     val tags = BlinkSmartTags.allTags(composer, selectedTags)
                                     if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
                                         error = "Include 1–5 relevant hashtags before posting."
