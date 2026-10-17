@@ -1769,6 +1769,11 @@ private suspend fun restoreSupabaseSession() {
 
             syncMutex.withLock {
                 val before = _uiState.value
+                val marketVersionAtSyncStart = marketRequestVersion
+                val marketWasUnfilteredAtSyncStart =
+                    marketQuery.isBlank() && marketCategory == null && marketSort == "newest" &&
+                        marketMinPrice == null && marketMaxPrice == null &&
+                        !marketSavedOnly && !marketVerifiedOnly
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
@@ -1917,8 +1922,18 @@ private suspend fun restoreSupabaseSession() {
                     }
 
                     val marketResult = marketRequest.await()
-                    if (marketResult.isSuccess) lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
-                    val market = marketResult.getOrDefault(before.marketItems)
+                    // The global sync queries default Market listings. Never overwrite a
+                    // newer search/filter request (including one still in flight).
+                    val marketSyncIsRelevant =
+                        marketWasUnfilteredAtSyncStart && marketVersionAtSyncStart == marketRequestVersion
+                    if (marketSyncIsRelevant && marketResult.isSuccess) {
+                        lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
+                    }
+                    val market = if (marketSyncIsRelevant) {
+                        marketResult.getOrDefault(before.marketItems)
+                    } else {
+                        _uiState.value.marketItems
+                    }
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
@@ -1974,9 +1989,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
                         marketItems = market,
-                        isMarketLoading = false,
-                        marketHasMore = marketResult.isSuccess && market.size >= 40,
-                        marketErrorMessage = marketResult.exceptionOrNull()?.message,
+                        isMarketLoading = if (marketSyncIsRelevant) false else _uiState.value.isMarketLoading,
+                        marketHasMore = if (marketSyncIsRelevant) {
+                            marketResult.isSuccess && market.size >= 40
+                        } else _uiState.value.marketHasMore,
+                        marketErrorMessage = if (marketSyncIsRelevant) {
+                            marketResult.exceptionOrNull()?.message
+                        } else _uiState.value.marketErrorMessage,
                         conversations = conversations,
                         chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
@@ -2027,7 +2046,9 @@ private suspend fun restoreSupabaseSession() {
                         isRefreshingContent = false,
                         isSyncingContent = false,
                         isConversationsLoading = false,
-                        isMarketLoading = false
+                        isMarketLoading = if (marketWasUnfilteredAtSyncStart &&
+                            marketVersionAtSyncStart == marketRequestVersion
+                        ) false else _uiState.value.isMarketLoading
                     )
                     persistExtendedCache()
                 }
