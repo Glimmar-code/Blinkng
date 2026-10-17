@@ -35,6 +35,9 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
         return try {
             recoverUnreadMessages(token, uid)
             recoverSocialNotifications(token, uid)
+            // Read-only history: includes official items that were already marked read.
+            // A failure here must not erase the saved offline inbox or fail DM sync.
+            runCatching { refreshOfficialHistory(token, uid) }
             Result.success()
         } catch (_: UnauthorizedException) {
             Result.retry()
@@ -205,6 +208,39 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                 )
             }
             prefs.edit().putString(cursorKey, newest).apply()
+        }
+    }
+
+    /**
+     * The unread-only recovery query cannot preserve announcements users already read.
+     * Pull a bounded recent window through the existing authenticated user RLS policy.
+     * This is history synchronization, not a new push or local alert.
+     */
+    private fun refreshOfficialHistory(token: String, uid: String) {
+        val request = Request.Builder()
+            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&order=created_at.desc&limit=100")
+            .addHeader("apikey", SupabaseConfig.anonKey)
+            .addHeader("Authorization", "Bearer $token")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return
+            val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            // Save oldest first so the cache ends up newest-first.
+            for (index in rows.length() - 1 downTo 0) {
+                val row = rows.optJSONObject(index) ?: continue
+                if (!com.blinkng.shared.notification.BlinkAnnouncementInboxRules.isOfficialCategory(
+                        row.optString("type"), row.optString("target_type")
+                    )) continue
+                BlinkOfflineAnnouncementCache.record(
+                    context = applicationContext,
+                    userId = uid,
+                    id = row.optString("id"),
+                    title = row.optString("text"),
+                    message = row.optString("sub_text"),
+                    publishedAt = row.optString("created_at"),
+                )
+            }
         }
     }
 
