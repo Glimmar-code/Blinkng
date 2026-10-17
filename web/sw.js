@@ -1,4 +1,4 @@
-const CACHE='blink-web-v19-brand-search';
+const CACHE='blink-web-v20-go54-brand-search';
 const SHELL=[
   './',
   './index.html',

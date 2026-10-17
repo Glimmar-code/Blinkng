@@ -15,6 +15,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -27,6 +28,7 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
 
 permissions:
   contents: read
@@ -60,15 +62,18 @@ jobs:
           print("All BLINK website download buttons track future signed APK releases.")
           PY
           grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
-          grep -F '<link rel="canonical" href="https://www.blink.com.ng/" />' web/index.html >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/" />' web/index.html >/dev/null
           test -f web/privacy/index.html
-          grep -F '<link rel="canonical" href="https://www.blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
-          grep -F 'https://www.blink.com.ng/privacy/' web/sitemap.xml >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
+          grep -F 'https://blink.com.ng/privacy/' web/sitemap.xml >/dev/null
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
-          grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
+          grep -F 'Uri.parse("https://blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
       # Native Android verification still targets the reserved www.blink.com.ng domain.
       # The temporary Pages project host is a separate web-only URL until Android is updated.
+      - name: Verify secure canonical OAuth and recovery redirects
+        run: node scripts/test_domain_auth_links.mjs
+
       - name: Validate existing Android signing association
         shell: bash
         run: |

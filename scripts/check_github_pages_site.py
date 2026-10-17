@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://www.blink.com.ng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
@@ -23,7 +23,7 @@ def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(read("CNAME").strip() == "www.blink.com.ng", "Pages CNAME")
+check(read("CNAME").strip() == "blink.com.ng", "Pages CNAME")
 config = read("config.js")
 check(f'siteUrl: "{SITE}"' in config, "web client siteUrl")
 index = read("index.html")
@@ -99,7 +99,7 @@ check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-l
 check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
 check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
-check("blink-web-v19-brand-search" in read("sw.js"), "new service worker version")
+check("blink-web-v20-go54-brand-search" in read("sw.js"), "new service worker version")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
 check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
 check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.blink.com.ng/sitemap.xml
+Sitemap: https://blink.com.ng/sitemap.xml
