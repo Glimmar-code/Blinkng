@@ -44,6 +44,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
         return try {
             recoverUnreadMessages(token, uid)
             recoverSocialNotifications(token, uid)
+            runCatching { refreshOfficialHistory(token, uid) }
             Result.success()
         } catch (_: UnauthorizedException) {
             // A token can be revoked between restoreSession() and the request. Refresh once
@@ -53,6 +54,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             try {
                 recoverUnreadMessages(token, uid)
                 recoverSocialNotifications(token, uid)
+                runCatching { refreshOfficialHistory(token, uid) }
                 Result.success()
             } catch (_: Exception) {
                 retryOrStop()
@@ -174,6 +176,18 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
 
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
+                if (com.blinkng.shared.notification.BlinkAnnouncementInboxRules.isOfficialCategory(
+                        row.optString("type"), row.optString("target_type")
+                    )) {
+                    BlinkOfflineAnnouncementCache.record(
+                        context = applicationContext,
+                        userId = uid,
+                        id = row.optString("id"),
+                        title = row.optString("text"),
+                        message = row.optString("sub_text"),
+                        publishedAt = row.optString("created_at"),
+                    )
+                }
                 val created = row.optString("created_at")
                 val notificationId = row.optString("id")
                 if (NotificationIdentity.isAfterCursor(created, notificationId, newestTime, newestId)) {
@@ -233,6 +247,33 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             )
         }
         prefs.edit().putString(cursorKey, newestTime).putString(cursorIdKey, newestId).apply()
+    }
+
+    private fun refreshOfficialHistory(token: String, uid: String) {
+        val request = Request.Builder()
+            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&order=created_at.desc&limit=100")
+            .addHeader("apikey", SupabaseConfig.anonKey)
+            .addHeader("Authorization", "Bearer $token")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return
+            val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            for (index in rows.length() - 1 downTo 0) {
+                val row = rows.optJSONObject(index) ?: continue
+                if (!com.blinkng.shared.notification.BlinkAnnouncementInboxRules.isOfficialCategory(
+                        row.optString("type"), row.optString("target_type")
+                    )) continue
+                BlinkOfflineAnnouncementCache.record(
+                    context = applicationContext,
+                    userId = uid,
+                    id = row.optString("id"),
+                    title = row.optString("text"),
+                    message = row.optString("sub_text"),
+                    publishedAt = row.optString("created_at"),
+                )
+            }
+        }
     }
 
     private class UnauthorizedException : Exception()
