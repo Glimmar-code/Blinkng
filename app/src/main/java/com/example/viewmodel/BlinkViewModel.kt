@@ -6265,14 +6265,15 @@ private suspend fun restoreSupabaseSession() {
         whatsapp: String,
         state: String,
         city: String,
-        university: String
+        university: String,
+        sellerKind: String,
+        businessDescription: String,
+        productCategory: String,
+        delivery: Boolean,
+        pickup: Boolean
     ) {
         val snapshot = _uiState.value
         val current = snapshot.myProfile
-        if (current.isSellerActive && current.hasActiveMarketVerification()) {
-            showToast("Your Market seller account is already active.")
-            return
-        }
         if (!current.hasActiveMarketVerification()) {
             showToast("Get or renew your blue verification before becoming a seller.")
             return
@@ -6304,12 +6305,20 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Couldn't save your seller details.")
                 return@launch
             }
-            val registered = supabaseService.registerVerifiedMarketSeller(
-                cleanStore, phone, whatsapp, state, city, cleanUni
-            )
+            val registered = current.isSellerActive ||
+                supabaseService.registerVerifiedMarketSeller(
+                    cleanStore, phone, whatsapp, state, city, cleanUni
+                )
             if (!registered) {
                 _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
                 showToast("Seller registration requires active verification and an available Market server.")
+                return@launch
+            }
+            if (!supabaseService.completeMarketSellerProfile(
+                    sellerKind, businessDescription, productCategory, delivery, pickup
+                )) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Seller details could not be completed. Please review the form.")
                 return@launch
             }
             val fresh = runCatching { profileRepository.fetchById(current.id) }.getOrNull()
