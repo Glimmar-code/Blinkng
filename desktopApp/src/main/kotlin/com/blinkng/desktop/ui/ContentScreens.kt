@@ -112,6 +112,7 @@ import com.blinkng.shared.communityActivityRange
 import com.blinkng.shared.nextPulseValue
 import com.blinkng.shared.pulseTrend
 import com.blinkng.shared.rankPulseRange
+import com.blinkng.shared.BlinkPostFormat
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -3010,6 +3011,46 @@ internal fun DesktopFeedPostCard(
             ),
             verticalArrangement = Arrangement.spacedBy(if (xFeedStyle) 8.dp else 10.dp)
         ) {
+            if (xFeedStyle) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
+                    Spacer(Modifier.width(7.dp))
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            post.authorName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (post.authorVerified) {
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                Icons.Rounded.Verified,
+                                contentDescription = "Verified account",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "@${post.authorUsername}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            " · ${compactDesktopFeedAge(post.createdAt)}",
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
@@ -3039,6 +3080,8 @@ internal fun DesktopFeedPostCard(
                         )
                     }
                 }
+            }
+
             }
 
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
@@ -3133,14 +3176,14 @@ internal fun DesktopFeedPostCard(
             }
 
             if (xFeedStyle) {
-                // Identical metric priority to Android: views, likes, comments,
-                // reposts, saved, then sharing.
+                // Identical metric priority to Android: views, likes, reposts,
+                // comments, saved, then sharing.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(BlinkPostFormat.count(post.viewCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onLike) {
                             Icon(
@@ -3149,13 +3192,7 @@ internal fun DesktopFeedPostCard(
                                 tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("${post.likeCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onComments) {
-                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
-                        }
-                        Text("${post.commentCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostFormat.count(post.likeCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onRepost) {
@@ -3165,7 +3202,13 @@ internal fun DesktopFeedPostCard(
                                 tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("${post.repostCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostFormat.count(post.repostCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onComments) {
+                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                        }
+                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = onBookmark) {
                         Icon(
@@ -3433,6 +3476,19 @@ private fun rememberDesktopManagedPulse(
 
     return value
 }
+
+private fun compactDesktopFeedAge(timestamp: String): String = runCatching {
+    val seconds = (Instant.now().epochSecond - Instant.parse(timestamp).epochSecond).coerceAtLeast(0L)
+    when {
+        seconds < 60L -> "now"
+        seconds < 3_600L -> "${seconds / 60L}m"
+        seconds < 86_400L -> "${seconds / 3_600L}h"
+        seconds < 604_800L -> "${seconds / 86_400L}d"
+        seconds < 2_592_000L -> "${seconds / 604_800L}w"
+        seconds < 31_536_000L -> "${seconds / 2_592_000L}mo"
+        else -> "${seconds / 31_536_000L}y"
+    }
+}.getOrElse { BlinkPostFormat.age(timestamp) }
 
 private fun formatTime(value: String): String = runCatching {
     val instant = Instant.parse(value)
