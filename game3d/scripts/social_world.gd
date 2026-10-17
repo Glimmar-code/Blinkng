@@ -532,8 +532,15 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
     var member := _make_profile(actual_name, slot_counter)
     if secure_dedicated and persistent_store != null:
         var saved: Dictionary = persistent_store.call("get_profile", peer_auth_ids[id])
-        member["home_owned"] = bool(saved.get("house_owned", false))
-        member["furniture"] = int(saved.get("furniture", 0))
+        if saved.is_empty():
+            peer_auth_ids.erase(id)
+            multiplayer.multiplayer_peer.disconnect_peer(id)
+            return
+        member["home_owned"] = bool(saved["house_owned"])
+        member["furniture"] = int(saved["furniture"])
+        # Session ordering must not move an account's permanent property.
+        # Unowned players have no plot and cannot enter another player's home.
+        member["slot"] = int(saved["home_slot"]) if bool(saved["house_owned"]) else -id
     else:
         member["home_owned"] = true # LAN demonstration has free temporary homes.
     people[id] = member
@@ -583,7 +590,8 @@ func _reconcile_people() -> void:
             remote_avatars[id].queue_free()
             remote_avatars.erase(id)
     for id in home_models.keys():
-        if not people.has(id):
+        if not people.has(id) or (secure_dedicated and not
+                bool(people[id].get("home_owned", false))):
             home_models[id].queue_free()
             home_models.erase(id)
     for id in vehicle_models.keys():
@@ -592,7 +600,8 @@ func _reconcile_people() -> void:
             vehicle_models.erase(id)
 
     for id in people.keys():
-        if not home_models.has(id):
+        if not home_models.has(id) and (not secure_dedicated or
+                bool(people[id].get("home_owned", false))):
             _create_home(id, int(people[id]["slot"]))
         if id != my_id and not remote_avatars.has(id):
             remote_avatars[id] = _create_remote_avatar(id, str(people[id]["name"]))
@@ -1004,7 +1013,12 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             if not bool(persistent_store.call("update_profile", account, saved)):
                 _notify(sender, "Save failed; ask the game server operator to check storage.")
                 return
+            var committed: Dictionary = persistent_store.call("get_profile", account)
+            if committed.is_empty() or int(committed.get("home_slot", -1)) < 0:
+                _notify(sender, "Purchased home could not be verified after saving.")
+                return
             profile["home_owned"] = true
+            profile["slot"] = int(committed["home_slot"])
             people[sender] = profile
             _send_private_wallet(sender)
         "furnish":
