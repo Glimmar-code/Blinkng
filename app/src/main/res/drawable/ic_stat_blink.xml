@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/blink_logo_foreground"
-    android:gravity="center"
-    android:antialias="true"
-    android:filter="true" />
+<!-- Android small notifications require a monochrome, transparent silhouette.
+     The full-colour app logo is retained for the launcher, not the status bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M6,3 L6,21 M6,3 L13,3 C19,3 20,10 13,12 L6,12 M13,12 C21,12 21,21 13,21 L6,21" />
+</vector>
