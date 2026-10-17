@@ -6428,7 +6428,7 @@ private suspend fun restoreSupabaseSession() {
             saveLocalProfile(fresh)
             persistProfile(fresh)
             persistExtendedCache()
-            showToast("Welcome to BLINK Market. Your seller account is ready.")
+            showToast("Seller application submitted. BLINK will review it before listings can be published.")
         }
     }
 
