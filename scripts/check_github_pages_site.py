@@ -43,6 +43,14 @@ types = {item.get("@type") for item in graph}
 check({"Organization", "WebSite"} <= types, "Organization and WebSite schema types")
 check(all(item.get("url") == SITE + "/" for item in graph), "schema URLs")
 check(all(item.get("name") == "BLINK" for item in graph), "schema brand name")
+WHATSAPP = "https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u"
+organization = next(item for item in graph if item.get("@type") == "Organization")
+check(organization.get("sameAs") == [WHATSAPP], "official WhatsApp social link in Organization schema")
+check(index.count(WHATSAPP) == 2, "homepage links WhatsApp in schema and crawlable navigation")
+check(WHATSAPP in read("app.js"), "interactive landing includes WhatsApp channel link")
+for page in ("about/index.html", "download/index.html", "features/index.html", "faq/index.html", "privacy/index.html"):
+    check(WHATSAPP in read(page), f"WhatsApp channel link present in {page}")
+    check('target="_blank" rel="noopener noreferrer"' in read(page), f"safe external-link attributes in {page}")
 privacy = read("privacy/index.html")
 check(f'<link rel="canonical" href="{SITE}/privacy/"' in privacy, "privacy canonical")
 check(f'<meta property="og:url" content="{SITE}/privacy/"' in privacy, "privacy social URL")
@@ -78,7 +86,7 @@ check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-l
 check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
 check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
-check("blink-web-v17-public-information" in read("sw.js"), "new service worker version")
+check("blink-web-v18-official-whatsapp" in read("sw.js"), "new service worker version")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
 check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
 check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")
