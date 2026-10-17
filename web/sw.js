@@ -1,4 +1,4 @@
-const CACHE='blink-web-v16-brand-about';
+const CACHE='blink-web-v17-go54-apex-about';
 const SHELL=[
   './',
   './index.html',
