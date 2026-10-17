@@ -1050,6 +1050,8 @@ fun AdminProScreen(state: DesktopAppState) {
     var searchResult by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var showAnnouncementManager by remember { mutableStateOf(false) }
+    var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
 
@@ -1084,6 +1086,22 @@ fun AdminProScreen(state: DesktopAppState) {
         }
 
         item { DesktopBugReportPanel(state, admin = true) }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Announcement Manager", fontWeight = FontWeight.Bold)
+                        Text("Official in-app BLINK announcements", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showAnnouncementManager = true }) { Text("Create") }
+                }
+            }
+        }
+        announcementStatus?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
 
         item {
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
@@ -1232,6 +1250,13 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+    if (showAnnouncementManager && capability.allowed) {
+        DesktopAdminAnnouncementManager(
+            actions = actions,
+            onDismiss = { showAnnouncementManager = false },
+            onSent = { announcementStatus = it; showAnnouncementManager = false },
+        )
     }
 }
 
