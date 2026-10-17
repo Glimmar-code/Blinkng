@@ -114,8 +114,16 @@ func _start_dedicated_server() -> void:
     persistent_store = store_script.new()
     persistent_store.call("load_from_disk")
     if bool(persistent_store.get("write_blocked")):
-        push_warning("BLINK LIFE dedicated account ledger is read-only: " +
-            str(persistent_store.get("warning")))
+        # Do not open an authoritative world with unknown ownership and
+        # fictional balances. Keep the normal BLINK app and solo game safe.
+        push_error("BLINK LIFE dedicated server disabled: account storage unavailable.")
+        multiplayer.multiplayer_peer.close()
+        multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+        secure_dedicated = false
+        is_online = false
+        persistent_store = null
+        status_label.text = "Dedicated world offline: property storage needs repair."
+        return
     pending_auth_ms.clear()
     people.clear()
     slot_counter = 0
