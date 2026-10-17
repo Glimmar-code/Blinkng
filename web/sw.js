@@ -1,4 +1,4 @@
-const CACHE='blink-web-v18-official-whatsapp';
+const CACHE='blink-web-v19-brand-search';
 const SHELL=[
   './',
   './index.html',
