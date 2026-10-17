@@ -93,7 +93,8 @@ fun MarketScreen(
 ) {
     val marketAccessService = remember { com.example.data.supabase.SupabaseService() }
     var sellerApproval by remember(isSellerActive) { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(isSellerActive) {
+    var approvalRevision by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isSellerActive, approvalRevision) {
         sellerApproval = if (isSellerActive) {
             marketAccessService.getMarketSellerDashboard()
                 ?.optJSONObject("seller_card")?.optBoolean("verified_seller", false)
@@ -389,7 +390,7 @@ fun MarketScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .clickable { if (isSellerActive) onRefresh() else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
+                        .clickable { if (isSellerActive) { approvalRevision++; onRefresh() } else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
