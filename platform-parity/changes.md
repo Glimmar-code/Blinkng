@@ -1,3 +1,11 @@
+## 2026-10-17 — Phase 4B: official login announcement popup (staging integration)
+
+- **Shared:** validated server-campaign-only popup policy; deduplicate by durable notification ID; never elevate arbitrary social activities into an official BLINK alert.
+- **Android:** when signed in, idle on Home, and any website APK update prompt is resolved, show at most one undismissed already-delivered official admin campaign per login. Old notices on first use are baselined to prevent spam; the user may view the notification or dismiss it. Normal feature tips yield while the announcement modal is visible. Progress is stored per device/account, never as a fabricated server read receipt.
+- **Windows:** existing official notifications and Saved Updates history remain available. The Android login popup is a presentation-specific staging feature; this does not change Windows push delivery.
+- **Not yet enabled:** phone push fan-out, push + popup sending, future scheduling, and repeat-on-every-login policy. All three remain disabled in the admin composer pending verified server dispatcher and account-controlled preferences.
+- **Release gate:** combine with Phase 3 and Phase 4A QA; verify with a genuine server-authorized campaign, old/duplicate notifications, account switch, offline use, dialog prioritization, font scaling and physical Android device. Production remains unchanged until this gate clears.
+
 ## 2026-10-17 — Phase 4A Admin Announcement Manager (Testlab validation only)
 
 - **Shared:** `BlinkAdminAnnouncementDraft` defines three requested channels (in-app, phone push, both), recipient groups, clear validation and a strict capability gate. Push/combined or scheduled sending is *not falsely marked live*: buttons remain disabled until the matching authenticated fan-out/scheduling backend passes testing.
