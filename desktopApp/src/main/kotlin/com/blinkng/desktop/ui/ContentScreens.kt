@@ -1163,6 +1163,12 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerState by remember { mutableStateOf("") }
     var sellerCity by remember { mutableStateOf("") }
     var sellerUniversity by remember { mutableStateOf(state.profile?.university.orEmpty()) }
+    var sellerKind by remember { mutableStateOf("individual") }
+    var sellerDescription by remember { mutableStateOf("") }
+    var sellerCategory by remember { mutableStateOf("Books & Study Materials") }
+    var sellerDelivery by remember { mutableStateOf(false) }
+    var sellerPickup by remember { mutableStateOf(true) }
+    var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -1182,6 +1188,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(state.client) {
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
+        if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
     }
 
     LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
@@ -1282,6 +1289,24 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (sellerReady) {
+            item {
+                Surface(shape=RoundedCornerShape(14.dp),tonalElevation=1.dp) {
+                    Column(modifier=Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Seller Dashboard",fontWeight=FontWeight.Bold)
+                        if (marketDashboard == null) {
+                            Text("Seller analytics unavailable until Market services are connected.")
+                        } else {
+                            Text("Products: ${marketDashboard?.optInt("products") ?: 0}  •  Views: ${marketDashboard?.optLong("views") ?: 0L}")
+                            Text("Saves: ${marketDashboard?.optLong("saves") ?: 0L}  •  Inquiries: ${marketDashboard?.optInt("inquiries") ?: 0}")
+                            Text("Completed: ${marketDashboard?.optInt("completed_orders") ?: 0}  •  Boosts: ${marketDashboard?.optInt("boosts") ?: 0}")
+                        }
+                        Text("Merchant approval is separate from your blue verification badge.",
+                            color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         if (showSellerEnrollment) {
             item {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
@@ -1294,19 +1319,41 @@ fun MarketplaceScreen(state: DesktopAppState) {
                         OutlinedTextField(sellerCity, { sellerCity = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Campus / City") })
                         OutlinedTextField(sellerPhone, { sellerPhone = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business phone") })
                         OutlinedTextField(sellerWhatsapp, { sellerWhatsapp = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business WhatsApp") })
+                        Text("Seller type")
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected=sellerKind=="individual",
+                                onClick={sellerKind="individual"},label={Text("Individual")})
+                            FilterChip(selected=sellerKind=="business",
+                                onClick={sellerKind="business"},label={Text("Business")})
+                        }
+                        OutlinedTextField(sellerDescription,{sellerDescription=it.take(1000)},
+                            modifier=Modifier.fillMaxWidth(),label={Text("Store description • 20+ characters")})
+                        OutlinedTextField(sellerCategory,{sellerCategory=it.take(100)},
+                            modifier=Modifier.fillMaxWidth(),label={Text("Product category")})
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Delivery",modifier=Modifier.weight(1f))
+                            Switch(checked=sellerDelivery,onCheckedChange={sellerDelivery=it})
+                        }
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Campus pickup",modifier=Modifier.weight(1f))
+                            Switch(checked=sellerPickup,onCheckedChange={sellerPickup=it})
+                        }
                         Text("Use only business contact details you are comfortable sharing with buyers.")
                         error?.let { InlineError(it) }
                         Button(
                             enabled = !sellerSubmitting && sellerStore.trim().length >= 2 &&
                                 sellerUniversity.trim().length >= 3 && sellerState.trim().length >= 2 &&
                                 sellerCity.trim().length >= 2 && sellerPhone.length in 10..15 &&
-                                sellerWhatsapp.length in 10..15,
+                                sellerWhatsapp.length in 10..15 && sellerDescription.trim().length >= 20 &&
+                                sellerCategory.isNotBlank() && (sellerDelivery || sellerPickup),
                             onClick = {
                                 sellerSubmitting = true
                                 scope.launch {
                                     runCatching {
                                         state.client.registerVerifiedMarketSeller(
                                             sellerStore,sellerPhone,sellerWhatsapp,sellerState,sellerCity,sellerUniversity
+                                        ) && state.client.completeMarketSellerProfile(
+                                            sellerKind,sellerDescription,sellerCategory,sellerDelivery,sellerPickup
                                         )
                                     }.onSuccess { approved ->
                                         if (approved) {
