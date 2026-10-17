@@ -1287,6 +1287,7 @@ class DesktopSupabaseClient(
         maxPrice: Long? = null,
         savedOnly: Boolean = false,
         verifiedOnly: Boolean = false,
+        university: String? = null,
     ): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
         require(com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)) {
             "Invalid price range."
@@ -1303,6 +1304,7 @@ class DesktopSupabaseClient(
             query.trim().take(80).takeIf { it.isNotBlank() }?.let {
                 append("&or=").append(encode("(title.ilike.*$it*,description.ilike.*$it*,category.ilike.*$it*,seller_name.ilike.*$it*,university.ilike.*$it*)"))
             }
+            university?.trim()?.takeIf(String::isNotBlank)?.let { append("&university=eq.").append(encode(it)) }
             category?.takeIf { it.isNotBlank() && it != "All Categories" }?.let {
                 append("&category=eq.").append(encode(it))
             }
