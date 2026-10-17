@@ -1,3 +1,20 @@
+## 2026-10-17 — Phase 4A Admin Announcement Manager (Testlab validation only)
+
+- **Shared:** `BlinkAdminAnnouncementDraft` defines three requested channels (in-app, phone push, both), recipient groups, clear validation and a strict capability gate. Push/combined or scheduled sending is *not falsely marked live*: buttons remain disabled until the matching authenticated fan-out/scheduling backend passes testing.
+- **Android:** verified admin dashboard has an Announcements entry in the top bar. The black-and-white manager provides titled message authoring, audience selection, searchable real-user picker (no manual UID), confirmation preview, typed SEND for all-user broadcasts and the existing `admin_send_announcement` backend RPC for immediate in-app announcements.
+- **Windows:** desktop admin has an equivalent manager using shared rules, the same authenticated RPC and server search for recipients.
+- **Security:** no client service-role credentials, direct database writes, unsanctioned scheduled tasks or silent phone push sends. Existing Supabase `private.require_blink_admin()` authorizes the production RPC. Admin-only UI is not the authorization boundary.
+- **Limitation:** the existing broadcast RPC produces in-app activity/notification rows; FCM push distribution, recurring/on-login pop-up audience config and remote scheduled announcement jobs require separate backend/worker activation and staging tests.
+- **Release gates:** Android + desktop builds/unit tests, real admin/non-admin authorization checks, recipient targeting and explicit-send confirmation, and production backend provider test before enabling new push/both switches. Branch targets Testlab. Do not merge directly to main.
+
+## 2026-10-17 — Phase 3: official announcement recovery and offline Saved Updates (Testlab candidate)
+
+- **Shared:** `BlinkAnnouncementInboxRules` filters only official admin/system notifications, bounds previews, deduplicates by authoritative notification ID and caps per-account history at 50 entries. No invented messages or unsourced reminders.
+- **Android:** reuse existing Supabase unread notification recovery and FCM infrastructure. Cache official notification previews from authenticated recovery and recipient-matched FCM packets, even on first baseline where replay of old heads-ups is suppressed. `Notifications → Saved Updates` reads only the active user's locally cached previews while offline. Other social/DM/coin items are excluded; messages are never persisted in this cache.
+- **Windows:** save official notifications from existing authenticated desktop refresh using the exact same shared filter and bounded previews. Notifications offers a Saved Updates view that works after disconnection, without rerendering cached notices as new system alerts.
+- **Scope limitations:** no new remote announcement authoring UI, push provider setup or send operation; online push still depends on configured Firebase and Supabase infrastructure. Offline cannot deliver an announcement never previously received. The full server notification database remains authoritative for current read state.
+- **Gate:** Android tests/lint/APK, Windows build/parity and real-device offline/account-switch checks. Supabase production data and schema are untouched, and `main` remains unchanged until verified.
+
 ## 2026-10-17 — Website APK update notice (Phase 2, Testlab validation)
 
 - **Shared:** `BlinkReleasePolicy` validates the official publisher's release-info metadata and compares numeric Android version codes; malformed/unavailable metadata is ignored without blocking app use.

@@ -383,49 +383,106 @@ fun SearchScreen(state: DesktopAppState) {
 
 @Composable
 fun NotificationsScreen(state: DesktopAppState) {
-    var notifications by remember { mutableStateOf<List<DesktopNotification>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    val accountId = state.session?.userId.orEmpty()
+    var notifications by remember(accountId) { mutableStateOf<List<DesktopNotification>>(emptyList()) }
+    var savedUpdates by remember(accountId) {
+        mutableStateOf(DesktopOfflineUpdatesCache.read(accountId))
+    }
+    var showingSaved by remember(accountId) { mutableStateOf(false) }
+    var loading by remember(accountId) { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         loading = true
-        notifications = runCatching { state.client.fetchNotifications() }.getOrDefault(emptyList())
+        // Failed connectivity must not erase the locally saved official-update inbox.
+        runCatching { state.client.fetchNotifications() }.onSuccess { fresh ->
+            notifications = fresh
+            DesktopOfflineUpdatesCache.recordFromServer(accountId, fresh)
+            savedUpdates = DesktopOfflineUpdatesCache.read(accountId)
+        }
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(accountId) { if (accountId.isNotBlank()) reload() else loading = false }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { ScreenHeader("Notifications", "Activity, messages and official updates") }
-        if (loading) item { LoadingRow() }
-        if (!loading && notifications.isEmpty()) item { EmptyState("You're all caught up.") }
-        items(notifications, key = { it.id }) { item ->
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    if (!item.isRead) scope.launch {
-                        runCatching { state.client.markNotificationRead(item.id) }
-                        notifications = notifications.map { if (it.id == item.id) it.copy(isRead = true) else it }
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                tonalElevation = if (item.isRead) 0.dp else 3.dp,
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(10.dp).clip(CircleShape).background(
-                            if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
-                            if (item.actorIsVip || item.vipPriority) {
-                                Spacer(Modifier.width(6.dp))
-                                Text("VIP", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                ScreenHeader(
+                    "Notifications",
+                    if (showingSaved) "Offline copies of official BLINK updates" else "Activity, messages and official updates",
+                )
+                OutlinedButton(onClick = { showingSaved = !showingSaved }) {
+                    Text(if (showingSaved) "All" else "Saved Updates")
+                }
+            }
+        }
+        if (showingSaved) {
+            item {
+                Text(
+                    "These updates were previously received online and remain readable without a connection.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (savedUpdates.isEmpty()) {
+                item { EmptyState("No BLINK updates have been saved on this computer yet.") }
+            }
+            items(savedUpdates, key = { it.id }) { entry ->
+                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(entry.title, fontWeight = FontWeight.Bold)
+                        if (entry.message.isNotBlank()) Text(entry.message)
+                        if (entry.publishedAt.isNotBlank()) {
+                            Text(entry.publishedAt.replace('T', ' ').take(16), fontSize = 11.sp)
                         }
-                        item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        } else {
+            if (loading) item { LoadingRow() }
+            if (!loading && notifications.isEmpty()) item {
+                EmptyState("No live notifications loaded. Saved Updates remains available offline.")
+            }
+            items(notifications, key = { it.id }) { item ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        if (!item.isRead) scope.launch {
+                            runCatching { state.client.markNotificationRead(item.id) }
+                            notifications = notifications.map { if (it.id == item.id) it.copy(isRead = true) else it }
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    tonalElevation = if (item.isRead) 0.dp else 3.dp,
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(10.dp).clip(CircleShape).background(
+                                if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
+                                if (item.actorIsVip || item.vipPriority) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("VIP", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

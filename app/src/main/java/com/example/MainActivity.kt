@@ -1315,6 +1315,7 @@ fun MainAppContent(
         ) {
             ActivityScreen(
                 activities = uiState.activities,
+                accountId = uiState.myProfile.id,
                 onBack = { viewModel.openActivity(false) },
                 onProfileClick = { username ->
                     viewModel.openActivity(false)
