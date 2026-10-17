@@ -1,5 +1,8 @@
 package com.example.notification
 
+import com.blinkng.shared.notification.BlinkNotificationPresenter
+import com.blinkng.shared.notification.BlinkNotificationKind
+
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationChannelGroup
@@ -112,9 +115,9 @@ object BlinkNotificationHelper {
     // ================================================================
 
     private const val PINK_COLOR = 0xFFE02B6D.toInt()
-    private const val PURPLE_COLOR = 0xFF8A2BE2.toInt()
+    private const val PURPLE_COLOR = 0xFF111111.toInt()
     private const val GOLD_COLOR = 0xFFFFB800.toInt()
-    private const val GREEN_COLOR = 0xFF22C55E.toInt()
+    private const val GREEN_COLOR = 0xFF111111.toInt()
 
     // ================================================================
     // PUBLIC CHANNEL INITIALIZATION
@@ -797,6 +800,7 @@ object BlinkNotificationHelper {
             context
         )
 
+        val safeCopy = BlinkNotificationPresenter.render(BlinkNotificationKind.SOCIAL, title, body)
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -804,15 +808,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    title
+                    safeCopy.title
                 )
                 .setContentText(
-                    body
+                    safeCopy.body
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(body)
+                        .bigText(safeCopy.body)
                 )
                 .setCategory(
                     NotificationCompat
@@ -843,7 +847,7 @@ object BlinkNotificationHelper {
             context,
             SOCIAL_ID_BASE +
                     positiveHash(
-                        "$title$body"
+                        "${safeCopy.title}${safeCopy.body}"
                     ) % 700,
             notification
         )
@@ -1042,10 +1046,7 @@ object BlinkNotificationHelper {
                 context,
                 CHANNEL_FOLLOWS
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_menu_add
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     "New follower"
                 )

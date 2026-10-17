@@ -1,3 +1,11 @@
+## 2026-10-17 — BLINK notification reliability and copy (Feature 1, Testlab candidate)
+
+- **Shared:** `BlinkNotificationPresenter` rejects empty and literal `null`/`undefined` sender, title and body values, preserving valid source copy and using truthful, non-identifying fallbacks.
+- **Android:** FCM and reconnect social recovery apply the same shared presentation rules. Notification-channel semantics and server-authoritative IDs remain unchanged; a dedicated white-on-transparent monochrome B glyph replaces the bitmap status icon. Social notification previews use dark neutral accent rather than purple; direct-message reply workflows are unchanged.
+- **Windows:** tray/foreground and Notifications inbox use the shared formatting rules. The desktop tray still uses native platform presentation.
+- **Testing gate:** run Android unit and build checks, Windows build checks, missing-sender and malformed-payload tests, real FCM background/foreground delivery, Android 13–15 notification permission review and Xiaomi device/icon appearance check. Android OS-rendered FCM notification-only background packets require server-side payload sanitation and live provider QA; static tests alone cannot prove delivery.
+- **Release gate:** candidate branch targets Testlab. Production main is currently far ahead/diverged, so reconcile without overwriting newer main code. No automatic production merge or APK publishing until all checks pass.
+
 ## 2026-10-17 — Compact X-inspired PostCard (Testlab candidate; not production-ready)
 
 - **Shared:** new `BlinkPostFormat` applies bounded short time/count labels without altering server data.
