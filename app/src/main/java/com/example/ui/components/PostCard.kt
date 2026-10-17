@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkPostFormat
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
@@ -127,7 +128,7 @@ fun PostCard(
     onLike: () -> Unit,
     onComment: () -> Unit,
     onBookmark: () -> Unit,
-    onRepost: () -> Unit = {},
+    onRepost: (() -> Unit)? = null,
     onShare: () -> Unit,
     onOptionsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
@@ -144,6 +145,7 @@ fun PostCard(
     hasActiveStory: Boolean = false,
     authorProfileId: String = "",
     isFollowingAuthor: Boolean = false,
+    isFollowMutationPending: Boolean = false,
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
@@ -181,17 +183,17 @@ fun PostCard(
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
-        targetValue = if (post.isLiked) socialBlue else secondaryText,
+        targetValue = if (post.isLiked) primaryText else secondaryText,
         animationSpec = tween(150),
         label = "simplePostLikeTint"
     )
     val repostTint by animateColorAsState(
-        targetValue = if (post.isRepostedByMe) socialBlue else secondaryText,
+        targetValue = if (post.isRepostedByMe) primaryText else secondaryText,
         animationSpec = tween(150),
         label = "simplePostRepostTint"
     )
     val savedTint by animateColorAsState(
-        targetValue = if (post.isBookmarked) socialBlue else secondaryText,
+        targetValue = if (post.isBookmarked) primaryText else secondaryText,
         animationSpec = tween(150),
         label = "simplePostSavedTint"
     )
@@ -250,153 +252,120 @@ fun PostCard(
                 }
             }
 
+            // Single-line, edge-to-edge identity rail; extra badges and store crowns stay hidden.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, top = 12.dp, end = 6.dp, bottom = 8.dp),
+                    .padding(start = 10.dp, top = 9.dp, end = 6.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val avatarModifier = if (hasActiveStory) {
-                    Modifier
-                        .size(46.dp)
-                        .background(socialBlue, CircleShape)
+                    Modifier.size(40.dp)
+                        .background(primaryText, CircleShape)
                         .padding(2.dp)
                         .background(surfaceColor, CircleShape)
                         .padding(2.dp)
                 } else {
-                    Modifier.size(46.dp)
+                    Modifier.size(40.dp)
                 }
-
-                // Keep the presence badge outside the clipped avatar so it cannot be
-                // cut off by the circular image/story ring on narrow feed layouts.
-                Box(modifier = Modifier.size(50.dp)) {
-                    Box(
+                Box(modifier = Modifier.size(43.dp)) {
+                    AsyncImage(
+                        model = post.authorAvatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "$resolvedAuthorName profile picture",
+                        contentScale = ContentScale.Crop,
                         modifier = avatarModifier
                             .align(Alignment.TopStart)
                             .clip(CircleShape)
                             .clickable(role = Role.Button) { onProfileClick(profileTarget) }
-                    ) {
-                        AsyncImage(
-                            model = post.authorAvatar,
-                            error = painterResource(R.drawable.ic_default_profile),
-                            fallback = painterResource(R.drawable.ic_default_profile),
-                            contentDescription = "$resolvedAuthorName profile picture",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().clip(CircleShape)
-                        )
-                    }
-
+                    )
                     authorOnline?.let { active ->
                         Box(
                             modifier = Modifier
-                                .size(14.dp)
+                                .size(12.dp)
                                 .align(Alignment.BottomEnd)
-                                .background(
-                                    if (active) Color(0xFF22C55E) else Color(0xFF6B7280),
-                                    CircleShape
-                                )
+                                .background(if (active) Color(0xFF22C55E) else secondaryText, CircleShape)
                                 .border(2.dp, surfaceColor, CircleShape)
                         )
                     }
                 }
-
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(7.dp))
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = resolvedAuthorName,
+                        color = primaryText,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                            .clickable { onProfileClick(profileTarget) }
+                    )
+                    if (authorVerificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(3.dp))
+                        Icon(
+                            imageVector = Icons.Default.Verified,
+                            contentDescription = "Verified account",
+                            tint = primaryText,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    if (resolvedAuthorUsername.isNotBlank()) {
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            text = resolvedAuthorName,
-                            color = primaryText,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            text = "@$resolvedAuthorUsername",
+                            color = secondaryText,
+                            fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { onProfileClick(profileTarget) }
+                            modifier = Modifier.weight(1f, fill = false)
                         )
-                        if (authorVerificationBadge != VerificationBadge.NONE) {
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.Verified,
-                                contentDescription = when (authorVerificationBadge) {
-                                    VerificationBadge.GOLD -> "Gold verified"
-                                    VerificationBadge.BLUE -> "Blue verified"
-                                    VerificationBadge.NONE -> null
-                                },
-                                tint = when (authorVerificationBadge) {
-                                    VerificationBadge.GOLD -> BlinkGold
-                                    VerificationBadge.BLUE -> socialBlue
-                                    VerificationBadge.NONE -> socialBlue
-                                },
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        BlinkVipMarkForUsername(
-                            username = resolvedAuthorUsername,
-                            knownVip = if (post.authorIsVip) true else null,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                        if (!isAuthor && authorProfileId.isNotBlank()) {
-                            Spacer(Modifier.width(6.dp))
-                            ProfileFollowInteractButton(
-                                isFollowing = isFollowingAuthor,
-                                onFollow = { onFollowAuthor(authorProfileId) },
-                                onUnfollow = { onUnfollowAuthor(authorProfileId) },
-                                onMessage = onMessageAuthor,
-                                onGiftCoins = { onGiftCoinsAuthor(authorProfileId) },
-                                onGameChallenge = { onChallengeAuthor(authorProfileId) },
-                                onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
-                                onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
-                                onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
-                                onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
-                                onViewProfile = { onProfileClick(profileTarget) },
-                                onOpenConnectHub = onConnectHubAuthor
-                            )
-                        }
-                        if (resolvedAuthorUsername.isNotBlank()) {
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                text = "@$resolvedAuthorUsername",
-                                color = secondaryText,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
-
-                    val meta = listOf(post.timeAgo, post.facultyTag)
-                        .filter(String::isNotBlank)
-                        .joinToString("  ·  ")
-                    if (meta.isNotBlank()) {
+                    if (post.timeAgo.isNotBlank()) {
                         Text(
-                            text = "$meta  ·  Public",
+                            text = " · ${BlinkPostFormat.age(post.timeAgo)}",
                             color = secondaryText,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            fontSize = 11.sp,
+                            maxLines = 1
                         )
                     }
                 }
-
-                IconButton(
-                    onClick = onBookmark,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(
-                        imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
-                        tint = savedTint,
-                        modifier = Modifier.size(21.dp)
-                    )
+                if (!isAuthor && authorProfileId.isNotBlank()) {
+                    Spacer(Modifier.width(5.dp))
+                    Box(
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, dividerColor, RoundedCornerShape(16.dp))
+                            .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
+                                if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
+                                else onFollowAuthor(authorProfileId)
+                            }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
+                            color = primaryText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onOptionsClick,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(35.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreHoriz,
                         contentDescription = "Post options",
                         tint = primaryText,
-                        modifier = Modifier.size(23.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -513,46 +482,25 @@ fun PostCard(
                 }
             }
 
+            // Six equal-width actions remain on-screen even at phone widths.
+            HorizontalDivider(color = dividerColor.copy(alpha = 0.6f), thickness = 0.5.dp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                    .padding(horizontal = 3.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!post.hideLikes) {
-                    Text(
-                        text = "${formatNumber(post.likes)} likes",
-                        color = secondaryText,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = listOf(
-                        "${formatNumber(post.commentsCount)} comments",
-                        "${formatNumber(post.sharesCount)} shares",
-                        "${formatNumber(displayedViewsCount)} views"
-                    ).joinToString("  ·  "),
-                    color = secondaryText,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1
+                ReadOnlyMetricAction(
+                    icon = Icons.Default.Visibility,
+                    value = BlinkPostFormat.count(displayedViewsCount),
+                    description = "$displayedViewsCount views",
+                    tint = secondaryText
                 )
-            }
-
-            HorizontalDivider(color = dividerColor)
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 PremiumPostAction(
                     icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    value = "Like",
+                    value = if (post.hideLikes) null else BlinkPostFormat.count(post.likes),
                     tint = likedTint,
-                    description = if (post.isLiked) "Unlike" else "Like",
+                    description = if (post.isLiked) "Unlike post" else "Like post",
                     iconScale = likeScale.value,
                     onClick = {
                         scope.launch {
@@ -563,32 +511,45 @@ fun PostCard(
                         onLike()
                     }
                 )
-                PremiumPostAction(
-                    icon = Icons.Default.ChatBubbleOutline,
-                    value = "Comment",
-                    tint = secondaryText,
-                    description = "Comment",
-                    onClick = onComment
-                )
-                if (!isAuthor) {
+                if (isAuthor || onRepost == null) {
+                    ReadOnlyMetricAction(
+                        icon = Icons.Default.Repeat,
+                        value = BlinkPostFormat.count(post.repostsCount),
+                        description = "${post.repostsCount} reposts · Cannot repost your own post",
+                        tint = secondaryText
+                    )
+                } else {
                     PremiumPostAction(
                         icon = Icons.Default.Repeat,
-                        value = "Repost",
+                        value = BlinkPostFormat.count(post.repostsCount),
                         tint = repostTint,
                         description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                        onClick = onRepost
+                        onClick = { onRepost?.invoke() }
                     )
                 }
                 PremiumPostAction(
-                    icon = Icons.Default.Share,
-                    value = "Share",
+                    icon = Icons.Default.ChatBubbleOutline,
+                    value = BlinkPostFormat.count(post.commentsCount),
                     tint = secondaryText,
-                    description = "Share",
+                    description = "Comments · ${post.commentsCount}",
+                    onClick = onComment
+                )
+                PremiumPostAction(
+                    icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    value = null,
+                    tint = savedTint,
+                    description = if (post.isBookmarked) "Remove saved post" else "Save post",
+                    onClick = onBookmark
+                )
+                PremiumPostAction(
+                    icon = Icons.Default.Share,
+                    value = null,
+                    tint = secondaryText,
+                    description = "Share post",
                     onClick = onShare
                 )
             }
-
-            HorizontalDivider(color = dividerColor)
+            HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
         }
     }
 
@@ -685,7 +646,8 @@ private fun PremiumPollCard(
 private fun RowScope.ReadOnlyMetricAction(
     icon: ImageVector,
     value: String,
-    description: String
+    description: String,
+    tint: Color
 ) {
     Box(
         modifier = Modifier
@@ -698,10 +660,10 @@ private fun RowScope.ReadOnlyMetricAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = FeedTextSecondary,
-                modifier = Modifier.size(21.dp)
+                tint = tint,
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(2.dp))
             AnimatedContent(
                 targetState = value,
                 transitionSpec = {
@@ -711,8 +673,8 @@ private fun RowScope.ReadOnlyMetricAction(
             ) { animatedValue ->
                 Text(
                     text = animatedValue,
-                    color = FeedTextSecondary,
-                    style = MaterialTheme.typography.labelSmall,
+                    color = tint,
+                    fontSize = 10.sp,
                     maxLines = 1
                 )
             }
@@ -762,14 +724,14 @@ private fun RowScope.PremiumPostAction(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(21.dp)
+                    .size(18.dp)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
                     }
             )
             if (!value.isNullOrBlank()) {
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(2.dp))
                 AnimatedContent(
                     targetState = value,
                     transitionSpec = {
@@ -780,7 +742,7 @@ private fun RowScope.PremiumPostAction(
                     Text(
                         text = animatedValue,
                         color = tint,
-                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
                         maxLines = 1
                     )
                 }

@@ -27,6 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
@@ -79,6 +83,7 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkPostFormat
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkLifePrototype
 import com.blinkng.shared.BlinkDailyMission
@@ -1253,38 +1258,99 @@ private fun PostCard(
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
-        Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Display parity with Android's compact, full-width post. Mutations without
+    // a desktop backend contract stay visibly unavailable, not fake successes.
+    Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 0.dp, shape = RoundedCornerShape(0.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline)
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    VerifiedName(post.authorName, post.authorVerified)
-                    Text("@${post.authorUsername} • ${formatTime(post.createdAt)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        post.authorName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (post.authorVerified) {
+                        Spacer(Modifier.width(3.dp))
+                        Icon(
+                            Icons.Rounded.Verified,
+                            contentDescription = "Verified account",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "@${post.authorUsername}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        " · ${compactDesktopPostAge(post.createdAt)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
                 }
             }
+            Spacer(Modifier.height(8.dp))
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
-            if (body.isNotBlank()) Text(body, fontSize = 15.sp)
+            if (body.isNotBlank()) {
+                Text(body, fontSize = 15.sp)
+                Spacer(Modifier.height(8.dp))
+            }
             if (post.imageUrl != null || post.images.isNotEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth().height(180.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("Image attachment", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = onLike) {
-                    Icon(if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = "Like", tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            HorizontalDivider(modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Visibility, contentDescription = "Views", modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(BlinkPostFormat.count(post.viewCount), fontSize = 11.sp)
                 }
-                Text(post.likeCount.toString(), fontSize = 12.sp)
-                IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
-                Text(post.commentCount.toString(), fontSize = 12.sp)
-                OutlinedButton(onClick = onCopyLink) {
-                    Text("Copy link", fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onLike, modifier = Modifier.size(40.dp)) {
+                        Icon(if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = if (post.isLiked) "Unlike" else "Like")
+                    }
+                    Text(BlinkPostFormat.count(post.likeCount), fontSize = 11.sp)
                 }
-                Spacer(Modifier.weight(1f))
-                Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = {}, enabled = false, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Repeat, contentDescription = "Repost not yet available on Windows")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onComments, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                    }
+                    Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp)
+                }
+                IconButton(onClick = {}, enabled = false, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.BookmarkBorder, contentDescription = "Save not yet available on Windows")
+                }
+                IconButton(onClick = onCopyLink, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Share, contentDescription = "Share link")
+                }
             }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
@@ -1423,6 +1489,19 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
         cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
     )
 }
+
+private fun compactDesktopPostAge(timestamp: String): String = runCatching {
+    val seconds = (Instant.now().epochSecond - Instant.parse(timestamp).epochSecond).coerceAtLeast(0L)
+    when {
+        seconds < 60L -> "now"
+        seconds < 3_600L -> "${seconds / 60L}m"
+        seconds < 86_400L -> "${seconds / 3_600L}h"
+        seconds < 604_800L -> "${seconds / 86_400L}d"
+        seconds < 2_592_000L -> "${seconds / 604_800L}w"
+        seconds < 31_536_000L -> "${seconds / 2_592_000L}mo"
+        else -> "${seconds / 31_536_000L}y"
+    }
+}.getOrElse { BlinkPostFormat.age(timestamp) }
 
 private fun formatTime(value: String): String = runCatching {
     val instant = Instant.parse(value)
