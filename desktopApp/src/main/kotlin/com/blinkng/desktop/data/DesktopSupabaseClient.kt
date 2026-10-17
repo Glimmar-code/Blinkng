@@ -1292,6 +1292,20 @@ class DesktopSupabaseClient(
         require(com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)) {
             "Invalid price range."
         }
+        if (sort == "recommended" && !savedOnly && !verifiedOnly) {
+            val payload = JSONObject()
+                .put("p_query",query.trim().take(80))
+                .put("p_university",university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                .put("p_category",category?.takeUnless { it=="All Categories" } ?: JSONObject.NULL)
+                .put("p_limit",60)
+                .put("p_offset",0)
+                .put("p_min_price",minPrice ?: JSONObject.NULL)
+                .put("p_max_price",maxPrice ?: JSONObject.NULL)
+            val rows = postArray("/rest/v1/rpc/discover_market_items_v2",payload,"return=representation")
+            return@withContext (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let(::parseMarketItem)
+            }
+        }
         val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
         val url = buildString {
             append("/rest/v1/market_items?status=eq.active&is_sold=eq.false&seller_id=not.is.null")
