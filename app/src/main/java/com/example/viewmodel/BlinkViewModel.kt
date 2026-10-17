@@ -41,6 +41,7 @@ import com.example.notification.ConversationMuteExpiryWorker
 import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkRefreshPolicy
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.example.util.safeBoolean
@@ -247,6 +248,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketVerifiedOnly: Boolean = false
     // Reject late network responses after the user changes search, sort or price.
     private var marketRequestVersion = 0L
+    private var lastMarketQueryCompletedAt = 0L
     private var marketNextOffset = 0
     private val marketplaceSaveInFlight = mutableSetOf<String>()
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -283,6 +285,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     // An inbox visit must never refetch the entire feed, Market and Connect payload.
     private var inboxEntryJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
+    private val visibleRefreshAt = mutableMapOf<String, Long>()
+    private var visibleFeedRefreshJob: Job? = null
+    private var visibleConversationsRefreshJob: Job? = null
     // Ignore pagination results started before a user-initiated lane refresh.
     private var postPageEpoch = 0
     private var reelPageEpoch = 0
@@ -1627,10 +1632,111 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
-        val lastSync = lastSuccessfulSyncAt
-        val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
-        if (!isFresh) fetchSupabaseData()
+    /**
+     * Resuming BLINK must not reload the whole app. Only the visible surface
+     * may quietly revalidate its data, retaining the current rows and scroll.
+     */
+    fun refreshIfStale(maxAgeMillis: Long = BlinkRefreshPolicy.FOREGROUND_REFRESH_INTERVAL_MS) {
+        val state = _uiState.value
+        if (state.destination != AppDestination.MAIN || !state.isOnline ||
+            state.myProfile.username.isBlank() || syncJob?.isActive == true
+        ) return
+
+        val scope = when (state.selectedTab) {
+            MainTab.HOME -> when (state.feedSubTab) {
+                0 -> "feed"
+                1 -> "reels"
+                2 -> "connect"
+                else -> return // The optional game has its own data lifecycle.
+            }
+            MainTab.MARKET -> "market"
+            MainTab.MESSAGES -> "messages"
+            MainTab.LEADERBOARD -> "leaderboard"
+            MainTab.SEARCH -> return // Preserve the current search without new requests.
+        }
+        val ownerKey = state.myProfile.id.ifBlank { state.myProfile.username.lowercase() }
+        val key = "$ownerKey:$scope"
+        val now = SystemClock.elapsedRealtime()
+        val lastRefresh = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
+        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, maxAgeMillis)) return
+        // Reserve this scope immediately to coalesce repeated onResume callbacks.
+        visibleRefreshAt[key] = now
+
+        when (scope) {
+            "feed" -> refreshVisibleFeedQuietly(isReel = false)
+            "reels" -> refreshVisibleFeedQuietly(isReel = true)
+            "connect" -> {
+                refreshConnectStudents()
+                refreshConnectHub()
+            }
+            "market" -> refreshMarketItems()
+            "messages" -> refreshVisibleConversationsQuietly()
+            "leaderboard" -> refreshLeaderboardQuietly()
+        }
+    }
+
+    private fun refreshVisibleFeedQuietly(isReel: Boolean) {
+        if (visibleFeedRefreshJob?.isActive == true) return
+        val accountId = _uiState.value.myProfile.id
+        visibleFeedRefreshJob = viewModelScope.launch {
+            try {
+                syncMutex.withLock {
+                    val fresh = postRepository.fetchFeed(isReel = isReel)
+                    if (fresh.isEmpty() || _uiState.value.myProfile.id != accountId) return@withLock
+                    val current = _uiState.value
+                    _uiState.value = if (isReel) {
+                        current.copy(reels = reconcileRefreshedFeed(current.reels, fresh))
+                    } else {
+                        current.copy(posts = reconcileRefreshedFeed(current.posts, fresh))
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Feed refresh failed", error)
+                // Existing cached content remains untouched.
+            }
+        }
+    }
+
+    private fun refreshVisibleConversationsQuietly() {
+        if (visibleConversationsRefreshJob?.isActive == true || inboxEntryJob?.isActive == true || !_uiState.value.isOnline) return
+        val accountId = _uiState.value.myProfile.id
+        if (_uiState.value.conversations.isEmpty()) {
+            _uiState.value = _uiState.value.copy(isConversationsLoading = true)
+        }
+        visibleConversationsRefreshJob = viewModelScope.launch {
+            try {
+                val fresh = chatRepository.fetchConversations()
+                if (_uiState.value.myProfile.id != accountId) return@launch
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = mergeConversationSummaries(fresh, current.conversations),
+                    isConversationsLoading = false
+                )
+                persistConversations()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Messages refresh failed", error)
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
+        }
+    }
+
+    private fun refreshLeaderboardQuietly() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchLeaderboard() }
+                .onSuccess { live ->
+                    _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+                    persistExtendedCache()
+                }
+                .onFailure { Log.w(TAG, "Quiet leaderboard refresh failed", it) }
+        }
     }
 
     private fun reconcileRefreshedFeed(
@@ -1665,6 +1771,11 @@ private suspend fun restoreSupabaseSession() {
 
             syncMutex.withLock {
                 val before = _uiState.value
+                val marketVersionAtSyncStart = marketRequestVersion
+                val marketWasUnfilteredAtSyncStart =
+                    marketQuery.isBlank() && marketCategory == null && marketSort == "newest" &&
+                        marketMinPrice == null && marketMaxPrice == null &&
+                        !marketSavedOnly && !marketVerifiedOnly
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
@@ -1813,7 +1924,17 @@ private suspend fun restoreSupabaseSession() {
                     }
 
                     val marketResult = marketRequest.await()
-                    val market = marketResult.getOrDefault(before.marketItems)
+                    // Do not overwrite a newer filtered Market query with a default sync.
+                    val marketSyncIsRelevant =
+                        marketWasUnfilteredAtSyncStart && marketVersionAtSyncStart == marketRequestVersion
+                    if (marketSyncIsRelevant && marketResult.isSuccess) {
+                        lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
+                    }
+                    val market = if (marketSyncIsRelevant) {
+                        marketResult.getOrDefault(before.marketItems)
+                    } else {
+                        _uiState.value.marketItems
+                    }
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
@@ -1869,9 +1990,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
                         marketItems = market,
-                        isMarketLoading = false,
-                        marketHasMore = marketResult.isSuccess && market.size >= 40,
-                        marketErrorMessage = if (marketResult.isFailure) "Couldn't update Marketplace. Tap to retry." else null,
+                        isMarketLoading = if (marketSyncIsRelevant) false else _uiState.value.isMarketLoading,
+                        marketHasMore = if (marketSyncIsRelevant) {
+                            marketResult.isSuccess && market.size >= 40
+                        } else _uiState.value.marketHasMore,
+                        marketErrorMessage = if (marketSyncIsRelevant) {
+                            if (marketResult.isFailure) "Couldn't update Marketplace. Tap to retry." else null
+                        } else _uiState.value.marketErrorMessage,
                         conversations = conversations,
                         chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
@@ -1922,7 +2047,9 @@ private suspend fun restoreSupabaseSession() {
                         isRefreshingContent = false,
                         isSyncingContent = false,
                         isConversationsLoading = false,
-                        isMarketLoading = false
+                        isMarketLoading = if (marketWasUnfilteredAtSyncStart &&
+                            marketVersionAtSyncStart == marketRequestVersion
+                        ) false else _uiState.value.isMarketLoading
                     )
                     persistExtendedCache()
                 }
@@ -5726,10 +5853,14 @@ private suspend fun restoreSupabaseSession() {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
-        if (marketQuery == cleanQuery && marketCategory == cleanCategory &&
+        val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
-            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
-            !_uiState.value.isMarketLoading && _uiState.value.marketErrorMessage == null) return
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly
+        // Restoring Market must not reissue identical in-flight or fresh queries.
+        if (sameQuery && _uiState.value.marketErrorMessage == null &&
+            (_uiState.value.isMarketLoading ||
+                !BlinkRefreshPolicy.isStale(lastMarketQueryCompletedAt, SystemClock.elapsedRealtime()))
+        ) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
         marketSort = sort
@@ -5776,6 +5907,7 @@ private suspend fun restoreSupabaseSession() {
             }
             if (generation != marketRequestVersion) return@launch
             result.onSuccess { fresh ->
+                lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
                 marketNextOffset = fresh.size
                 _uiState.value = _uiState.value.copy(
                     marketItems = fresh,
