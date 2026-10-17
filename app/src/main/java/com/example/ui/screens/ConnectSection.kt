@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -341,6 +342,7 @@ fun ConnectSection(
         connectHubActions.searchStudents(search)
     }
 
+    val connectListState = rememberLazyListState()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -364,6 +366,7 @@ fun ConnectSection(
             }
         ) {
             LazyColumn(
+                state = connectListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {

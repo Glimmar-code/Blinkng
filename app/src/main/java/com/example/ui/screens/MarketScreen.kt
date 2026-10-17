@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,19 +87,19 @@ fun MarketScreen(
     errorMessage: String? = null,
     isDark: Boolean
 ) {
-    var selectedCategory by remember { mutableStateOf("All Categories") }
+    var selectedCategory by rememberSaveable { mutableStateOf("All Categories") }
     var searchQuery by rememberPersistentTextState(key = "market_search_query")
-    var selectedSort by remember { mutableStateOf("newest") }
+    var selectedSort by rememberSaveable { mutableStateOf("newest") }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
-    var savedOnly by remember { mutableStateOf(false) }
-    var verifiedOnly by remember { mutableStateOf(false) }
-    var minPriceText by remember { mutableStateOf("") }
-    var maxPriceText by remember { mutableStateOf("") }
-    var draftSavedOnly by remember { mutableStateOf(false) }
-    var draftVerifiedOnly by remember { mutableStateOf(false) }
-    var draftMinPriceText by remember { mutableStateOf("") }
-    var draftMaxPriceText by remember { mutableStateOf("") }
+    var savedOnly by rememberSaveable { mutableStateOf(false) }
+    var verifiedOnly by rememberSaveable { mutableStateOf(false) }
+    var minPriceText by rememberSaveable { mutableStateOf("") }
+    var maxPriceText by rememberSaveable { mutableStateOf("") }
+    var draftSavedOnly by rememberSaveable { mutableStateOf(false) }
+    var draftVerifiedOnly by rememberSaveable { mutableStateOf(false) }
+    var draftMinPriceText by rememberSaveable { mutableStateOf("") }
+    var draftMaxPriceText by rememberSaveable { mutableStateOf("") }
 
     val sortOptions = remember {
         listOf(
@@ -142,7 +144,9 @@ fun MarketScreen(
         maxPriceText.isNotBlank()
     ).count { it }
 
+    val marketListState = rememberLazyListState()
     LazyColumn(
+        state = marketListState,
         contentPadding = PaddingValues(bottom = 120.dp),
         modifier = Modifier
             .fillMaxSize()

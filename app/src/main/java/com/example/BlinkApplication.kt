@@ -26,6 +26,21 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.concurrent.TimeUnit
 
 class BlinkApplication : Application(), ImageLoaderFactory {
+    // Non-essential services must not prevent the main BLINK feed from starting.
+    // Do not catch fatal JVM errors (including OutOfMemoryError).
+    private fun startOptionalService(name: String, start: () -> Unit) {
+        try {
+            start()
+        } catch (error: Exception) {
+            android.util.Log.e("BlinkApplication", "Optional service failed: $name", error)
+            try {
+                FirebaseCrashlytics.getInstance().recordException(error)
+            } catch (_: Exception) {
+                // Crash reporting must never become a second startup failure.
+            }
+        }
+    }
+
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         // Make on-demand game splits accessible, including in the isolated Godot process.
@@ -56,7 +71,7 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         }
 
         // Apply Blink's 120 Hz-class preference to every Activity before its UI is created.
-        HighRefreshRateController.install(this)
+        startOptionalService("refresh rate") { HighRefreshRateController.install(this) }
 
         // Keep every production crash report traceable to the exact source revision that
         // produced the installed APK. This value is generated from Git at build time.
@@ -73,19 +88,19 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         // Google Mobile Ads is initialized from MainActivity only after UMP says ad requests
         // are allowed. Keeping it out of Application prevents ads from starting before consent.
 
-        BlinkNotificationHelper.createNotificationChannels(this)
-        BlinkItemNotificationManager.createChannels(this)
+        startOptionalService("notification channels") { BlinkNotificationHelper.createNotificationChannels(this) }
+        startOptionalService("item channels") { BlinkItemNotificationManager.createChannels(this) }
         // Create voice/video/missed-call channels on cold start as well, so users can tune
         // call sounds and lock-screen behavior before their first incoming Blink call.
-        IncomingCallNotification.createChannels(this)
+        startOptionalService("call notification channels") { IncomingCallNotification.createChannels(this) }
 
         // Register BLINK as a self-managed VoIP application so Android can coordinate
         // voice/video calls with Bluetooth, wearables and cellular/system calls.
-        BlinkTelecomManager.registerApplication(this)
+        startOptionalService("telecom registration") { BlinkTelecomManager.registerApplication(this) }
 
         // Fetch/log the current token on every cold start. If a Supabase session already
         // exists it is also registered immediately; otherwise MainActivity re-syncs after login.
-        BlinkFirebaseMessagingService.syncCurrentToken(this)
+        startOptionalService("push token registration") { BlinkFirebaseMessagingService.syncCurrentToken(this) }
 
         // Capture whichever authenticated profile/session the ViewModel persists.
         // This gives Switch Account a true recent-login list without passwords.
@@ -111,39 +126,49 @@ class BlinkApplication : Application(), ImageLoaderFactory {
                 AccountSessionStore.recordCurrentSession(this, userId, username, fullName, email, avatar)
             }
         }
-        sessionPrefs.registerOnSharedPreferenceChangeListener { _, key ->
-            if (key == "access_token" || key == "refresh_token") captureRecentAccount()
+        startOptionalService("recent account restoration") {
+            sessionPrefs.registerOnSharedPreferenceChangeListener { _, key ->
+                if (key == "access_token" || key == "refresh_token") {
+                    startOptionalService("recent account refresh") { captureRecentAccount() }
+                }
+            }
+            profilePrefs.registerOnSharedPreferenceChangeListener { _, key ->
+                if (key == "username" || key == "full_name" || key == "email" || key == "avatar_url") {
+                    startOptionalService("recent profile refresh") { captureRecentAccount() }
+                }
+            }
+            captureRecentAccount()
         }
-        profilePrefs.registerOnSharedPreferenceChangeListener { _, key ->
-            if (key == "username" || key == "full_name" || key == "email" || key == "avatar_url") captureRecentAccount()
+
+        startOptionalService("notification sync worker") {
+            val work = PeriodicWorkRequestBuilder<NotificationSyncWorker>(15, TimeUnit.MINUTES)
+                .addTag("blink_notification_sync")
+                .build()
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "blink_notification_sync",
+                ExistingPeriodicWorkPolicy.UPDATE,
+                work
+            )
         }
-        captureRecentAccount()
 
-        val work = PeriodicWorkRequestBuilder<NotificationSyncWorker>(15, TimeUnit.MINUTES)
-            .addTag("blink_notification_sync")
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "blink_notification_sync",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            work
-        )
-
-        val itemWork = PeriodicWorkRequestBuilder<BlinkItemsSyncWorker>(15, TimeUnit.MINUTES)
-            .addTag("blink_items_sync")
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "blink_items_sync",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            itemWork
-        )
+        startOptionalService("item sync worker") {
+            val itemWork = PeriodicWorkRequestBuilder<BlinkItemsSyncWorker>(15, TimeUnit.MINUTES)
+                .addTag("blink_items_sync")
+                .build()
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "blink_items_sync",
+                ExistingPeriodicWorkPolicy.UPDATE,
+                itemWork
+            )
+        }
     }
 
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
-                    .strongReferencesEnabled(true)
+                    .maxSizePercent(0.18)
+                    .strongReferencesEnabled(false)
                     .build()
             }
             .diskCache {
@@ -159,10 +184,27 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             .allowHardware(true)
             .build()
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // UI_HIDDEN is an ordinary background transition; preserve its warm cache.
+        // Release decoded bitmaps only under genuine memory pressure.
+        val underPressure =
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        if (underPressure) clearImageMemorySafely()
+    }
+
     override fun onLowMemory() {
         super.onLowMemory()
-        // Preserve decoded images during ordinary app backgrounding so returning to
-        // the feed does not force a burst of disk decodes. Clear only on real pressure.
-        coil.Coil.imageLoader(this).memoryCache?.clear()
+        clearImageMemorySafely()
+    }
+
+    private fun clearImageMemorySafely() {
+        try {
+            coil.Coil.imageLoader(this).memoryCache?.clear()
+        } catch (error: Exception) {
+            android.util.Log.w("BlinkApplication", "Unable to clear image cache", error)
+        }
     }
 }

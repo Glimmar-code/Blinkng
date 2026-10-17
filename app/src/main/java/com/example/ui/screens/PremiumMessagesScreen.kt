@@ -1246,7 +1246,9 @@ private fun ConversationList(
         return
     }
 
+    val conversationsListState = rememberLazyListState()
     LazyColumn(
+        state = conversationsListState,
         modifier = modifier,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
