@@ -204,6 +204,7 @@ private fun BlinkItemsHome(
     var weatherEnabled by remember { mutableStateOf(BlinkItemPreferences.weatherEnabled(context)) }
     var steps by remember { mutableLongStateOf(BlinkItemPreferences.todayStepCount(context)) }
     var weather by remember { mutableStateOf(BlinkWeatherRepository(context).cached()) }
+    val currentWeather = weather // Stable snapshot: Compose state may change during recomposition.
     var session by remember { mutableStateOf<BlinkMyLiveLocationSession?>(null) }
 
     LaunchedEffect(stepsEnabled) {
@@ -262,7 +263,7 @@ private fun BlinkItemsHome(
                     title = "Weather",
                     subtitle = when {
                         !weatherEnabled -> "Off"
-                        weather != null -> "${weather.temperatureC.roundToInt()}°C • ${weather.condition}"
+                        currentWeather != null -> "${currentWeather.temperatureC.roundToInt()}°C • ${currentWeather.condition}"
                         else -> "Ready"
                     },
                     enabled = weatherEnabled,
