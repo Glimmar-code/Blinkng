@@ -170,6 +170,7 @@ data class DesktopMarketItem(
     val isFeatured: Boolean,
     val isSold: Boolean,
     val imageUrls: List<String> = emptyList(),
+    val videoUrl: String? = null,
     val createdAt: String = "",
 )
 
