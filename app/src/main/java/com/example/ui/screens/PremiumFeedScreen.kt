@@ -862,7 +862,7 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey, homeReselectSignal) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
@@ -1213,9 +1213,8 @@ private fun PremiumHomeFeed(
                 } else {
                     listState.scrollToItem(0)
                 }
-            } else {
-                requestSafeRefresh()
             }
+            // Home reselect is not an implicit network refresh; pull refresh explicitly.
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
