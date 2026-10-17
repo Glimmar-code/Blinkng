@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://www.blink.com.ng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
@@ -23,7 +23,7 @@ def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(read("CNAME").strip() == "www.blink.com.ng", "Pages CNAME")
+check(read("CNAME").strip() == "blink.com.ng", "Pages CNAME")
 config = read("config.js")
 check(f'siteUrl: "{SITE}"' in config, "web client siteUrl")
 index = read("index.html")
@@ -64,9 +64,9 @@ check("location.hostname.endsWith('github.io') ? '/Blinkng' : ''" in app, "legac
 check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk'" in app, "latest-APK alias")
 check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
-check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
-check("blink-web-v16-brand-about" in read("sw.js"), "new service worker version")
+check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback and " + location.hash" in fallback, "SPA fallback preserves auth fragments")
+check("blink-web-v17-go54-apex-about" in read("sw.js"), "new service worker version")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
 check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
-check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")
+check("scripts/check_github_pages_site.py" in workflow and "blink.com.ng" in workflow, "deployment validates site")
 print("BLINK domain, schema, sitemap, robots, metadata and SPA static guards passed.")
