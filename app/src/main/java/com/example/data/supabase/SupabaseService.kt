@@ -5292,6 +5292,39 @@ suspend fun uploadPostMedia(
         }.getOrNull()
     }
 
+    suspend fun fetchMyMarketOffers(): JSONArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val userId = getCurrentUserId() ?: return@runCatching JSONArray()
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/market_offers?select=id,item_id,buyer_id,seller_id,asking_price,proposed_price,status,message,created_at&or=(buyer_id.eq.$userId,seller_id.eq.$userId)&order=created_at.desc&limit=100",
+                    true
+                ).get().build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun respondMarketOffer(
+        offerId: String, action: String, counterAmount: Long? = null,
+        message: String = ""
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(offerId)) return@withContext false
+        runCatching {
+            val request = JSONObject()
+                .put("p_offer",offerId)
+                .put("p_action",action)
+                .put("p_counter_amount",counterAmount ?: JSONObject.NULL)
+                .put("p_note",message.take(500))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/respond_market_offer",true)
+                    .post(request.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response -> response.isSuccessful && response.body?.string().orEmpty().trim().trim('"')=="true" }
+        }.getOrDefault(false)
+    }
+
     suspend fun makeMarketOffer(itemId: String, amount: Long, message: String): Boolean =
         withContext(Dispatchers.IO) {
             if (!isValidUuid(itemId) || amount <= 0L) return@withContext false
