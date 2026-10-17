@@ -590,7 +590,7 @@ func _reconcile_people() -> void:
             remote_avatars[id].queue_free()
             remote_avatars.erase(id)
     for id in home_models.keys():
-        if not people.has(id) or (secure_dedicated and not
+        if not people.has(id) or ((secure_dedicated or joining_secure) and not
                 bool(people[id].get("home_owned", false))):
             home_models[id].queue_free()
             home_models.erase(id)
@@ -600,7 +600,7 @@ func _reconcile_people() -> void:
             vehicle_models.erase(id)
 
     for id in people.keys():
-        if not home_models.has(id) and (not secure_dedicated or
+        if not home_models.has(id) and (not (secure_dedicated or joining_secure) or
                 bool(people[id].get("home_owned", false))):
             _create_home(id, int(people[id]["slot"]))
         if id != my_id and not remote_avatars.has(id):
@@ -803,7 +803,7 @@ func _allowed_position(sender: int, position: Vector3) -> bool:
     var profile: Dictionary = people[sender]
     var own_slot := int(profile["slot"])
     var visiting := int(profile.get("visiting", -1))
-    var permitted_own: bool = (not secure_dedicated or
+    var permitted_own: bool = (not (secure_dedicated or joining_secure) or
         bool(profile.get("home_owned", false))) and _near_home(position, own_slot)
     return permitted_own or (visiting >= 0 and _near_home(position, visiting))
 
