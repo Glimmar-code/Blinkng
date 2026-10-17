@@ -75,12 +75,13 @@ fun MarketScreen(
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
     sellerVerificationActive: Boolean = false,
     verificationExpiresAtMillis: Long = 0L,
+    viewerUniversity: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean, String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -95,6 +96,7 @@ fun MarketScreen(
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var savedOnly by rememberSaveable { mutableStateOf(false) }
+    var myCampusOnly by rememberSaveable(viewerUniversity) { mutableStateOf(viewerUniversity.isNotBlank()) }
     var verifiedOnly by rememberSaveable { mutableStateOf(false) }
     var minPriceText by rememberSaveable { mutableStateOf("") }
     var maxPriceText by rememberSaveable { mutableStateOf("") }
@@ -116,7 +118,7 @@ fun MarketScreen(
     val maxPrice = maxPriceText.toLongOrNull()
     val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
     val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly) {
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly, myCampusOnly, viewerUniversity) {
         if (validPriceRange) {
             delay(350)
             onSearch(
@@ -126,7 +128,8 @@ fun MarketScreen(
                 minPrice,
                 maxPrice,
                 savedOnly,
-                verifiedOnly
+                verifiedOnly,
+                viewerUniversity.takeIf { myCampusOnly && it.isNotBlank() }
             )
         }
     }
@@ -316,6 +319,26 @@ fun MarketScreen(
                         )
                         TextButton(onClick = onOpenGetVerified) { Text("Renew") }
                     }
+                }
+            }
+        }
+
+        if (viewerUniversity.isNotBlank()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = myCampusOnly,
+                        onClick = { myCampusOnly = true },
+                        label = { Text("My University") }
+                    )
+                    FilterChip(
+                        selected = !myCampusOnly,
+                        onClick = { myCampusOnly = false },
+                        label = { Text("All Universities") }
+                    )
                 }
             }
         }
