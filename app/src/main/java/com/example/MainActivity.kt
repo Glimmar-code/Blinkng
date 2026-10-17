@@ -474,6 +474,50 @@ class MainActivity : ComponentActivity() {
                                     .zIndex(100f)
                             )
                         }
+
+                        // Phase 1: gradual account-scoped discovery, only while the Home
+                        // feed is idle. No overlays, composing, reels, messages or gameplay.
+                        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                            BlinkDiscoveryGuideHost(
+                                userId = uiState.myProfile.id,
+                                safeToShow = uiState.selectedTab == MainTab.HOME &&
+                                    uiState.feedSubTab == 0 &&
+                                    !uiState.isFeedLoading &&
+                                    !uiState.isMenuOpen &&
+                                    !uiState.isActivityOpen &&
+                                    !uiState.isCreatePostOpen &&
+                                    !uiState.isCreateStoryOpen &&
+                                    !uiState.isPostItemOpen &&
+                                    !uiState.isEditProfileOpen &&
+                                    !uiState.isBecomeSellerOpen &&
+                                    !uiState.isGetVerifiedOpen &&
+                                    uiState.activeConversationPartner == null &&
+                                    uiState.activeCommentsPostId == null &&
+                                    uiState.activePostOptionsPost == null &&
+                                    uiState.activeViewingStory == null &&
+                                    uiState.deepLinkedPost == null &&
+                                    uiState.viewingProduct == null &&
+                                    uiState.viewingProfile == null,
+                                onNavigate = { route ->
+                                    when (route) {
+                                        "reels" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(1)
+                                        }
+                                        "connect" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(2)
+                                        }
+                                        "games" -> {
+                                            viewModel.setTab(MainTab.HOME)
+                                            viewModel.setFeedSubTab(3)
+                                        }
+                                        "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                        "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
