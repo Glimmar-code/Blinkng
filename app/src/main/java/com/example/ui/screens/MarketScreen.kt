@@ -327,6 +327,15 @@ fun MarketScreen(
 
         if (viewerId.isNotBlank()) {
             item {
+                MarketOrdersPanel(
+                    userId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
                 MarketOffersPanel(
                     userId = viewerId,
                     listings = items,
