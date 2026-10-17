@@ -52,7 +52,8 @@ object BlinkLifeLaunchGate {
                     if (joinDetails != null) {
                         intent.putExtra("blink_life_host", joinDetails.host)
                         intent.putExtra("blink_life_port", joinDetails.port)
-                        intent.putExtra("blink_life_ticket", joinDetails.ticket)\n                        intent.putExtra("blink_life_transport", "wss")
+                        intent.putExtra("blink_life_ticket", joinDetails.ticket)
+                        intent.putExtra("blink_life_transport", "wss")
                     }
                     applicationContext.startActivity(intent)
                 } catch (failure: RuntimeException) {
@@ -91,7 +92,8 @@ object BlinkLifeLaunchGate {
                 val json = JSONObject(response.body?.string().orEmpty())
                 val host = json.optString("host")
                 val port = json.optInt("port")
-                val ticket = json.optString("ticket")\n                val transport = json.optString("transport")
+                val ticket = json.optString("ticket")
+                val transport = json.optString("transport")
                 if (transport != "wss" || host.isBlank() || host.length > 253 ||
                     host.any { it.isWhitespace() || it == '/' || it == ':' } ||
                     port !in 1024..65535 ||
