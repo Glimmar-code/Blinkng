@@ -145,10 +145,10 @@ private fun AdminDashboardV3(
                         BlinkMark(size = 30.dp, showText = false)
                         Spacer(Modifier.width(9.dp))
                         Column {
-                            Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                            Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 20.sp)
                             Text(
                                 if (capability.isOwner) "Owner workspace" else "Admin workspace",
-                                fontSize = 10.sp,
+                                fontSize = 14.sp,
                                 color = Color.LightGray
                             )
                         }
@@ -156,7 +156,7 @@ private fun AdminDashboardV3(
                 },
                 actions = {
                     TextButton(onClick = { showGlobalSearch = true }) {
-                        Text("Search", fontSize = 12.sp)
+                        Text("Search", fontSize = 15.sp)
                     }
                     Box {
                         IconButton(onClick = { showMoreActions = true }) {
@@ -200,8 +200,8 @@ private fun AdminDashboardV3(
                         Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(it, Modifier.weight(1f), fontSize = 11.sp)
-                        TextButton(onClick = { status = null }) { Text("Dismiss", fontSize = 10.sp) }
+                        Text(it, Modifier.weight(1f), fontSize = 14.sp)
+                        TextButton(onClick = { status = null }) { Text("Dismiss", fontSize = 14.sp) }
                     }
                 }
             }
@@ -230,7 +230,7 @@ private fun AdminDashboardV3(
                                     selectedKey = if (group == "Overview") "dashboard"
                                     else enabledSections.firstOrNull { adminNavigationGroup(it.key) == group }?.key ?: "dashboard"
                                 },
-                                label = { Text(group, fontSize = 11.sp) }
+                                label = { Text(group, fontSize = 14.sp) }
                             )
                         }
                     }
@@ -249,7 +249,7 @@ private fun AdminDashboardV3(
                                         Text(
                                             if (section.featureCount > 0) "${section.title} (${section.featureCount})"
                                             else section.title,
-                                            fontSize = 10.sp
+                                            fontSize = 14.sp
                                         )
                                     }
                                 )
@@ -336,11 +336,11 @@ private fun AdminOverviewV3(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Control Center", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+            Text("Control Center", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black)
             Text(
                 "Manage people, content, campus activity and BLINK operations in one place.",
                 color = Color.LightGray,
-                fontSize = 11.sp
+                fontSize = 14.sp
             )
         }
         stats?.let { s ->
@@ -360,7 +360,7 @@ private fun AdminOverviewV3(
                 ) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = BlinkPink, strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
-                    Text("Checking notification delivery health…", fontSize = 11.sp)
+                    Text("Checking notification delivery health…", fontSize = 14.sp)
                 }
             }
         }
@@ -371,7 +371,7 @@ private fun AdminOverviewV3(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Users are selected by name, @username, email or user ID. Posts and reels can be found by pasting a Blink link or searching their content. Universities use the full searchable NigerianUniversities catalogue plus live profile values.",
-                        fontSize = 11.sp,
+                        fontSize = 14.sp,
                         color = Color.LightGray
                     )
                 }
@@ -383,7 +383,7 @@ private fun AdminOverviewV3(
                     Text("History stays global", fontWeight = FontWeight.Black)
                     Text(
                         "History is in the top bar, not inside a section. Reversible actions can be revoked from the audit timeline without deleting their original record.",
-                        fontSize = 11.sp,
+                        fontSize = 14.sp,
                         color = Color.LightGray
                     )
                 }
@@ -404,17 +404,17 @@ private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth)
         Column(Modifier.padding(13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Notification delivery health", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Text("Notification delivery health", fontWeight = FontWeight.Black, fontSize = 17.sp)
                     Text(
                         if (healthy) "Healthy • no recorded failures in the last 24 hours"
                         else health.failuresLast24h.toString() + " failed dispatches in the last 24 hours",
-                        fontSize = 10.sp,
+                        fontSize = 14.sp,
                         color = if (healthy) Color(BlinkDesignTokens.Semantic.Success) else BlinkPink
                     )
                 }
                 Text(
                     if (healthy) "HEALTHY" else "CHECK",
-                    fontSize = 9.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Black,
                     color = if (healthy) Color(BlinkDesignTokens.Semantic.Success) else BlinkPink
                 )
@@ -423,7 +423,7 @@ private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth)
             Text(
                 "Active push devices: " + health.activeDevices +
                     " • users with push: " + health.usersWithPush,
-                fontSize = 10.sp,
+                fontSize = 14.sp,
                 color = Color.LightGray
             )
             Text(
@@ -431,19 +431,19 @@ private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth)
                     " • failed: " + totalFailed +
                     " • sending: " + totalSending +
                     " • retried: " + totalRetried,
-                fontSize = 10.sp,
+                fontSize = 14.sp,
                 color = Color.LightGray
             )
             Spacer(Modifier.height(5.dp))
             Text(
                 "Social " + health.socialSent + " sent / " + health.socialFailed + " failed" +
                     "   •   Messages " + health.messageSent + " sent / " + health.messageFailed + " failed",
-                fontSize = 9.sp,
+                fontSize = 13.sp,
                 color = Color.Gray
             )
             Text(
                 "Aggregates only. FCM tokens, message content and provider error payloads are never shown here.",
-                fontSize = 9.sp,
+                fontSize = 13.sp,
                 color = Color.Gray,
                 modifier = Modifier.padding(top = 6.dp)
             )
@@ -455,8 +455,8 @@ private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth)
 private fun AdminStatCard(label: String, value: Int) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
-            Text(value.toString(), color = BlinkPink, fontSize = 25.sp, fontWeight = FontWeight.Black)
-            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(value.toString(), color = BlinkPink, fontSize = 28.sp, fontWeight = FontWeight.Black)
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         }
     }
 }
@@ -491,20 +491,22 @@ private fun AdminSectionScreen(
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(section.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Black)
-            Text(section.description, color = Color.Gray, fontSize = 10.sp)
+            Text(section.title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+            Text(section.description, color = Color.Gray, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Search ${section.title} tools", fontSize = 10.sp) },
-                    singleLine = true
-                )
-                Spacer(Modifier.width(6.dp))
-                Button(onClick = ::load, enabled = !loading) { Text("Find", fontSize = 10.sp) }
-            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search ${section.title} tools", fontSize = 14.sp) },
+                singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = ::load,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) { Text("Find tools", fontSize = 15.sp) }
         }
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -515,7 +517,7 @@ private fun AdminSectionScreen(
                 FilterChip(
                     selected = toolFilter == filter,
                     onClick = { toolFilter = filter },
-                    label = { Text(filter, fontSize = 10.sp) }
+                    label = { Text(filter, fontSize = 14.sp) }
                 )
             }
         }
@@ -585,13 +587,13 @@ private fun AdminFeatureCard(
 ) {
     val blocked = feature.ownerOnly && !capability.isOwner
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(feature.title, fontWeight = FontWeight.Black, fontSize = 13.sp)
-                    Text(feature.description, fontSize = 10.sp, color = Color.Gray)
+                    Text(feature.title, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                    Text(feature.description, fontSize = 14.sp, color = Color.Gray)
                 }
-                Text("#${feature.featureId}", color = BlinkPink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("#${feature.featureId}", color = BlinkPink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(5.dp))
             Text(
@@ -600,7 +602,7 @@ private fun AdminFeatureCard(
                     if (feature.reversible) append(" • REVERSIBLE")
                     if (feature.ownerOnly) append(" • OWNER ONLY")
                 },
-                fontSize = 8.sp,
+                fontSize = 13.sp,
                 color = if (feature.riskLevel == "critical" || feature.riskLevel == "high") MaterialTheme.colorScheme.error else Color.Gray
             )
             if (result != null) {
@@ -609,23 +611,26 @@ private fun AdminFeatureCard(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text(result, Modifier.fillMaxWidth().padding(8.dp), fontSize = 10.sp)
+                    Text(result, Modifier.fillMaxWidth().padding(8.dp), fontSize = 14.sp)
                 }
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Button(
                     enabled = !blocked,
-                    onClick = if (feature.inputKind == "insight") onRunInsight else onOpen
+                    onClick = if (feature.inputKind == "insight") onRunInsight else onOpen,
+                    modifier = Modifier.heightIn(min = 48.dp).weight(1f)
                 ) {
-                    Text(if (feature.inputKind == "insight") "Run insight" else "Open tool", fontSize = 10.sp)
+                    Text(if (feature.inputKind == "insight") "Run insight" else "Open tool", fontSize = 14.sp)
                 }
                 if (feature.reversible) {
-                    TextButton(onClick = openHistory) { Text("History", fontSize = 10.sp) }
+                    TextButton(onClick = openHistory, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("History", fontSize = 14.sp)
+                    }
                 }
             }
             if (blocked) {
-                Text("This tool requires overall-owner access.", color = MaterialTheme.colorScheme.error, fontSize = 9.sp)
+                Text("This tool requires overall-owner access.", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
             }
         }
     }
@@ -858,13 +863,13 @@ private fun FeatureActionDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            Modifier.fillMaxWidth().padding(18.dp).heightIn(max = 760.dp),
+            Modifier.fillMaxWidth().padding(10.dp).heightIn(max = 760.dp),
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
-            Column(Modifier.fillMaxWidth().padding(18.dp).verticalScroll(rememberScrollState())) {
-                Text(feature.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                Text(feature.description, color = Color.LightGray, fontSize = 10.sp)
+            Column(Modifier.fillMaxWidth().padding(16.dp).verticalScroll(rememberScrollState())) {
+                Text(feature.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                Text(feature.description, color = Color.LightGray, fontSize = 14.sp)
                 Spacer(Modifier.height(12.dp))
 
                 if (needsUserPicker) {
@@ -883,7 +888,7 @@ private fun FeatureActionDialog(
                             showUserPicker = true
                         },
                         enabled = !busy,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                     ) {
                         Text(
                             when {
@@ -891,7 +896,7 @@ private fun FeatureActionDialog(
                                 isBulkUsers -> "${selectedUsers.size} users selected — change"
                                 else -> "@${selectedUsers.first().username} — change"
                             },
-                            fontSize = 12.sp
+                            fontSize = 15.sp
                         )
                     }
                     selectedUsers.forEach { user ->
@@ -911,7 +916,8 @@ private fun FeatureActionDialog(
                         label = { Text("Paste Blink link, post ID, @username or search text") },
                         singleLine = true
                     )
-                    Button(onClick = ::searchPosts, enabled = !targetBusy, modifier = Modifier.padding(top = 6.dp)) {
+                    Button(onClick = ::searchPosts, enabled = !targetBusy,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp)) {
                         Text("Find content")
                     }
                     selectedPost?.let { AdminPostSearchRow(it, true) { selectedPost = null } }
@@ -929,7 +935,7 @@ private fun FeatureActionDialog(
                         label = { Text("Search or paste ${targetType.replace('_', ' ')} reference") },
                         singleLine = true
                     )
-                    Text("Blink resolves the matching record securely on the backend.", color = Color.Gray, fontSize = 9.sp)
+                    Text("Blink resolves the matching record securely on the backend.", color = Color.Gray, fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
                 }
 
@@ -953,7 +959,7 @@ private fun FeatureActionDialog(
                             color = if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                             shape = MaterialTheme.shapes.small
                         ) {
-                            Text(name, Modifier.padding(8.dp), fontSize = 10.sp)
+                            Text(name, Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(12.dp), fontSize = 15.sp)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -1010,7 +1016,7 @@ private fun FeatureActionDialog(
                             FilterChip(
                                 selected = badge == option,
                                 onClick = { badge = option },
-                                label = { Text(option, fontSize = 9.sp) }
+                                label = { Text(option, fontSize = 13.sp) }
                             )
                         }
                     }
@@ -1083,22 +1089,24 @@ private fun FeatureActionDialog(
 
                 if (feature.confirmationKind == "typed") {
                     Text("High-risk action", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black)
-                    Text("Type CONFIRM to continue.", color = Color.LightGray, fontSize = 10.sp)
+                    Text("Type CONFIRM to continue.", color = Color.LightGray, fontSize = 14.sp)
                     OutlinedTextField(confirmText, { confirmText = it }, Modifier.fillMaxWidth(), label = { Text("CONFIRM") })
                     Spacer(Modifier.height(8.dp))
                 }
 
                 error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                     Spacer(Modifier.height(8.dp))
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = ::runFeature, enabled = !busy && !targetBusy) {
+                    Button(onClick = ::runFeature, enabled = !busy && !targetBusy,
+                        modifier = Modifier.heightIn(min = 48.dp).weight(1f)) {
                         if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         else Text("Run tool")
                     }
-                    OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Close") }
+                    OutlinedButton(onClick = onDismiss, enabled = !busy,
+                        modifier = Modifier.heightIn(min = 48.dp).weight(1f)) { Text("Close") }
                 }
             }
         }
@@ -1110,17 +1118,17 @@ private fun FeatureActionDialog(
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
-                Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 670.dp),
+                Modifier.fillMaxWidth().padding(8.dp).heightIn(max = 670.dp),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text("Select Blink user", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text("Select Blink user", fontWeight = FontWeight.Bold, fontSize = 22.sp)
                     Text(
                         if (isBulkUsers) "Search and select multiple accounts."
                         else "Select one account. The user ID is filled automatically.",
                         color = Color.Gray,
-                        fontSize = 11.sp
+                        fontSize = 14.sp
                     )
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
@@ -1134,14 +1142,14 @@ private fun FeatureActionDialog(
                         LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
                     }
                     userPickerError?.let { message ->
-                        Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                        Text(message, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                     }
                     Text(
                         if (userQuery.isBlank()) "Suggested users" else "Search results",
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                         color = Color.LightGray,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp
+                        fontSize = 15.sp
                     )
                     LazyColumn(
                         Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 100.dp),
@@ -1180,7 +1188,7 @@ private fun FeatureActionDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isBulkUsers) {
-                            Text("${selectedUsers.size} selected", fontSize = 11.sp)
+                            Text("${selectedUsers.size} selected", fontSize = 14.sp)
                             Spacer(Modifier.width(12.dp))
                         }
                         TextButton(onClick = { showUserPicker = false }) {
@@ -1200,17 +1208,18 @@ private fun UserSearchRow(
     onClick: () -> Unit
 ) {
     Surface(
-        Modifier.fillMaxWidth().padding(top = 4.dp).clickable(onClick = onClick),
+        Modifier.fillMaxWidth().padding(top = 6.dp).heightIn(min = 64.dp)
+            .clickable(onClick = onClick),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small
     ) {
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                Text("@${user.username} • ${user.university.ifBlank { "No university" }}", fontSize = 9.sp, color = Color.Gray)
-                if (user.email.isNotBlank()) Text(user.email, fontSize = 8.sp, color = Color.Gray)
+                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("@${user.username} • ${user.university.ifBlank { "No university" }}", fontSize = 13.sp, color = Color.Gray)
+                if (user.email.isNotBlank()) Text(user.email, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(if (selected) "Selected" else "Select", color = BlinkPink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(if (selected) "Selected" else "Select", color = BlinkPink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1221,8 +1230,8 @@ private fun SelectedUserRow(user: AdminUserSummary, remove: () -> Unit) {
         Modifier.fillMaxWidth().padding(top = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("Selected: @${user.username}", Modifier.weight(1f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        TextButton(onClick = remove) { Text("Remove", fontSize = 9.sp) }
+        Text("Selected: @${user.username}", Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        TextButton(onClick = remove) { Text("Remove", fontSize = 13.sp) }
     }
 }
 
@@ -1233,19 +1242,20 @@ private fun AdminPostSearchRow(
     onClick: () -> Unit
 ) {
     Surface(
-        Modifier.fillMaxWidth().padding(top = 4.dp).clickable(onClick = onClick),
+        Modifier.fillMaxWidth().padding(top = 6.dp).heightIn(min = 64.dp)
+            .clickable(onClick = onClick),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.small
     ) {
-        Column(Modifier.padding(8.dp)) {
-            Text("@${post.username} • ${if (post.isReel) "Reel" else "Post"}", fontWeight = FontWeight.Black, fontSize = 10.sp)
-            Text((post.caption.ifBlank { post.text }).ifBlank { "Media post" }, maxLines = 2, fontSize = 10.sp)
+        Column(Modifier.padding(12.dp)) {
+            Text("@${post.username} • ${if (post.isReel) "Reel" else "Post"}", fontWeight = FontWeight.Black, fontSize = 14.sp)
+            Text((post.caption.ifBlank { post.text }).ifBlank { "Media post" }, maxLines = 2, fontSize = 14.sp)
             Text(
                 "${post.viewCount} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
-                fontSize = 8.sp,
+                fontSize = 13.sp,
                 color = Color.Gray
             )
-            Text(if (selected) "Selected" else "Tap to select", color = BlinkPink, fontSize = 8.sp)
+            Text(if (selected) "Selected" else "Tap to select", color = BlinkPink, fontSize = 13.sp)
         }
     }
 }
@@ -1288,8 +1298,8 @@ private fun AdminHistoryDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Admin History", fontWeight = FontWeight.Black, fontSize = 21.sp)
-                        Text("Every action stays auditable. Revoke creates a linked reversal instead of erasing history.", fontSize = 9.sp, color = Color.Gray)
+                        Text("Admin History", fontWeight = FontWeight.Black, fontSize = 23.sp)
+                        Text("Every action stays auditable. Revoke creates a linked reversal instead of erasing history.", fontSize = 13.sp, color = Color.Gray)
                     }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
@@ -1302,24 +1312,24 @@ private fun AdminHistoryDialog(
                     items(items, key = { it.id }) { item ->
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(11.dp)) {
-                                Text(humanizeAction(item.action), fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                Text(humanizeAction(item.action), fontWeight = FontWeight.Black, fontSize = 15.sp)
                                 Text(
                                     buildString {
                                         append("@${item.actorUsername}")
                                         item.targetUsername?.takeIf { it.isNotBlank() }?.let { append(" → @$it") }
                                         if (item.targetPostId != null) append(" → post")
                                     },
-                                    fontSize = 9.sp,
+                                    fontSize = 13.sp,
                                     color = Color.Gray
                                 )
-                                item.createdAt?.let { Text(it, fontSize = 8.sp, color = Color.Gray) }
+                                item.createdAt?.let { Text(it, fontSize = 13.sp, color = Color.Gray) }
                                 val detail = summarizeAuditDetails(item.details)
                                 if (detail.isNotBlank()) {
-                                    Text(detail, fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
+                                    Text(detail, fontSize = 13.sp, modifier = Modifier.padding(top = 5.dp))
                                 }
                                 Spacer(Modifier.height(5.dp))
                                 when {
-                                    item.reversed -> Text("REVOKED", color = BlinkPink, fontWeight = FontWeight.Black, fontSize = 9.sp)
+                                    item.reversed -> Text("REVOKED", color = BlinkPink, fontWeight = FontWeight.Black, fontSize = 13.sp)
                                     item.canRevert -> Button(
                                         onClick = {
                                             revertingId = item.id
@@ -1336,9 +1346,9 @@ private fun AdminHistoryDialog(
                                         enabled = revertingId == null
                                     ) {
                                         if (revertingId == item.id) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
-                                        else Text("Revoke", fontSize = 9.sp)
+                                        else Text("Revoke", fontSize = 13.sp)
                                     }
-                                    else -> Text("Not reversible", color = Color.Gray, fontSize = 8.sp)
+                                    else -> Text("Not reversible", color = Color.Gray, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -1381,22 +1391,24 @@ private fun AdminGlobalSearchDialog(
         ) {
             Column(Modifier.fillMaxSize().padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Global Search", Modifier.weight(1f), fontSize = 21.sp, fontWeight = FontWeight.Black)
+                    Text("Global Search", Modifier.weight(1f), fontSize = 23.sp, fontWeight = FontWeight.Black)
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
-                Text("Search users, paste post links, or search universities without hunting for database IDs.", color = Color.Gray, fontSize = 10.sp)
+                Text("Search users, paste post links, or search universities without hunting for database IDs.", color = Color.Gray, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        query,
-                        { query = it },
-                        Modifier.weight(1f),
-                        label = { Text("Name, @username, email, user ID, post link or university") },
-                        singleLine = true
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Button(onClick = ::search, enabled = !loading) { Text("Search") }
-                }
+                OutlinedTextField(
+                    query,
+                    { query = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Name, username, email, post or university") },
+                    singleLine = true
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = ::search,
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) { Text("Search") }
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 5.dp), color = BlinkPink)
                 LazyColumn(
                     Modifier.fillMaxSize().padding(top = 8.dp),
@@ -1413,7 +1425,7 @@ private fun AdminGlobalSearchDialog(
                     if (universities.isNotEmpty()) {
                         item { Text("Universities", color = BlinkPink, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 6.dp)) }
                         items(universities, key = { "uni-$it" }) { name ->
-                            Card(Modifier.fillMaxWidth()) { Text(name, Modifier.padding(10.dp), fontSize = 10.sp) }
+                            Card(Modifier.fillMaxWidth()) { Text(name, Modifier.padding(10.dp), fontSize = 14.sp) }
                         }
                     }
                 }
