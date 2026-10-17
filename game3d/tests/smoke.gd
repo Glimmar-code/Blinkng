@@ -395,6 +395,34 @@ func _run() -> void:
             _assert_true(int(world.get("game_cash")) == cash_before_study, "Studying cannot produce or charge Game Cash")
             _assert_true(int(world.get("completed_jobs")) == jobs_before_study, "Study practice is not a paid job")
             _assert_true(not bool(world.get_node("SocialWorld").get("is_online")), "Study practice cannot connect multiplayer")
+            var cash_before_home_activity: int = int(world.get("game_cash"))
+            var jobs_before_home_activity: int = int(world.get("completed_jobs"))
+            var preview_meal: MeshInstance3D = reopened_room.get_node("MealPreview")
+            var meal_label: Label3D = reopened_room.get_node("KitchenMealStatus")
+            var bed_label: Label3D = reopened_room.get_node("MovableBed/BedRestStatus")
+            _assert_true(not preview_meal.visible, "Kitchen meal is optional and initially hidden")
+            world.call("_show_home_life_panel")
+            _assert_true(bool(world.get("hud_modal").visible), "Home activities open on the indoor touch menu")
+            _assert_true(bool(world.call("_home_toggle_rest")), "Player can start free optional bed rest")
+            _assert_true(bool(world.get("home_resting")) and bed_label.text.contains("RESTING"),
+                "Resting changes the displayed bed status")
+            _assert_true(not bool(world.call("_home_toggle_rest")), "Player can immediately end rest")
+            _assert_true(not bool(world.get("home_resting")) and bed_label.text == "REST AVAILABLE",
+                "Stopping bed rest restores the room visual")
+            _assert_true(not bool(world.call("_home_prepare_meal", -1)),
+                "Invalid kitchen choices never affect the room")
+            _assert_true(not preview_meal.visible, "Invalid kitchen action does not create food")
+            _assert_true(bool(world.call("_home_prepare_meal", 0)), "Player can choose free fictional jollof bowl")
+            _assert_true(preview_meal.visible and meal_label.text == "JOLLOF BOWL",
+                "3D kitchenette displays the selected meal without loading media")
+            _assert_true(bool(world.call("_home_prepare_meal", 2)) and meal_label.text == "FRUIT SNACK",
+                "Player may change meal choices without waiting or payment")
+            _assert_true(int(world.get("game_cash")) == cash_before_home_activity,
+                "Resting and meals cannot mint or charge game currency")
+            _assert_true(int(world.get("completed_jobs")) == jobs_before_home_activity,
+                "Optional home activities do not count as jobs")
+            _assert_true(not bool(world.get_node("SocialWorld").get("is_online")),
+                "Private home activities cannot enter multiplayer")
             world.call("_show_home_decor")
             world.call("_load_home_layout_slot", "slot_3")
             _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Unknown bookmark names do nothing")
