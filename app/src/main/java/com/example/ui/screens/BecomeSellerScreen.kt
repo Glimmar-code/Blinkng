@@ -34,7 +34,7 @@ import com.blinkng.shared.BlinkDesignTokens
 @Composable
 fun BecomeSellerScreen(
     onBack: () -> Unit,
-    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String) -> Unit,
+    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String, sellerKind: String, businessDescription: String, productCategory: String, delivery: Boolean, pickup: Boolean) -> Unit,
     initialStoreName: String = "",
     initialPhone: String = "",
     initialWhatsapp: String = "",
@@ -50,6 +50,11 @@ fun BecomeSellerScreen(
     var city by remember { mutableStateOf("") }
     var university by remember(initialUniversity) { mutableStateOf(initialUniversity) }
     var universityDropdownOpen by remember { mutableStateOf(false) }
+    var sellerKind by remember { mutableStateOf("individual") }
+    var businessDescription by remember { mutableStateOf("") }
+    var productCategory by remember { mutableStateOf("Electronics") }
+    var offersDelivery by remember { mutableStateOf(false) }
+    var offersPickup by remember { mutableStateOf(true) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var stateDropdownOpen by remember { mutableStateOf(false) }
 
@@ -61,6 +66,9 @@ fun BecomeSellerScreen(
         selectedState.isNotBlank() &&
         city.trim().length >= 2 &&
         university.trim().length >= 3 &&
+        businessDescription.trim().length in 20..1000 &&
+        productCategory.isNotBlank() &&
+        (offersDelivery || offersPickup) &&
         agreedToTerms
     val canSubmit = detailsValid && isVerified && !isSubmitting
 
@@ -283,6 +291,73 @@ fun BecomeSellerScreen(
             }
 
             item {
+                Text("Seller type", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = sellerKind == "individual",
+                        onClick = { sellerKind = "individual" },
+                        label = { Text("Individual") }
+                    )
+                    FilterChip(
+                        selected = sellerKind == "business",
+                        onClick = { sellerKind = "business" },
+                        label = { Text("Business") }
+                    )
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = businessDescription,
+                    onValueChange = { businessDescription = it.take(1000) },
+                    label = { Text("About your store") },
+                    supportingText = { Text("At least 20 characters • ${businessDescription.length}/1000") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                Text("Main product category", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                var categoryMenuExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = categoryMenuExpanded,
+                    onExpandedChange = { categoryMenuExpanded = !categoryMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = productCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("What will you sell?") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = categoryMenuExpanded,
+                        onDismissRequest = { categoryMenuExpanded = false }
+                    ) {
+                        com.example.data.models.kMarketCategoriesList.drop(1).forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = { productCategory = category.name; categoryMenuExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Campus pickup", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersPickup, onCheckedChange = { offersPickup = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Delivery available", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersDelivery, onCheckedChange = { offersDelivery = it })
+                }
+            }
+
+            item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(12.dp),
@@ -330,7 +405,12 @@ fun BecomeSellerScreen(
                             whatsapp.trim(),
                             selectedState,
                             city.trim(),
-                            university.trim()
+                            university.trim(),
+                            sellerKind,
+                            businessDescription.trim(),
+                            productCategory,
+                            offersDelivery,
+                            offersPickup
                         )
                     },
                     enabled = canSubmit,

@@ -76,6 +76,7 @@ fun MarketScreen(
     sellerVerificationActive: Boolean = false,
     verificationExpiresAtMillis: Long = 0L,
     viewerUniversity: String = "",
+    viewerId: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
@@ -92,7 +93,7 @@ fun MarketScreen(
 ) {
     var selectedCategory by rememberSaveable { mutableStateOf("All Categories") }
     var searchQuery by rememberPersistentTextState(key = "market_search_query")
-    var selectedSort by rememberSaveable { mutableStateOf("newest") }
+    var selectedSort by rememberSaveable { mutableStateOf("recommended") }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var savedOnly by rememberSaveable { mutableStateOf(false) }
@@ -107,6 +108,7 @@ fun MarketScreen(
 
     val sortOptions = remember {
         listOf(
+            MarketSortOption("recommended", "Recommended"),
             MarketSortOption("newest", "Newest"),
             MarketSortOption("popular", "Popular"),
             MarketSortOption("price_low", "Price: low to high"),
@@ -320,6 +322,34 @@ fun MarketScreen(
                         TextButton(onClick = onOpenGetVerified) { Text("Renew") }
                     }
                 }
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOrdersPanel(
+                    userId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOffersPanel(
+                    userId = viewerId,
+                    listings = items,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (isSellerActive && viewerId.isNotBlank()) {
+            item {
+                MarketSellerInsightsPanel(
+                    sellerId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
 

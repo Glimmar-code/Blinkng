@@ -1165,6 +1165,7 @@ fun MainAppContent(
                         sellerVerificationActive = uiState.myProfile.hasActiveMarketVerification(),
                         verificationExpiresAtMillis = uiState.myProfile.verificationExpiresAtMillis,
                         viewerUniversity = uiState.myProfile.university,
+                        viewerId = uiState.myProfile.id,
                         onItemClick = { viewModel.openProductDetail(it) },
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
@@ -1684,6 +1685,18 @@ fun MainAppContent(
                     onReport = { listing, reason, details ->
                         viewModel.reportMarketItem(listing, reason, details)
                     },
+                    onMakeOffer = { listing, offerAmount, note ->
+                        viewModel.makeMarketOffer(listing, offerAmount, note)
+                    },
+                    onConfirmAvailability = { listing ->
+                        viewModel.confirmMarketAvailability(listing)
+                    },
+                    onBoostListing = { _ ->
+                        feedUtilitySheet = "boost"
+                    },
+                    onRequestModerationReview = { item, reason ->
+                        viewModel.requestMarketModerationReview(item, reason)
+                    },
                     isOwner = product.sellerId.isNotBlank() &&
                         product.sellerId == uiState.myProfile.id,
                     onUpdateListingStatus = { listing, status ->
@@ -1804,7 +1817,7 @@ fun MainAppContent(
         ) {
             PostItemScreen(
                 onBack = { viewModel.openPostItem(false) },
-                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation ->
+                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation, videoSource ->
                     viewModel.addMarketItem(
                         title = title,
                         price = price,
@@ -1815,7 +1828,8 @@ fun MainAppContent(
                         quantity = quantity,
                         negotiable = negotiable,
                         deliveryMethod = deliveryMethod,
-                        pickupLocation = pickupLocation
+                        pickupLocation = pickupLocation,
+                        videoSource = videoSource
                     )
                 },
                 isPublishing = uiState.isPublishingMarketItem,
@@ -1831,8 +1845,11 @@ fun MainAppContent(
         ) {
             BecomeSellerScreen(
                 onBack = { viewModel.openBecomeSeller(false) },
-                onSuccess = { storeName, phone, whatsapp, state, city, university ->
-                    viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city, university)
+                onSuccess = { storeName, phone, whatsapp, state, city, university, sellerKind, description, category, delivery, pickup ->
+                    viewModel.activateSellerAccount(
+                        storeName, phone, whatsapp, state, city, university,
+                        sellerKind, description, category, delivery, pickup
+                    )
                 },
                 initialStoreName = uiState.myProfile.sellerStoreName,
                 initialPhone = uiState.myProfile.phone.value,
