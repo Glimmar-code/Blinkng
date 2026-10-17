@@ -234,6 +234,28 @@ func run_test() -> void:
         "Legacy ledger transparently upgrades when it next saves")
     check(int(imported.call("get_profile", uid)["home_slot"]) == migrated_slot,
         "Old trusted game operations cannot accidentally move a home")
+    # Plot ownership must never alias another user, even if an operator
+    # mistakenly imports conflicting legacy house records.
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
+    var colliding_profiles: Dictionary = {}
+    colliding_profiles[uid] = {"cash": 100, "house_owned": true,
+        "furniture": 2, "home_slot": 4}
+    colliding_profiles[another_uid] = {"cash": 50, "house_owned": true,
+        "furniture": 1, "home_slot": 4}
+    var colliding_file := FileAccess.open(temp_path, FileAccess.WRITE)
+    if colliding_file != null:
+        colliding_file.store_string(JSON.stringify({
+            "schema": 1, "profiles": colliding_profiles}))
+        colliding_file.close()
+    var duplicate_guard: RefCounted = state_script.new()
+    duplicate_guard.set("save_file", temp_path)
+    duplicate_guard.set("temp_file", temp_swap)
+    duplicate_guard.set("backup_file", backup_path)
+    duplicate_guard.call("load_from_disk")
+    check(bool(duplicate_guard.get("write_blocked")),
+        "Duplicate permanent plots are rejected and the server is read-only")
+    check((duplicate_guard.call("get_profile", uid) as Dictionary).is_empty(),
+        "Ambiguous property ownership never mints a replacement wallet")
     # No backup must mean corrupted primary cannot be silently reset.
     DirAccess.remove_absolute(ProjectSettings.globalize_path(backup_path))
     var poisoned_profiles: Dictionary = {}
