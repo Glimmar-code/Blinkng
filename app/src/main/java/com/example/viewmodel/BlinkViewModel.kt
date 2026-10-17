@@ -6014,6 +6014,32 @@ private suspend fun restoreSupabaseSession() {
         supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
 
+    private suspend fun uploadMarketVideo(source: String, userId: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            val resolver = appContext.contentResolver
+            val mime = resolver.getType(uri)?.lowercase().orEmpty()
+            if (mime !in setOf("video/mp4","video/webm")) return@withContext null
+            val bytes = runCatching {
+                resolver.openInputStream(uri)?.use { stream ->
+                    val sink = ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    var n = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        n += count
+                        if (n > 25 * 1024 * 1024) return@use ByteArray(0)
+                        sink.write(buffer,0,count)
+                    }
+                    sink.toByteArray()
+                }
+            }.getOrNull() ?: return@withContext null
+            if (bytes.isEmpty()) return@withContext null
+            supabaseService.uploadMarketVideo(userId,bytes,mime)
+        }
+
     fun addMarketItem(
         title: String,
         price: Long,
@@ -6024,7 +6050,8 @@ private suspend fun restoreSupabaseSession() {
         quantity: Int,
         negotiable: Boolean,
         deliveryMethod: String,
-        pickupLocation: String
+        pickupLocation: String,
+        videoSource: String? = null
     ) {
         val state = _uiState.value
         val p = state.myProfile
@@ -6055,6 +6082,15 @@ private suspend fun restoreSupabaseSession() {
                 }
                 uploaded += url
             }
+            val videoUrl = videoSource?.takeIf(String::isNotBlank)?.let {
+                uploadMarketVideo(it,p.id)
+            }
+            if (!videoSource.isNullOrBlank() && videoUrl.isNullOrBlank()) {
+                uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id,it) }
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Product video must be MP4/WebM and 25 MB or smaller.")
+                return@launch
+            }
 
             val listing = MarketItem(
                 id = "",
@@ -6077,7 +6113,8 @@ private suspend fun restoreSupabaseSession() {
                 quantity = quantity.coerceIn(1,9999),
                 isNegotiable = negotiable,
                 deliveryMethod = deliveryMethod,
-                pickupLocation = pickupLocation.trim()
+                pickupLocation = pickupLocation.trim(),
+                videoUrl = videoUrl.orEmpty()
             )
 
             if (supabaseService.createMarketItem(listing)) {
@@ -6094,6 +6131,7 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Product published to BLINK Market.")
             } else {
                 uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
+                if (!videoUrl.isNullOrBlank()) supabaseService.deleteStagedMarketVideo(p.id,videoUrl)
                 _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                 showToast("Product wasn't published. Check your seller status and details.")
             }
