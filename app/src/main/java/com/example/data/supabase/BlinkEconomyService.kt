@@ -91,11 +91,17 @@ class BlinkEconomyService {
         val normalized = surface.trim().uppercase()
         require(normalized in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET", "REELS")) { "Unknown boost surface." }
         rpc(
-            "get_blink_promoted_slots",
+            if (normalized == "MARKET") "get_market_promoted_slots" else "get_blink_promoted_slots",
             JSONObject()
                 .put("p_surface", normalized)
-                .put("p_limit", limit.coerceIn(1, 10))
+                .put("p_limit", limit.coerceIn(1, 5))
         )
+    }
+
+    suspend fun recordMarketQualifiedView(campaignId: String, stage: String) = runCatching {
+        require(stage in setOf("START", "QUALIFIED")) { "Unknown visibility stage." }
+        rpc("record_market_qualified_view",
+            JSONObject().put("p_campaign",campaignId.trim()).put("p_stage",stage))
     }
 
     suspend fun quoteBoostCampaign(
