@@ -174,3 +174,13 @@ and explanatory answers. No fictional cash or BLINK Coins are paid.
 Use **Lighting** to switch among Warm, Bright and Dim; the choice saves on
 this device and supports Undo/Redo. Room-light settings use one existing
 low-cost light and do not connect to multiplayer or change ownership.
+
+## Optional ceiling accents and home screen (staged)
+
+In the private solo starter home, tap **INTERACT** for **Ceiling accents**
+(Ivory / Blue-grey / Sand) and **Room screen** (Off / Nature still /
+Campus notice). The centre of the ceiling stays open to avoid obscuring
+the 3D overhead camera. Screen options are static fictional visuals,
+not video streaming. Both preferences save locally, survive re-entry
+and support Undo/Redo without affecting BLINK Coins or Game Cash.
+These are development-branch features, not yet available in the live app.
