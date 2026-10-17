@@ -88,6 +88,8 @@ check(f'<meta property="og:url" content="{SITE}/about/"' in about, "about sharin
 check("About BLINK" in about and "Nigeria" in about, "about page describes the brand")
 check('href="./about/"' in index, "homepage links to about")
 check("About BLINK Nigeria" in read("app.js"), "interactive landing links to about")
+check('<main class="auth-wrap" aria-label="BLINK Nigeria">' in app, "homepage provides accessible main landmark")
+check('>WhatsApp Channel</a></p></div></main>`' in app, "homepage main landmark has a closing tag")
 check("Sitemap: " + SITE + "/sitemap.xml" in read("robots.txt"), "robots sitemap URL")
 check(("glimmar-code.github.io/Blinkng" not in index + privacy + read("robots.txt") + read("sitemap.xml")), "no obsolete indexable GitHub Pages URLs")
 
