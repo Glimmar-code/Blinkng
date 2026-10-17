@@ -151,6 +151,7 @@ BEGIN
     status=CASE WHEN status='paused' THEN 'active' ELSE status END,
     updated_at=now()
   WHERE id=p_item AND seller_id=v_uid AND status IN ('active','paused')
+    AND moderation_state='approved'
     AND EXISTS(SELECT 1 FROM public.profiles p WHERE p.id=v_uid AND p.is_seller_active
       AND p.seller_status='active' AND p.is_verified
       AND upper(p.verification_badge) IN ('BLUE','GOLD')
@@ -212,9 +213,12 @@ GRANT EXECUTE ON FUNCTION private.market_daily_maintenance() TO service_role;
 -- paid extensions or create a Supabase hosted preview branch.
 DO $schedule_market$
 BEGIN
-  IF to_regprocedure('cron.schedule(text,text,text)') IS NOT NULL THEN
-    PERFORM cron.schedule('blink-market-lifecycle-daily','30 4 * * *',
-      'select private.market_daily_maintenance()');
+  IF to_regprocedure('cron.schedule(text,text,text)') IS NOT NULL
+     AND to_regclass('cron.job') IS NOT NULL THEN
+    IF NOT EXISTS(SELECT 1 FROM cron.job WHERE jobname='blink-market-lifecycle-daily') THEN
+      PERFORM cron.schedule('blink-market-lifecycle-daily','30 4 * * *',
+        'select private.market_daily_maintenance()');
+    END IF;
   END IF;
 EXCEPTION WHEN insufficient_privilege OR undefined_function THEN
   RAISE NOTICE 'Market maintenance needs a privileged scheduler setup';
