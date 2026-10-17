@@ -1151,6 +1151,15 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var itemsList by remember { mutableStateOf<List<DesktopMarketItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
+    var showSellerEnrollment by remember { mutableStateOf(false) }
+    var sellerReady by remember { mutableStateOf(false) }
+    var sellerStore by remember { mutableStateOf("") }
+    var sellerPhone by remember { mutableStateOf("") }
+    var sellerWhatsapp by remember { mutableStateOf("") }
+    var sellerState by remember { mutableStateOf("") }
+    var sellerCity by remember { mutableStateOf("") }
+    var sellerUniversity by remember { mutableStateOf(state.profile?.university.orEmpty()) }
+    var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
@@ -1166,6 +1175,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(state.client) {
+        sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
+    }
 
     LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, refreshRevision) {
         val min = minPriceText.toLongOrNull()
@@ -1188,7 +1200,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 savedOnly = marketSavedOnly,
                 verifiedOnly = marketVerifiedOnly
             )
-        }.onSuccess { itemsList = it }
+        }.onSuccess { itemsList = com.blinkng.shared.MarketTrustPolicy.diversify(it) { listing -> listing.sellerId ?: listing.sellerUsername } }
             .onFailure { marketError = it.message ?: "Unable to load Market listings." }
         loading = false
     }
@@ -1197,7 +1209,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 ScreenHeader("Marketplace", "Real campus listings")
-                Button(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Close" else "Sell item") }
+                Button(onClick = {
+                    if (sellerReady) showCreate = !showCreate else showSellerEnrollment = !showSellerEnrollment
+                }) { Text(if (showCreate || showSellerEnrollment) "Close" else "Sell item") }
             }
         }
         item {
@@ -1245,6 +1259,48 @@ fun MarketplaceScreen(state: DesktopAppState) {
                         FilterChip(selected = marketSort == code, onClick = { marketSort = code }, label = { Text(label) })
                     }
                     OutlinedButton(onClick = { refreshRevision++ }) { Text("Refresh") }
+                }
+            }
+        }
+        if (showSellerEnrollment) {
+            item {
+                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Become a BLINK Seller — Free", fontWeight = FontWeight.Bold)
+                        Text("Active blue or gold verification is required. Renew expired verification before registering.")
+                        OutlinedTextField(sellerStore, { sellerStore = it.take(80) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business / Store name") })
+                        OutlinedTextField(sellerUniversity, { sellerUniversity = it.take(140) }, modifier = Modifier.fillMaxWidth(), label = { Text("University") })
+                        OutlinedTextField(sellerState, { sellerState = it.take(100) }, modifier = Modifier.fillMaxWidth(), label = { Text("State") })
+                        OutlinedTextField(sellerCity, { sellerCity = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Campus / City") })
+                        OutlinedTextField(sellerPhone, { sellerPhone = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business phone") })
+                        OutlinedTextField(sellerWhatsapp, { sellerWhatsapp = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business WhatsApp") })
+                        Text("Use only business contact details you are comfortable sharing with buyers.")
+                        error?.let { InlineError(it) }
+                        Button(
+                            enabled = !sellerSubmitting && sellerStore.trim().length >= 2 &&
+                                sellerUniversity.trim().length >= 3 && sellerState.trim().length >= 2 &&
+                                sellerCity.trim().length >= 2 && sellerPhone.length in 10..15 &&
+                                sellerWhatsapp.length in 10..15,
+                            onClick = {
+                                sellerSubmitting = true
+                                scope.launch {
+                                    runCatching {
+                                        state.client.registerVerifiedMarketSeller(
+                                            sellerStore,sellerPhone,sellerWhatsapp,sellerState,sellerCity,sellerUniversity
+                                        )
+                                    }.onSuccess { approved ->
+                                        if (approved) {
+                                            sellerReady = true
+                                            showSellerEnrollment = false
+                                            showCreate = true
+                                            error = null
+                                        } else error = "Registration requires active verification."
+                                    }.onFailure { error = it.message ?: "Seller registration failed." }
+                                    sellerSubmitting = false
+                                }
+                            }
+                        ) { Text(if (sellerSubmitting) "Registering…" else "Register Free") }
+                    }
                 }
             }
         }
