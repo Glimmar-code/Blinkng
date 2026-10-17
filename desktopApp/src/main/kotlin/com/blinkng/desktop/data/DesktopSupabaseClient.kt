@@ -1315,9 +1315,49 @@ class DesktopSupabaseClient(
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMarketItem) }
     }
 
+    suspend fun canPublishMarketItems(): Boolean = withContext(Dispatchers.IO) {
+        val me = requireSession().userId
+        val rows = getArray(
+            "/rest/v1/profiles?select=is_seller_active,seller_status,is_verified,verification_badge,verification_expires_at&id=eq.${encode(me)}&limit=1"
+        )
+        val record = rows.optJSONObject(0) ?: return@withContext false
+        val expiresAt = record.optString("verification_expires_at")
+        val expiryValid = runCatching {
+            java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now())
+        }.getOrDefault(false)
+        record.optBoolean("is_seller_active") &&
+            record.optString("seller_status") == "active" &&
+            record.optBoolean("is_verified") &&
+            record.optString("verification_badge").uppercase() in listOf("BLUE","GOLD") &&
+            (expiryValid || (record.optString("verification_badge").uppercase() == "GOLD" &&
+                (expiresAt.isBlank() || expiresAt == "null")))
+    }
+
+    suspend fun registerVerifiedMarketSeller(
+        storeName: String,
+        phone: String,
+        whatsapp: String,
+        stateName: String,
+        city: String,
+        university: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(storeName.trim().length in 2..80)
+        require(university.trim().length >= 3)
+        val payload = JSONObject()
+            .put("p_store_name", storeName.trim())
+            .put("p_phone", phone.trim())
+            .put("p_whatsapp", whatsapp.trim())
+            .put("p_state", stateName.trim())
+            .put("p_city", city.trim())
+            .put("p_university", university.trim())
+        rpcBoolean(postObject("/rest/v1/rpc/register_verified_market_seller", payload))
+    }
+
     suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String): DesktopMarketItem = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
-        require(price >= 0) { "Price cannot be negative." }
+        require(price > 0) { "Price must be greater than zero." }
+        require(description.trim().length >= 10) { "Describe the product accurately." }
+        require(canPublishMarketItems()) { "Renew your verification and register as a seller before posting." }
         val profile = fetchProfile()
         val body = JSONObject()
             .put("title", title.trim())
