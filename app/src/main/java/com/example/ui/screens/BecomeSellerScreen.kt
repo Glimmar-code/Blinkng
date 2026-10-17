@@ -50,6 +50,7 @@ fun BecomeSellerScreen(
     var city by remember { mutableStateOf("") }
     var university by remember(initialUniversity) { mutableStateOf(initialUniversity) }
     var universityDropdownOpen by remember { mutableStateOf(false) }
+    var universitySearch by remember { mutableStateOf("") }
     var sellerKind by remember { mutableStateOf("individual") }
     var businessDescription by remember { mutableStateOf("") }
     var productCategory by remember { mutableStateOf("Electronics") }
@@ -66,6 +67,7 @@ fun BecomeSellerScreen(
         selectedState.isNotBlank() &&
         city.trim().length >= 2 &&
         university.trim().length >= 3 &&
+        kNigerianUniversitiesList.any { it.equals(university.trim(), ignoreCase = true) } &&
         businessDescription.trim().length in 20..1000 &&
         productCategory.isNotBlank() &&
         (offersDelivery || offersPickup) &&
@@ -243,34 +245,69 @@ fun BecomeSellerScreen(
             }
 
             item {
+                val aliasLookup = mapOf(
+                    "futa" to "Federal University of Technology, Akure",
+                    "futo" to "Federal University of Technology, Owerri",
+                    "futminna" to "Federal University of Technology, Minna",
+                    "unilag" to "University of Lagos",
+                    "uniben" to "University of Benin",
+                    "ui" to "University of Ibadan",
+                    "oau" to "Obafemi Awolowo University, Ile-Ife",
+                    "unn" to "University of Nigeria, Nsukka"
+                )
+                val cleanSearch = universitySearch.trim()
+                val canonical = aliasLookup[cleanSearch.lowercase()]
+                val matches = kNigerianUniversitiesList.filter {
+                    cleanSearch.isBlank() ||
+                        it.contains(cleanSearch, ignoreCase = true) ||
+                        (canonical != null && it.equals(canonical, ignoreCase = true))
+                }.take(40)
                 ExposedDropdownMenuBox(
                     expanded = universityDropdownOpen,
                     onExpandedChange = { universityDropdownOpen = !universityDropdownOpen }
                 ) {
                     OutlinedTextField(
-                        value = university,
-                        onValueChange = {},
-                        readOnly = true,
+                        value = if (universityDropdownOpen) universitySearch else university,
+                        onValueChange = {
+                            universitySearch = it.take(80)
+                            universityDropdownOpen = true
+                        },
                         label = { Text("University") },
-                        placeholder = { Text("Select your university") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen) },
+                        placeholder = { Text("Search university name or acronym, e.g. FUTA") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen)
+                        },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
                     ExposedDropdownMenu(
                         expanded = universityDropdownOpen,
                         onDismissRequest = { universityDropdownOpen = false }
                     ) {
-                        kNigerianUniversitiesList.forEach { entry ->
+                        if (matches.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text(entry) },
-                                onClick = {
-                                    university = entry
-                                    universityDropdownOpen = false
-                                }
+                                text = { Text("No matching university. Try the full name.") },
+                                onClick = { universityDropdownOpen = false }
                             )
+                        } else {
+                            matches.forEach { entry ->
+                                DropdownMenuItem(
+                                    text = { Text(entry) },
+                                    onClick = {
+                                        university = entry
+                                        universitySearch = entry
+                                        universityDropdownOpen = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
+                Text(
+                    "Choose a university from the results to keep seller details consistent.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             item {
