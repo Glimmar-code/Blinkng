@@ -168,6 +168,29 @@ FOR EACH ROW EXECUTE FUNCTION public.market_enforce_listing_limits();
 CREATE INDEX IF NOT EXISTS market_items_seller_created_rate_idx
   ON public.market_items(seller_id,created_at DESC);
 
+-- Ordinary feed content cannot be an unmistakable product listing.
+-- Sponsored placement is handled separately from feed_posts, with a visible ad label.
+CREATE OR REPLACE FUNCTION public.route_product_ads_to_market()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $market_feed$
+BEGIN
+  IF coalesce(NEW.text,'') ~* '(^|[^[:alpha:]])(for sale|selling this|available for purchase|dm to buy|buy now|order now|price is)([^[:alpha:]]|$)'
+     AND coalesce(NEW.text,'') ~* '(₦|NGN[[:space:]]*)[[:space:]]*[0-9]'
+  THEN
+    RAISE EXCEPTION 'PRODUCT_ADS_MARKET_ONLY'
+      USING HINT = 'Publish the listing through BLINK Market or request a review.';
+  END IF;
+  RETURN NEW;
+END;
+$market_feed$;
+DROP TRIGGER IF EXISTS feed_route_product_ads_trigger ON public.feed_posts;
+CREATE TRIGGER feed_route_product_ads_trigger
+BEFORE INSERT OR UPDATE OF text ON public.feed_posts
+FOR EACH ROW EXECUTE FUNCTION public.route_product_ads_to_market();
+
 -- Sponsored inventory must be filtered by the same eligibility rules; do not
 -- represent estimated views as guaranteed paid impressions.
 COMMIT;
