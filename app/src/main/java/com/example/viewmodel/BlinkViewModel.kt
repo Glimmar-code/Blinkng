@@ -248,6 +248,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketVerifiedOnly: Boolean = false
     // Reject late network responses after the user changes search, sort or price.
     private var marketRequestVersion = 0L
+    private var lastMarketQueryCompletedAt = 0L
     private var marketNextOffset = 0
     private val marketplaceSaveInFlight = mutableSetOf<String>()
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -1916,6 +1917,7 @@ private suspend fun restoreSupabaseSession() {
                     }
 
                     val marketResult = marketRequest.await()
+                    if (marketResult.isSuccess) lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
                     val market = marketResult.getOrDefault(before.marketItems)
 
                     val conversationsResult = conversationsRequest.await()
@@ -5809,10 +5811,15 @@ private suspend fun restoreSupabaseSession() {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
-        if (marketQuery == cleanQuery && marketCategory == cleanCategory &&
+        val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
-            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
-            !_uiState.value.isMarketLoading && _uiState.value.marketErrorMessage == null) return
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly
+        // Re-entering Market or restoring its filters must not launch a duplicate
+        // network query while the same one is already loading or still fresh.
+        if (sameQuery && _uiState.value.marketErrorMessage == null &&
+            (_uiState.value.isMarketLoading ||
+                !BlinkRefreshPolicy.isStale(lastMarketQueryCompletedAt, SystemClock.elapsedRealtime()))
+        ) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
         marketSort = sort
@@ -5859,6 +5866,7 @@ private suspend fun restoreSupabaseSession() {
             }
             if (generation != marketRequestVersion) return@launch
             result.onSuccess { fresh ->
+                lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
                 marketNextOffset = fresh.size
                 _uiState.value = _uiState.value.copy(
                     marketItems = fresh,
