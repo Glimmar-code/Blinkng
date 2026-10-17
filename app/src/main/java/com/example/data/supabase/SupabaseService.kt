@@ -3779,6 +3779,7 @@ suspend fun uploadPostMedia(
                 put("delivery_method", item.deliveryMethod)
                 put("pickup_location", item.pickupLocation)
                 item.videoUrl.takeIf(String::isNotBlank)?.let { put("video_url", it) }
+                item.mediaDigest.takeIf { it.matches(Regex("^[a-f0-9]{64}$")) }?.let { put("media_digest", it) }
             }
 
             executeRequest(
@@ -4237,6 +4238,7 @@ suspend fun uploadPostMedia(
             sellerName = obj.optString("seller_name", ""),
             sellerId = obj.optString("seller_id", ""),
             videoUrl = obj.cleanString("video_url"),
+            mediaDigest = obj.cleanString("media_digest"),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,
