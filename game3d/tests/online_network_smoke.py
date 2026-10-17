@@ -134,7 +134,7 @@ def main() -> None:
         peers: list[Peer] = []
 
         def make(role: str, uid: str = "", *, restart_plot: int = -1,
-                 invalid: bool = False) -> Peer:
+                 invalid: bool = False, untrusted_cert: bool = False) -> Peer:
             opts: list[str]
             if role == "server":
                 opts = ["--blink-dedicated"]
@@ -147,7 +147,12 @@ def main() -> None:
                 ]
                 if restart_plot >= 0:
                     opts.append(f"--blink-test-expected-plot={restart_plot}")
-            peer = Peer(role, temp, env=env, opts=opts)
+            child_env = env.copy()
+            if untrusted_cert:
+                # Deliberately remove the test CA; verify Godot does not
+                # silently accept an untrusted self-signed game server.
+                child_env.pop("BLINK_LIFE_TEST_CA_FILE", None)
+            peer = Peer(role, temp, env=child_env, opts=opts)
             peers.append(peer)
             return peer
 
@@ -168,6 +173,10 @@ def main() -> None:
 
             invalid_client = make("invalid", ACCOUNT_A, invalid=True)
             finish(invalid_client, seconds=12)
+            # Same WSS endpoint, but without the ephemeral trusted CA.
+            # Connection MUST fail before any signed ticket reaches Godot.
+            untrusted_client = make("bad_tls", ACCOUNT_A, untrusted_cert=True)
+            finish(untrusted_client, seconds=12)
 
             server.end()
             peers.remove(server)
@@ -180,7 +189,8 @@ def main() -> None:
             finish(reconnect)
             print(
                 "PASS: verified encrypted WSS host, two independent authenticated "
-                "players, rejected invalid ticket, unique server-owned houses "
+                "players, rejected invalid tickets and untrusted TLS certificates, "
+                "unique server-owned houses "
                 "and account home persistence after host restart."
             )
         except Exception:
