@@ -30,6 +30,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
 import com.example.ui.components.BlinkAdminBugInbox
+import com.example.ui.components.MarketAdminReviewPanel
 import com.example.ui.components.BlinkMark
 import com.example.ui.screens.BlinkAdminAnnouncementManagerScreen
 import com.example.ui.theme.BlinkPink
@@ -548,6 +549,15 @@ private fun AdminSectionScreen(
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (section.key in setOf("marketplace", "orders_sellers")) {
+                item(key = "professional_market_review") {
+                    MarketAdminReviewPanel(
+                        service = service,
+                        onStatus = status,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+            }
             items(shownFeatures, key = { it.featureId }) { feature ->
                 AdminFeatureCard(
                     feature = feature,
