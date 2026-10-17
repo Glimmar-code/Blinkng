@@ -51,6 +51,39 @@ func run_test() -> void:
     check(not bool(online_script.call("auth_timed_out", 500, 499)),
         "Clock anomalies cannot prematurely expire network admission")
 
+    var social: Node3D = online_script.new()
+    var profiles: Dictionary = {
+        2: {"slot": 0, "visiting": -1, "home_owned": true},
+        3: {"slot": 1, "visiting": 0, "home_owned": false}
+    }
+    social.set("people", profiles)
+    var home_invites: Dictionary = {2: 3}
+    var ride_invites: Dictionary = {2: 3}
+    social.set("visit_requests", home_invites)
+    social.set("ride_requests", ride_invites)
+    check(bool(social.call("_invitations_allowed", 3, 2)),
+        "Initial account-approved session players can request visits")
+    check(bool(social.call("_block_invitations", 2, 3, true)),
+        "Homeowner can block unwanted future visits and rides")
+    check(not bool(social.call("_invitations_allowed", 3, 2)),
+        "Server refuses home invites when either player blocks")
+    check(not bool(social.call("_invitations_allowed", 2, 3)),
+        "Server refuses the blocked relationship in both directions")
+    check((social.get("visit_requests") as Dictionary).is_empty() and
+        (social.get("ride_requests") as Dictionary).is_empty(),
+        "Blocking revokes all previous pending invites")
+    check(int((social.get("people") as Dictionary)[3]["visiting"]) == -1,
+        "Blocking a guest revokes the previous home authorization")
+    check(not bool(social.call("_block_invitations", 2, 2, true)),
+        "A user cannot block themselves")
+    check(not bool(social.call("_block_invitations", 2, 99, true)),
+        "Nonexistent multiplayer identities cannot be blocked")
+    check(bool(social.call("_block_invitations", 2, 3, false)),
+        "Blocked invites can be re-enabled explicitly")
+    check(bool(social.call("_invitations_allowed", 3, 2)),
+        "Unblock makes new requests possible without restoring old visits")
+    social.queue_free()
+
     var state_script: Script = load("res://scripts/persistent_state.gd")
     check(state_script != null, "Persistent state script must import")
     var store: RefCounted = state_script.new()
