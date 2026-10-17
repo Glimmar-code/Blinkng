@@ -434,7 +434,7 @@
 
   async function fetchProfiles(ids){ const unique=[...new Set(ids.filter(Boolean))];if(!unique.length)return new Map(); const rows=await rpc('get_public_profiles_by_ids',{p_ids:unique});return new Map((rows||[]).map(p=>[p.id,p])); }
   function normalizeFeedItem(row,profiles){ const x=row?.item||row; const p=profiles.get(x.user_id)||{}; return {...x,author:p}; }
-  function mediaBlock(post){ const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);const video=safeUrl(post.video_url);if(video)return `<div class="post-media"><video src="${esc(video)}" controls playsinline preload="metadata" data-autopause></video></div>`;if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;return ''; }
+  function mediaBlock(post){ const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);const video=safeUrl(post.video_url);if(video)return `<div class="post-media"><video src="${esc(video)}" controls playsinline preload="none" data-autopause></video></div>`;if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;return ''; }
   function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.like_count)} likes</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.view_count)} views</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
@@ -564,18 +564,33 @@
       const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
       const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
-      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video src="${esc(src)}" playsinline controls muted preload="metadata" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel">`}<div class="reel-overlay"><strong>@${esc(a.username||'user')}${verifyMark(a)}</strong><p>${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}">♡</button><button type="button" data-comments="${esc(r.id)}">◌</button><button type="button" data-share="/reel/${esc(r.id)}">↗</button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
+      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><strong>@${esc(a.username||'user')}${verifyMark(a)}</strong><p>${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}">♡</button><button type="button" data-comments="${esc(r.id)}">◌</button><button type="button" data-share="/reel/${esc(r.id)}">↗</button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
       ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
       state.mediaObserver?.disconnect();
       state.mediaObserver=null;
+      const reelCards=[...document.querySelectorAll('.reel-card')];
       if('IntersectionObserver'in window){
         let prefs={};try{prefs=JSON.parse(storageGet(PARITY_PREF_KEY,'{}'))||{};}catch{}
-        const autoplay=prefs.autoplay!==false&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const autoplay=prefs.autoplay!==false
+          &&navigator.connection?.saveData!==true
+          &&!matchMedia('(prefers-reduced-motion: reduce)').matches;
         state.mediaObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
           const video=entry.target.querySelector('video');if(!video)return;
-          if(entry.intersectionRatio>.7&&autoplay)video.play().catch(()=>{});else video.pause();
-        }),{threshold:[0,.7]});
-        document.querySelectorAll('.reel-card').forEach(r=>state.mediaObserver.observe(r));
+          // A feed can have 30 reels. Attach URLs only when they approach the screen.
+          if(entry.isIntersecting && video.dataset.src && !video.getAttribute('src')){
+            video.setAttribute('src',video.dataset.src);
+            video.load();
+          }
+          if(entry.intersectionRatio>.7&&autoplay)video.play().catch(()=>{});
+          else video.pause();
+        }),{threshold:[0,.7],rootMargin:'300px 0px'});
+        reelCards.forEach(card=>state.mediaObserver.observe(card));
+      }else{
+        // Keep tap-to-play usable on older mobile browsers without the observer API.
+        reelCards.forEach(card=>{
+          const video=card.querySelector('video');
+          if(video?.dataset.src)video.setAttribute('src',video.dataset.src);
+        });
       }
     }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
   }
@@ -605,7 +620,7 @@
       const tiles=items.map(i=>{
         const media=safeUrl(i.videoUrl||(i.imageUrls||[])[0]||i.imageUrl);
         const itemType=String(i.type||'').toLowerCase()==='reel'||i.isReel||!!i.videoUrl?'reel':'post';
-        return `<button type="button" class="profile-tile" data-nav="/${itemType}/${esc(i.id)}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="metadata"></video>`:`<img src="${esc(media)}" alt="" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${itemType==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;
+        return `<button type="button" class="profile-tile" data-nav="/${itemType}/${esc(i.id)}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="none"></video>`:`<img src="${esc(media)}" alt="" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${itemType==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;
       }).join('');
       const html=`<div class="profile-card card ${publicPremium?'premium-profile-surface':''}" ${publicPremium?`style="${cosmeticVars(publicPremium)}"`:''}><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
       ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button type="button" class="brand nav-btn" data-nav="/"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</button><div><a class="btn download-app" href="${APK_URL}">Download app</a><button type="button" class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;
