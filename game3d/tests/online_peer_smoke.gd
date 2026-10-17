@@ -68,7 +68,7 @@ func _process(delta: float) -> bool:
             if bool(social.get("is_connected_to_authoritative_server")):
                 _fail("Unauthorized or untrusted TLS client was admitted")
             else:
-                print("ONLINE_SMOKE_PASS:invalid")
+                print("ONLINE_SMOKE_PASS:" + mode)
                 quit(0)
         return false
     if not bool(social.get("is_connected_to_authoritative_server")):
