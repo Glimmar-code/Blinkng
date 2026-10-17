@@ -48,3 +48,48 @@ not evidence of a complete game.
 branch is independent of the earlier room-decor feature work. Work
 toward live Internet play and safe persistence before polishing
 minor household UI and cosmetic options.
+
+
+## Current foundation branch: safe multiplayer interactions
+
+This branch adds **server-enforced block/unblock for visit and ride
+invitations**. Blocking a guest revokes pending invites and current visit
+authorization; blocking a passenger also ends their ride. It applies
+within the current session only, not across devices or logins yet.
+Public-dedicated text chat remains disabled. A later service must
+persist blocks and reports per verified BLINK account before public
+social play.
+
+The dedicated server now rejects entry into an unowned private home and
+bounds on-foot movement, including the first position packet and
+unauthorised vertical travel. This is **basic server-side anti-cheat**,
+not vehicle physics, collision validation or an encrypted network.
+
+A reviewed *staging-only* database draft lives at
+`game3d/sql/online_ledger_staging.sql`. It shows a private Postgres
+schema for UUID-linked virtual profiles and an idempotent,
+server-only transaction for home purchase, furnishing and fictional
+job rewards, with no authenticated client table/function rights. **It
+has not been executed and is not integrated with the dedicated host.**
+The actual server still uses the hardened single-host JSON ledger.
+Deploying a database schema, provisioning host secrets and wiring
+game servers must be explicit staging operator actions, never automatic
+production account migrations.
+
+### Eight major priorities, source reality
+
+| Priority | State of this branch | Completion gate |
+|---|---|---|
+| Real Internet multiplayer | Authenticated dedicated ENet host source hardened | Cloud host, encrypted transport, distinct-network playtest |
+| Permanent properties | Server ledger + recoverable backups; staging SQL proposal | DB adapter, staging migration, cross-instance durability |
+| Vehicles & passengers | Existing consent-based LAN preview | Server-authoritative driving physics + reliable synced seats |
+| Multiplayer friendships | Session invite blocks and existing opt-in roster | Persisted BLINK friendships, reports, moderation |
+| FUTA-inspired world | Existing stylized local city | Rights-checked new map assets, scene streaming and on-device profiling |
+| Jobs, businesses, economy | Existing trusted host Game Cash + staging idempotent contract | Server-side job validation, durable event ledger and abuse tests |
+| Low-end Android | Separate process and on-demand Play preserved | Optional engine asset delivery and real low-memory tests |
+| Security/operations | Ticket expiry, join throttles, read-only failures, invite blocks | Encryption, DDoS controls, moderation, dashboards and deployment |
+
+Only the rows explicitly described as implemented in source can be
+treated as completed development work. No public Internet server is
+running as a result of this PR; no Testlab/main promotion or Play Store
+release follows automatically.
