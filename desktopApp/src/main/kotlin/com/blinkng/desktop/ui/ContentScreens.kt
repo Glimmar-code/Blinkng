@@ -1293,7 +1293,7 @@ private fun PostCard(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
-                        " · ${BlinkPostFormat.age(formatTime(post.createdAt))}",
+                        " · ${compactDesktopPostAge(post.createdAt)}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1
@@ -1489,6 +1489,19 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
         cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
     )
 }
+
+private fun compactDesktopPostAge(timestamp: String): String = runCatching {
+    val seconds = (Instant.now().epochSecond - Instant.parse(timestamp).epochSecond).coerceAtLeast(0L)
+    when {
+        seconds < 60L -> "now"
+        seconds < 3_600L -> "${seconds / 60L}m"
+        seconds < 86_400L -> "${seconds / 3_600L}h"
+        seconds < 604_800L -> "${seconds / 86_400L}d"
+        seconds < 2_592_000L -> "${seconds / 604_800L}w"
+        seconds < 31_536_000L -> "${seconds / 2_592_000L}mo"
+        else -> "${seconds / 31_536_000L}y"
+    }
+}.getOrElse { BlinkPostFormat.age(timestamp) }
 
 private fun formatTime(value: String): String = runCatching {
     val instant = Instant.parse(value)
