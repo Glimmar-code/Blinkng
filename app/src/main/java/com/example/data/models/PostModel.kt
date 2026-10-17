@@ -201,7 +201,8 @@ data class MarketItem(
     val createdAt: String = "",
     val sellerId: String = "",
     val videoUrl: String = "",
-    val mediaDigest: String = ""
+    val mediaDigest: String = "",
+    val moderationState: String = "approved"
 )
 
 data class LeaderboardUser(
