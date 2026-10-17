@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.data.supabase.SupabaseConfig
+import com.blinkng.shared.notification.BlinkNotificationPresentation
 import com.example.data.supabase.SupabaseService
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -96,13 +97,15 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             }
 
             newestByConversation.values.forEach { row ->
-                val senderUsername = row.optString("sender_username")
+                val senderUsername = BlinkNotificationPresentation.username(row.optString("sender_username"))
                 if (senderUsername.isBlank()) return@forEach
                 InstantChatNotification.show(
                     context = applicationContext,
                     senderUsername = senderUsername,
-                    senderName = row.optString("sender_name").ifBlank { senderUsername },
-                    messageText = row.optString("content").ifBlank { "New message" },
+                    senderName = BlinkNotificationPresentation.displayName(
+                        row.optString("sender_name"), senderUsername,
+                    ),
+                    messageText = BlinkNotificationPresentation.body(row.optString("content"), "New message"),
                     senderAvatar = row.optString("sender_avatar"),
                     conversationId = row.optString("conversation_id"),
                     messageId = row.optString("message_id")
