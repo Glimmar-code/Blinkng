@@ -5336,6 +5336,21 @@ suspend fun uploadPostMedia(
             }.getOrDefault(false)
         }
 
+    suspend fun fetchMyMarketOrders(): JSONArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val uid = getCurrentUserId() ?: return@runCatching JSONArray()
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/marketplace_orders?select=id,item_id,buyer_id,seller_id,status,quantity,total_price,created_at&or=(buyer_id.eq.$uid,seller_id.eq.$uid)&order=created_at.desc&limit=60",
+                    true
+                ).get().build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            }
+        }.getOrNull()
+    }
+
     suspend fun openMarketDispute(orderId: String, reason: String, details: String): Boolean =
         withContext(Dispatchers.IO) {
             if (!isValidUuid(orderId) || reason.trim().length < 8) return@withContext false
