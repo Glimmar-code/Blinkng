@@ -53,6 +53,9 @@ var interior_light: OmniLight3D
 var ceiling_visuals: Array[MeshInstance3D] = []
 var tv_screen: MeshInstance3D
 var tv_caption: Label3D
+var bed_status: Label3D
+var meal_visual: MeshInstance3D
+var meal_status: Label3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
 
@@ -115,6 +118,32 @@ func configure() -> void:
     add_child(tv_caption)
     _caption("YOUR SOLO STARTER ROOM", Vector3(0, 2.5, -3.9))
     _caption("BED", Vector3(0, 1.5, 0), 21, movable_bed)
+    bed_status = Label3D.new()
+    bed_status.name = "BedRestStatus"
+    bed_status.position = Vector3(0, 1.9, 0)
+    bed_status.font_size = 22
+    bed_status.pixel_size = 0.008
+    bed_status.text = "REST AVAILABLE"
+    bed_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    movable_bed.add_child(bed_status)
+    # The wall-mounted kitchenette doesn't take up walkable floor cells
+    # or invalidate previously saved furniture/plant placements.
+    _box(self, Vector3(-0.25, 1.24, 4.02), Vector3(1.35, 0.14, 0.48),
+        Color(0.49, 0.43, 0.37))
+    _box(self, Vector3(-0.78, 1.58, 4.02), Vector3(0.20, 0.55, 0.28),
+        Color(0.57, 0.61, 0.65))
+    meal_visual = _box(self, Vector3(-0.25, 1.36, 3.92),
+        Vector3(0.40, 0.09, 0.30), Color(0.55, 0.55, 0.55))
+    meal_visual.name = "MealPreview"
+    meal_visual.visible = false
+    meal_status = Label3D.new()
+    meal_status.name = "KitchenMealStatus"
+    meal_status.position = Vector3(-0.25, 1.86, 3.78)
+    meal_status.font_size = 20
+    meal_status.pixel_size = 0.008
+    meal_status.text = "KITCHENETTE"
+    meal_status.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    add_child(meal_status)
     _caption("STUDY DESK", Vector3(2.3, 1.8, -2.5), 21)
     var light := OmniLight3D.new()
     light.name = "InteriorLight"
@@ -134,6 +163,26 @@ func configure() -> void:
     desk_plant.position = PLANT_SPOTS[0]
     desk_plant.visible = false
     apply_decoration(0, 0, 0)
+
+
+## Purely visual, optional offline rest; no forced sleep cycle or energy penalty.
+func set_resting(resting: bool) -> void:
+    if bed_status != null:
+        bed_status.text = "RESTING • TAP TO GET UP" if resting else "REST AVAILABLE"
+
+
+## Fictional food displayed in a tiny kitchenette. No recipe instructions,
+## inventories, hunger, health effects, payouts or external network access.
+func show_meal(selection: int) -> bool:
+    const MEAL_LABELS = ["JOLLOF BOWL", "BEANS PLATE", "FRUIT SNACK"]
+    const MEAL_COLORS = [Color(0.77, 0.31, 0.12), Color(0.46, 0.27, 0.16),
+        Color(0.92, 0.70, 0.25)]
+    if selection < 0 or selection >= MEAL_LABELS.size() or meal_visual == null:
+        return false
+    meal_visual.visible = true
+    _repaint(meal_visual, MEAL_COLORS[selection])
+    meal_status.text = MEAL_LABELS[selection]
+    return true
 
 
 ## Open-roof ceiling trim can be recoloured without hiding gameplay.
