@@ -1,3 +1,12 @@
+## 2026-10-17 — Phase 4A Admin Announcement Manager (Testlab validation only)
+
+- **Shared:** `BlinkAdminAnnouncementDraft` defines three requested channels (in-app, phone push, both), recipient groups, clear validation and a strict capability gate. Push/combined or scheduled sending is *not falsely marked live*: buttons remain disabled until the matching authenticated fan-out/scheduling backend passes testing.
+- **Android:** verified admin dashboard has an Announcements entry in the top bar. The black-and-white manager provides titled message authoring, audience selection, searchable real-user picker (no manual UID), confirmation preview, typed SEND for all-user broadcasts and the existing `admin_send_announcement` backend RPC for immediate in-app announcements.
+- **Windows:** desktop admin has an equivalent manager using shared rules, the same authenticated RPC and server search for recipients.
+- **Security:** no client service-role credentials, direct database writes, unsanctioned scheduled tasks or silent phone push sends. Existing Supabase `private.require_blink_admin()` authorizes the production RPC. Admin-only UI is not the authorization boundary.
+- **Limitation:** the existing broadcast RPC produces in-app activity/notification rows; FCM push distribution, recurring/on-login pop-up audience config and remote scheduled announcement jobs require separate backend/worker activation and staging tests.
+- **Release gates:** Android + desktop builds/unit tests, real admin/non-admin authorization checks, recipient targeting and explicit-send confirmation, and production backend provider test before enabling new push/both switches. Branch targets Testlab. Do not merge directly to main.
+
 ## 2026-10-15 — Ad loader lifecycle repair (Testlab)
 
 - Android: bound rewarded loading to 30 seconds, reject stale callbacks, expire cached ads after 55 minutes, clear manager state on Activity destruction, and retry failed native placements at most twice with 30/60-second backoff. Preserve consent checks and SDK-owned video/click handling. Log native error domain/code/message/response for diagnosis.
