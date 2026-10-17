@@ -50,6 +50,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +95,7 @@ import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.random.Random
@@ -477,6 +480,20 @@ private fun PremiumHomeFeed(
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
+    val followScope = rememberCoroutineScope()
+    val followMutationPending = remember { mutableStateMapOf<String, Boolean>() }
+    // Resolve real Supabase profile IDs; never send a username to follow_user.
+    val authorIdByKey = remember(profiles) {
+        buildMap<String, String> {
+            profiles.forEach { profile ->
+                val id = profile.id.takeIf(String::isNotBlank) ?: return@forEach
+                profile.username.trim().removePrefix("@").lowercase()
+                    .takeIf(String::isNotBlank)?.let { put(it, id) }
+                profile.fullName.trim().lowercase()
+                    .takeIf(String::isNotBlank)?.let { putIfAbsent(it, id) }
+            }
+        }
+    }
     val authorPresenceByKey = remember(profiles) {
         buildMap<String, Boolean> {
             profiles.forEach { profile ->
@@ -1021,6 +1038,33 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
+                                                    authorProfileId = authorIdByKey[
+                                                        post.authorUsername.trim().removePrefix("@").lowercase()
+                                                    ] ?: authorIdByKey[post.author.trim().lowercase()].orEmpty(),
+                                                    isFollowingAuthor = post.authorUsername.trim().removePrefix("@").lowercase() in followedAuthorKeys ||
+                                                        post.author.trim().lowercase() in followedAuthorKeys,
+                                                    isFollowMutationPending = followMutationPending[
+                                                        authorIdByKey[post.authorUsername.trim().removePrefix("@").lowercase()]
+                                                            ?: authorIdByKey[post.author.trim().lowercase()].orEmpty()
+                                                    ] == true,
+                                                    onFollowAuthor = { id ->
+                                                        if (followMutationPending[id] != true) {
+                                                            followMutationPending[id] = true
+                                                            followScope.launch {
+                                                                try { FollowStateStore.setFollowing(id, true) }
+                                                                finally { followMutationPending.remove(id) }
+                                                            }
+                                                        }
+                                                    },
+                                                    onUnfollowAuthor = { id ->
+                                                        if (followMutationPending[id] != true) {
+                                                            followMutationPending[id] = true
+                                                            followScope.launch {
+                                                                try { FollowStateStore.setFollowing(id, false) }
+                                                                finally { followMutationPending.remove(id) }
+                                                            }
+                                                        }
+                                                    },
                                                     authorOnline = authorPresenceByKey[
                                                         post.authorUsername.trim().removePrefix("@").lowercase()
                                                     ] ?: authorPresenceByKey[post.author.trim().removePrefix("@").lowercase()],
