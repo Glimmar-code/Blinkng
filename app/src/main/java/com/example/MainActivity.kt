@@ -1162,6 +1162,7 @@ fun MainAppContent(
                         isSellerActive = uiState.myProfile.isSellerActive && uiState.myProfile.hasActiveMarketVerification(),
                         sellerStoreName = uiState.myProfile.sellerStoreName,
                         verificationBadge = uiState.myProfile.verificationBadge,
+                        sellerVerificationActive = uiState.myProfile.hasActiveMarketVerification(),
                         onItemClick = { viewModel.openProductDetail(it) },
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
