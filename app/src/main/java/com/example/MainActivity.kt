@@ -1691,6 +1691,9 @@ fun MainAppContent(
                     onConfirmAvailability = { listing ->
                         viewModel.confirmMarketAvailability(listing)
                     },
+                    onBoostListing = { _ ->
+                        feedUtilitySheet = "boost"
+                    },
                     isOwner = product.sellerId.isNotBlank() &&
                         product.sellerId == uiState.myProfile.id,
                     onUpdateListingStatus = { listing, status ->
