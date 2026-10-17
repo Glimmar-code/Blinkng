@@ -85,6 +85,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.example.BuildConfig
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
@@ -459,6 +460,7 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
+            onOpenMarketListing = onOpenMarketListing,
             onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
             onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
             onViewedPost = onViewedPost,
@@ -630,6 +632,7 @@ private fun PremiumHomeFeed(
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
     onDropsClick: () -> Unit,
+    onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
