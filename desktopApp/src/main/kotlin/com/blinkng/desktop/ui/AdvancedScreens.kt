@@ -993,6 +993,8 @@ fun AdminProScreen(state: DesktopAppState) {
     var searchResult by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var showAnnouncementManager by remember { mutableStateOf(false) }
+    var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
 
@@ -1037,6 +1039,27 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Announcement Manager", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Create and preview official in-app BLINK announcements.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Button(onClick = { showAnnouncementManager = true }) { Text("Create") }
+                }
+            }
+        }
+        announcementStatus?.let { note -> item { Text(note, color = MaterialTheme.colorScheme.primary) } }
 
         error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         if (loading) item { Text("Loading admin dashboard…") }
@@ -1106,6 +1129,17 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+
+    if (showAnnouncementManager && capability.allowed) {
+        DesktopAdminAnnouncementManager(
+            actions = actions,
+            onDismiss = { showAnnouncementManager = false },
+            onSent = {
+                announcementStatus = it
+                showAnnouncementManager = false
+            },
+        )
     }
 }
 
