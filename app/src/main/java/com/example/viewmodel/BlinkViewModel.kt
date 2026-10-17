@@ -1326,7 +1326,7 @@ private suspend fun restoreSupabaseSession() {
             },
             onFailure = { error ->
                 Log.w(TAG, "Rewarded ad claim start failed", error)
-                showToast(error.message ?: "Unable to prepare the ad reward. Please try again.")
+                showToast("Unable to prepare the ad reward. Please try again.")
                 null
             }
         )
@@ -1402,7 +1402,7 @@ private suspend fun restoreSupabaseSession() {
                             if (detail.contains("REWARDED_AD_CLAIM_EXPIRED", ignoreCase = true) ||
                                 detail.contains("REWARDED_AD_DAILY_LIMIT", ignoreCase = true)
                             ) clearPendingRewardedAdClaim(userId)
-                            showToast(error.message ?: "Coin credit could not be confirmed. BLINK will check again.")
+                            showToast("Coin credit could not be confirmed. BLINK will check again.")
                             refreshProfileRewards()
                             return@launch
                         }
@@ -1454,7 +1454,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Daily mission claim failed", error)
-                    showToast(error.message ?: "Couldn't claim this mission.")
+                    showToast("Couldn't claim this mission. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1483,7 +1483,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack coin checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1504,7 +1504,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack verification checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1604,7 +1604,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Blink Coin verification purchase failed", error)
-                    showToast(error.message ?: "Couldn't activate BLINK Verified.")
+                    showToast("Couldn't activate BLINK Verified. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1725,7 +1725,7 @@ private suspend fun restoreSupabaseSession() {
                         feedErrorMessage = if (postsResult.isFailure && normalPosts.isEmpty()) {
                             "Posts couldn't load right now. Pull to retry."
                         } else if (!feedSucceeded) {
-                            "Couldn't refresh live Supabase data. Check your connection and try again."
+                            "Couldn't update your feed. Check your connection and try again."
                         } else null,
                         followingFeedErrorMessage = if (followingResult.isFailure && fetchedFollowing.isEmpty()) {
                             "Following posts couldn't load right now. Pull to retry."
@@ -1896,7 +1896,7 @@ private suspend fun restoreSupabaseSession() {
                                 { error ->
                                     _uiState.value = _uiState.value.copy(
                                         activitiesLoading = false,
-                                        activitiesError = error.message
+                                        activitiesError = "Couldn't load notifications. Please try again."
                                     )
                                 }
                             )
@@ -1904,7 +1904,7 @@ private suspend fun restoreSupabaseSession() {
                         .onFailure { error ->
                             _uiState.value = _uiState.value.copy(
                                 activitiesLoading = false,
-                                activitiesError = error.message
+                                activitiesError = "Couldn't load notifications. Please try again."
                             )
                         }
 
@@ -2096,7 +2096,7 @@ private suspend fun restoreSupabaseSession() {
                 .onSuccess { live ->
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
                     persistExtendedCache()
-                    showToast("Leaderboard refreshed from Supabase.")
+                    showToast("Leaderboard is up to date.")
                 }
                 .onFailure {
                     Log.e(TAG, "Leaderboard refresh failed", it)
@@ -2556,7 +2556,7 @@ private suspend fun restoreSupabaseSession() {
                         else "Choose your BLINK username to continue."
                     )
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
-            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast(e.message ?: "Google authentication failed.") }
+            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast("Google sign-in didn't complete. Please try again.") }
         }
     }
 
@@ -2614,7 +2614,7 @@ private suspend fun restoreSupabaseSession() {
                         else "Account created! Set up your BLINK profile."
                     )
                 } else showToast(result.errorMessage ?: "Sign up failed.")
-            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
+            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast("Couldn't create your account. Please try again.") }
         }
     }
 
@@ -2834,9 +2834,9 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
         viewModelScope.launch {
             val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
-            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally, but Supabase sync failed.") }
+            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device. Sign in to sync it."); return@launch }
+            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("Profile created and synced successfully.") }
+            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device, but sync failed. Please try again.") }
         }
     }
 
@@ -3230,7 +3230,7 @@ private suspend fun restoreSupabaseSession() {
                     onProfilePersisted(authoritative)
                     showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
-            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
+            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("Couldn't update your profile. Please try again.") }
         }
     }
     /**
@@ -3467,7 +3467,7 @@ private suspend fun restoreSupabaseSession() {
             } catch (e: Exception) {
                 Log.e(TAG, "Schedule post failed", e)
                 withContext(Dispatchers.Main) {
-                    showToast(e.message ?: "Couldn't schedule the post.")
+                    showToast("Couldn't schedule the post. Please try again.")
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -3488,7 +3488,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Cancel scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't cancel scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't cancel the scheduled post. Please try again.") }
             }
         }
     }
@@ -3505,7 +3505,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Publish scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't publish scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't publish the scheduled post. Please try again.") }
             }
         }
     }
@@ -3620,7 +3620,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation failed", e)
-                showToast(e.message ?: "Couldn't publish the post. Please try again.")
+                showToast("Couldn't publish the post. Please try again.")
             } finally {
                 _uiState.value = _uiState.value.copy(isCreatingPost = false)
             }
@@ -6169,7 +6169,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     Log.w(TAG, "Market seller checkout failed to initialize", error)
                     _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                    showToast(error.message ?: "Couldn't start seller activation checkout.")
+                    showToast("Couldn't start seller activation checkout. Please try again.")
                 }
             )
         }
@@ -6432,7 +6432,7 @@ private suspend fun restoreSupabaseSession() {
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
                 showToast("✨ Story published!")
-            }else showToast("Failed to persist story to Supabase.")
+            }else showToast("Couldn't save your story. Please try again.")
         }
     }
 
@@ -6453,7 +6453,7 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
-                showToast(e.message?:"Unable to share story.")
+                showToast("Unable to share your story. Please try again.")
             }finally{
                 _uiState.value=_uiState.value.copy(isCreatingStory=false)
             }
