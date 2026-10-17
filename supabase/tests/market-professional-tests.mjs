@@ -67,6 +67,11 @@ export async function marketProfessionalTests(db) {
         'countered',4200,'Could do this price') as ok`);
     assert.equal(response.rows[0].ok,true);
 
+    const rankedBeforeSale=await q(`select id from public.discover_market_items_v2(
+       'Textbooks','FUTA',null,20,0,null,null)`);
+    assert.ok(rankedBeforeSale.rows.some(row=>row.id===id),
+      'Available approved listing must appear in verified Market discovery');
+
     await exec(`reset role;insert into public.marketplace_orders(
       item_id,buyer_id,seller_id,quantity,unit_price,total_price,status)
       values('${id}','${buyer}','${owner}',1,4500,4500,'completed');`);
@@ -76,9 +81,10 @@ export async function marketProfessionalTests(db) {
        'Item condition differs','A private complaint with no payment claims') as id`);
     assert.ok(dispute.rows[0].id);
 
-    const ranked=await q(`select id from public.discover_market_items_v2(
+    const rankedAfterSale=await q(`select id from public.discover_market_items_v2(
        'Textbooks','FUTA',null,20,0,null,null)`);
-    assert.ok(ranked.rows.some(row=>row.id===id));
+    assert.equal(rankedAfterSale.rows.some(row=>row.id===id),false,
+      'Sold or reserved inventory must not return to organic Market results');
 
     await exec('reset role;');
     const maintenance=await q('select private.market_daily_maintenance() as summary');
