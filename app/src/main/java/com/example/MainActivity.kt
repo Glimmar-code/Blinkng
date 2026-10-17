@@ -1685,6 +1685,12 @@ fun MainAppContent(
                     onReport = { listing, reason, details ->
                         viewModel.reportMarketItem(listing, reason, details)
                     },
+                    onMakeOffer = { listing, offerAmount, note ->
+                        viewModel.makeMarketOffer(listing, offerAmount, note)
+                    },
+                    onConfirmAvailability = { listing ->
+                        viewModel.confirmMarketAvailability(listing)
+                    },
                     isOwner = product.sellerId.isNotBlank() &&
                         product.sellerId == uiState.myProfile.id,
                     onUpdateListingStatus = { listing, status ->
