@@ -1051,7 +1051,8 @@ private fun OrganizeDropDialog(
                                                 onClick = {
                                                     targetType = type
                                                     selectedTargetId = ""
-                                                    action = BlinkDropsPolicy.actionsFor(type).first().name
+                                                    // An empty server/policy action set must not crash the selector.
+                                                    action = BlinkDropsPolicy.actionsFor(type).firstOrNull()?.name.orEmpty()
                                                 },
                                                 label = { Text(targetLabel(type.name)) },
                                             )
