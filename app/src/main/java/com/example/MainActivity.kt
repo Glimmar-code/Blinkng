@@ -1165,6 +1165,7 @@ fun MainAppContent(
                         sellerVerificationActive = uiState.myProfile.hasActiveMarketVerification(),
                         verificationExpiresAtMillis = uiState.myProfile.verificationExpiresAtMillis,
                         viewerUniversity = uiState.myProfile.university,
+                        viewerId = uiState.myProfile.id,
                         onItemClick = { viewModel.openProductDetail(it) },
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
