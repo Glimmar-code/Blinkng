@@ -80,6 +80,7 @@ fun ProductDetailScreen(
     onReport: (MarketItem, String, String) -> Unit = { _, _, _ -> },
     onMakeOffer: (MarketItem, Long, String) -> Unit = { _, _, _ -> },
     onConfirmAvailability: (MarketItem) -> Unit = {},
+    onBoostListing: (MarketItem) -> Unit = {},
 
     isOwner: Boolean = false,
     onUpdateListingStatus: (MarketItem, String) -> Unit = { _, _ -> },
@@ -515,6 +516,10 @@ fun ProductDetailScreen(
                             onClick = { onConfirmAvailability(item) },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Confirm this item is still available") }
+                        OutlinedButton(
+                            onClick = { onBoostListing(item) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Promote this listing · Blink Coins") }
                     }
                     if (!isOwner) {
                         Spacer(modifier = Modifier.height(12.dp))
