@@ -1159,7 +1159,7 @@ fun MainAppContent(
                 MainTab.MARKET -> {
                     MarketScreen(
                         items = uiState.marketItems,
-                        isSellerActive = uiState.myProfile.isSellerActive,
+                        isSellerActive = uiState.myProfile.isSellerActive && uiState.myProfile.hasActiveMarketVerification(),
                         sellerStoreName = uiState.myProfile.sellerStoreName,
                         verificationBadge = uiState.myProfile.verificationBadge,
                         onItemClick = { viewModel.openProductDetail(it) },
@@ -1828,13 +1828,14 @@ fun MainAppContent(
         ) {
             BecomeSellerScreen(
                 onBack = { viewModel.openBecomeSeller(false) },
-                onSuccess = { storeName, phone, whatsapp, state, city ->
-                    viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city)
+                onSuccess = { storeName, phone, whatsapp, state, city, university ->
+                    viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city, university)
                 },
                 initialStoreName = uiState.myProfile.sellerStoreName,
                 initialPhone = uiState.myProfile.phone.value,
                 initialWhatsapp = uiState.myProfile.whatsapp.value,
-                cashCheckoutEnabled = uiState.economyPolicy.cashCheckoutEnabled,
+                isVerified = uiState.myProfile.hasActiveMarketVerification(),
+                initialUniversity = uiState.myProfile.university,
                 isSubmitting = uiState.isSellerActivationLoading,
                 isDark = uiState.isDarkMode
             )
