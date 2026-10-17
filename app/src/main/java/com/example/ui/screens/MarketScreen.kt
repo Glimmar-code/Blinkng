@@ -76,6 +76,7 @@ fun MarketScreen(
     sellerVerificationActive: Boolean = false,
     verificationExpiresAtMillis: Long = 0L,
     viewerUniversity: String = "",
+    viewerId: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
@@ -320,6 +321,15 @@ fun MarketScreen(
                         TextButton(onClick = onOpenGetVerified) { Text("Renew") }
                     }
                 }
+            }
+        }
+
+        if (isSellerActive && viewerId.isNotBlank()) {
+            item {
+                MarketSellerInsightsPanel(
+                    sellerId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
 
