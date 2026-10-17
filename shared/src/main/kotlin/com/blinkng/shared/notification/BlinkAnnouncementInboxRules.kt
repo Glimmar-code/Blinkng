@@ -17,8 +17,20 @@ object BlinkAnnouncementInboxRules {
     fun isOfficialCategory(type: String?, targetType: String?): Boolean {
         val kind = BlinkNotificationKind.fromWire(type)
         val target = targetType.orEmpty().trim().lowercase()
-        return kind == BlinkNotificationKind.ADMIN || kind == BlinkNotificationKind.SYSTEM ||
-            target == "notification"
+        // Do not persist chat, wallet, security or marketplace previews merely
+        // because an older backend labelled their target "notification".
+        val legacyOfficial = target == "notification" &&
+            kind !in setOf(
+                BlinkNotificationKind.MESSAGE,
+                BlinkNotificationKind.SECURITY,
+                BlinkNotificationKind.COIN,
+                BlinkNotificationKind.MARKET,
+                BlinkNotificationKind.MARKET_ORDER,
+                BlinkNotificationKind.INCOMING_CALL,
+                BlinkNotificationKind.CALL_UPDATE,
+            )
+        return kind == BlinkNotificationKind.ADMIN ||
+            kind == BlinkNotificationKind.SYSTEM || legacyOfficial
     }
 
     fun create(
