@@ -123,6 +123,23 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             if (response.code == 401) throw UnauthorizedException()
             if (!response.isSuccessful) error("Social notification recovery failed (${response.code})")
             val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            // Save official announcements on successful authenticated sync, even when
+            // we are establishing the initial cursor and do not show old heads-ups.
+            // Cached entries can then be read offline without replaying old alerts.
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                if (!com.blinkng.shared.notification.BlinkAnnouncementInboxRules.isOfficialCategory(
+                        row.optString("type"), row.optString("target_type")
+                    )) continue
+                BlinkOfflineAnnouncementCache.record(
+                    context = applicationContext,
+                    userId = uid,
+                    id = row.optString("id"),
+                    title = row.optString("text"),
+                    message = row.optString("sub_text"),
+                    publishedAt = row.optString("created_at"),
+                )
+            }
             var newest = lastSeen
             val candidates = mutableListOf<JSONObject>()
 
