@@ -68,6 +68,7 @@ fun PostItemScreen(
     var deliveryMethod by remember { mutableStateOf("meetup") }
     var categoryDropdownOpen by remember { mutableStateOf(false) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var showBoostPreview by remember { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -77,7 +78,7 @@ fun PostItemScreen(
         }
     }
 
-    val conditions = listOf("Brand New", "Like New (Mint 9/10)", "Good Condition", "Fair")
+    val conditions = listOf("Brand New", "Like New", "Fairly Used", "Used", "For Parts / Repair")
     val deliveryOptions = listOf(
         "meetup" to "Campus meetup",
         "pickup" to "Pickup",
@@ -405,6 +406,39 @@ fun PostItemScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(12.dp)
                     )
+                }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = { showBoostPreview = !showBoostPreview },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Boost to Feed · Optional sponsored promotion")
+                }
+                if (showBoostPreview) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "Suggested pricing • Sponsored campaigns are not enabled until secure payment and delivery checks pass.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                        com.blinkng.shared.MarketTrustPolicy.BOOST_PREVIEWS.forEach { tier ->
+                            Text(
+                                "₦${tier.priceNaira} • target ${tier.targetQualifiedViews} qualified views • up to ${tier.maxDays} days",
+                                fontSize = 13.sp
+                            )
+                        }
+                        Text(
+                            "Estimated targets, not guaranteed reach. Publishing a listing is free.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
 
