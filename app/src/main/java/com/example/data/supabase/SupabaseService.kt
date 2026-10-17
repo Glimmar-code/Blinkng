@@ -5169,6 +5169,88 @@ suspend fun uploadPostMedia(
         }
     }
 
+    /** All seller actions use Supabase authentication; the server enforces authorization. */
+    suspend fun completeMarketSellerProfile(
+        kind: String,
+        description: String,
+        category: String,
+        delivery: Boolean,
+        pickup: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("p_kind", kind)
+                .put("p_description", description)
+                .put("p_categories", JSONArray().put(category))
+                .put("p_delivery", delivery)
+                .put("p_pickup", pickup)
+                .put("p_logo_url", JSONObject.NULL)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/complete_market_seller_profile", true)
+                    .post(payload.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                response.isSuccessful && response.body?.string().orEmpty().trim().trim('"') == "true"
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun getMarketSellerDashboard(): JSONObject? = withContext(Dispatchers.IO) {
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_my_market_dashboard", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONObject(response.body?.string().orEmpty().ifBlank { "{}" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun getMarketSellerCard(sellerId: String): JSONObject? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(sellerId)) return@withContext null
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_market_public_seller_card", true)
+                    .post(JSONObject().put("p_user", sellerId).toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONObject(response.body?.string().orEmpty().ifBlank { "{}" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun makeMarketOffer(itemId: String, amount: Long, message: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId) || amount <= 0L) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_item", itemId)
+                    .put("p_amount", amount).put("p_note", message.take(500))
+                executeRequest(newRequestBuilder("/rest/v1/rpc/make_market_offer", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    suspend fun openMarketDispute(orderId: String, reason: String, details: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(orderId) || reason.trim().length < 8) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_order", orderId)
+                    .put("p_reason", reason.trim()).put("p_details", details.take(2000))
+                executeRequest(newRequestBuilder("/rest/v1/rpc/open_market_dispute", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    suspend fun confirmMarketAvailability(itemId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId)) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_item", itemId)
+                executeRequest(newRequestBuilder("/rest/v1/rpc/confirm_market_listing_availability", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
     suspend fun fetchProfileFollowerHistory(
         profileId: String,
         days: Int = 30
