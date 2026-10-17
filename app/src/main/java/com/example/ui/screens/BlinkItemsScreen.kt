@@ -262,7 +262,7 @@ private fun BlinkItemsHome(
                     title = "Weather",
                     subtitle = when {
                         !weatherEnabled -> "Off"
-                        weather != null -> "${weather!!.temperatureC.roundToInt()}°C • ${weather!!.condition}"
+                        weather != null -> "${weather.temperatureC.roundToInt()}°C • ${weather.condition}"
                         else -> "Ready"
                     },
                     enabled = weatherEnabled,
