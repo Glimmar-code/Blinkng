@@ -266,10 +266,12 @@
   function shell(content,title='Blink',right=''){
     setTitle(title);
     const p=state.profile;
+    const analyticsLink=state.session?.user?.app_metadata?.admin===true
+      ? navItem('/site-stats','analytics','Website analytics') : '';
     return `<div class="app-shell">
       <aside class="sidebar">
         <button class="nav-btn brand" data-nav="/feed"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true"><span>Blink</span></button>
-        ${navItem('/feed','home','Home')}${navItem('/reels','reels','Reels')}${navItem('/search','search','Search')}${navItem('/messages','messages','Messages')}${navItem('/activity','activity','Activity',state.notificationsUnread?String(state.notificationsUnread):'')}${navItem('/market','market','Marketplace')}${navItem('/connect','connect','Connect')}${navItem('/games','games','Games')}${navItem('/scheduled','scheduled','Scheduled')}${navItem('/ai','ai','Blink AI')}
+        ${navItem('/feed','home','Home')}${navItem('/reels','reels','Reels')}${navItem('/search','search','Search')}${navItem('/messages','messages','Messages')}${navItem('/activity','activity','Activity',state.notificationsUnread?String(state.notificationsUnread):'')}${navItem('/market','market','Marketplace')}${navItem('/connect','connect','Connect')}${navItem('/games','games','Games')}${navItem('/scheduled','scheduled','Scheduled')}${navItem('/ai','ai','Blink AI')}${analyticsLink}
         <div class="sidebar-spacer"></div>${navItem('/settings/profile','settings','Settings')}
         ${p?`<button class="profile-mini" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span><strong>${esc(p.full_name||p.username)}</strong><span class="handle">@${esc(p.username)}</span></span></button>`:''}
       </aside>
@@ -1165,6 +1167,38 @@
     if(referrer)referrer.setAttribute('content',publicHome?'strict-origin-when-cross-origin':'no-referrer');
   }
 
+  async function renderSiteAnalytics(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<section class="card"><h2>Website analytics</h2><p class="muted">Loading aggregate public website counts…</p></section>','Website analytics');
+    bindCommon();
+    try{
+      // This RPC validates admin permission in the database, not in JavaScript.
+      const result=await rpc('get_blink_site_metrics',{p_days:30});
+      const entries=Array.isArray(result?.records)?result.records:[];
+      const views=entries.filter(x=>x.kind==='view').reduce((n,x)=>n+Number(x.count||0),0);
+      const clicks=entries.filter(x=>x.kind==='download').reduce((n,x)=>n+Number(x.count||0),0);
+      const byPage=['home','about','features','download','faq','privacy'].map(page=>{
+        const pageRows=entries.filter(x=>x.page===page);
+        const impressions=pageRows.filter(x=>x.kind==='view').reduce((n,x)=>n+Number(x.count||0),0);
+        const downloads=pageRows.filter(x=>x.kind==='download').reduce((n,x)=>n+Number(x.count||0),0);
+        return `<tr><th scope="row">${esc(page==='home'?'Homepage':page.charAt(0).toUpperCase()+page.slice(1))}</th><td>${fmt(impressions)}</td><td>${fmt(downloads)}</td></tr>`;
+      }).join('');
+      const html=`<section class="card" aria-labelledby="site-metrics-title">
+        <h2 id="site-metrics-title">Public website analytics · Last 30 days</h2>
+        <p class="muted">Anonymous aggregate events only. Counts may be approximate and do not represent unique visitors or successful APK installations.</p>
+        <div class="stats-grid"><div class="stat"><strong>${fmt(views)}</strong><span>Public page views</span></div><div class="stat"><strong>${fmt(clicks)}</strong><span>APK button taps</span></div></div>
+        <div style="overflow-x:auto;margin-top:20px"><table class="table"><caption>Public website counts by page · ${esc(result?.timezone||'Africa/Lagos')}</caption><thead><tr><th scope="col">Page</th><th scope="col">Views</th><th scope="col">APK taps</th></tr></thead><tbody>${byPage}</tbody></table></div>
+        ${entries.length?'':'<p class="muted">No events recorded. Collection remains disabled until privacy and production deployment are approved.</p>'}
+        <p class="muted">Private accounts, messages, searches and selected campuses are not included. No visitor IDs or cookies are used for these aggregate counters.</p>
+      </section>`;
+      ROOT.innerHTML=shell(html,'Website analytics');
+      bindCommon();
+    }catch{
+      ROOT.innerHTML=shell('<div class="card empty"><h2>Admin access required</h2><p>Website analytics are available only to authorized BLINK administrators after the database migration is deployed.</p></div>','Website analytics');
+      bindCommon();
+    }
+  }
+
   async function render(path=currentPath()){
     updateRoutePrivacy(path);
     for(const timer of state.qualifiedTimers.values())clearTimeout(timer);
@@ -1175,6 +1209,7 @@
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
     if(path==='/login')return renderLogin();
+    if(path==='/site-stats')return renderSiteAnalytics();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
     const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
     const content=path.match(/^\/(post|reel)\/([0-9a-f-]+)$/i);if(content)return renderPublicContent(content[1].toLowerCase(),content[2]);
