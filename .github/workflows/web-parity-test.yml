@@ -15,6 +15,7 @@ on:
       - 'scripts/test_web_production_phase3_authseo.mjs'
       - 'scripts/test_mobile_web_performance.mjs'
       - 'scripts/test_web_local_analytics.mjs'
+      - 'scripts/test_site_aggregate_analytics.mjs'
   pull_request:
     paths:
       - 'web/**'
@@ -42,6 +43,9 @@ jobs:
 
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Guard sitewide analytics disabled defaults and no visitor data
+        run: node scripts/test_site_aggregate_analytics.mjs
 
       - name: Check no-tracking opt-in analytics and anonymous funnel counts
         run: node scripts/test_web_local_analytics.mjs
