@@ -1,0 +1,82 @@
+-- Apply only after disposable fixture and the candidate migration.
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+
+-- Server-side pricing is fixed even if the client attempts to choose arbitrary values.
+select public.create_blink_paystack_order('verification','BLUE');
+select public.create_blink_paystack_order('coin_pack','coins_500');
+
+do $$
+declare v_blue public.blink_paystack_payments%rowtype;
+        v_coin public.blink_paystack_payments%rowtype;
+        v_user uuid := '11111111-1111-4111-8111-111111111111';
+begin
+ select * into v_blue from public.blink_paystack_payments
+  where user_id=v_user and item_code='BLUE';
+ select * into v_coin from public.blink_paystack_payments
+  where user_id=v_user and purchase_kind='coin_pack';
+ if v_blue.amount_ngn <> 800 or v_blue.currency <> 'NGN' or v_blue.duration_days <> 30 then
+   raise exception 'BLUE_SERVER_PRICE_INVALID';
+ end if;
+ if v_coin.amount_ngn <> 500 or v_coin.coin_amount <> 550 then
+   raise exception 'COIN_SERVER_PRICE_INVALID';
+ end if;
+ if has_function_privilege('authenticated','public.fulfill_blink_paystack_order(text,text,bigint,text)','EXECUTE') then
+   raise exception 'PAYMENT_FULFILLMENT_EXPOSED_TO_CLIENT';
+ end if;
+ if has_function_privilege('anon','public.fulfill_blink_paystack_order(text,text,bigint,text)','EXECUTE') then
+   raise exception 'PAYMENT_FULFILLMENT_EXPOSED_TO_ANON';
+ end if;
+ if not has_function_privilege('service_role','public.fulfill_blink_paystack_order(text,text,bigint,text)','EXECUTE') then
+   raise exception 'SERVICE_CANNOT_FULFILL';
+ end if;
+ if not (select relrowsecurity from pg_class where oid='public.blink_paystack_payments'::regclass) then
+   raise exception 'LEDGER_RLS_NOT_ENABLED';
+ end if;
+end $$;
+
+-- Emulate the trusted, server-verified Paystack acknowledgement.
+set role service_role;
+do $$
+declare
+ v_blue public.blink_paystack_payments%rowtype;
+ v_coin public.blink_paystack_payments%rowtype;
+ v_value jsonb;
+begin
+ select * into v_blue from public.blink_paystack_payments where item_code='BLUE';
+ select * into v_coin from public.blink_paystack_payments where purchase_kind='coin_pack';
+ -- Reject an underpayment, before any entitlements can be credited.
+ begin
+   perform public.fulfill_blink_paystack_order(v_coin.reference,'test-paystack-tx-1',49900,'NGN');
+   raise exception 'UNDERPAYMENT_WAS_ACCEPTED';
+ exception when others then
+   if sqlerrm='UNDERPAYMENT_WAS_ACCEPTED' then raise; end if;
+ end;
+ v_value := public.fulfill_blink_paystack_order(v_coin.reference,'test-paystack-tx-1',50000,'NGN');
+ if v_value->>'status' <> 'fulfilled' or coalesce((v_value->>'already_fulfilled')::boolean,true) then
+   raise exception 'COIN_NOT_FULFILLED';
+ end if;
+ v_value := public.fulfill_blink_paystack_order(v_coin.reference,'test-paystack-tx-1',50000,'NGN');
+ if not (v_value->>'already_fulfilled')::boolean then
+   raise exception 'COIN_DUPLICATE_NOT_RECOGNIZED';
+ end if;
+ if (select credited from public.blink_coin_test_credits where user_id=v_coin.user_id) <> 550 then
+   raise exception 'DUPLICATE_COIN_CREDIT';
+ end if;
+ begin
+   perform public.fulfill_blink_paystack_order(v_blue.reference,'test-paystack-tx-1',80000,'NGN');
+   raise exception 'DUPLICATE_PROVIDER_TX_ACCEPTED';
+ exception when unique_violation then
+   null;
+ end;
+ v_value := public.fulfill_blink_paystack_order(v_blue.reference,'test-paystack-tx-2',80000,'NGN');
+ if v_value->>'status' <> 'fulfilled' then raise exception 'BLUE_NOT_FULFILLED'; end if;
+ if (select verification_badge from public.profiles where id=v_blue.user_id) <> 'BLUE' then
+   raise exception 'BLUE_BADGE_NOT_ACTIVATED';
+ end if;
+ if (select verification_expires_at from public.profiles where id=v_blue.user_id) <= now() then
+   raise exception 'BLUE_BADGE_EXPIRY_INVALID';
+ end if;
+end $$;
+reset role;
+-- Final assertion: webhook replay/confirmation cannot credit twice.
+select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
