@@ -9,3 +9,9 @@ export function transactionMatchesOrder(payment,order) {
     payment.amount===order.amount_ngn*100 &&
     /^[0-9]+$/.test(transactionId);
 }
+
+/** Never initialize a real charge with a live merchant key in staging. */
+export function merchantKeyMatchesMode(key, mode) {
+  return (mode === "test" || mode === "live") &&
+    typeof key === "string" && key.startsWith(`sk_${mode}_`) && key.length > 12;
+}
