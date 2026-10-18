@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
+import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -624,6 +625,68 @@ fun MainAppContent(
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val paystackService = remember { BlinkPaystackCheckoutService() }
+    val paymentScope = rememberCoroutineScope()
+    val paystackPrefs = remember(uiState.myProfile.id) {
+        context.getSharedPreferences("blink_paystack_${uiState.myProfile.id}", android.content.Context.MODE_PRIVATE)
+    }
+    var pendingPaystackReference by remember(uiState.myProfile.id) {
+        mutableStateOf(paystackPrefs.getString("pending_reference", null))
+    }
+    var showPendingPaystack by remember(uiState.myProfile.id) {
+        mutableStateOf(pendingPaystackReference != null)
+    }
+    var showCoinPurchaseDialog by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var paystackBusy by remember { mutableStateOf(false) }
+
+    fun startPaystackCheckout(tier: String? = null, packId: String? = null) {
+        if (paystackBusy) return
+        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Secure cash payments have not been activated yet.")
+            return
+        }
+        paystackBusy = true
+        paymentScope.launch {
+            try {
+                val checkout = if (tier != null) paystackService.verifyBadge(tier)
+                    else paystackService.buyCoins(requireNotNull(packId))
+                pendingPaystackReference = checkout.reference
+                paystackPrefs.edit().putString("pending_reference", checkout.reference).apply()
+                showPendingPaystack = true
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to open secure Paystack checkout.")
+            } finally {
+                paystackBusy = false
+            }
+        }
+    }
+
+    fun confirmPaystackPayment() {
+        val reference = pendingPaystackReference ?: return
+        if (paystackBusy) return
+        paystackBusy = true
+        paymentScope.launch {
+            try {
+                val response = paystackService.checkPayment(reference)
+                if (response.status == "fulfilled") {
+                    pendingPaystackReference = null
+                    paystackPrefs.edit().remove("pending_reference").apply()
+                    showPendingPaystack = false
+                    viewModel.fetchSupabaseData()
+                    viewModel.refreshProfileRewards()
+                    viewModel.showToast("Paystack payment confirmed. Your BLINK account was updated.")
+                } else {
+                    viewModel.showToast("Payment is still pending. Check again after completing checkout.")
+                }
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Couldn't confirm the payment yet.")
+            } finally {
+                paystackBusy = false
+            }
+        }
+    }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -1222,7 +1285,7 @@ fun MainAppContent(
                     economyPolicy = uiState.economyPolicy,
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
-                    onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onBuyBlinkCoins = { showCoinPurchaseDialog = true },
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1399,12 +1462,63 @@ fun MainAppContent(
                 isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
                 onWatchAdForCoins = onWatchAdForCoins,
-                onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onBuyBlinkCoins = { showCoinPurchaseDialog = true },
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
-                onUpgrade = { tier ->
-                    viewModel.applyVerification(tier)
+                onUpgrade = { tier -> startPaystackCheckout(tier = tier.name) }
+            )
+        }
+
+        if (showCoinPurchaseDialog) {
+            AlertDialog(
+                onDismissRequest = { showCoinPurchaseDialog = false },
+                title = { Text("Buy Blink Coins") },
+                text = {
+                    Column {
+                        Text("Choose a coin pack. BLINK confirms the correct price before Paystack checkout.")
+                        Spacer(Modifier.height(8.dp))
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            TextButton(
+                                onClick = {
+                                    showCoinPurchaseDialog = false
+                                    startPaystackCheckout(packId = pack.id)
+                                },
+                                enabled = uiState.economyPolicy.cashCheckoutEnabled && !paystackBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("₦${pack.priceNgn}  •  ${pack.coins} Blink Coins") }
+                        }
+                        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+                            Text("Secure cash checkout is not enabled yet.")
+                        }
+                        if (pendingPaystackReference != null) {
+                            TextButton(onClick = {
+                                showCoinPurchaseDialog = false
+                                showPendingPaystack = true
+                            }) { Text("Check previous payment") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showCoinPurchaseDialog = false }) { Text("Close") }
+                }
+            )
+        }
+
+        if (showPendingPaystack && pendingPaystackReference != null) {
+            AlertDialog(
+                onDismissRequest = { showPendingPaystack = false },
+                title = { Text("Paystack payment status") },
+                text = {
+                    Text("Returned from checkout? BLINK confirms payment with Paystack before granting verification or coins.")
+                },
+                confirmButton = {
+                    TextButton(enabled = !paystackBusy, onClick = { confirmPaystackPayment() }) {
+                        Text(if (paystackBusy) "Checking..." else "I've paid • Check payment")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPendingPaystack = false }) { Text("Later") }
                 }
             )
         }
