@@ -80,8 +80,7 @@ check("context.filesDir" in contract and "/partial/" in contract and "/verified/
       "Partial and verified downloads must be privately separated")
 check("MAX_DOWNLOAD_BYTES" in policy and "https" in policy,
       "Bounded HTTPS download policy is required")
-check("requestedOffset" in resume_policy and "content" not in resume_policy.lower() or
-      "requestedOffset" in resume_policy,
+check("requestedOffset" in resume_policy and "CONTENT_RANGE" in resume_policy,
       "Resume byte boundary verification must remain present")
 check("onPauseDownload" in ui and "Resume download" in ui and
       "Continue in background" in ui and "unmeteredOnly" in ui,
