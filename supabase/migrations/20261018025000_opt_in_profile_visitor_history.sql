@@ -134,6 +134,11 @@ begin
   on conflict(profile_id, viewer_id) do update
   set last_visited_at = excluded.last_visited_at;
 
+  -- Preserve the existing weekly profile-view analytics source and its
+  -- cache trigger. This insert is also guarded by reciprocal consent.
+  insert into public.profile_views(profile_id, viewer_id)
+  values (p_profile_id, v_uid);
+
   -- Existing activity -> push dispatch remains subject to the owner's opt-in.
   -- Maximum one notification from this viewer per recipient per 24 hours.
   if v_notify and (v_prior is null or v_prior <= v_now - interval '24 hours') then
