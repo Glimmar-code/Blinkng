@@ -597,6 +597,7 @@ fun MainAppContent(
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     fun sharePostOrReel(postId: String) {
@@ -633,6 +634,7 @@ fun MainAppContent(
                 uiState.isBecomeSellerOpen ||
                 uiState.isEditProfileOpen ||
                 uiState.isMenuOpen ||
+                showEarning ||
                 uiState.activeConversationPartner != null ||
                 uiState.activePostOptionsPost != null ||
                 uiState.isActivityOpen ||
@@ -717,7 +719,7 @@ fun MainAppContent(
         uiState.activeConversationPartner == null && !uiState.isConversationFullScreen &&
         uiState.viewingProfile == null && uiState.viewingProduct == null &&
         !uiState.isPostItemOpen && !uiState.isBecomeSellerOpen &&
-        !uiState.isEditProfileOpen && !uiState.isMenuOpen &&
+        !uiState.isEditProfileOpen && !uiState.isMenuOpen && !showEarning &&
         !uiState.isGetVerifiedOpen && !uiState.isCreatePostOpen &&
         !uiState.isCreateStoryOpen && uiState.activeViewingStory == null &&
         !uiState.isActivityOpen && uiState.activePostOptionsPost == null &&
@@ -1454,12 +1456,34 @@ fun MainAppContent(
                 onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                 onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
                 onOpenActivity = { viewModel.openActivity(true) },
+                onOpenEarning = { showEarning = true },
                 onToggleTheme = { viewModel.toggleDarkMode() },
                 onLogout = { viewModel.logout() },
                 onShowToast = { viewModel.showToast(it) },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
                 onAdPrivacyOptions = onAdPrivacyOptions,
                 onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+            )
+        }
+
+        // Menu → Earning: account-bound earned balances and actual transactions.
+        if (showEarning && uiState.myProfile.id.isNotBlank()) {
+            BlinkEarningSheet(
+                accountId = uiState.myProfile.id,
+                balance = uiState.blinkCoinBalance,
+                dailyStreak = uiState.myProfile.dailyStreak,
+                adsToday = uiState.rewardedAdsToday,
+                policy = uiState.economyPolicy,
+                missions = uiState.dailyMissions,
+                loadingMissions = uiState.isDailyMissionsLoading,
+                onDismiss = { showEarning = false },
+                onRefresh = { viewModel.refreshProfileRewards() },
+                onClaimMission = { viewModel.claimDailyMission(it) },
+                onWatchOptionalAd = onWatchAdForCoins,
+                onOpenVerification = {
+                    showEarning = false
+                    viewModel.openGetVerified(true)
+                },
             )
         }
 
