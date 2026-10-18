@@ -1,3 +1,9 @@
+## 2026-10-19 — Feature 8 campus directory reintegrated after pricing
+
+- Canonical campus IDs and alias search applied over current Testlab, including Feature 5 registration and Feature 7 pricing.
+- Supabase school-catalog migration is committed but not deployed. A paid Supabase development branch requires owner authorization before real database migration/RLS testing; do not deploy to production before verification.
+- NUC records are a reviewed snapshot, not proof every historical label is currently accredited. Missing-school submissions are moderated, no automatic publication.
+
 ## 2026-10-18 — Verification plan pricing integrated on current Testlab
 
 - Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
