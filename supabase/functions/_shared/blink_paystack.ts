@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { merchantKeyMatchesMode, transactionMatchesOrder } from "./paystack_integrity.mjs";
+import { merchantKeyMatchesMode, paystackWebhookSignatureMatches, transactionMatchesOrder } from "./paystack_integrity.mjs";
 
 const responseHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,15 +51,8 @@ export async function paystackApi(path: string, method = "GET", payload?: unknow
   return body.data;
 }
 export async function validSignature(req: Request, rawBody: string): Promise<boolean> {
-  const supplied = req.headers.get("x-paystack-signature")?.toLowerCase() || "";
-  if (!/^[a-f0-9]{128}$/.test(supplied)) return false;
-  const keyBytes = new TextEncoder().encode(requiredSecret("PAYSTACK_SECRET_KEY"));
-  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-512" }, false, ["sign"]);
-  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody)));
-  const expected = Array.from(digest, x=>x.toString(16).padStart(2,"0")).join("");
-  let difference = 0;
-  for (let i = 0; i < 128; i++) difference |= supplied.charCodeAt(i) ^ expected.charCodeAt(i);
-  return difference === 0;
+  const supplied = req.headers.get("x-paystack-signature") || "";
+  return paystackWebhookSignatureMatches(rawBody, supplied, requiredSecret("PAYSTACK_SECRET_KEY"));
 }
 export async function reconcile(reference: string, expectedUser?: string) {
   if (!/^blink-ps-[0-9a-f]{32}$/.test(reference)) throw new Error("REFERENCE_INVALID");
