@@ -27,6 +27,10 @@ class NotificationReplyReceiver : BroadcastReceiver() {
             .orEmpty()
         val senderName = intent.getStringExtra(InstantChatNotification.EXTRA_SENDER_NAME)
             .orEmpty()
+        val expectedAccount = intent.getStringExtra(
+            InstantChatNotification.EXTRA_EXPECTED_ACCOUNT
+        ).orEmpty()
+        if (!com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(expectedAccount)) return
         val notificationId = intent.getIntExtra(
             InstantChatNotification.EXTRA_NOTIFICATION_ID,
             receiverUsername.hashCode() and Int.MAX_VALUE
@@ -53,7 +57,8 @@ class NotificationReplyReceiver : BroadcastReceiver() {
                     NotificationReplyWorker.KEY_RECEIVER_USERNAME to receiverUsername,
                     NotificationReplyWorker.KEY_RECEIVER_NAME to senderName,
                     NotificationReplyWorker.KEY_REPLY_TEXT to replyText,
-                    NotificationReplyWorker.KEY_NOTIFICATION_ID to notificationId
+                    NotificationReplyWorker.KEY_NOTIFICATION_ID to notificationId,
+                    NotificationReplyWorker.KEY_EXPECTED_ACCOUNT to expectedAccount
                 )
             )
             .setConstraints(constraints)
