@@ -1,3 +1,11 @@
+## 2026-10-18 — Android native call action delivery and offline hangup recovery (PR #371)
+
+- **PARITY-EXCEPTION: android-telecom-workmanager-call-ending-20261018** — This change specifically repairs Android OS `NotificationCompat.CallStyle` actions, Android Telecom lifecycle, Android `singleTask` call-intent isolation and Android WorkManager's persisted network-constrained background retry. Those OS facilities have no Windows equivalent; porting Android code into Windows would be incorrect.
+- **Shared call contract unchanged:** Both apps continue using existing authenticated Supabase `decline_call` and `end_call` RPCs, call ID/status values and existing server authorizations. The Android retry obtains a fresh session when the device reconnects, rejects another signed-in account, and never treats unsuccessful RPC results as successful push delivery.
+- **Windows equivalent:** Desktop's `DesktopRpcActions.declineCall()` and `DesktopRpcActions.endCall()` already call the same server RPCs; `DesktopShell` polls incoming ringing calls, scopes them to the current authenticated session, and shows native desktop notifications. Desktop does not use FCM, Android Telecom, Android notification receiver activities or Android WorkManager. The desktop does **not** gain offline persistent hangup retries from this Android-specific fix, so Windows offline behavior must be evaluated separately if required.
+- **No deliberate desktop regression:** This PR does not alter `desktopApp`, `shared`, backend call RPCs, authorization, voice/video transport or global account rules. Existing desktop behavior stays unchanged; review still requires the full Windows build/parity gate, Android Kotlin/call tests, runtime/release smoke, backend verification and physical handset tests.
+- **Promotion boundary:** Work in this PR is based on production `main`, not a wholesale merge of diverged `Testlab`. The separate Phase 1–4 WebRTC/UI/FCM changes still require integration review against production's newer Android Telecom implementation.
+
 ## 2026-10-17 — Compact PostCard promotion from verified Testlab (#337)
 
 - **Promotion strategy:** because Testlab diverged from main, selectively reimplement the X-inspired layout on the latest production ancestor instead of merging the entire outdated Testlab branch. The original Testlab code and CI were reviewed in PR #337.
