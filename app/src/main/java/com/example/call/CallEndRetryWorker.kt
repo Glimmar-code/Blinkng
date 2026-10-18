@@ -82,7 +82,7 @@ class CallEndRetryWorker(
         private const val KEY_ACTION = "action"
         private const val WORK_PREFIX = "blink_end_call_"
 
-        fun schedule(
+        internal fun schedule(
             context: Context,
             callId: String,
             accountId: String,
