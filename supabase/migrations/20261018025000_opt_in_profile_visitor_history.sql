@@ -1,3 +1,11 @@
+-- destructive-change-reviewed: Opting out explicitly deletes the account's old
+-- identifiable visit events and legacy profile-view activity. Trigger replacement
+-- changes only profile-view activity and enforces mutual privacy consent.
+-- rollback-plan: In staging, drop the new legacy consent triggers first; restore
+-- previous create_activity behavior from the prior pinned migration if needed.
+-- Drop new profile-visitor RPCs/tables only after exporting staging configuration
+-- and reconciling client versions. Opt-out erasures are intentionally irreversible;
+-- restoring deleted personal visit data is neither supported nor appropriate.
 -- Profile visitor identities are explicitly opt-in and accessible only via
 -- authenticated, account-bound SECURITY DEFINER RPCs. This does not reuse the
 -- legacy weekly impression count or expose raw views through PostgREST.
