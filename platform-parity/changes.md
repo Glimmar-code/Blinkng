@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 7 on latest Testlab (staged only)
+
+- Rebased the Free/Blue/Gold comparisons (1/3/6/12 months, 0/10/20/30% savings) and service-only subscription ledger onto the latest Testlab without removing notification, Earning or profile-view features.
+- Cash checkout and automatic renewal remain disabled until signed Paystack checkout, webhook verification, actual cancellation and billing consent are fully implemented. Showing a plan price never activates paid features or charges the user.
+- Requires full CI, safe schema staging, and Android/Windows test before merging into Testlab. **Never publish paid subscriptions without provider tests.**
+
 ## 2026-10-18 — Feature 4 profile visitor integration (CI candidate only)
 
 - Updated Feature 4 against current Testlab while preserving the merged Feature 2 notification quick actions, Feature 3 Find Friends, and Feature 9 Earning.
