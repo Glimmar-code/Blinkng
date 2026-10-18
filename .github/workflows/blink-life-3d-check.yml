@@ -147,7 +147,9 @@ jobs:
             -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' \
             >/dev/null 2>&1
           sudo chown -R 10001:65534 "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
-          sudo chmod 0700 "$RUNNER_TEMP/blink-life-cert"
+          # Public certificate must be readable by the host-side TLS probe.
+          # Keep the private key owned by the unprivileged container UID only.
+          sudo chmod 0755 "$RUNNER_TEMP/blink-life-cert"
           sudo chmod 0400 "$RUNNER_TEMP/blink-life-cert/key.pem"
           sudo chmod 0444 "$RUNNER_TEMP/blink-life-cert/cert.pem"
           sudo chmod 0750 "$RUNNER_TEMP/blink-life-state"
@@ -210,5 +212,7 @@ jobs:
         shell: bash
         run: |
           docker rm -f blink-life-staging-ci >/dev/null 2>&1 || true
-          rm -rf "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
+          # Docker bind mounts were assigned to uid 10001 for least privilege.
+          # Restore ownership before deleting CI-only data and credentials.
+          sudo rm -rf "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
 
