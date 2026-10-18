@@ -61,6 +61,8 @@ begin
  return jsonb_build_object('already_fulfilled',false);
 end $$;
 grant all on all tables in schema public to service_role;
+-- Model Supabase's default service-role grants on future public tables.
+alter default privileges in schema public grant all on tables to service_role;
 grant all on all tables in schema private to service_role;
 grant execute on all functions in schema public to service_role;
 insert into public.profiles(id) values('11111111-1111-4111-8111-111111111111');
