@@ -174,48 +174,58 @@ class CallRepository {
         }
 
     /**
-     * Fetch time-limited TURN credentials from the authenticated Edge Function.
-     * Never store the TURN shared secret or a service-role key in the APK.
+     * Issue short-lived TURN credentials for an authenticated call participant.
+     *
+     * The call-scoped endpoint is preferred. During rollout, older deployed
+     * environments can use BLINK's existing authenticated coturn credential
+     * function. Neither option embeds shared secrets in the client.
      */
     suspend fun fetchIceServers(callId: String): Result<List<PeerConnection.IceServer>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val payload = JSONObject().put("call_id", callId)
-                val response = executeAuthorized {
-                    Request.Builder()
-                        .url("$baseUrl/functions/v1/get-call-ice-config")
-                        .post(payload.toString().toRequestBody(jsonMediaType))
+                val scoped = fetchTurnConfiguration("get-call-ice-config", callId)
+                val servers = scoped.getOrElse { error ->
+                    val httpError = error as? CallApiException
+                    // Never bypass explicit authorization failures. Only use
+                    // the compatibility path when the new endpoint is missing
+                    // or not configured in the current Supabase environment.
+                    if (httpError?.code !in setOf(404, 503)) throw error
+                    fetchTurnConfiguration("call-turn-credentials", callId).getOrThrow()
                 }
-                response.use {
-                    val body = it.body?.string().orEmpty()
-                    if (!it.isSuccessful) {
-                        throw CallApiException(parseError(body, "TURN configuration unavailable."), it.code)
+                CallIceConfigParser.parse(servers).flatMap { item ->
+                    item.urls.map { url ->
+                        PeerConnection.IceServer.builder(url).apply {
+                            if (item.username.isNotBlank()) setUsername(item.username)
+                            if (item.credential.isNotBlank()) setPassword(item.credential)
+                        }.createIceServer()
                     }
-                    val servers = JSONObject(body).optJSONArray("ice_servers")
-                        ?: throw CallApiException("No call relay configuration was returned.", 502)
-                    buildList {
-                        for (index in 0 until servers.length()) {
-                            val row = servers.optJSONObject(index) ?: continue
-                            val urls = row.optJSONArray("urls") ?: continue
-                            val username = row.optString("username")
-                            val credential = row.optString("credential")
-                            for (i in 0 until urls.length()) {
-                                val url = urls.optString(i).trim()
-                                if (!url.startsWith("stun:") &&
-                                    !url.startsWith("turn:") &&
-                                    !url.startsWith("turns:")) continue
-                                val builder = PeerConnection.IceServer.builder(url)
-                                if (username.isNotBlank()) builder.setUsername(username)
-                                if (credential.isNotBlank()) builder.setPassword(credential)
-                                add(builder.createIceServer())
-                            }
-                        }
-                    }.also { if (it.none { server -> server.urls.any { url -> url.startsWith("turn") } }) {
-                        throw CallApiException("TURN relay is missing from call configuration.", 503)
-                    } }
                 }
             }
         }
+
+    private suspend fun fetchTurnConfiguration(
+        functionName: String,
+        callId: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = JSONObject().put("call_id", callId)
+            val response = executeAuthorized {
+                Request.Builder()
+                    .url("$baseUrl/functions/v1/$functionName")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+            }
+            response.use {
+                val text = it.body?.string().orEmpty()
+                if (!it.isSuccessful) {
+                    throw CallApiException(
+                        parseError(text, "Call relay configuration unavailable."),
+                        it.code
+                    )
+                }
+                text
+            }
+        }
+    }
 
     suspend fun dispatchPush(callId: String, event: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
