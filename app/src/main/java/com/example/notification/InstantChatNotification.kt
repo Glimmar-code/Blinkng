@@ -11,6 +11,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import com.example.MainActivity
+import com.blinkng.shared.notification.BlinkNotificationQuickAction
+import com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy
+import com.blinkng.shared.notification.BlinkNotificationKind
 
 /**
  * Fast path for direct-message notifications.
@@ -39,7 +42,8 @@ object InstantChatNotification {
         messageText: String,
         senderAvatar: String = "",
         conversationId: String = "",
-        messageId: String = ""
+        messageId: String = "",
+        expectedAccount: String = "",
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
         if (!MessageNotificationLedger.claim(context, messageId)) return
@@ -74,7 +78,7 @@ object InstantChatNotification {
             originalMessageId = messageId
         )
 
-        val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
+        val builder = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
             .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(sender.name)
             .setContentText(messageText)
@@ -90,9 +94,16 @@ object InstantChatNotification {
             .setGroup(GROUP_KEY_MESSAGES)
             .setGroupSummary(false)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .build()
-
-        postNotification(context, notificationId, notification)
+        if (BlinkNotificationQuickAction.MARK_READ in BlinkNotificationQuickActionPolicy.available(
+                BlinkNotificationKind.MESSAGE,
+                recipientBound = BlinkNotificationQuickActionPolicy.isId(expectedAccount),
+            )) {
+            BlinkNotificationHelper.buildQuickAction(
+                context, NotificationQuickActionWorker.ACTION_MARK_READ,
+                expectedAccount, "", notificationId, username = senderUsername,
+            )?.let(builder::addAction)
+        }
+        postNotification(context, notificationId, builder.build())
     }
 
     fun showReplyQueued(
