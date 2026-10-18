@@ -36,7 +36,7 @@ Deno.serve(async (req:Request) => {
         currency:"NGN",
         reference:order.reference,
         callback_url:"https://blink.com.ng/?blink_payment_return=paystack",
-        metadata:{blink_order_id:order.order_id,blink_kind:kind},
+        metadata:JSON.stringify({blink_order_id:order.order_id,blink_kind:kind}),
       }),
     });
     // Allow only Paystack's hosted HTTPS payment origin, never arbitrary URLs.
