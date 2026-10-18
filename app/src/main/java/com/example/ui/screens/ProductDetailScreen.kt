@@ -78,6 +78,11 @@ fun ProductDetailScreen(
     onToggleSave: (MarketItem) -> Unit = {},
     onRequestOrder: (MarketItem, Int) -> Unit = { _, _ -> },
     onReport: (MarketItem, String, String) -> Unit = { _, _, _ -> },
+    onMakeOffer: (MarketItem, Long, String) -> Unit = { _, _, _ -> },
+    onConfirmAvailability: (MarketItem) -> Unit = {},
+    onBoostListing: (MarketItem) -> Unit = {},
+    onRequestModerationReview: (MarketItem, String) -> Unit = { _, _ -> },
+
     isOwner: Boolean = false,
     onUpdateListingStatus: (MarketItem, String) -> Unit = { _, _ -> },
     onDeleteListing: (MarketItem) -> Unit = {},
@@ -88,6 +93,16 @@ fun ProductDetailScreen(
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     var selectedImageIndex by remember(item.id) { mutableIntStateOf(0) }
     var showOrderDialog by remember { mutableStateOf(false) }
+    var showOfferDialog by remember { mutableStateOf(false) }
+    var showModerationAppeal by remember { mutableStateOf(false) }
+    var moderationAppealReason by remember { mutableStateOf("") }
+    var offerPrice by remember(item.id) { mutableStateOf("") }
+    var offerMessage by remember(item.id) { mutableStateOf("") }
+    var sellerCard by remember(item.sellerId) { mutableStateOf<org.json.JSONObject?>(null) }
+    val sellerService = remember { com.example.data.supabase.SupabaseService() }
+    LaunchedEffect(item.sellerId) {
+        sellerCard = if (item.sellerId.isNotBlank()) sellerService.getMarketSellerCard(item.sellerId) else null
+    }
     var showReportDialog by remember { mutableStateOf(false) }
     var showOwnerMenu by remember { mutableStateOf(false) }
     var showRemoveConfirmation by remember(item.id) { mutableStateOf(false) }
@@ -478,8 +493,54 @@ fun ProductDetailScreen(
                         }
                     }
 
+                    if (sellerCard != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val approved = sellerCard?.optBoolean("verified_seller") == true
+                        Text(
+                            if (approved) "✓ Verified Seller · BLINK Market approved"
+                            else "Seller badge not approved yet",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Reliability: ${sellerCard?.optInt("reliability_score") ?: 0}/100 · " +
+                                "${sellerCard?.optInt("completed_orders") ?: 0} completed orders",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Badges and ratings do not guarantee a safe transaction.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (isOwner) {
+                        if (item.moderationState != "approved") {
+                            Text(
+                                "This listing is paused for moderation. You can request a review.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            OutlinedButton(
+                                onClick = { showModerationAppeal = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Request a Moderation Review") }
+                        }
+                        OutlinedButton(
+                            onClick = { onConfirmAvailability(item) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Confirm this item is still available") }
+                        OutlinedButton(
+                            onClick = { onBoostListing(item) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Promote this listing · Blink Coins") }
+                    }
                     if (!isOwner) {
                         Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { showOfferDialog = true },
+                            enabled = available,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Make a Private Offer") }
                         TextButton(onClick = { showReportDialog = true }) {
                             Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(17.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -488,6 +549,20 @@ fun ProductDetailScreen(
                     }
                 }
             }
+        }
+
+        if (item.videoUrl.contains("/storage/v1/object/public/market-video/")) {
+            OutlinedButton(
+                onClick = {
+                    context.startActivitySafely(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(item.videoUrl)),
+                        "Couldn't open the product video."
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (isOwner) 12.dp else 92.dp)
+            ) { Text("Watch Product Video") }
         }
 
         if (!isOwner) {
@@ -553,6 +628,75 @@ fun ProductDetailScreen(
                 }
             }
         }
+    }
+
+    if (showModerationAppeal) {
+        AlertDialog(
+            onDismissRequest = { showModerationAppeal = false },
+            title = { Text("Request a Market Review") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Tell moderators why this listing should be reconsidered.")
+                    OutlinedTextField(
+                        value = moderationAppealReason,
+                        onValueChange = { moderationAppealReason = it.take(1000) },
+                        label = { Text("Review explanation") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRequestModerationReview(item, moderationAppealReason.trim())
+                        showModerationAppeal = false
+                        moderationAppealReason = ""
+                    },
+                    enabled = moderationAppealReason.trim().length >= 15
+                ) { Text("Submit for Review") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showModerationAppeal = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showOfferDialog) {
+        AlertDialog(
+            onDismissRequest = { showOfferDialog = false },
+            title = { Text("Offer a Price", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Offers are private. Payment is not collected here.")
+                    OutlinedTextField(
+                        value = offerPrice,
+                        onValueChange = { offerPrice = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Your offer (₦)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = offerMessage,
+                        onValueChange = { offerMessage = it.take(500) },
+                        label = { Text("Message to seller (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onMakeOffer(item, offerPrice.toLong(), offerMessage)
+                        showOfferDialog = false
+                    },
+                    enabled = offerPrice.toLongOrNull()?.let { it > 0 && it <= item.price * 3 } == true
+                ) { Text("Send Offer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOfferDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showOrderDialog) {

@@ -52,7 +52,8 @@ fun PostItemScreen(
         quantity: Int,
         negotiable: Boolean,
         deliveryMethod: String,
-        pickupLocation: String
+        pickupLocation: String,
+        videoSource: String?
     ) -> Unit,
     isPublishing: Boolean = false,
     isDark: Boolean
@@ -69,6 +70,11 @@ fun PostItemScreen(
     var categoryDropdownOpen by remember { mutableStateOf(false) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showBoostPreview by remember { mutableStateOf(false) }
+    var showListingPreview by remember { mutableStateOf(false) }
+    var productVideo by remember { mutableStateOf<Uri?>(null) }
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? -> productVideo = uri }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -395,6 +401,49 @@ fun PostItemScreen(
             }
 
             item {
+                Text("Optional product video (MP4/WebM, up to 25 MB)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                OutlinedButton(
+                    onClick = { videoPicker.launch("video/*") },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (productVideo == null) "Choose video" else "Replace selected video") }
+                if (productVideo != null) {
+                    Text("Video selected. Upload begins only when the listing is published.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { productVideo = null }) { Text("Remove video") }
+                }
+                OutlinedButton(
+                    onClick = { showListingPreview = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Preview Listing Before Publishing") }
+                if (showListingPreview) {
+                    AlertDialog(
+                        onDismissRequest = { showListingPreview = false },
+                        title = { Text(title.ifBlank { "Listing Preview" }, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                selectedImages.firstOrNull()?.let { cover ->
+                                    AsyncImage(
+                                        model = cover,
+                                        contentDescription = "Product listing cover preview",
+                                        modifier = Modifier.fillMaxWidth().height(185.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
+                                Text("₦$priceText · $condition", fontWeight = FontWeight.Bold)
+                                Text(category)
+                                Text(description.take(500))
+                                Text("Quantity: $quantityText · $deliveryMethod")
+                                if (productVideo != null) Text("Includes a product video")
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showListingPreview = false }) { Text("Continue Editing") }
+                        }
+                    )
+                }
+            }
+
+            item {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(14.dp),
@@ -455,7 +504,8 @@ fun PostItemScreen(
                             quantity,
                             negotiable,
                             deliveryMethod,
-                            pickupLocation.trim()
+                            pickupLocation.trim(),
+                            productVideo?.toString()
                         )
                     },
                     enabled = canSubmit,

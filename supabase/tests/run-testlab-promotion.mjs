@@ -87,6 +87,22 @@ try {
   await db.exec(marketTrustSql);
   console.log('PASS reapply verified-seller Market migration');
   await (await import('./market-seller-trust-tests.mjs')).marketSellerTrustTests(db);
+  for (const migration of [
+    '20261017180000_market_seller_trust_lifecycle.sql',
+    '20261017181500_market_offers_disputes_moderation.sql',
+    '20261017183000_market_admin_discovery_v2.sql',
+    '20261017184500_market_qualified_promotions.sql',
+    '20261017190000_market_buyer_notifications.sql',
+    '20261017191500_market_merchant_approval_gate.sql',
+    '20261017193000_market_media_integrity_and_inventory.sql',
+  ]) {
+    const sql = fs.readFileSync(new URL('../migrations/' + migration, import.meta.url), 'utf8');
+    await db.exec(sql);
+    console.log('PASS professional Market migration:', migration);
+    await db.exec(sql);
+    console.log('PASS professional Market migration reapply:', migration);
+  }
+  await (await import('./market-professional-tests.mjs')).marketProfessionalTests(db);
 
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);

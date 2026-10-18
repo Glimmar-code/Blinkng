@@ -76,6 +76,7 @@ fun MarketScreen(
     sellerVerificationActive: Boolean = false,
     verificationExpiresAtMillis: Long = 0L,
     viewerUniversity: String = "",
+    viewerId: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
@@ -90,9 +91,18 @@ fun MarketScreen(
     errorMessage: String? = null,
     isDark: Boolean
 ) {
+    val marketAccessService = remember { com.example.data.supabase.SupabaseService() }
+    var sellerApproval by remember(isSellerActive) { mutableStateOf<Boolean?>(null) }
+    var approvalRevision by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isSellerActive, approvalRevision) {
+        sellerApproval = if (isSellerActive) {
+            marketAccessService.getMarketSellerDashboard()
+                ?.optJSONObject("seller_card")?.optBoolean("verified_seller", false)
+        } else false
+    }
     var selectedCategory by rememberSaveable { mutableStateOf("All Categories") }
     var searchQuery by rememberPersistentTextState(key = "market_search_query")
-    var selectedSort by rememberSaveable { mutableStateOf("newest") }
+    var selectedSort by rememberSaveable { mutableStateOf("recommended") }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var savedOnly by rememberSaveable { mutableStateOf(false) }
@@ -107,6 +117,7 @@ fun MarketScreen(
 
     val sortOptions = remember {
         listOf(
+            MarketSortOption("recommended", "Recommended"),
             MarketSortOption("newest", "Newest"),
             MarketSortOption("popular", "Popular"),
             MarketSortOption("price_low", "Price: low to high"),
@@ -323,6 +334,34 @@ fun MarketScreen(
             }
         }
 
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOrdersPanel(
+                    userId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOffersPanel(
+                    userId = viewerId,
+                    listings = items,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (isSellerActive && viewerId.isNotBlank()) {
+            item {
+                MarketSellerInsightsPanel(
+                    sellerId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+
         if (viewerUniversity.isNotBlank()) {
             item {
                 Row(
@@ -344,14 +383,14 @@ fun MarketScreen(
         }
 
         item {
-            if (!isSellerActive) {
+            if (!isSellerActive || sellerApproval != true) {
                 Card(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.inverseSurface),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .clickable { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
+                        .clickable { if (isSellerActive) { approvalRevision++; onRefresh() } else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -359,24 +398,24 @@ fun MarketScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                if (sellerVerificationActive) "Become a BLINK Seller — Free" else "Verify to Sell on BLINK",
+                                if (isSellerActive) "Seller approval pending" else if (sellerVerificationActive) "Become a BLINK Seller — Free" else "Verify to Sell on BLINK",
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.inverseOnSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                if (sellerVerificationActive) "Complete seller registration to publish products." else "An active blue tick is required. Renew if your verification expired.",
+                                if (isSellerActive) "A separate Market review is needed before you can publish products." else if (sellerVerificationActive) "Complete seller registration to publish products." else "An active blue tick is required. Renew if your verification expired.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.75f)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
-                            onClick = { if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
+                            onClick = { if (isSellerActive) onRefresh() else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
                             shape = RoundedCornerShape(100.dp),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
-                            Text(if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
+                            Text(if (isSellerActive) "Refresh" else if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

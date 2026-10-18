@@ -34,7 +34,7 @@ import com.blinkng.shared.BlinkDesignTokens
 @Composable
 fun BecomeSellerScreen(
     onBack: () -> Unit,
-    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String) -> Unit,
+    onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String, university: String, sellerKind: String, businessDescription: String, productCategory: String, delivery: Boolean, pickup: Boolean) -> Unit,
     initialStoreName: String = "",
     initialPhone: String = "",
     initialWhatsapp: String = "",
@@ -50,6 +50,12 @@ fun BecomeSellerScreen(
     var city by remember { mutableStateOf("") }
     var university by remember(initialUniversity) { mutableStateOf(initialUniversity) }
     var universityDropdownOpen by remember { mutableStateOf(false) }
+    var universitySearch by remember { mutableStateOf("") }
+    var sellerKind by remember { mutableStateOf("individual") }
+    var businessDescription by remember { mutableStateOf("") }
+    var productCategory by remember { mutableStateOf("Electronics") }
+    var offersDelivery by remember { mutableStateOf(false) }
+    var offersPickup by remember { mutableStateOf(true) }
     var agreedToTerms by remember { mutableStateOf(false) }
     var stateDropdownOpen by remember { mutableStateOf(false) }
 
@@ -61,6 +67,10 @@ fun BecomeSellerScreen(
         selectedState.isNotBlank() &&
         city.trim().length >= 2 &&
         university.trim().length >= 3 &&
+        kNigerianUniversitiesList.any { it.equals(university.trim(), ignoreCase = true) } &&
+        businessDescription.trim().length in 20..1000 &&
+        productCategory.isNotBlank() &&
+        (offersDelivery || offersPickup) &&
         agreedToTerms
     val canSubmit = detailsValid && isVerified && !isSubmitting
 
@@ -235,34 +245,69 @@ fun BecomeSellerScreen(
             }
 
             item {
+                val aliasLookup = mapOf(
+                    "futa" to "Federal University of Technology, Akure",
+                    "futo" to "Federal University of Technology, Owerri",
+                    "futminna" to "Federal University of Technology, Minna",
+                    "unilag" to "University of Lagos",
+                    "uniben" to "University of Benin",
+                    "ui" to "University of Ibadan",
+                    "oau" to "Obafemi Awolowo University, Ile-Ife",
+                    "unn" to "University of Nigeria, Nsukka"
+                )
+                val cleanSearch = universitySearch.trim()
+                val canonical = aliasLookup[cleanSearch.lowercase()]
+                val matches = kNigerianUniversitiesList.filter {
+                    cleanSearch.isBlank() ||
+                        it.contains(cleanSearch, ignoreCase = true) ||
+                        (canonical != null && it.equals(canonical, ignoreCase = true))
+                }.take(40)
                 ExposedDropdownMenuBox(
                     expanded = universityDropdownOpen,
                     onExpandedChange = { universityDropdownOpen = !universityDropdownOpen }
                 ) {
                     OutlinedTextField(
-                        value = university,
-                        onValueChange = {},
-                        readOnly = true,
+                        value = if (universityDropdownOpen) universitySearch else university,
+                        onValueChange = {
+                            universitySearch = it.take(80)
+                            universityDropdownOpen = true
+                        },
                         label = { Text("University") },
-                        placeholder = { Text("Select your university") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen) },
+                        placeholder = { Text("Search university name or acronym, e.g. FUTA") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = universityDropdownOpen)
+                        },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
                     ExposedDropdownMenu(
                         expanded = universityDropdownOpen,
                         onDismissRequest = { universityDropdownOpen = false }
                     ) {
-                        kNigerianUniversitiesList.forEach { entry ->
+                        if (matches.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text(entry) },
-                                onClick = {
-                                    university = entry
-                                    universityDropdownOpen = false
-                                }
+                                text = { Text("No matching university. Try the full name.") },
+                                onClick = { universityDropdownOpen = false }
                             )
+                        } else {
+                            matches.forEach { entry ->
+                                DropdownMenuItem(
+                                    text = { Text(entry) },
+                                    onClick = {
+                                        university = entry
+                                        universitySearch = entry
+                                        universityDropdownOpen = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
+                Text(
+                    "Choose a university from the results to keep seller details consistent.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             item {
@@ -280,6 +325,73 @@ fun BecomeSellerScreen(
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            item {
+                Text("Seller type", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = sellerKind == "individual",
+                        onClick = { sellerKind = "individual" },
+                        label = { Text("Individual") }
+                    )
+                    FilterChip(
+                        selected = sellerKind == "business",
+                        onClick = { sellerKind = "business" },
+                        label = { Text("Business") }
+                    )
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = businessDescription,
+                    onValueChange = { businessDescription = it.take(1000) },
+                    label = { Text("About your store") },
+                    supportingText = { Text("At least 20 characters • ${businessDescription.length}/1000") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            item {
+                Text("Main product category", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                var categoryMenuExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = categoryMenuExpanded,
+                    onExpandedChange = { categoryMenuExpanded = !categoryMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = productCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("What will you sell?") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = categoryMenuExpanded,
+                        onDismissRequest = { categoryMenuExpanded = false }
+                    ) {
+                        com.example.data.models.kMarketCategoriesList.drop(1).forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = { productCategory = category.name; categoryMenuExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Campus pickup", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersPickup, onCheckedChange = { offersPickup = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Delivery available", modifier = Modifier.weight(1f), fontSize = 15.sp)
+                    Switch(checked = offersDelivery, onCheckedChange = { offersDelivery = it })
+                }
             }
 
             item {
@@ -330,7 +442,12 @@ fun BecomeSellerScreen(
                             whatsapp.trim(),
                             selectedState,
                             city.trim(),
-                            university.trim()
+                            university.trim(),
+                            sellerKind,
+                            businessDescription.trim(),
+                            productCategory,
+                            offersDelivery,
+                            offersPickup
                         )
                     },
                     enabled = canSubmit,

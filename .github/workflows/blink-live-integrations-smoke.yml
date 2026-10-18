@@ -1,0 +1,45 @@
+name: BLINK production integrations smoke
+
+on:
+  push:
+    branches:
+      - 'Testlab-web-final-live-verification-*'
+    paths:
+      - '.github/workflows/blink-live-integrations-smoke.yml'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/verify_live_browser_analytics.mjs'
+  workflow_run:
+    workflows: ["Deploy Blink web"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-site:
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout precisely deployed main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Allow GitHub Pages CDN to serve the new immutable revision
+        run: sleep 20
+      - name: Check live SEO, Auth provider, official App Links and anonymous analytics
+        env:
+          BLINK_VERIFY_SYNTHETIC_ANALYTICS: '1'
+        run: node scripts/verify_live_blink_integrations.mjs
+      - name: Install Playwright Chrome for a real public-only browser measurement
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify anonymous page-view request from real mobile Chrome
+        run: node scripts/verify_live_browser_analytics.mjs

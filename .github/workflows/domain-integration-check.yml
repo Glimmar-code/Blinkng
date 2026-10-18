@@ -16,6 +16,15 @@ on:
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+      - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_local_analytics.mjs'
+      - 'scripts/test_site_aggregate_analytics.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -29,6 +38,12 @@ on:
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
 
 permissions:
   contents: read
@@ -47,7 +62,7 @@ jobs:
           set -euo pipefail
           python3 scripts/check_github_pages_site.py
           grep -F 'const SITE_URL' web/app.js >/dev/null
-          # Every Download Android app button must resolve to the newest signed
+          # All homepage and in-app download buttons must resolve to the newest signed
           # GitHub Release, including future versions, without a site code change.
           python3 - <<'PY'
           from pathlib import Path
@@ -55,8 +70,8 @@ jobs:
           latest = "https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk"
           if app.count(latest) != 1 or f"const APK_URL = '{latest}';" not in app:
               raise SystemExit("BLINK needs exactly one canonical, evergreen latest-APK URL.")
-          if app.count('href="${APK_URL}"') != 5:
-              raise SystemExit("All five BLINK download buttons must use APK_URL.")
+          if app.count('href="${APK_URL}"') < 5:
+              raise SystemExit("BLINK download buttons must retain the official APK_URL; do not remove download links.")
           if "releases/download/v" in app:
               raise SystemExit("Website must not pin a particular BLINK APK version.")
           print("All BLINK website download buttons track future signed APK releases.")
@@ -69,10 +84,37 @@ jobs:
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
           grep -F 'Uri.parse("https://blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
-      # Native Android verification still targets the reserved www.blink.com.ng domain.
-      # The temporary Pages project host is a separate web-only URL until Android is updated.
+      # Production Android App Links target blink.com.ng. Google OAuth and
+      # recovery callbacks must be approved in Supabase Auth URL Configuration.
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Guard sitewide analytics disabled defaults and no visitor data
+        run: node scripts/test_site_aggregate_analytics.mjs
+
+      - name: Check no-tracking opt-in analytics and anonymous funnel counts
+        run: node scripts/test_web_local_analytics.mjs
+
+      - name: Check mobile asset budgets and locally opt-in Core Web Vitals
+        run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Test Phase 3 resilient authentication and private-route SEO
+        run: node scripts/test_web_production_phase3_authseo.mjs
+
+      - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
+        run: node scripts/test_web_production_phase3.mjs
+
+      - name: Check Phase 2 university catalogue, public discovery and release metadata
+        run: node scripts/test_discovery_phase2.mjs
+
+      - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
+        run: node scripts/test_landing_phase1.mjs
+
+      - name: Verify official Android App Links route matrix and signing
+        run: node scripts/test_android_prod_links.mjs
+
+      - name: Validate live verification script syntax
+        run: node --check scripts/verify_live_blink_integrations.mjs
 
       - name: Validate existing Android signing association
         shell: bash
