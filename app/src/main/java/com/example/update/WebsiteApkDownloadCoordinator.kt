@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.blinkng.shared.update.BlinkApkUpdatePolicy
 import com.blinkng.shared.update.BlinkReleaseInfo
 import com.blinkng.shared.update.BlinkReleasePolicy
 import kotlinx.coroutines.CancellationException
@@ -110,14 +111,13 @@ class WebsiteApkDownloadCoordinator(private val context: Context) {
             client.newCall(request).execute().use { response ->
                 require(response.isSuccessful) { "Official APK download unavailable" }
                 val effective = response.request.url
-                require(effective.isHttps && (
-                    effective.host == "github.com" ||
-                        effective.host.endsWith(".githubusercontent.com")
-                    )) { "APK was redirected outside official GitHub delivery" }
+                require(BlinkApkUpdatePolicy.isOfficialAssetOrigin(
+                    effective.scheme, effective.host,
+                )) { "APK was redirected outside official GitHub delivery" }
 
                 val body = requireNotNull(response.body) { "Missing APK data" }
                 val contentLength = body.contentLength()
-                require(contentLength in -1L..MAX_APK_BYTES) { "APK is oversized" }
+                require(contentLength in -1L..BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES) { "APK is oversized" }
                 val digest = MessageDigest.getInstance("SHA-256")
                 var count = 0L
                 body.byteStream().use { stream ->
@@ -129,15 +129,15 @@ class WebsiteApkDownloadCoordinator(private val context: Context) {
                             if (read < 0) break
                             if (read == 0) continue
                             count += read
-                            require(count <= MAX_APK_BYTES) { "APK exceeds download limit" }
+                            require(count <= BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES) { "APK exceeds download limit" }
                             digest.update(buffer, 0, read)
                             output.write(buffer, 0, read)
                             _state.value = State.Downloading(count, contentLength)
                         }
                     }
                 }
-                require(count > 0 && (contentLength == -1L || count == contentLength)) {
-                    "Incomplete APK download"
+                require(BlinkApkUpdatePolicy.isValidTransfer(count, contentLength)) {
+                    "Incomplete or invalid APK download"
                 }
                 val sha = digest.digest().joinToString("") { "%02x".format(it) }
                 require(sha == release.apkSha256) { "Official APK hash mismatch" }
@@ -173,15 +173,11 @@ class WebsiteApkDownloadCoordinator(private val context: Context) {
         val candidate = requireNotNull(manager.getPackageArchiveInfo(file.absolutePath, flag)) {
             "Invalid Android package archive"
         }
-        require(candidate.packageName == context.packageName &&
-            candidate.packageName == release.applicationId) { "Incorrect BLINK application ID" }
         val candidateCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             candidate.longVersionCode
         } else {
             candidate.versionCode.toLong()
         }
-        require(candidateCode == release.versionCode.toLong() &&
-            candidateCode > installedVersionCode.toLong()) { "Incorrect or older APK version" }
 
         val installed = manager.getPackageInfo(context.packageName, flag)
         val candidateCerts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -198,9 +194,16 @@ class WebsiteApkDownloadCoordinator(private val context: Context) {
                 .joinToString("") { "%02x".format(it) }
 
         val candidateHash = certificateHash(candidateCerts.single())
-        require(candidateHash == release.signingCertificateSha256 &&
-            candidateHash == certificateHash(installedCerts.single())) {
-            "BLINK update signing identity does not match the installed app"
+        require(BlinkApkUpdatePolicy.matchesInstalledApp(
+            release = release,
+            installedPackage = context.packageName,
+            installedCode = installedVersionCode,
+            installedSignerSha256 = certificateHash(installedCerts.single()),
+            archivePackage = candidate.packageName,
+            archiveCode = candidateCode,
+            archiveSignerSha256 = candidateHash,
+        )) {
+            "BLINK APK package, version, or signing identity does not match"
         }
     }
 
@@ -237,7 +240,6 @@ class WebsiteApkDownloadCoordinator(private val context: Context) {
     }
 
     companion object {
-        private const val MAX_APK_BYTES = 100L * 1024 * 1024
         private const val APK_URL =
             "https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk"
 
