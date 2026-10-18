@@ -48,4 +48,22 @@ class CallIceConfigParserTest {
         assertEquals(listOf("turn:relay.example.org:3478"), config.single().urls)
         assertTrue(config.single().credential.isNotBlank())
     }
+
+    @Test fun `legacy fallback only accepts absent or unconfigured endpoint`() {
+        assertTrue(CallIceConfigParser.allowLegacyFallback(
+            404, """{"code":"NOT_FOUND","message":"Requested function was not found"}"""
+        ))
+        assertTrue(CallIceConfigParser.allowLegacyFallback(
+            503, """{"error":"TURN relay is not configured"}"""
+        ))
+        assertEquals(false, CallIceConfigParser.allowLegacyFallback(
+            404, """{"error":"Call not found"}"""
+        ))
+        assertEquals(false, CallIceConfigParser.allowLegacyFallback(
+            401, """{"error":"Authentication failed"}"""
+        ))
+        assertEquals(false, CallIceConfigParser.allowLegacyFallback(
+            503, """{"error":"Call lookup failed"}"""
+        ))
+    }
 }
