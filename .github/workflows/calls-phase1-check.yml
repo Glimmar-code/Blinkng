@@ -1,4 +1,4 @@
-name: BLINK calls Phase 1 quality gate
+name: BLINK calling quality gate
 
 on:
   push:
@@ -8,19 +8,23 @@ on:
       - 'app/src/main/java/com/example/call/**'
       - 'app/src/test/java/com/example/call/**'
       - 'supabase/functions/get-call-ice-config/**'
+      - 'supabase/functions/send-call-notification/**'
+      - 'app/src/main/java/com/example/notification/BlinkFirebaseMessagingService.kt'
       - 'docs/native-calls.md'
   pull_request:
     paths:
       - 'app/src/main/java/com/example/call/**'
       - 'app/src/test/java/com/example/call/**'
       - 'supabase/functions/get-call-ice-config/**'
+      - 'supabase/functions/send-call-notification/**'
+      - 'app/src/main/java/com/example/notification/BlinkFirebaseMessagingService.kt'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blink-calls-phase1-${{ github.ref }}
+  group: blink-calls-quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,5 +51,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Validate TURN credential Edge Function
-        run: deno check supabase/functions/get-call-ice-config/index.ts
+      - name: Validate TURN credential and push Edge Functions
+        run: |
+          deno check supabase/functions/get-call-ice-config/index.ts
+          deno check supabase/functions/send-call-notification/index.ts
