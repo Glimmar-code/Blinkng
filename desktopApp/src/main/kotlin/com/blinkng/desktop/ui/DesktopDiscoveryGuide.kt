@@ -87,7 +87,7 @@ fun DesktopDiscoveryGuide(
                 Text(step.title, color = Color.White, fontWeight = FontWeight.Bold)
                 Text(step.description, color = Color.White)
                 Button(
-                    onClick = { complete(step, step.routeId) },
+                    onClick = { complete(step, if (step.routeId == "friends") "connect" else step.routeId) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                 ) { Text(step.actionLabel) }
                 TextButton(onClick = {

@@ -85,6 +85,7 @@ fun ConnectSection(
     onOpenActivity: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    onFindFriends: () -> Unit,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
@@ -193,6 +194,18 @@ fun ConnectSection(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = onFindFriends,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Find Friends · Campus & Contacts")
                 }
             }
 
