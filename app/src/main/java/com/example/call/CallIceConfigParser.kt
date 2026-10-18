@@ -13,6 +13,21 @@ import org.json.JSONObject
 internal object CallIceConfigParser {
     data class Server(val urls: List<String>, val username: String = "", val credential: String = "")
 
+    /**
+     * A missing endpoint is different from a 404 for a caller who does not
+     * belong to the call. Never turn an authorization/membership rejection
+     * into a request to the older account-scoped fallback endpoint.
+     */
+    fun allowLegacyFallback(statusCode: Int, responseBody: String): Boolean {
+        if (statusCode == 404) {
+            return responseBody.contains("Requested function was not found", ignoreCase = true) ||
+                (responseBody.contains("\\"code\\":\\"NOT_FOUND\\"") &&
+                    responseBody.contains("function", ignoreCase = true))
+        }
+        return statusCode == 503 &&
+            responseBody.contains("TURN relay is not configured", ignoreCase = true)
+    }
+
     fun parse(body: String): List<Server> {
         val root = JSONObject(body)
         val entries = root.optJSONArray("ice_servers")
