@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -146,6 +147,8 @@ class CallActivity : ComponentActivity() {
     private val processedSignalIds = mutableSetOf<Long>()
     private val pendingSignals = mutableListOf<CallSignal>()
     private val signalSendMutex = Mutex()
+    private val signalSyncMutex = Mutex()
+    private var rtcConnected = false
     private val ending = AtomicBoolean(false)
     private var mediaRequestedForIncomingAnswer = false
     private var mediaStarted = false
@@ -247,6 +250,7 @@ class CallActivity : ComponentActivity() {
         pollJob?.cancel()
         durationJob?.cancel()
         reconnectJob?.cancel()
+        rtcConnected = false
         realtime?.close()
         rtcClient?.release()
         rtcClient = null
@@ -397,7 +401,9 @@ class CallActivity : ComponentActivity() {
             onSignal = { signal -> runOnUiThread { processSignal(signal) } },
             onCallUpdate = { update -> runOnUiThread { applyCallUpdate(update) } },
             onConnection = { connected ->
-                if (!connected) lifecycleScope.launch { synchronizeSignals() }
+                // Reconcile immediately when subscriptions recover. Realtime may
+                // have missed an SDP or ICE row while the socket was disconnected.
+                if (connected) lifecycleScope.launch { synchronizeSignals() }
             }
         ).also { it.connect() }
     }
@@ -424,16 +430,22 @@ class CallActivity : ComponentActivity() {
     }
 
     private suspend fun synchronizeSignals() {
-        val active = call ?: return
-        val signals = repository.fetchSignals(active.id, lastFetchedSignalId)
-            .getOrNull()
-            ?.sortedBy { it.id }
-            .orEmpty()
-        for (signal in signals) {
-            // Only ordered REST reconciliation advances the cursor. Realtime can arrive out of
-            // order, so letting a high realtime id move this cursor could permanently skip SDP.
-            lastFetchedSignalId = maxOf(lastFetchedSignalId, signal.id)
-            processSignal(signal)
+        // Realtime callbacks, periodic polling and socket recovery can all fetch
+        // simultaneously. Serialize them so an older REST response cannot advance
+        // the cursor over unseen signal rows.
+        signalSyncMutex.withLock {
+            val active = call ?: return@withLock
+            val signals = repository.fetchSignals(active.id, lastFetchedSignalId)
+                .getOrNull()
+                ?.sortedBy { it.id }
+                .orEmpty()
+            for (signal in signals) {
+                if (ending.get()) break
+                // Never advance the ordered REST cursor from a Realtime callback:
+                // those events can arrive out of order.
+                lastFetchedSignalId = maxOf(lastFetchedSignalId, signal.id)
+                processSignal(signal)
+            }
         }
     }
 
@@ -499,12 +511,27 @@ class CallActivity : ComponentActivity() {
         override fun onLocalDescription(kind: String, description: SessionDescription) {
             val active = call ?: return
             lifecycleScope.launch {
-                signalSendMutex.withLock {
-                    repository.sendSignal(
-                        active.id,
-                        kind,
-                        JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)
-                    )
+                val payload = JSONObject()
+                    .put("type", description.type.canonicalForm())
+                    .put("sdp", description.description)
+                var delivered = false
+                for (attempt in 0 until CallConnectionRecoveryPolicy.SDP_SEND_ATTEMPTS) {
+                    if (ending.get()) return@launch
+                    val result = signalSendMutex.withLock {
+                        repository.sendSignal(active.id, kind, payload)
+                    }
+                    if (result.isSuccess) {
+                        delivered = true
+                        break
+                    }
+                    Log.w("BlinkCalls", "SDP $kind delivery attempt ${attempt + 1} failed", result.exceptionOrNull())
+                    if (attempt + 1 < CallConnectionRecoveryPolicy.SDP_SEND_ATTEMPTS) {
+                        delay(CallConnectionRecoveryPolicy.sdpRetryDelayMillis(attempt))
+                    }
+                }
+                if (!delivered && !ending.get()) {
+                    errorText = "Unable to establish a secure call connection."
+                    failAndFinish("signaling_failed")
                 }
             }
         }
@@ -512,7 +539,7 @@ class CallActivity : ComponentActivity() {
         override fun onLocalIceCandidate(candidate: IceCandidate) {
             val active = call ?: return
             lifecycleScope.launch {
-                signalSendMutex.withLock {
+                val result = signalSendMutex.withLock {
                     repository.sendSignal(
                         active.id,
                         "ice",
@@ -522,6 +549,7 @@ class CallActivity : ComponentActivity() {
                             .put("candidate", candidate.sdp)
                     )
                 }
+                result.onFailure { Log.w("BlinkCalls", "ICE candidate delivery failed", it) }
             }
         }
 
@@ -529,6 +557,9 @@ class CallActivity : ComponentActivity() {
             runOnUiThread {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
+                        rtcConnected = true
+                        reconnectJob?.cancel()
+                        reconnectJob = null
                         statusText = "Connected"
                         if (!connectedMarked) {
                             connectedMarked = true
@@ -539,12 +570,11 @@ class CallActivity : ComponentActivity() {
                             }
                         }
                     }
-                    PeerConnection.PeerConnectionState.DISCONNECTED -> {
-                        statusText = "Reconnecting…"
-                        if (isCaller) scheduleIceRestart()
-                    }
+                    PeerConnection.PeerConnectionState.DISCONNECTED,
                     PeerConnection.PeerConnectionState.FAILED -> {
-                        lifecycleScope.launch { failAndFinish("failed") }
+                        rtcConnected = false
+                        statusText = "Reconnecting…"
+                        scheduleIceRestart()
                     }
                     PeerConnection.PeerConnectionState.CLOSED -> Unit
                     else -> if (!incomingRinging) statusText = "Connecting…"
@@ -558,12 +588,24 @@ class CallActivity : ComponentActivity() {
     }
 
     private fun scheduleIceRestart() {
-        reconnectJob?.cancel()
+        // One recovery loop per outage: don't cancel and reset the deadline for
+        // every DISCONNECTED callback. Only the original caller creates offers,
+        // avoiding offer collisions between two recovering devices.
+        if (ending.get() || reconnectJob?.isActive == true) return
         reconnectJob = lifecycleScope.launch {
-            delay(2_500L)
-            if (!ending.get() && statusText.startsWith("Reconnect")) {
-                rtcClient?.restartIce()
-                rtcClient?.createOffer()
+            for (attempt in 0 until CallConnectionRecoveryPolicy.ICE_RESTART_ATTEMPTS) {
+                delay(CallConnectionRecoveryPolicy.iceRetryDelayMillis(attempt))
+                if (ending.get() || rtcConnected || rtcClient == null) return@launch
+                if (isCaller) {
+                    rtcClient?.restartIce()
+                    rtcClient?.createOffer()
+                }
+                synchronizeSignals()
+            }
+            delay(CallConnectionRecoveryPolicy.FINAL_RECOVERY_GRACE_MS)
+            if (!ending.get() && !rtcConnected && rtcClient != null) {
+                errorText = "The call lost its connection. Please try again."
+                failAndFinish("connection_lost")
             }
         }
     }
