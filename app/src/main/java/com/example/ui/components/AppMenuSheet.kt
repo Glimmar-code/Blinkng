@@ -134,6 +134,7 @@ fun AppMenuSheet(
     onOpenBecomeSeller: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenActivity: () -> Unit,
+    onFindFriends: () -> Unit,
     onOpenEarning: () -> Unit,
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
@@ -156,6 +157,7 @@ fun AppMenuSheet(
         addAll(listOf(
             "Profile view profile",
             "Activity mentions and notifications",
+            "Find Friends campus student discovery and contact invitation",
             "Earning wallet missions rewards Blink Coins transaction history",
             "Leaderboard campus ranking and points",
             "Marketplace browse campus listings",
@@ -273,6 +275,9 @@ fun AppMenuSheet(
             ) {
                 onDismiss()
                 onOpenEarning()
+            }
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.Groups, "Find Friends", "Campus suggestions and private contact invitations") {
+                onDismiss(); onFindFriends()
             }
             SearchableMenuItemRow(menuQuery, Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
                 onDismiss(); onOpenLeaderboard()
