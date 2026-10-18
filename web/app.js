@@ -56,14 +56,23 @@
 
   async function fetchWithTimeout(url, options={}, timeoutMs=API_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const upstream = options.signal;
+    let timedOut = false;
+    const cancelFromCaller = () => controller.abort(upstream?.reason);
+    if(upstream){
+      if(upstream.aborted)cancelFromCaller();
+      else upstream.addEventListener('abort',cancelFromCaller,{once:true});
+    }
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      return await fetch(url, {...options, signal: options.signal || controller.signal});
+      return await fetch(url, {...options, signal: controller.signal});
     } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('Request timed out. Check your connection and try again.');
+      if(timedOut && error?.name === 'AbortError')
+        throw new Error('Request timed out. Check your connection and try again.');
       throw error;
     } finally {
       clearTimeout(timer);
+      upstream?.removeEventListener('abort',cancelFromCaller);
     }
   }
 
@@ -175,7 +184,9 @@
     const hash=new URLSearchParams(location.hash.replace(/^#/,''));
     const oauthError=hash.get('error_description')||hash.get('error')||'';
     if(oauthError&&!hash.get('access_token')){
-      state.authError=oauthError;
+      // OAuth providers may put attacker-controlled strings in the callback.
+      // Do not echo a long or potentially sensitive fragment into the UI.
+      state.authError='Google sign-in could not be completed. Please try again.';
       storageRemove(OAUTH_NEXT_KEY);
       history.replaceState({},'',routeHref('/login'));
       return;
@@ -185,6 +196,13 @@
       const refresh_token=hash.get('refresh_token');
       const expires_in=Number(hash.get('expires_in')||3600);
       const type=hash.get('type');
+      // Reject incomplete callbacks before persisting a broken web session.
+      if(!refresh_token || !Number.isFinite(expires_in) || expires_in<=0){
+        state.authError='This sign-in link is incomplete or expired. Please try again.';
+        storageRemove(OAUTH_NEXT_KEY);
+        history.replaceState({},'',routeHref('/login'));
+        return;
+      }
       saveSession({
         access_token,
         refresh_token,
@@ -248,10 +266,12 @@
   function shell(content,title='Blink',right=''){
     setTitle(title);
     const p=state.profile;
+    const analyticsLink=state.session?.user?.app_metadata?.admin===true
+      ? navItem('/site-stats','analytics','Website analytics') : '';
     return `<div class="app-shell">
       <aside class="sidebar">
         <button class="nav-btn brand" data-nav="/feed"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true"><span>Blink</span></button>
-        ${navItem('/feed','home','Home')}${navItem('/reels','reels','Reels')}${navItem('/search','search','Search')}${navItem('/messages','messages','Messages')}${navItem('/activity','activity','Activity',state.notificationsUnread?String(state.notificationsUnread):'')}${navItem('/market','market','Marketplace')}${navItem('/connect','connect','Connect')}${navItem('/games','games','Games')}${navItem('/scheduled','scheduled','Scheduled')}${navItem('/ai','ai','Blink AI')}
+        ${navItem('/feed','home','Home')}${navItem('/reels','reels','Reels')}${navItem('/search','search','Search')}${navItem('/messages','messages','Messages')}${navItem('/activity','activity','Activity',state.notificationsUnread?String(state.notificationsUnread):'')}${navItem('/market','market','Marketplace')}${navItem('/connect','connect','Connect')}${navItem('/games','games','Games')}${navItem('/scheduled','scheduled','Scheduled')}${navItem('/ai','ai','Blink AI')}${analyticsLink}
         <div class="sidebar-spacer"></div>${navItem('/settings/profile','settings','Settings')}
         ${p?`<button class="profile-mini" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span><strong>${esc(p.full_name||p.username)}</strong><span class="handle">@${esc(p.username)}</span></span></button>`:''}
       </aside>
@@ -316,8 +336,168 @@
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
   function renderLanding(){
-    setTitle('Blink'); ROOT.innerHTML=`<main class="auth-wrap" aria-label="BLINK Nigeria"><div style="width:min(100%,1000px)"><div class="hero"><img class="mark hero-mark" src="${LOGO_URL}" alt="BLINK" width="62" height="62" fetchpriority="high" decoding="async"><h1><span class="gradient-text">BLINK Nigeria</span> — Connect &amp; Discover</h1><p>BLINK is a social and campus community app in Nigeria. Explore public profiles, posts and reels, or sign in to connect with people on the web.</p><div class="hero-actions"><button class="btn primary" data-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open feed':'Sign in to Blink'}</button><a class="btn download-app" href="${APK_URL}">↓ Download Android app</a></div><form id="public-search" class="landing-search"><input class="field" name="username" placeholder="Open @username" autocomplete="off"><button class="btn">View profile</button></form></div><div class="feature-grid"><div class="card feature"><b>Public links</b><p>Profiles, posts and reels open directly in Chrome and still use Blink view counting.</p></div><div class="card feature"><b>Full account</b><p>Feed, follows, comments, messages, scheduled posts, market, Connect and games share the same backend.</p></div><div class="card feature"><b>App handoff</b><p>Open the same content in the Android app with deep links whenever Blink is installed.</p></div></div><p style="text-align:center;margin:22px 0 0"><a href="${routeHref('/about/')}">About BLINK Nigeria</a> · <a href="${routeHref('/features/')}">Features</a> · <a href="${routeHref('/download/')}">Download BLINK App</a> · <a href="${routeHref('/faq/')}">FAQ</a> · <a href="${routeHref('/privacy/')}">Privacy Policy</a> · <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a></p></div></main>`;
-    document.querySelector('[data-nav]')?.addEventListener('click',e=>{e.preventDefault();navigate(e.currentTarget.dataset.nav);}); document.getElementById('public-search').onsubmit=e=>{e.preventDefault();const u=new FormData(e.currentTarget).get('username').trim().replace(/^@/,'');if(u)navigate(`/@${encodeURIComponent(u)}`);};
+    setTitle('Blink');
+    ROOT.innerHTML=`<main class="landing-page" aria-label="BLINK Nigeria">
+      <a class="landing-skip" href="#landing-main">Skip to content</a>
+      <header class="landing-header">
+        <div class="landing-container landing-header-inner">
+          <a href="${routeHref('/')}" class="landing-brand" aria-label="BLINK Nigeria homepage">
+            <img src="${LOGO_URL}" width="39" height="39" alt="BLINK" decoding="async" fetchpriority="high">
+            <span>BLINK<span class="landing-brand-tag">Nigeria</span></span>
+          </a>
+          <nav class="landing-desktop-nav" aria-label="Website navigation">
+            <a href="${routeHref('/features/')}">Features</a>
+            <a href="${routeHref('/about/')}">About</a>
+            <a href="${routeHref('/download/')}">Download</a>
+            <a href="${routeHref('/faq/')}">FAQ</a>
+          </nav>
+          <div class="landing-header-actions">
+            <button class="landing-top-cta" type="button" data-landing-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open BLINK':'Sign in'} <span aria-hidden="true">↗</span></button>
+            <details class="landing-menu">
+              <summary aria-label="Open website menu">Menu <span aria-hidden="true">☰</span></summary>
+              <nav aria-label="Mobile website navigation">
+                <a href="${routeHref('/features/')}">Features</a>
+                <a href="${routeHref('/about/')}">About BLINK Nigeria</a>
+                <a href="${routeHref('/download/')}">Download BLINK App</a>
+                <a href="${routeHref('/faq/')}">FAQ</a>
+                <a href="${routeHref('/privacy/')}">Privacy</a>
+                <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
+              </nav>
+            </details>
+          </div>
+        </div>
+      </header>
+
+      <section id="landing-main" class="landing-container landing-hero" aria-labelledby="landing-title">
+        <div class="landing-hero-copy">
+          <div class="landing-eyebrow">Your campus. Your community. Your world.</div>
+          <h1 id="landing-title"><span class="gradient-text">BLINK Nigeria</span> — Connect, Share &amp; Discover.</h1>
+          <p class="landing-lead">A social and campus community app in Nigeria. Meet people, share posts and reels, explore creators, and discover what matters to your community.</p>
+          <div class="landing-actions">
+            <a href="${routeHref('/features/')}" class="landing-action landing-action--primary">Explore BLINK <span aria-hidden="true">↗</span></a>
+            <a href="${APK_URL}" class="landing-action landing-action--secondary">↓ Download Android app</a>
+          </div>
+          <p class="landing-help">Browse what BLINK offers or sign in to use your account on the web.</p>
+          <form id="public-search" class="landing-search" role="search" aria-label="Find a public BLINK profile">
+            <label for="landing-username">Looking for someone on BLINK?</label>
+            <div class="landing-search-row">
+              <input class="field" id="landing-username" name="username" type="text" maxlength="32" placeholder="Search @username" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Public BLINK username">
+              <button type="submit" class="landing-search-submit">View profile <span aria-hidden="true">→</span></button>
+            </div>
+            <p id="public-search-status" role="status" aria-live="polite" class="discovery-status">Only publicly available profiles can be opened.</p>
+          </form>
+        </div>
+        <aside class="landing-preview" aria-label="Explore BLINK highlights">
+          <div class="landing-preview-title"><span>Inside BLINK</span><span class="landing-preview-tag">Made to connect</span></div>
+          <div class="landing-preview-headline">Your community, all in one place.</div>
+          <div class="landing-preview-list">
+            <div class="landing-preview-row"><span class="landing-preview-icon" aria-hidden="true">▤</span><div><strong>Share your story</strong><span>Posts, updates and conversations</span></div></div>
+            <div class="landing-preview-row"><span class="landing-preview-icon" aria-hidden="true">▶</span><div><strong>See what's trending</strong><span>Reels and creative moments</span></div></div>
+            <div class="landing-preview-row"><span class="landing-preview-icon" aria-hidden="true">◎</span><div><strong>Find your people</strong><span>Connect with your campus community</span></div></div>
+          </div>
+          <div class="landing-preview-bottom"><span>Explore BLINK features</span><strong>One community <span aria-hidden="true">↗</span></strong></div>
+        </aside>
+      </section>
+
+
+      <section class="landing-container discovery-section" aria-labelledby="discovery-tour-title">
+        <div class="landing-section-head"><div><span class="landing-kicker">Explore before you sign in</span><h2 id="discovery-tour-title">Discover what BLINK can do.</h2></div></div>
+        <div class="discovery-tour">
+          <div class="discovery-tabs" role="tablist" aria-label="Explore BLINK feature areas">
+            <button type="button" role="tab" id="tour-tab-feed" data-tour-tab="feed" aria-selected="true" aria-controls="tour-panel">Feed</button>
+            <button type="button" role="tab" id="tour-tab-reels" data-tour-tab="reels" aria-selected="false" aria-controls="tour-panel">Reels</button>
+            <button type="button" role="tab" id="tour-tab-market" data-tour-tab="market" aria-selected="false" aria-controls="tour-panel">Market</button>
+            <button type="button" role="tab" id="tour-tab-connect" data-tour-tab="connect" aria-selected="false" aria-controls="tour-panel">Connect</button>
+          </div>
+          <div class="discovery-tour-body" id="tour-panel" role="tabpanel" aria-labelledby="tour-tab-feed" tabindex="0">
+            <span class="landing-kicker">Feature guide · Not a live feed</span>
+            <h3 id="tour-heading">A space for real conversations</h3>
+            <p id="tour-body">Discover what BLINK has to offer.</p>
+            <a id="tour-action" href="${routeHref('/features/')}" class="landing-action landing-action--secondary">Browse BLINK features</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-container discovery-section" id="campuses" aria-labelledby="campuses-title">
+        <div class="landing-section-head"><div><span class="landing-kicker">Discover Nigerian universities</span><h2 id="campuses-title">Find your campus on BLINK.</h2></div></div>
+        <p class="discovery-support">Find schools in BLINK’s searchable university catalogue. The list is not a live count of members or communities.</p>
+        <div class="discovery-campuses">
+          <label for="campus-search">Search by university name or abbreviation (e.g. FUTA)</label>
+          <input id="campus-search" class="field" name="campus" placeholder="Search FUTA, UNILAG, University of Lagos…" type="search" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="90">
+          <p role="status" id="campus-status" aria-live="polite" class="discovery-status">Search the same Nigerian university catalogue used by BLINK Android.</p>
+          <ul id="campus-results" class="campus-results" aria-label="Matching universities"></ul>
+          <div id="campus-selection" class="campus-selection" hidden>
+            <span>Your selected campus: <strong data-selected-campus></strong></span>
+            <button class="landing-action landing-action--primary" type="button" data-landing-nav="${isAuthed()?'/connect':'/login'}">${isAuthed()?'Open BLINK Connect':'Sign in to connect'} <span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-container landing-features" id="landing-features" aria-labelledby="landing-features-title">
+        <div class="landing-section-head"><div><span class="landing-kicker">One app. More possibilities.</span><h2 id="landing-features-title">Everything you need to connect.</h2></div><a href="${routeHref('/features/')}">Explore all features <span aria-hidden="true">↗</span></a></div>
+        <div class="landing-feature-grid">
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">▤</span><h3>BLINK Feed</h3><p>Discover community posts, share updates and join conversations that matter to you.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">▶</span><h3>BLINK Reels</h3><p>Explore short videos, discover creators and share memorable moments.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">▣</span><h3>BLINK Market</h3><p>Find listings, explore products and connect with people selling nearby.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">◎</span><h3>BLINK Connect</h3><p>Meet new people and discover connections in your university community.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">✉</span><h3>BLINK Messages</h3><p>Stay in touch with friends and continue conversations in one place.</p></article>
+          <article class="landing-feature-card"><span class="landing-feature-icon" aria-hidden="true">◇</span><h3>BLINK LIFE</h3><p>Learn about BLINK's optional game experience for supported devices.</p></article>
+        </div>
+      </section>
+
+      <section class="landing-container" aria-label="Join BLINK">
+        <div class="landing-bottom-cta">
+          <div><h2>Ready to be part of BLINK?</h2><p>Explore the community on the web or take BLINK with you on Android.</p></div>
+          <div class="landing-actions"><button class="landing-action landing-action--primary" type="button" data-landing-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open your feed':'Sign in to BLINK'}</button><a href="${APK_URL}" class="landing-action landing-action--secondary">Download app</a></div>
+        </div>
+      </section>
+
+      <footer class="landing-footer">
+        <div class="landing-container landing-footer-inner">
+          <span>© BLINK Nigeria · Connect, share and discover.</span>
+          <nav class="landing-footer-links" aria-label="Footer navigation">
+            <a href="${routeHref('/about/')}">About BLINK Nigeria</a>
+            <a href="${routeHref('/features/')}">Features</a>
+            <a href="${routeHref('/download/')}">Download BLINK App</a>
+            <a href="${routeHref('/faq/')}">FAQ</a>
+            <a href="${routeHref('/privacy/')}">Privacy Policy</a>
+            <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
+          </nav>
+        </div>
+      </footer>
+    </main>`;
+    ROOT.querySelectorAll('[data-landing-nav]').forEach(button=>{
+      button.addEventListener('click',event=>{
+        event.preventDefault();
+        navigate(event.currentTarget.dataset.landingNav);
+      });
+    });
+    const searchForm=ROOT.querySelector('#public-search');
+    searchForm?.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const field=searchForm.elements.namedItem('username');
+      const button=searchForm.querySelector('button[type="submit"]');
+      const status=ROOT.querySelector('#public-search-status');
+      const username=String(field?.value||'').trim().replace(/^@/,'');
+      if(!/^[A-Za-z0-9._-]{2,32}$/.test(username)){
+        if(status)status.textContent='Enter a valid BLINK username (2–32 letters, numbers, dots, underscores or hyphens).';
+        field?.focus();return;
+      }
+      if(button?.disabled)return;
+      if(button)button.disabled=true;
+      if(status)status.textContent='Checking this public profile…';
+      try{
+        const info=await anonRpc('get_public_web_profile',{p_username:username});
+        if(!info?.available||!info.profile){
+          if(status)status.textContent='No public BLINK profile found for that username.';
+          return;
+        }
+        navigate('/@'+encodeURIComponent(username));
+      }catch{
+        if(status)status.textContent='Profile lookup is temporarily unavailable. Please try again.';
+      }finally{if(button)button.disabled=false;}
+    });
+    window.BLINK_DISCOVERY?.initLanding(ROOT);
   }
 
   function renderLogin(){
@@ -977,7 +1157,50 @@
     };
   }
 
+  function updateRoutePrivacy(path){
+    // Public marketing pages have their own crawlable HTML. Private web
+    // app, auth and one-off share routes should never be indexed from the SPA.
+    const publicHome=path==='/'||path==='';
+    const robots=document.querySelector('meta[name="robots"]');
+    if(robots)robots.setAttribute('content',publicHome?'index,follow,max-image-preview:large':'noindex,nofollow');
+    const referrer=document.querySelector('meta[name="referrer"]');
+    if(referrer)referrer.setAttribute('content',publicHome?'strict-origin-when-cross-origin':'no-referrer');
+  }
+
+  async function renderSiteAnalytics(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<section class="card"><h2>Website analytics</h2><p class="muted">Loading aggregate public website counts…</p></section>','Website analytics');
+    bindCommon();
+    try{
+      // This RPC validates admin permission in the database, not in JavaScript.
+      const result=await rpc('get_blink_site_metrics',{p_days:30});
+      const entries=Array.isArray(result?.records)?result.records:[];
+      const views=entries.filter(x=>x.kind==='view').reduce((n,x)=>n+Number(x.count||0),0);
+      const clicks=entries.filter(x=>x.kind==='download').reduce((n,x)=>n+Number(x.count||0),0);
+      const byPage=['home','about','features','download','faq','privacy'].map(page=>{
+        const pageRows=entries.filter(x=>x.page===page);
+        const impressions=pageRows.filter(x=>x.kind==='view').reduce((n,x)=>n+Number(x.count||0),0);
+        const downloads=pageRows.filter(x=>x.kind==='download').reduce((n,x)=>n+Number(x.count||0),0);
+        return `<tr><th scope="row">${esc(page==='home'?'Homepage':page.charAt(0).toUpperCase()+page.slice(1))}</th><td>${fmt(impressions)}</td><td>${fmt(downloads)}</td></tr>`;
+      }).join('');
+      const html=`<section class="card" aria-labelledby="site-metrics-title">
+        <h2 id="site-metrics-title">Public website analytics · Last 30 days</h2>
+        <p class="muted">Anonymous aggregate events only. Counts may be approximate and do not represent unique visitors or successful APK installations.</p>
+        <div class="stats-grid"><div class="stat"><strong>${fmt(views)}</strong><span>Public page views</span></div><div class="stat"><strong>${fmt(clicks)}</strong><span>APK button taps</span></div></div>
+        <div style="overflow-x:auto;margin-top:20px"><table class="table"><caption>Public website counts by page · ${esc(result?.timezone||'Africa/Lagos')}</caption><thead><tr><th scope="col">Page</th><th scope="col">Views</th><th scope="col">APK taps</th></tr></thead><tbody>${byPage}</tbody></table></div>
+        ${entries.length?'':'<p class="muted">No events recorded. Collection remains disabled until privacy and production deployment are approved.</p>'}
+        <p class="muted">Private accounts, messages, searches and selected campuses are not included. No visitor IDs or cookies are used for these aggregate counters.</p>
+      </section>`;
+      ROOT.innerHTML=shell(html,'Website analytics');
+      bindCommon();
+    }catch{
+      ROOT.innerHTML=shell('<div class="card empty"><h2>Admin access required</h2><p>Website analytics are available only to authorized BLINK administrators after the database migration is deployed.</p></div>','Website analytics');
+      bindCommon();
+    }
+  }
+
   async function render(path=currentPath()){
+    updateRoutePrivacy(path);
     for(const timer of state.qualifiedTimers.values())clearTimeout(timer);
     state.qualifiedTimers.clear();
     state.viewObserver?.disconnect();state.viewObserver=null;
@@ -986,6 +1209,7 @@
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
     if(path==='/login')return renderLogin();
+    if(path==='/site-stats')return renderSiteAnalytics();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
     const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
     const content=path.match(/^\/(post|reel)\/([0-9a-f-]+)$/i);if(content)return renderPublicContent(content[1].toLowerCase(),content[2]);
