@@ -1,3 +1,10 @@
+## 2026-10-18 — Feature 8 directory staged on integrated Feature 5 (dependency PR #375)
+
+- Adopted the Feature 8 university directory on top of the Feature 5 integrated Testlab candidate, preserving current auth/notification changes.
+- Uses shared school IDs, Nigerian university acronym normalization (including FUTA), missing-school moderation and backend account-university consistency checks.
+- Depends on completing Feature 5 tests and merging into Testlab first, followed by a careful integration to avoid deploying two profile schemas out of order. Database migrations are **not** installed on live Supabase.
+- NUC directory is a reviewed snapshot, not a guaranteed complete present-day accreditation list; validate all entries/status changes before main publication.
+
 ## 2026-10-18 — Feature 5 registration integrated for Testlab CI (staging candidate)
 
 - Re-applies tested Feature 5 / PR #353 on latest Testlab while preserving Find Friends, Earning, notification quick actions and profile viewer work.
