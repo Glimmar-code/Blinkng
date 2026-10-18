@@ -55,11 +55,16 @@ begin
     from private.blink_economy_config where key = 'cash_checkout_enabled';
   if not coalesce(v_cash_enabled,false) then raise exception 'CASH_CHECKOUT_DISABLED'; end if;
 
-  select upper(coalesce(verification_badge,'NONE')), verification_expires_at, coalesce(follower_count,0)
-    into v_badge,v_expires,v_follower_count
+  select upper(coalesce(verification_badge,'NONE')), verification_expires_at
+    into v_badge,v_expires
     from public.profiles where id=v_user;
   if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
 
+  -- Count real follow relationships, not a cached or client-editable profile counter.
+  if v_tier = 'GOLD' then
+    select count(*)::integer into v_follower_count
+    from public.follows where following_id=v_user;
+  end if;
   if v_tier = 'GOLD' and v_follower_count < 1000 then
     raise exception 'GOLD_FOLLOWER_REQUIREMENT_NOT_MET';
   end if;
