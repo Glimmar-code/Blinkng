@@ -1,10 +1,12 @@
-const CACHE='blink-web-v23-homepage-phase1';
+const CACHE='blink-web-v24-discovery-phase2';
 const SHELL=[
   './',
   './index.html',
   './404.html',
   './styles.css',
   './landing.css',
+  './discovery.js',
+  './campuses.json',
   './parity.css',
   './config.js',
   './app.js',

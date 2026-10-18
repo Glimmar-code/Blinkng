@@ -17,6 +17,7 @@ on:
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -31,6 +32,7 @@ on:
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
 
 permissions:
   contents: read
@@ -75,6 +77,9 @@ jobs:
       # The temporary Pages project host is a separate web-only URL until Android is updated.
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Check Phase 2 university catalogue, public discovery and release metadata
+        run: node scripts/test_discovery_phase2.mjs
 
       - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
         run: node scripts/test_landing_phase1.mjs
