@@ -60,6 +60,8 @@ import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.notification.BlinkProfileVisitorClient
+import com.example.ui.components.BlinkProfileVisitorsDialog
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.PostCard
@@ -134,12 +136,17 @@ fun ProfileScreen(
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
+    var showVisitorHistory by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var newVisitors by remember(profile.id) { mutableStateOf<Int?>(null) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     LaunchedEffect(profile.id, isMe) {
         if (!isMe && profile.id.isNotBlank()) FollowStateStore.refresh()
+        if (isMe && profile.id.isNotBlank()) {
+            newVisitors = runCatching { BlinkProfileVisitorClient.newCount() }.getOrNull()
+        }
     }
 
     // Entrance choreography — content reveals itself once, on first composition.
@@ -234,6 +241,18 @@ fun ProfileScreen(
             delay(900)
             isRefreshing = false
         }
+    }
+
+    if (isMe && showVisitorHistory) {
+        BlinkProfileVisitorsDialog(
+            accountId = profile.id,
+            onDismiss = { showVisitorHistory = false },
+            onOpenProfile = { username ->
+                showVisitorHistory = false
+                onProfileClick(username)
+            },
+            onReadConfirmed = { remaining -> newVisitors = remaining },
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -355,11 +374,41 @@ fun ProfileScreen(
                                 testTag = "profile_back_btn"
                             )
 
-                            CircleToolbarButton(
-                                icon = Icons.Default.MoreVert,
-                                contentDescription = "More profile options",
-                                onClick = { showMoreSheet = true }
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isMe) {
+                                    Surface(
+                                        shape = RoundedCornerShape(24.dp),
+                                        color = Color.Black.copy(alpha = 0.55f),
+                                        modifier = Modifier.testTag("profile_visitor_badge")
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { showVisitorHistory = true },
+                                                modifier = Modifier.size(42.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Visibility,
+                                                    contentDescription = "Open profile visitors",
+                                                    tint = Color.White
+                                                )
+                                            }
+                                            Text(
+                                                text = newVisitors?.toString() ?: "—",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                modifier = Modifier.padding(end = 9.dp),
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                CircleToolbarButton(
+                                    icon = Icons.Default.MoreVert,
+                                    contentDescription = "More profile options",
+                                    onClick = { showMoreSheet = true }
+                                )
+                            }
                         }
 
                         AnimatedVisibility(
