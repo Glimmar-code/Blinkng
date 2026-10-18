@@ -3,6 +3,15 @@
 -- Writes are disabled by the Edge Function unless production is explicitly activated.
 -- Aggregates are approximate, not deduplicated unique visitors nor fraud-proof billing.
 
+-- destructive-change-reviewed: the ONLY DELETE removes rate-limit minute buckets
+-- older than 48 hours from a NEW private table; no existing BLINK records are
+-- touched. Deletion is intentional expiry of transient abuse-throttle counters.
+-- rollback-plan: first keep BLINK_SITE_ANALYTICS_ENABLED unset/false and the
+-- website ENABLED=false, then deploy a separately reviewed migration to revoke
+-- the writer and remove the two newly created functions/tables if necessary.
+-- No older user data, orders, accounts or messages require restoration.
+
+
 create table if not exists public.blink_site_metric_daily (
     day date not null,
     page text not null check (page in ('home', 'about', 'features', 'download', 'faq', 'privacy')),
