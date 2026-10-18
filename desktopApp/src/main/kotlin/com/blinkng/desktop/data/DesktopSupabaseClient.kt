@@ -1,6 +1,8 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.blinkng.shared.discovery.BlinkUniversitySearch
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -77,11 +79,18 @@ class DesktopSupabaseClient(
         password: String,
         username: String,
         fullName: String,
+        university: String,
+        accountType: String,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
         require(cleanEmail.contains("@")) { "Enter a valid email address." }
         require(cleanUsername.length >= 3) { "Username must be at least 3 characters." }
+        val canonicalUniversity = BlinkUniversitySearch.canonical(university)
+            ?: throw IllegalArgumentException("Select a university from the BLINK directory.")
+        require(BlinkCampusAccountType.fromWire(accountType) != null) {
+            "Choose Student, Aspirant, Graduate or Staff."
+        }
         require(password.length >= 8 && password.any(Char::isUpperCase) && password.any(Char::isLowerCase) && password.any(Char::isDigit)) {
             "Use at least 8 characters with uppercase, lowercase and a number."
         }
@@ -93,13 +102,30 @@ class DesktopSupabaseClient(
                 JSONObject()
                     .put("username", cleanUsername)
                     .put("full_name", fullName.trim().ifBlank { cleanUsername })
-                    .put("name", fullName.trim().ifBlank { cleanUsername }),
+                    .put("name", fullName.trim().ifBlank { cleanUsername })
+                    .put("university", canonicalUniversity)
+                    .put("account_type", accountType),
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
             throw IllegalStateException("Account created. Check your email to confirm it, then sign in.")
         }
-        saveAuthResponse(response, cleanEmail)
+        val enrolled = saveAuthResponse(response, cleanEmail)
+        // Auth triggers may insert a profile before reading the signup metadata.
+        // Save the canonical institution explicitly under the current user's RLS.
+        patch(
+            "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}",
+            JSONObject().put("university", canonicalUniversity).put("account_type", accountType),
+        )
+        val verified = getArray(
+            "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}&select=id,university,account_type&limit=1"
+        ).optJSONObject(0)
+        check(verified != null &&
+            verified.optString("university") == canonicalUniversity &&
+            verified.optString("account_type") == accountType) {
+            "Account created, but university details were not saved. Sign in and complete your profile."
+        }
+        enrolled
     }
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {
@@ -211,7 +237,7 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -322,7 +348,7 @@ class DesktopSupabaseClient(
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
         val encodedPattern = encode("*$clean*")
         val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=30",
+            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=30",
         )
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
@@ -769,6 +795,7 @@ class DesktopSupabaseClient(
         username = row.optString("username").ifBlank { row.optString("handle") },
         avatarUrl = row.optNullableString("avatar_url"),
         university = row.optNullableString("university"),
+        accountType = row.optNullableString("account_type"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),
         bio = row.optNullableString("bio"),
