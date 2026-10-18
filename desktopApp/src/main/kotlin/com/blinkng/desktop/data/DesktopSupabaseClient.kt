@@ -110,7 +110,22 @@ class DesktopSupabaseClient(
         if (response.optString("access_token").isBlank()) {
             throw IllegalStateException("Account created. Check your email to confirm it, then sign in.")
         }
-        saveAuthResponse(response, cleanEmail)
+        val enrolled = saveAuthResponse(response, cleanEmail)
+        // Auth triggers may insert a profile before reading the signup metadata.
+        // Save the canonical institution explicitly under the current user's RLS.
+        patch(
+            "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}",
+            JSONObject().put("university", canonicalUniversity).put("account_type", accountType),
+        )
+        val verified = getArray(
+            "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}&select=id,university,account_type&limit=1"
+        ).optJSONObject(0)
+        check(verified != null &&
+            verified.optString("university") == canonicalUniversity &&
+            verified.optString("account_type") == accountType) {
+            "Account created, but university details were not saved. Sign in and complete your profile."
+        }
+        enrolled
     }
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {
