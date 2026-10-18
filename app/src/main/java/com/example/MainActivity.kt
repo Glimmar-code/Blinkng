@@ -33,6 +33,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
+import com.example.data.models.VerificationBadge
+import com.example.data.supabase.BlinkFlutterwaveCheckoutService
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -64,6 +66,53 @@ class MainActivity : ComponentActivity() {
     private lateinit var rewardedAdManager: BlinkRewardedAdManager
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
+    private val verificationCheckout by lazy { BlinkFlutterwaveCheckoutService() }
+    private val flutterwavePrefs by lazy { getSharedPreferences("blink_flutterwave_checkout", MODE_PRIVATE) }
+    private var pendingVerificationPaymentRef by mutableStateOf<String?>(null)
+    private var verificationCheckoutBusy by mutableStateOf(false)
+
+    private fun openVerificationCheckout(tier: VerificationBadge) {
+        if (verificationCheckoutBusy || tier == VerificationBadge.NONE) return
+        verificationCheckoutBusy = true
+        lifecycleScope.launch {
+            try {
+                val checkout = verificationCheckout.createVerificationCheckout(tier.name)
+                pendingVerificationPaymentRef = checkout.reference
+                flutterwavePrefs.edit().putString("verification_payment_ref", checkout.reference).apply()
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                viewModel.showToast("Complete your payment, then return to BLINK to check its status.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to open secure checkout.")
+            } finally {
+                verificationCheckoutBusy = false
+            }
+        }
+    }
+
+    private fun confirmVerificationPayment() {
+        val reference = pendingVerificationPaymentRef ?: return
+        if (verificationCheckoutBusy) return
+        verificationCheckoutBusy = true
+        lifecycleScope.launch {
+            try {
+                val paid = verificationCheckout.confirmPayment(reference)
+                if (paid) {
+                    flutterwavePrefs.edit().remove("verification_payment_ref").apply()
+                    pendingVerificationPaymentRef = null
+                    viewModel.openGetVerified(false)
+                    viewModel.fetchSupabaseData()
+                    viewModel.showToast("Payment verified. Your verification has been updated.")
+                } else {
+                    viewModel.showToast("Payment is still pending. If you've paid, try checking again shortly.")
+                }
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to confirm payment yet.")
+            } finally {
+                verificationCheckoutBusy = false
+            }
+        }
+    }
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -290,6 +339,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        pendingVerificationPaymentRef = flutterwavePrefs.getString("verification_payment_ref", null)
         super.onCreate(savedInstanceState)
         rewardedAdManager = BlinkRewardedAdManager(
             activity = this,
@@ -1403,9 +1453,10 @@ fun MainAppContent(
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
-                onUpgrade = { tier ->
-                    viewModel.applyVerification(tier)
-                }
+                onUpgrade = { tier -> openVerificationCheckout(tier) },
+                pendingCashPayment = pendingVerificationPaymentRef != null,
+                cashCheckoutBusy = verificationCheckoutBusy,
+                onCheckCashPayment = { confirmVerificationPayment() }
             )
         }
 
