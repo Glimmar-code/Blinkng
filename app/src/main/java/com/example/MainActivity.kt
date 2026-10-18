@@ -769,10 +769,15 @@ class MainActivity : ComponentActivity() {
                         if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
                                 release = newRelease,
-                                downloadState = websiteDownloadState,
-                                onUpdateNow = {
+                                downloadState = when (val downloaded = websiteDownloadState) {
+                                    is WebsiteApkDownloadCoordinator.State.Ready ->
+                                        if (downloaded.release == newRelease) downloaded
+                                        else WebsiteApkDownloadCoordinator.State.Idle
+                                    else -> downloaded
+                                },
+                                onUpdateNow = { unmeteredOnly ->
                                     websiteApkDownloadCoordinator.start(
-                                        lifecycleScope, newRelease, BuildConfig.VERSION_CODE,
+                                        newRelease, BuildConfig.VERSION_CODE, unmeteredOnly,
                                     )
                                 },
                                 onInstall = {
@@ -781,9 +786,8 @@ class MainActivity : ComponentActivity() {
                                             viewModel.showToast("Android could not open the installer. Use the official BLINK website.")
                                         }
                                 },
-                                onCancelDownload = {
-                                    websiteApkDownloadCoordinator.cancel()
-                                    websiteUpdateDismissed = true
+                                onPauseDownload = {
+                                    websiteApkDownloadCoordinator.pause()
                                 },
                                 onOpenWebsite = {
                                     websiteUpdateDismissed = true
