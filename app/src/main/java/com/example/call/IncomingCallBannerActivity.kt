@@ -124,6 +124,7 @@ class IncomingCallBannerActivity : ComponentActivity() {
     private var conversationId: String = ""
     private var ringtone: Ringtone? = null
     private var ringtoneLoopJob: Job? = null
+    private var ringTimeoutJob: Job? = null
     private var vibrator: Vibrator? = null
     private var actionInProgress = false
 
@@ -138,6 +139,12 @@ class IncomingCallBannerActivity : ComponentActivity() {
         activeInstance = this
         activeCallId = callId
 
+        renderBanner()
+        startRinging()
+        scheduleRingingTimeout()
+    }
+
+    private fun renderBanner() {
         setContent {
             BlinkTheme {
                 IncomingCallBanner(
@@ -149,16 +156,25 @@ class IncomingCallBannerActivity : ComponentActivity() {
                 )
             }
         }
+    }
 
-        startRinging()
-        lifecycleScope.launch {
+    private fun scheduleRingingTimeout() {
+        ringTimeoutJob?.cancel()
+        val expectedCallId = callId
+        ringTimeoutJob = lifecycleScope.launch {
             delay(RING_TIMEOUT_MS)
-            if (!isFinishing && !actionInProgress) {
-                val expired = CallRepository().expireCall(callId).getOrNull()
+            if (!isFinishing && !actionInProgress && callId == expectedCallId) {
+                val expired = CallRepository().expireCall(expectedCallId).getOrNull()
                 if (expired?.status == CallStatus.MISSED) {
+                    CallNotificationLedger.markUpdated(
+                        this@IncomingCallBannerActivity,
+                        CallRepository().currentUserId(),
+                        expectedCallId,
+                        "missed"
+                    )
                     IncomingCallNotification.showMissed(
                         context = this@IncomingCallBannerActivity,
-                        callId = callId,
+                        callId = expectedCallId,
                         callType = callType,
                         peerName = peerName
                     )
@@ -181,11 +197,15 @@ class IncomingCallBannerActivity : ComponentActivity() {
             stopRinging()
             readIntent(intent)
             activeCallId = callId
+            actionInProgress = false
+            renderBanner()
             startRinging()
+            scheduleRingingTimeout()
         }
     }
 
     override fun onDestroy() {
+        ringTimeoutJob?.cancel()
         stopRinging()
         if (activeInstance === this) activeInstance = null
         if (activeCallId == callId) activeCallId = null
