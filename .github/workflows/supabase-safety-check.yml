@@ -41,6 +41,14 @@ jobs:
       - name: Validate migration SQL syntax
         run: python3 scripts/check_supabase_sql_syntax.py
 
+      - name: Set up Node for Paystack integrity tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify Paystack fulfilment safeguards
+        run: node --test scripts/test_paystack_integrity.mjs
+
       - name: Detect complete local schema baseline
         id: baseline
         shell: bash
