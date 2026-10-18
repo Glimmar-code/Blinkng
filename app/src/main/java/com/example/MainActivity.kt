@@ -339,8 +339,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        pendingVerificationPaymentRef = flutterwavePrefs.getString("verification_payment_ref", null)
         super.onCreate(savedInstanceState)
+        pendingVerificationPaymentRef = flutterwavePrefs.getString("verification_payment_ref", null)
         rewardedAdManager = BlinkRewardedAdManager(
             activity = this,
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
