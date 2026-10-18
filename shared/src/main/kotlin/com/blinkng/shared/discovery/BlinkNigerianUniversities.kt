@@ -405,7 +405,7 @@ object BlinkNigerianUniversities {
     private fun stateOf(name: String): String = knownStates[name] ?: stateNames
         .sortedByDescending { it.length }
         .firstOrNull { state ->
-            Regex("(?i)(^|[ ,])" + Regex.escape(state) + "(,|\\\\s+State|\\\\s*$)").containsMatchIn(name)
+            Regex("(?i)(^|[ ,])" + Regex.escape(state) + "(,|\\s+State|\\s*$)").containsMatchIn(name)
         }.orEmpty()
 
     val records: List<University> by lazy {
