@@ -231,14 +231,20 @@ class CallActivity : ComponentActivity() {
 
         val active = call
         if (isFinishing && active != null && !active.status.isTerminal && !ending.get()) {
+            val app = applicationContext
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                runCatching {
-                    val ended = repository.endCall(active.id, "ended").getOrNull()
-                    ended?.status?.wireValue?.let { repository.dispatchPush(active.id, it) }
+                val ended = repository.endCall(active.id, "ended").getOrNull()
+                if (ended != null) {
+                    repository.dispatchPush(active.id, ended.status.wireValue)
+                } else {
+                    CallEndRetryWorker.schedule(
+                        app, active.id, repository.currentUserId(),
+                        CallEndRecoveryPolicy.Action.END
+                    )
                 }
             }
         }
-        stopService(Intent(this, BlinkCallForegroundService::class.java))
+        stopForegroundCallIfOwned(active?.id)
         super.onDestroy()
     }
 
@@ -629,7 +635,20 @@ class CallActivity : ComponentActivity() {
             callType = callType,
             status = statusText
         )
-        ContextCompat.startForegroundService(this, serviceIntent)
+        runCatching { ContextCompat.startForegroundService(this, serviceIntent) }
+            .onFailure {
+                // Android 12+ can reject a foreground-service start depending
+                // on app visibility, permission or device settings. Do not
+                // crash and lose the call media that is already connected.
+                Log.w("BlinkCalls", "Call foreground service unavailable", it)
+                errorText = "Call may pause if BLINK is put in the background."
+            }
+    }
+
+    private fun stopForegroundCallIfOwned(callId: String?) {
+        if (callId != null && BlinkCallForegroundService.activeCallId == callId) {
+            stopService(Intent(this, BlinkCallForegroundService::class.java))
+        }
     }
 
     private fun declineIncoming() {
@@ -638,9 +657,16 @@ class CallActivity : ComponentActivity() {
         endingAction = true
         statusText = "Declining…"
         lifecycleScope.launch {
-            repository.declineCall(active.id)
-            repository.dispatchPush(active.id, "declined")
-            finishCallUi(CallStatus.DECLINED)
+            val outcome = repository.declineCall(active.id).getOrNull()
+            if (outcome != null) {
+                repository.dispatchPush(active.id, outcome.status.wireValue)
+            } else {
+                CallEndRetryWorker.schedule(
+                    this@CallActivity, active.id, repository.currentUserId(),
+                    CallEndRecoveryPolicy.Action.DECLINE
+                )
+            }
+            finishCallUi(outcome?.status ?: CallStatus.DECLINED)
         }
     }
 
@@ -651,8 +677,14 @@ class CallActivity : ComponentActivity() {
         statusText = "Ending call…"
         lifecycleScope.launch {
             val ended = repository.endCall(active.id, "ended").getOrNull()
-            val event = ended?.status?.wireValue ?: "ended"
-            repository.dispatchPush(active.id, event)
+            if (ended != null) {
+                repository.dispatchPush(active.id, ended.status.wireValue)
+            } else {
+                CallEndRetryWorker.schedule(
+                    this@CallActivity, active.id, repository.currentUserId(),
+                    CallEndRecoveryPolicy.Action.END
+                )
+            }
             finishCallUi(ended?.status ?: CallStatus.ENDED)
         }
     }
@@ -662,7 +694,14 @@ class CallActivity : ComponentActivity() {
         if (!ending.compareAndSet(false, true)) return
         endingAction = true
         val ended = repository.endCall(active.id, "failed").getOrNull()
-        repository.dispatchPush(active.id, "failed")
+        if (ended != null) {
+            repository.dispatchPush(active.id, ended.status.wireValue)
+        } else {
+            CallEndRetryWorker.schedule(
+                this, active.id, repository.currentUserId(),
+                CallEndRecoveryPolicy.Action.FAIL
+            )
+        }
         errorText = if (reason == "connection_timeout") "The call could not connect." else errorText
         finishCallUi(ended?.status ?: CallStatus.FAILED, delayMillis = 1_200L)
     }
@@ -683,7 +722,7 @@ class CallActivity : ComponentActivity() {
         statusText = terminalLabel(status)
         incomingRinging = false
         call?.id?.let { IncomingCallNotification.cancel(this, it) }
-        stopService(Intent(this, BlinkCallForegroundService::class.java))
+        stopForegroundCallIfOwned(call?.id)
         delay(delayMillis)
         finish()
     }
