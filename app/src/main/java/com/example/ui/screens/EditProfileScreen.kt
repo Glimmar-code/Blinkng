@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ContactField
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
 import com.example.data.models.UserProfile
 import com.example.data.repository.ProfileRepository
 import com.example.data.supabase.ProfileMediaType
@@ -1731,7 +1732,7 @@ private fun ProfileField(
 }
 
 @Composable
-private fun UniversityPicker(
+fun UniversityPicker(
     selected: String,
     onClick: () -> Unit
 ) {
@@ -1774,7 +1775,7 @@ private fun UniversityPicker(
                 contentDescription =
                     null,
                 tint =
-                    BlinkPink
+                    MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(
@@ -1823,35 +1824,17 @@ private fun UniversityPicker(
 }
 
 @Composable
-private fun UniversityPickerDialog(
+fun UniversityPickerDialog(
     selected: String,
     onDismiss: () -> Unit,
     onSelected: (String) -> Unit
 ) {
 
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/EditProfileScreen.kt:query:1")
+    var query by rememberSaveable { mutableStateOf("") }
 
-    val universities =
-        remember(
-            query
-        ) {
-
-            if (
-                query.isBlank()
-            ) {
-                NigerianUniversities.all
-            } else {
-                NigerianUniversities
-                    .all
-                    .filter {
-                        it.contains(
-                            query,
-                            ignoreCase =
-                                true
-                        )
-                    }
-            }
-        }
+    val universities = remember(query) {
+        NigerianUniversitySearch.search(query, limit = NigerianUniversities.all.size)
+    }
 
     AlertDialog(
         onDismissRequest =
@@ -1954,10 +1937,7 @@ private fun UniversityPickerDialog(
                                 selected ==
                                     university
                             )
-                                BlinkPink.copy(
-                                    alpha =
-                                        0.09f
-                                )
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                             else
                                 Color.Transparent
                     ) {
@@ -1986,7 +1966,7 @@ private fun UniversityPickerDialog(
                                         selected ==
                                             university
                                     )
-                                        BlinkPink
+                                        MaterialTheme.colorScheme.onSurface
                                     else
                                         MaterialTheme
                                             .colorScheme
@@ -2057,7 +2037,7 @@ private fun CoverEditor(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            BlinkPink,
+                            MaterialTheme.colorScheme.onSurface,
                             Color(
                                 0xFF7C3AED
                             )
@@ -2173,7 +2153,7 @@ private fun AvatarEditor(
                             )
                             .border(
                                 2.dp,
-                                BlinkPink,
+                                MaterialTheme.colorScheme.onSurface,
                                 CircleShape
                             )
                 )
@@ -2191,7 +2171,7 @@ private fun AvatarEditor(
                             32.dp
                         )
                         .background(
-                            BlinkPink,
+                            MaterialTheme.colorScheme.onSurface,
                             CircleShape
                         )
             ) {
