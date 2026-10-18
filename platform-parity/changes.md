@@ -1,3 +1,11 @@
+## 2026-10-18 — Feature 3: privacy-first friend discovery (Testlab candidate)
+
+- **Shared:** introduced `BlinkFriendDiscoveryPolicy` for deterministic matching of the authenticated user's *already visible* university profiles, bounded suggestions, and uniform invite message. Automated address-book matching remains OFF; uploaded phone number hashes are **not** safe anonymous identifiers.
+- **Android:** one-time account-scoped Find Friends onboarding step after welcome; available from Menu and Connect. Shows live campus suggestions from existing profile data with real authenticated Follow, and Android's one-contact `ACTION_PICK` selector that opens an editable SMS invitation. The app does not request `READ_CONTACTS`, scan the address book, store contacts, or automatically send texts. Share Link via OS chooser is supported as a fallback. No fake matching or invented users.
+- **Windows:** shared first-login step routes to Connect, which offers real Search and Copy Invite. Native Android-only contact picking is not meaningful on Windows; Windows users can manually share the copied invite using their preferred app.
+- **Rollout limits:** Finding registered friends *by phone number* requires separately designed verified phone enrollment, mutual opt-in discoverability, anti-enumeration/rate limits, secure matching and deletion controls in a staging-tested Supabase service. Not built or claimed here. University suggestions do not assert a personal acquaintance.
+- **Gate:** build/test Android and Windows, test Android SMS chooser and permissions on devices, account switching, first-login dismissal and profile follow RLS. Do not merge to main or activate production backend before real tests pass.
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
