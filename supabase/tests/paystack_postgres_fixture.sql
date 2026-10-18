@@ -1,0 +1,66 @@
+-- Disposable CI PostgreSQL fixture for BLINK Paystack migration integration.
+-- Never apply this fixture to any hosted Supabase database.
+create schema auth;
+create schema private;
+create role authenticated nologin;
+create role anon nologin;
+create role service_role nologin bypassrls;
+grant usage on schema public to authenticated, anon, service_role;
+grant usage on schema private to service_role;
+grant usage on schema auth to authenticated, service_role;
+create or replace function auth.uid() returns uuid language sql stable as
+$$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+grant execute on function auth.uid() to authenticated, service_role;
+
+create type public.verification_tier_enum as enum ('None','Standard','Gold');
+create table public.profiles (
+ id uuid primary key,
+ verification_badge text not null default 'NONE',
+ verification_expires_at timestamptz,
+ verification_tier public.verification_tier_enum not null default 'None',
+ is_verified boolean not null default false,
+ verified_at timestamptz,
+ updated_at timestamptz not null default now()
+);
+create table public.follows (follower_id uuid not null, following_id uuid not null);
+create table public.blink_coin_purchase_orders (
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid not null references public.profiles(id),
+ pack_id text not null,
+ provider text not null,
+ amount_ngn integer not null,
+ coin_amount integer not null,
+ bonus_coins integer not null,
+ status text not null default 'pending',
+ provider_reference text
+);
+create table public.blink_coin_test_credits (user_id uuid primary key, credited integer not null default 0);
+create table private.blink_economy_config (
+ key text primary key,
+ int_value bigint,
+ bool_value boolean,
+ json_value jsonb
+);
+insert into private.blink_economy_config(key,bool_value) values ('cash_checkout_enabled',true);
+insert into private.blink_economy_config(key,int_value) values ('blue_verification_cash_ngn',800);
+insert into private.blink_economy_config(key,json_value) values
+ ('coin_packs', '[{"id":"coins_100","price_ngn":100,"coins":100},{"id":"coins_500","price_ngn":500,"coins":550}]'::jsonb);
+create or replace function public.fulfill_blink_coin_purchase_order(
+ p_order_id uuid, p_provider_reference text
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_order public.blink_coin_purchase_orders%rowtype;
+begin
+ select * into v_order from public.blink_coin_purchase_orders where id=p_order_id for update;
+ if not found then raise exception 'COIN_ORDER_MISSING'; end if;
+ if v_order.status='fulfilled' then return jsonb_build_object('already_fulfilled',true); end if;
+ insert into public.blink_coin_test_credits(user_id,credited)
+ values(v_order.user_id,v_order.coin_amount)
+ on conflict(user_id) do update set credited=public.blink_coin_test_credits.credited + excluded.credited;
+ update public.blink_coin_purchase_orders set status='fulfilled',provider_reference=p_provider_reference
+ where id=p_order_id;
+ return jsonb_build_object('already_fulfilled',false);
+end $$;
+grant all on all tables in schema public to service_role;
+grant all on all tables in schema private to service_role;
+grant execute on all functions in schema public to service_role;
+insert into public.profiles(id) values('11111111-1111-4111-8111-111111111111');
