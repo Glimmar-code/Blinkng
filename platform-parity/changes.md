@@ -4,6 +4,12 @@
 - Owner may view private insights. Per-story reposting needs affirmative author consent and a protected backend RPC. Media3 plays video stories.
 - Supabase migration `20261018050000_story_insights_and_safe_reposts.sql` is source-only and MUST be tested for column compatibility, RLS and two-account visibility before release. New features are NOT yet available in production. Verification check runs on latest Testlab code, retaining campus signup and Earning.
 
+## 2026-10-18 — Verification plan pricing integrated on current Testlab
+
+- Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
+- Cash checkout and automatic renew remain OFF until Paystack server-side signed initialization, verified webhook fulfillment, customer consent and provider mandate cancellation are fully tested. Legacy 3,000-Coin Blue purchase is a separate 30-day option.
+- Migrated Supabase subscription ledger and read-only quote RPC are committed for staged validation but **not deployed**. Do not publish cash-subscription UI claiming checkout works.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
