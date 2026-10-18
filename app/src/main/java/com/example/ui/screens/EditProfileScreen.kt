@@ -1843,191 +1843,137 @@ fun UniversityPicker(
     }
 }
 
+
 @Composable
 fun UniversityPickerDialog(
     selected: String,
     onDismiss: () -> Unit,
     onSelected: (String) -> Unit
 ) {
-
     var query by rememberSaveable { mutableStateOf("") }
-
-    val universities = remember(query) {
-        NigerianUniversitySearch.search(query, limit = NigerianUniversities.all.size)
+    var askingForMissing by rememberSaveable { mutableStateOf(false) }
+    var suggestedName by rememberSaveable { mutableStateOf("") }
+    var requestFeedback by remember { mutableStateOf<String?>(null) }
+    var savingRequest by remember { mutableStateOf(false) }
+    val coroutine = rememberCoroutineScope()
+    val available = remember(query) {
+        com.blinkng.shared.discovery.BlinkUniversitySearch.searchRecords(query, 300)
     }
+    val selectedId = com.blinkng.shared.discovery.BlinkUniversitySearch.idOf(selected)
 
     AlertDialog(
-        onDismissRequest =
-            onDismiss,
-
+        onDismissRequest = onDismiss,
         title = {
-
-            Column {
-
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Select university", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold)
                 Text(
-                    "Select university",
-                    fontWeight =
-                        FontWeight.Black
+                    "${NigerianUniversities.all.size} listed institutions · Based on NUC directory review",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
                 )
-
-                Text(
-                    "${NigerianUniversities.all.size} institutions",
-                    fontSize =
-                        9.sp,
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            8.dp
-                        )
-                )
-
                 OutlinedTextField(
-                    value =
-                        query,
-                    onValueChange = {
-                        query =
-                            it
-                    },
-                    singleLine =
-                        true,
-                    leadingIcon = {
-
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription =
-                                null
-                        )
-                    },
-                    placeholder = {
-
-                        Text(
-                            "Search..."
-                        )
-                    },
-                    modifier =
-                        Modifier.fillMaxWidth()
+                    value = query,
+                    onValueChange = { query = it },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    placeholder = { Text("Search FUTA, UNILAG, school name...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("nigerian_university_search"),
                 )
             }
         },
-
         text = {
-
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(
-                            max = 470.dp
-                        ),
-                verticalArrangement =
-                    Arrangement.spacedBy(
-                        2.dp
-                    )
-            ) {
-
-                items(
-                    items =
-                        universities,
-                    key = {
-                        it
-                    }
-                ) { university ->
-
-                    Surface(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onSelected(
-                                        university
-                                    )
-                                },
-                        shape =
-                            RoundedCornerShape(
-                                10.dp
-                            ),
-                        color =
-                            if (
-                                selected ==
-                                    university
-                            )
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                            else
-                                Color.Transparent
-                    ) {
-
-                        Row(
-                            modifier =
-                                Modifier.padding(
-                                    10.dp
-                                ),
-                            verticalAlignment =
-                                Alignment.CenterVertically
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    items(available, key = { it.id }) { university ->
+                        val checked = selectedId == university.id
+                        Surface(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onSelected(university.name) }
+                                .testTag("university_${university.id}"),
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (checked) MaterialTheme.colorScheme.onSurface.copy(alpha = .09f)
+                                else MaterialTheme.colorScheme.surface,
+                            border = if (checked) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
+                                else null,
                         ) {
-
-                            Icon(
-                                if (
-                                    selected ==
-                                        university
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    if (checked) Icons.Default.CheckCircle else Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(18.dp),
                                 )
-                                    Icons.Default.CheckCircle
-                                else
-                                    Icons.Default.School,
-                                contentDescription =
-                                    null,
-                                tint =
-                                    if (
-                                        selected ==
-                                            university
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(university.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        listOfNotNull(
+                                            university.ownership.name.lowercase()
+                                                .replaceFirstChar { it.titlecase() },
+                                            university.state.takeIf { it.isNotBlank() },
+                                        ).joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                        MaterialTheme.colorScheme.onSurface
-                                    else
-                                        MaterialTheme
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                modifier =
-                                    Modifier.size(
-                                        17.dp
-                                    )
-                            )
-
-                            Spacer(
-                                modifier =
-                                    Modifier.width(
-                                        8.dp
-                                    )
-                            )
-
-                            Text(
-                                university,
-                                fontSize =
-                                    10.5.sp
-                            )
+                                }
+                            }
                         }
+                    }
+                }
+                if (available.isEmpty()) {
+                    Text("No matching listed institution. Try another name or abbreviation.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(
+                    onClick = { askingForMissing = !askingForMissing; requestFeedback = null },
+                ) { Text(if (askingForMissing) "Hide request" else "Can't find your university?") }
+                if (askingForMissing) {
+                    Text("Requests are reviewed against the NUC list. A request does not create a university.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = suggestedName,
+                        onValueChange = { suggestedName = it.take(120) },
+                        label = { Text("Full official institution name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Button(
+                        onClick = {
+                            savingRequest = true
+                            coroutine.launch {
+                                val result = runCatching {
+                                    com.example.data.supabase.SupabaseService()
+                                        .requestMissingUniversity(suggestedName)
+                                }
+                                requestFeedback = result.getOrElse {
+                                    "Couldn't submit. Sign in to request a school, or contact BLINK support."
+                                }
+                                savingRequest = false
+                            }
+                        },
+                        enabled = !savingRequest && suggestedName.trim().length in 8..120,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (savingRequest) "Submitting..." else "Submit for review") }
+                    requestFeedback?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         },
-
         confirmButton = {},
-
-        dismissButton = {
-
-            TextButton(
-                onClick =
-                    onDismiss
-            ) {
-                Text(
-                    "Close"
-                )
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurface,
     )
 }
 
