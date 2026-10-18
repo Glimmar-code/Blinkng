@@ -108,7 +108,8 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                     messageText = BlinkNotificationPresentation.body(row.optString("content"), "New message"),
                     senderAvatar = row.optString("sender_avatar"),
                     conversationId = row.optString("conversation_id"),
-                    messageId = row.optString("message_id")
+                    messageId = row.optString("message_id"),
+                    expectedAccount = uid,
                 )
             }
         }
