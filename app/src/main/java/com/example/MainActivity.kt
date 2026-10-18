@@ -578,6 +578,16 @@ class MainActivity : ComponentActivity() {
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
                                         onFindFriends = { showFindFriends = true },
+                                        onBuyCoins = { showCoinPackPicker = true },
+                                        onStartPaystack = ::startPaystackCheckout,
+                                        onCheckPaystack = ::checkPendingPaystackPayment,
+                                        onDiscardPaystack = ::clearPendingPaystackPayment,
+                                        showCoinPackPicker = showCoinPackPicker,
+                                        onDismissCoinPackPicker = { showCoinPackPicker = false },
+                                        showPendingPaystackDialog = showPendingPaystackDialog,
+                                        onDismissPendingPaystack = { showPendingPaystackDialog = false },
+                                        pendingCashPayment = pendingPaystackReference != null,
+                                        paystackCheckoutBusy = paystackCheckoutBusy,
                                     )
                                 }
                             }
@@ -681,6 +691,16 @@ fun MainAppContent(
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
     onFindFriends: () -> Unit,
+    onBuyCoins: () -> Unit,
+    onStartPaystack: (String, String?) -> Unit,
+    onCheckPaystack: () -> Unit,
+    onDiscardPaystack: () -> Unit,
+    showCoinPackPicker: Boolean,
+    onDismissCoinPackPicker: () -> Unit,
+    showPendingPaystackDialog: Boolean,
+    onDismissPendingPaystack: () -> Unit,
+    pendingCashPayment: Boolean,
+    paystackCheckoutBusy: Boolean,
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1285,7 +1305,7 @@ fun MainAppContent(
                     economyPolicy = uiState.economyPolicy,
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
-                    onBuyBlinkCoins = { showCoinPackPicker = true },
+                    onBuyBlinkCoins = onBuyCoins,
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1462,16 +1482,16 @@ fun MainAppContent(
                 isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
                 onWatchAdForCoins = onWatchAdForCoins,
-                onBuyBlinkCoins = { showCoinPackPicker = true },
+                onBuyBlinkCoins = onBuyCoins,
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
-                    startPaystackCheckout(if (tier == VerificationBadge.GOLD) "GOLD_VERIFICATION" else "BLUE_VERIFICATION")
+                    onStartPaystack(if (tier == VerificationBadge.GOLD) "GOLD_VERIFICATION" else "BLUE_VERIFICATION")
                 },
-                pendingCashPayment = pendingPaystackReference != null,
+                pendingCashPayment = pendingCashPayment,
                 cashCheckoutBusy = paystackCheckoutBusy,
-                onCheckCashPayment = { checkPendingPaystackPayment() }
+                onCheckCashPayment = { onCheckPaystack() }
             )
         }
 
@@ -1585,7 +1605,7 @@ fun MainAppContent(
         // Server-authoritative cash checkout for Blink Coins.
         if (showCoinPackPicker) {
             AlertDialog(
-                onDismissRequest = { showCoinPackPicker = false },
+                onDismissRequest = { onDismissCoinPackPicker() },
                 title = { Text("Buy Blink Coins") },
                 text = {
                     Column {
@@ -1594,8 +1614,8 @@ fun MainAppContent(
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             TextButton(
                                 onClick = {
-                                    showCoinPackPicker = false
-                                    startPaystackCheckout("COIN_PACK", pack.id)
+                                    onDismissCoinPackPicker()
+                                    onStartPaystack("COIN_PACK", pack.id)
                                 },
                                 enabled = uiState.economyPolicy.cashCheckoutEnabled && !paystackCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth()
@@ -1606,24 +1626,24 @@ fun MainAppContent(
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { showCoinPackPicker = false }) { Text("Close") } }
+                confirmButton = { TextButton(onClick = { onDismissCoinPackPicker() }) { Text("Close") } }
             )
         }
-        if (showPendingPaystackDialog && pendingPaystackReference != null) {
+        if (showPendingPaystackDialog && pendingCashPayment) {
             AlertDialog(
-                onDismissRequest = { showPendingPaystackDialog = false },
+                onDismissRequest = { onDismissPendingPaystack() },
                 title = { Text("Check your Paystack payment") },
                 text = {
                     Text("After paying, tap Check payment. BLINK only activates purchases confirmed by Paystack.")
                 },
                 confirmButton = {
                     TextButton(enabled = !paystackCheckoutBusy,
-                        onClick = { checkPendingPaystackPayment() }) { Text("Check payment") }
+                        onClick = { onCheckPaystack() }) { Text("Check payment") }
                 },
                 dismissButton = {
                     Row {
-                        TextButton(onClick = { showPendingPaystackDialog = false }) { Text("Later") }
-                        TextButton(onClick = { clearPendingPaystackPayment() }) { Text("Discard pending") }
+                        TextButton(onClick = { onDismissPendingPaystack() }) { Text("Later") }
+                        TextButton(onClick = { onDiscardPaystack() }) { Text("Discard pending") }
                     }
                 }
             )
