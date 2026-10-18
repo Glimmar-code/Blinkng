@@ -189,7 +189,7 @@ class CallRepository {
                     // Never bypass explicit authorization failures. Only use
                     // the compatibility path when the new endpoint is missing
                     // or not configured in the current Supabase environment.
-                    if (httpError?.code !in setOf(404, 503)) throw error
+                    if (httpError?.statusCode !in setOf(404, 503)) throw error
                     fetchTurnConfiguration("call-turn-credentials", callId).getOrThrow()
                 }
                 CallIceConfigParser.parse(servers).flatMap { item ->
