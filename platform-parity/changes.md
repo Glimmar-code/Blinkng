@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 8 university directory re-stacked atop current Feature 5 candidate
+
+- Fresh integration branch depends on clean Feature 5 PR #378, itself based on Testlab with Feature 4 Profile Visitors included. Removes stale parent branch conflicts from earlier directory PR #376.
+- Carries canonical university IDs, acronym searches including FUTA, common school selector, normalized campus leaderboard/Connect and moderated request schema; no production migration has been applied.
+- Reviewed NUC directory snapshot is not a guaranteed up-to-date catalogue or proof of individual student status. Requires SQL staging test, Android/Windows CI, alias and moderation verification before main release.
+
 ## 2026-10-18 — Feature 5 registration re-integrated after Profile Visitors merger
 
 - This fresh integration branch is based on Testlab **after Feature 4** was merged. It preserves notifications, Find Friends, Earning and owner-only Profile Visitors, unlike the superseded Feature 5 PR #375 base.
