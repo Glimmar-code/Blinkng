@@ -1,4 +1,7 @@
-const CACHE='blink-web-v24-discovery-phase2';
+// BLINK Phase 3: predictable offline shell, fresh UI assets, and privacy-safe caching.
+// Never store user-specific routes, query-string links, Supabase data or API responses.
+const CACHE='blink-web-v25-production-safe-cache';
+const CACHE_PREFIX='blink-web-';
 const SHELL=[
   './',
   './index.html',
@@ -16,6 +19,8 @@ const SHELL=[
   './blink-logo-v2.png',
   './manifest.webmanifest'
 ];
+const SHELL_PATHS=new Set(SHELL.map(path=>new URL(path,self.registration.scope).pathname));
+const IMAGE_EXTENSIONS=/\.(?:svg|png|jpg|jpeg|webp|ico)$/i;
 
 self.addEventListener('install',event=>{
   event.waitUntil(
@@ -28,10 +33,22 @@ self.addEventListener('install',event=>{
 self.addEventListener('activate',event=>{
   event.waitUntil(
     caches.keys()
-      .then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key))))
+      .then(keys=>Promise.all(keys.filter(key=>key.startsWith(CACHE_PREFIX)&&key!==CACHE).map(key=>caches.delete(key))))
       .then(()=>self.clients.claim())
   );
 });
+
+const fresh=async (request,event,cache)=>{
+  try{
+    const response=await fetch(request);
+    if(response.ok && response.status===200 && response.type!=='opaque' && !/no-store/i.test(response.headers.get('Cache-Control')||'')){
+      event.waitUntil(cache.put(request,response.clone()).catch(()=>{}));
+    }
+    return response;
+  }catch{
+    return (await cache.match(request))||Response.error();
+  }
+};
 
 self.addEventListener('fetch',event=>{
   const request=event.request;
@@ -40,39 +57,39 @@ self.addEventListener('fetch',event=>{
   const url=new URL(request.url);
   if(url.origin!==self.location.origin)return;
 
+  // Never intercept access tokens, private route queries or authenticated requests.
+  if(request.headers.has('Authorization')||url.search)return;
+
   if(request.mode==='navigate'){
-    event.respondWith(
-      fetch(request)
-        .then(async response=>{
-          if(response&&response.ok){
-            const copy=response.clone();
-            caches.open(CACHE).then(cache=>cache.put(request,copy)).catch(()=>{});
-            return response;
-          }
-          return (await caches.match(request))
-            || (await caches.match('./index.html'))
-            || response
-            || Response.error();
-        })
-        .catch(async()=>{
-          return (await caches.match(request))
-            || (await caches.match('./index.html'))
-            || Response.error();
-        })
-    );
+    event.respondWith((async()=>{
+      try{
+        const response=await fetch(request);
+        if(response.ok||response.status!==404)return response;
+        // GitHub Pages SPA deep links may return a 404; load the static shell
+        // without recording the visited username, route or token in CacheStorage.
+        const cache=await caches.open(CACHE);
+        return (await cache.match('./index.html'))||response;
+      }catch{
+        const cache=await caches.open(CACHE);
+        return (await cache.match('./index.html'))||Response.error();
+      }
+    })());
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then(cached=>{
-      const network=fetch(request).then(response=>{
-        if(response&&response.ok&&response.type!=='opaque'){
-          const copy=response.clone();
-          caches.open(CACHE).then(cache=>cache.put(request,copy)).catch(()=>{});
-        }
-        return response;
-      });
-      return cached||network.catch(()=>Response.error());
-    })
-  );
+  // Only the build's known public assets are allowed into CacheStorage.
+  if(!SHELL_PATHS.has(url.pathname))return;
+  event.respondWith((async()=>{
+    const cache=await caches.open(CACHE);
+    if(IMAGE_EXTENSIONS.test(url.pathname)){
+      const cached=await cache.match(request);
+      if(cached){
+        event.waitUntil(fetch(request).then(response=>{
+          if(response.ok&&response.status===200&&response.type!=='opaque')return cache.put(request,response);
+        }).catch(()=>{}));
+        return cached;
+      }
+    }
+    return fresh(request,event,cache);
+  })());
 });
