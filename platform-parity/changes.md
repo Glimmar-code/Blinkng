@@ -1,3 +1,12 @@
+## 2026-10-18 — Feature 7: transparent Free/Blue/Gold subscriptions (Testlab candidate)
+
+- **Shared:** `BlinkVerificationPlans` is the single Android/Windows price/discount contract. Blue ₦800/mo; Gold ₦2,000/mo; 1m 0%, 3m 10%, 6m 20%, 12m 30%. Totals: Blue ₦800/₦2,160/₦3,840/₦6,720; Gold ₦2,000/₦5,400/₦9,600/₦16,800. Free tier ₦0. Existing one-off 3,000-Blink-Coin Blue verification remains a separate 30-day operation, not a 3/6/12-month cash purchase.
+- **Android:** comparison columns Free/Blue/Gold with benefit matrix, duration selector, explicit total and savings. All cash purchase buttons are disabled until a signed payment checkout and verified billing webhook are present. Auto-renew switch is OFF and disabled, with honest explanations. The app must never silently enroll a user in recurring billing.
+- **Windows:** matching plan comparison, duration quotes, visible OFF/unavailable auto-renew. Existing Blue Coin purchase remains available per its separate economy rules.
+- **Backend schema:** service-write-only future subscription ledger and payment event entries; owner-only status RPC and server-derived quote RPC. No client can create an active subscription or badge by writing a price or status. Provider-reference uniqueness prevents basic duplicate receipt rows. Migration is NOT deployed to production.
+- **Required before cash launch:** provider-signed checkout initiation, verified webhook reconciliation, idempotent settlement, actual subscription activation/expiry, mandate consent records and issuer receipt, renewal reminder emails, failed-payment handling, refund/dispute reconciliation, provider-verified cancel/pause, real user billing history, local tax/legal notices, safeguards for minors, tests on live-like staging, and server-controlled feature flags. Never label an offline payment preview as a purchase.
+- **Gate:** Android unit+lint+APK, Windows build/parity, Supabase safety and disposable staging SQL, pricing/rounding and permission tests. Do not merge to main/publish until gates pass. No credentials or provider mandates are touched here.
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
