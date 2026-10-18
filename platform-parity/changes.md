@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 3: Find Friends integration after passing source-branch CI
+
+- Based on the current Testlab head with the existing notification safety and Menu → Earning changes preserved. Includes account-scoped friend discovery onboarding, Connect and Menu entry, visible same-campus suggestions, real Follow actions, Android one-contact picker and editable SMS, system invite sharing, and Windows manual invite/search parity.
+- Protects contact privacy: no READ_CONTACTS or silent contact upload; no fabricated phone-number matching or referral coin awards. Source PR #347's seven automated checks all passed after the discovery policy test correction. Device testing (SMS chooser, account switching, permissions, invitations) remains a release blocker, not an assertion of completion.
+- Integration branch is staged for CI against Testlab. Do not promote to main until end-to-end checks and device verification succeed.
+
 ## 2026-10-18 — Feature 9: Menu → Earning & wallet history (Testlab candidate)
 
 - **Android Menu:** introduced prominent searchable **Earning** entry under Menu, opening an account-scoped black-and-white, mobile-friendly sheet. It supports authenticated current coin balance, existing daily streak, live daily missions with actual backend-validated claim actions, optional ad flow via existing AdMob claim checks, explicit opt-in invitation sharing and limited owner-only coin transaction history.
