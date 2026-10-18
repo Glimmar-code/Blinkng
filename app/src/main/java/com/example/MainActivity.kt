@@ -650,6 +650,7 @@ fun MainAppContent(
             uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
             uiState.activePostOptionsPost != null -> viewModel.openPostOptions(null)
             uiState.isMenuOpen -> viewModel.openMenu(false)
+            showEarning -> showEarning = false
             uiState.isEditProfileOpen -> viewModel.openEditProfile(false)
             uiState.isBecomeSellerOpen -> viewModel.openBecomeSeller(false)
             uiState.isPostItemOpen -> viewModel.openPostItem(false)
