@@ -68,6 +68,26 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['web/app.js']), ['deploy-web-preview.yml']);
   assert.deepEqual(policy.releaseWorkflows(['README.md']), []);
 });
+test('explicit owner approval must match the current PR head SHA', () => {
+  const owner = {login: 'Glimmar-code'};
+  const fake = {login: 'untrusted-user'};
+  const oldHead = 'c'.repeat(40);
+  assert.match(policy.approvalGate([], head), /missing/);
+  assert.match(policy.approvalGate([{id: 1, user: fake, body: 'BLINK APPROVE ' + head}], head), /missing/);
+  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + oldHead}], head), /missing/);
+  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head + ' extra'}], head), /missing/);
+  assert.equal(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
+});
+
+test('an owner can revoke an approval and reapprove the same exact SHA', () => {
+  const owner = {login: 'Glimmar-code'};
+  const approve = {id: 1, user: owner, body: 'BLINK APPROVE ' + head};
+  const revoke = {id: 2, user: owner, body: 'BLINK REVOKE ' + head};
+  assert.match(policy.approvalGate([revoke, approve], head), /revoked/);
+  assert.equal(policy.approvalGate([revoke, approve, {id: 3, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
+  assert.match(policy.approvalGate([approve], 'not-a-commit-sha'), /Invalid/);
+});
+
 test('CI fails closed on missing, pending, failed or stale checks', () => {
   const required = ['validate','guard'];
   assert.equal(policy.checkGate([check('validate', 'completed', 'success', 1), check('guard', 'completed', 'success', 2)],required,300,main,head), null);
