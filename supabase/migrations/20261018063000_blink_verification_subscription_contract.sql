@@ -93,26 +93,14 @@ begin
   ), '{"status":"none","auto_renew":false}'::jsonb);
 end; $$;
 
--- OFF is always immediately available. This cannot be used to enable billing:
--- enabling requires a separately consented provider mandate and signed webhook.
-create or replace function public.cancel_my_blink_verification_auto_renew()
-returns boolean language plpgsql security definer
-set search_path = public, pg_temp as $$
-declare v_uid uuid := auth.uid(); v_count integer;
-begin
-  if v_uid is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
-  update public.blink_verification_subscriptions
-    set auto_renew = false, next_renewal_at = null, updated_at = now()
-  where user_id = v_uid and auto_renew = true;
-  get diagnostics v_count = row_count;
-  return v_count > 0;
-end; $$;
+-- Provider cancellation is intentionally NOT exposed yet: turning off a
+-- database flag without also cancelling the payment-provider mandate would
+-- falsely promise the user that future charges have stopped.
+-- Implement a verified provider cancellation endpoint before subscriptions go live.
 
 revoke all on function public.blink_verification_plan_quote(text, integer) from public, anon;
 revoke all on function public.my_blink_verification_subscription_status() from public, anon;
-revoke all on function public.cancel_my_blink_verification_auto_renew() from public, anon;
 grant execute on function public.blink_verification_plan_quote(text, integer) to authenticated;
 grant execute on function public.my_blink_verification_subscription_status() to authenticated;
-grant execute on function public.cancel_my_blink_verification_auto_renew() to authenticated;
 
 commit;
