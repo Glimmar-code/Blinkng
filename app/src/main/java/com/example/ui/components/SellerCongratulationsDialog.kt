@@ -216,7 +216,7 @@ fun SellerCongratulationsDialog(
                         ) {
                             Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(20.dp))
                             Text(
-                                text = "Explore BLINK Market"
+                                text = "Explore BLINK Market",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -233,7 +233,7 @@ fun SellerCongratulationsDialog(
                             .testTag("seller_congrats_dismiss_btn")
                     ) {
                         Text(
-                            text = "Close"
+                            text = "Close",
                             color = if (isDark) Color.White.copy(alpha = 0.8f) else Color.DarkGray,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
