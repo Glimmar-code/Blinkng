@@ -63,6 +63,11 @@ test('Android, web and backend jobs have explicit required gates', () => {
   const backend = policy.requiredChecks(['supabase/migrations/foo.sql']);
   assert.ok(backend.includes('migration-safety'));
 });
+test('release integrity is mandatory on even documentation-only production PRs', () => {
+  const checks = policy.requiredChecks(['README.md']);
+  assert.ok(checks.includes('integrity'), 'integrity must always run');
+  assert.ok(checks.includes('validate'), 'base Android/build policy validation must always run');
+});
 test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['app/src/main/Foo.kt']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['web/app.js']), ['deploy-web-preview.yml']);
