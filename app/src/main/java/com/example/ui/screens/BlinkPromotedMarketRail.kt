@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import com.example.data.models.MarketItem
 import com.example.data.supabase.BlinkEconomyService
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun BlinkPromotedMarketRail(
@@ -36,6 +40,7 @@ internal fun BlinkPromotedMarketRail(
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
     var placements by remember { mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -66,13 +71,24 @@ internal fun BlinkPromotedMarketRail(
         }
 
         LazyRow(
+            state = listState,
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(placements, key = { "promoted-listing-" + it.campaignId }) { placement ->
                 val listing = checkNotNull(placement.listing)
                 LaunchedEffect(placement.campaignId) {
-                    service.recordBoostDelivery(placement.campaignId, "IMPRESSION", "MARKET")
+                    val key = "promoted-listing-" + placement.campaignId
+                    snapshotFlow {
+                        listState.layoutInfo.visibleItemsInfo.any { it.key == key }
+                    }.first { it }
+                    service.recordMarketQualifiedView(placement.campaignId, "START")
+                        .getOrElse { return@LaunchedEffect }
+                    delay(2100)
+                    val stillVisible = listState.layoutInfo.visibleItemsInfo.any { it.key == key }
+                    if (stillVisible) {
+                        service.recordMarketQualifiedView(placement.campaignId, "QUALIFIED")
+                    }
                 }
                 Box(modifier = Modifier.width(250.dp)) {
                     Column {

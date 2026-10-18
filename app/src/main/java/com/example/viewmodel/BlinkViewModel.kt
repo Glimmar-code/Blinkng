@@ -241,7 +241,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext: Context = application.applicationContext
     private var marketQuery: String = ""
     private var marketCategory: String? = null
-    private var marketSort: String = "newest"
+    private var marketUniversity: String? = null
+    private var marketSort: String = "recommended"
     private var marketMinPrice: Long? = null
     private var marketMaxPrice: Long? = null
     private var marketSavedOnly: Boolean = false
@@ -3660,6 +3661,10 @@ private suspend fun restoreSupabaseSession() {
         clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
+        if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
+            showToast("Item sales belong in BLINK Market. Open Market to list your product.")
+            return
+        }
 
         val profile = _uiState.value.myProfile
         val userId = supabaseService.getCurrentUserId()
@@ -5848,14 +5853,16 @@ private suspend fun restoreSupabaseSession() {
         minPrice: Long? = null,
         maxPrice: Long? = null,
         savedOnly: Boolean = false,
-        verifiedOnly: Boolean = false
+        verifiedOnly: Boolean = false,
+        university: String? = null
     ) {
         val cleanQuery = query.trim()
         val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
         if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
         val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
             marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
-            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
+            marketUniversity == university?.takeIf { it.isNotBlank() }
         // Restoring Market must not reissue identical in-flight or fresh queries.
         if (sameQuery && _uiState.value.marketErrorMessage == null &&
             (_uiState.value.isMarketLoading ||
@@ -5863,6 +5870,7 @@ private suspend fun restoreSupabaseSession() {
         ) return
         marketQuery = cleanQuery
         marketCategory = cleanCategory
+        marketUniversity = university?.trim()?.takeIf { it.isNotBlank() }
         marketSort = sort
         marketMinPrice = minPrice
         marketMaxPrice = maxPrice
@@ -5883,6 +5891,7 @@ private suspend fun restoreSupabaseSession() {
         }
         val requestQuery = marketQuery
         val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
@@ -5898,6 +5907,7 @@ private suspend fun restoreSupabaseSession() {
                     offset = 0,
                     query = requestQuery,
                     category = requestCategory,
+                    university = requestUniversity,
                     sort = requestSort,
                     minPrice = requestMin,
                     maxPrice = requestMax,
@@ -5935,6 +5945,7 @@ private suspend fun restoreSupabaseSession() {
         val offset = marketNextOffset.coerceAtLeast(current.marketItems.size)
         val requestQuery = marketQuery
         val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
         val requestSort = marketSort
         val requestMin = marketMinPrice
         val requestMax = marketMaxPrice
@@ -5948,6 +5959,7 @@ private suspend fun restoreSupabaseSession() {
                     offset = offset,
                     query = requestQuery,
                     category = requestCategory,
+                    university = requestUniversity,
                     sort = requestSort,
                     minPrice = requestMin,
                     maxPrice = requestMax,
@@ -6002,6 +6014,53 @@ private suspend fun restoreSupabaseSession() {
         supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
 
+    private suspend fun marketFirstPhotoSha256(source: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            runCatching {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 10 * 1024 * 1024) return@use null
+                        digest.update(buffer, 0, count)
+                    }
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+            }.getOrNull()
+        }
+
+    private suspend fun uploadMarketVideo(source: String, userId: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            val resolver = appContext.contentResolver
+            val mime = resolver.getType(uri)?.lowercase().orEmpty()
+            if (mime !in setOf("video/mp4","video/webm")) return@withContext null
+            val bytes = runCatching {
+                resolver.openInputStream(uri)?.use { stream ->
+                    val sink = ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    var n = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        n += count
+                        if (n > 25 * 1024 * 1024) return@use ByteArray(0)
+                        sink.write(buffer,0,count)
+                    }
+                    sink.toByteArray()
+                }
+            }.getOrNull() ?: return@withContext null
+            if (bytes.isEmpty()) return@withContext null
+            supabaseService.uploadMarketVideo(userId,bytes,mime)
+        }
+
     fun addMarketItem(
         title: String,
         price: Long,
@@ -6012,13 +6071,14 @@ private suspend fun restoreSupabaseSession() {
         quantity: Int,
         negotiable: Boolean,
         deliveryMethod: String,
-        pickupLocation: String
+        pickupLocation: String,
+        videoSource: String? = null
     ) {
         val state = _uiState.value
         val p = state.myProfile
         if (!state.isPostItemOpen) return
-        if (!p.isSellerActive) {
-            showToast("Activate your seller account before publishing listings.")
+        if (!p.isSellerActive || !p.hasActiveMarketVerification()) {
+            showToast("Register as a seller and keep your verification active to publish.")
             return
         }
         val cleanTitle = title.trim()
@@ -6031,6 +6091,12 @@ private suspend fun restoreSupabaseSession() {
 
         _uiState.value = state.copy(isPublishingMarketItem = true)
         viewModelScope.launch {
+            val coverDigest = marketFirstPhotoSha256(cleanSources.first())
+            if (coverDigest == null) {
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Can't verify the product cover photo. Choose it again.")
+                return@launch
+            }
             val uploaded = mutableListOf<String>()
             for (source in cleanSources) {
                 val url = uploadMarketImage(source, p.id)
@@ -6043,6 +6109,15 @@ private suspend fun restoreSupabaseSession() {
                 }
                 uploaded += url
             }
+            val videoUrl = videoSource?.takeIf(String::isNotBlank)?.let {
+                uploadMarketVideo(it,p.id)
+            }
+            if (!videoSource.isNullOrBlank() && videoUrl.isNullOrBlank()) {
+                uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id,it) }
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Product video must be MP4/WebM and 25 MB or smaller.")
+                return@launch
+            }
 
             val listing = MarketItem(
                 id = "",
@@ -6052,8 +6127,10 @@ private suspend fun restoreSupabaseSession() {
                 sellerUsername = p.username,
                 sellerAvatar = p.avatarUrl,
                 sellerName = p.fullName.ifBlank { p.username },
-                sellerPhone = p.phone.value,
-                sellerWhatsapp = p.whatsapp.value,
+                // Never publish private profile or enrollment contact details.
+                // Buyers can contact the seller through the in-app DM.
+                sellerPhone = "",
+                sellerWhatsapp = "",
                 sellerIsVerified = p.verificationBadge != VerificationBadge.NONE,
                 verificationBadge = p.verificationBadge,
                 university = p.university,
@@ -6065,11 +6142,13 @@ private suspend fun restoreSupabaseSession() {
                 quantity = quantity.coerceIn(1,9999),
                 isNegotiable = negotiable,
                 deliveryMethod = deliveryMethod,
-                pickupLocation = pickupLocation.trim()
+                pickupLocation = pickupLocation.trim(),
+                videoUrl = videoUrl.orEmpty(),
+                mediaDigest = coverDigest
             )
 
             if (supabaseService.createMarketItem(listing)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, university = marketUniversity, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 _uiState.value = _uiState.value.copy(
                     marketItems = live,
@@ -6082,9 +6161,38 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Product published to BLINK Market.")
             } else {
                 uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
+                if (!videoUrl.isNullOrBlank()) supabaseService.deleteStagedMarketVideo(p.id,videoUrl)
                 _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                 showToast("Product wasn't published. Check your seller status and details.")
             }
+        }
+    }
+
+    fun makeMarketOffer(item: MarketItem, price: Long, message: String) {
+        if (item.id.isBlank() || price <= 0L) return
+        viewModelScope.launch {
+            val created = supabaseService.makeMarketOffer(item.id, price, message)
+            showToast(if (created) "Your offer was sent privately to the seller."
+                else "Couldn't send this offer. Check that you have no other pending offer.")
+        }
+    }
+
+    fun requestMarketModerationReview(item: MarketItem, reason: String) {
+        if (item.id.isBlank() || reason.trim().length < 15) return
+        viewModelScope.launch {
+            val sent = supabaseService.requestMarketModerationReview(item.id, reason)
+            showToast(if (sent) "Your listing has been submitted for a moderation review."
+                else "Couldn't submit the review. Please try again.")
+        }
+    }
+
+    fun confirmMarketAvailability(item: MarketItem) {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            val confirmed = supabaseService.confirmMarketAvailability(item.id)
+            showToast(if (confirmed) "Availability confirmed for another 30 days."
+                else "Couldn't renew availability. Check your seller verification.")
+            if (confirmed) refreshMarketItems()
         }
     }
 
@@ -6252,58 +6360,75 @@ private suspend fun restoreSupabaseSession() {
         phone: String,
         whatsapp: String,
         state: String,
-        city: String
+        city: String,
+        university: String,
+        sellerKind: String,
+        businessDescription: String,
+        productCategory: String,
+        delivery: Boolean,
+        pickup: Boolean
     ) {
-        val currentState = _uiState.value
-        val current = currentState.myProfile
-        if (current.isSellerActive) {
-            showToast("Your Market seller account is already active.")
+        val snapshot = _uiState.value
+        val current = snapshot.myProfile
+        if (!current.hasActiveMarketVerification()) {
+            showToast("Get or renew your blue verification before becoming a seller.")
             return
         }
-        if (!currentState.economyPolicy.cashCheckoutEnabled) {
-            showToast("Secure Paystack seller activation is not enabled yet.")
-            return
-        }
-
         val cleanStore = storeName.trim()
         val cleanPhone = phone.filter(Char::isDigit)
         val cleanWhatsapp = whatsapp.filter(Char::isDigit)
-        if (cleanStore.length < 2 || cleanPhone.length !in 10..15 || cleanWhatsapp.length !in 10..15) {
-            showToast("Enter a valid store name, phone number and WhatsApp number.")
+        val cleanUni = university.trim()
+        if (cleanStore.length !in 2..80 ||
+            cleanPhone.length !in 10..15 || cleanWhatsapp.length !in 10..15 ||
+            cleanUni.length < 3 || state.isBlank() || city.trim().length < 2
+        ) {
+            showToast("Enter your business details, contact information and university.")
             return
         }
 
-        val profileUpdate = current.copy(
-            sellerStoreName = cleanStore,
-            phone = ContactField(phone.trim(), true),
-            whatsapp = ContactField(whatsapp.trim(), true),
-            currentCityState = listOf(city.trim(), state.trim()).filter { it.isNotBlank() }.joinToString(", ")
-        )
-        _uiState.value = currentState.copy(isSellerActivationLoading = true)
+        _uiState.value = snapshot.copy(isSellerActivationLoading = true)
         viewModelScope.launch {
-            val profileSaved = profileRepository.updateProfile(profileUpdate)
-            if (!profileSaved) {
+            // Persist only profile details the owner is allowed to edit.
+            val profileUpdate = current.copy(
+                sellerStoreName = cleanStore,
+                phone = ContactField(phone.trim(), false),
+                whatsapp = ContactField(whatsapp.trim(), false),
+                university = cleanUni,
+                currentCityState = listOf(city.trim(), state.trim()).joinToString(", ")
+            )
+            if (!profileRepository.updateProfile(profileUpdate)) {
                 _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
                 showToast("Couldn't save your seller details.")
                 return@launch
             }
-
-            _uiState.value = _uiState.value.copy(myProfile = profileUpdate)
-            saveLocalProfile(profileUpdate)
-            blinkEconomyService.initializePaystackMarketSellerCheckout(cleanStore).fold(
-                onSuccess = { payload ->
-                    _uiState.value = _uiState.value.copy(
-                        isSellerActivationLoading = false,
-                        isBecomeSellerOpen = false
-                    )
-                    openPaystackCheckout(payload)
-                },
-                onFailure = { error ->
-                    Log.w(TAG, "Market seller checkout failed to initialize", error)
-                    _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                    showToast("Couldn't start seller activation checkout. Please try again.")
-                }
+            val registered = current.isSellerActive ||
+                supabaseService.registerVerifiedMarketSeller(
+                    cleanStore, phone, whatsapp, state, city, cleanUni
+                )
+            if (!registered) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Seller registration requires active verification and an available Market server.")
+                return@launch
+            }
+            if (!supabaseService.completeMarketSellerProfile(
+                    sellerKind, businessDescription, productCategory, delivery, pickup
+                )) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Seller details could not be completed. Please review the form.")
+                return@launch
+            }
+            val fresh = runCatching { profileRepository.fetchById(current.id) }.getOrNull()
+                ?: profileUpdate.copy(isSellerActive = true)
+            _uiState.value = _uiState.value.copy(
+                myProfile = fresh,
+                isSellerActivationLoading = false,
+                isBecomeSellerOpen = false,
+                showSellerCongratulationsDialog = true
             )
+            saveLocalProfile(fresh)
+            persistProfile(fresh)
+            persistExtendedCache()
+            showToast("Seller application submitted. BLINK will review it before listings can be published.")
         }
     }
 
