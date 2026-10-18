@@ -80,6 +80,12 @@ verify_jwt = false
 [functions.blink-web]
 verify_jwt = false
 
+# Anonymous browser metric aggregation is disabled by default in Edge.
+# It is additionally gated by BLINK_SITE_ANALYTICS_ENABLED=true and a
+# server-only service key; PostgreSQL enforces global anti-spam caps.
+[functions.blink-site-analytics]
+verify_jwt = false
+
 # AdMob authenticates this public webhook with Google's ECDSA signature, not a
 # Supabase user JWT. The handler rejects invalid signatures before any write.
 [functions.admob-reward-ssv]
