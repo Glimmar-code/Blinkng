@@ -364,6 +364,9 @@ class CallActivity : ComponentActivity() {
                 return
             }
             call = answered
+            CallNotificationLedger.markUpdated(
+                this, repository.currentUserId(), active.id, "answered"
+            )
             incomingRinging = false
             connectingSinceMillis = System.currentTimeMillis()
             IncomingCallNotification.cancel(this, active.id)
