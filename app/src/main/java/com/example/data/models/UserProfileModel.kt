@@ -87,5 +87,6 @@ data class UserProfile(
     var totalXp: Long = 0L,
     var xpLevel: Int = 1,
     var badges: List<AchievementBadge> = listOf(),
-    var accountType: String = ""
+    var accountType: String = "",
+    var universityId: String = ""
 )
