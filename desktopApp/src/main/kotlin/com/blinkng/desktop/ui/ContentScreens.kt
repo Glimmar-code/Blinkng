@@ -91,6 +91,7 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.notification.BlinkSocialEmailCategory
+import com.blinkng.shared.discovery.BlinkFriendDiscoveryPolicy
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -563,6 +564,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
 
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
+    var inviteFeedback by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
@@ -592,6 +594,33 @@ fun ConnectScreen(state: DesktopAppState) {
                 ) {
                     ScreenHeader("Connect", "Study circles, mentors, communities and campus connections")
                     Button(onClick = { showCreate = true }) { Text("Create") }
+                }
+            }
+            item {
+                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Find Friends", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Meet people through BLINK Search or invite friends directly. Your computer contacts are never uploaded.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = { state.selectedRoute = "search" }) { Text("Discover People") }
+                            Button(onClick = {
+                                val text = BlinkFriendDiscoveryPolicy.inviteMessage("https://www.blink.com.ng")
+                                inviteFeedback = runCatching {
+                                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                                        java.awt.datatransfer.StringSelection(text), null,
+                                    )
+                                    "Invite link copied. Share it with friends you choose."
+                                }.getOrElse { "Clipboard is unavailable. Visit www.blink.com.ng to share BLINK." }
+                            }) { Text("Copy Invite") }
+                        }
+                        inviteFeedback?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
                 }
             }
             if (loading) item { LoadingRow() }
