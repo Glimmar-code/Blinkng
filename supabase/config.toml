@@ -54,6 +54,10 @@ verify_jwt = true
 [functions.send-call-notification]
 verify_jwt = true
 
+# Server-issued short-lived TURN credentials require a signed-in call participant.
+[functions.get-call-ice-config]
+verify_jwt = true
+
 [functions.blink-ai]
 verify_jwt = true
 
