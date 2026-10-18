@@ -55,6 +55,7 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkDownloadCoordinator
 import com.example.update.WebsiteApkUpdateCoordinator
 import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.util.startActivitySafely
@@ -132,6 +133,10 @@ class MainActivity : ComponentActivity() {
 
     private val playInAppUpdateCoordinator by lazy {
         PlayInAppUpdateCoordinator(this, inAppUpdateLauncher)
+    }
+
+    private val websiteApkDownloadCoordinator by lazy {
+        WebsiteApkDownloadCoordinator(applicationContext)
     }
 
     private fun showRewardedAdForCoins() {
@@ -420,6 +425,7 @@ class MainActivity : ComponentActivity() {
         if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
         stopBugShakeListener()
         playInAppUpdateCoordinator.close()
+        websiteApkDownloadCoordinator.close()
         super.onDestroy()
     }
 
@@ -468,6 +474,7 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
@@ -477,10 +484,11 @@ class MainActivity : ComponentActivity() {
                 websiteRelease = null
                 websiteUpdateCheckFinished = false
                 websiteUpdateDismissed = false
-                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank() &&
+                    !WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
                     websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
-                    websiteUpdateCheckFinished = true
                 }
+                websiteUpdateCheckFinished = true
             }
 
             val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
@@ -761,7 +769,30 @@ class MainActivity : ComponentActivity() {
                         if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
                                 release = newRelease,
-                                onUpdateNow = { websiteUpdateDismissed = true; openWebsiteUpdate() },
+                                downloadState = when (val downloaded = websiteDownloadState) {
+                                    is WebsiteApkDownloadCoordinator.State.Ready ->
+                                        if (downloaded.release == newRelease) downloaded
+                                        else WebsiteApkDownloadCoordinator.State.Idle
+                                    else -> downloaded
+                                },
+                                onUpdateNow = { unmeteredOnly ->
+                                    websiteApkDownloadCoordinator.start(
+                                        newRelease, BuildConfig.VERSION_CODE, unmeteredOnly,
+                                    )
+                                },
+                                onInstall = {
+                                    runCatching { websiteApkDownloadCoordinator.install(this@MainActivity) }
+                                        .onFailure {
+                                            viewModel.showToast("Android could not open the installer. Use the official BLINK website.")
+                                        }
+                                },
+                                onPauseDownload = {
+                                    websiteApkDownloadCoordinator.pause()
+                                },
+                                onOpenWebsite = {
+                                    websiteUpdateDismissed = true
+                                    openWebsiteUpdate()
+                                },
                                 onLater = { websiteUpdateDismissed = true },
                             )
                         }

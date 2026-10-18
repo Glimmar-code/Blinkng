@@ -24,10 +24,16 @@ jobs:
       - name: Test fail-closed Testlab auto-promotion policy
         run: node --test .github/scripts/testlab_auto_promotion.test.cjs
 
+      - name: Test safe production release incident monitor
+        run: node --test .github/scripts/test_release_failure_watch.cjs
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Verify in-app APK installer permissions and source trust
+        run: python3 scripts/test_inapp_apk_update.py
 
       - name: Verify launcher images match the approved BLINK logo
         shell: bash

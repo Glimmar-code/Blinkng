@@ -1,29 +1,37 @@
 name: APK delivery integrity
 
+# Always available as a required CI gate on every PR. Previously this job
+# was path-filtered and could be absent for unrelated PRs.
 on:
   push:
     branches: [main, Testlab, 'Testlab-*']
-    paths:
-      - '.github/scripts/*verified_apk.py'
-      - '.github/workflows/publish-latest-apk.yml'
-      - '.github/workflows/apk-delivery-check.yml'
   pull_request:
-    paths:
-      - '.github/scripts/*verified_apk.py'
-      - '.github/workflows/publish-latest-apk.yml'
-      - '.github/workflows/apk-delivery-check.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: apk-delivery-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   integrity:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Reject damaged APKs and prevent premature publication
-        run: python3 .github/scripts/test_publish_verified_apk.py
+      - name: Validate release Python syntax
+        run: >-
+          python3 -m py_compile
+          .github/scripts/publish_verified_apk.py
+          .github/scripts/audit_published_apk.py
+          .github/scripts/test_publish_verified_apk.py
+          .github/scripts/test_release_audit.py
+      - name: Test release publication and anti-stale protections
+        run: python3 .github/scripts/test_publish_verified_apk.py -v
+      - name: Test public release audit and download safety
+        run: python3 .github/scripts/test_release_audit.py -v
