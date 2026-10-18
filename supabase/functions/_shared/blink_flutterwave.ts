@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { transactionMatchesOrder } from "./flutterwave_integrity.mjs";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,18 +74,11 @@ export async function reconcilePayment(reference: string, expectedUserId?: strin
   if (!verified || verified.status !== "successful") {
     return { status: "pending" };
   }
-  const amount = Number(verified.amount);
-  const id = String(verified.id ?? "");
-  if (
-    verified.tx_ref !== order.tx_ref ||
-    verified.currency !== "NGN" ||
-    order.currency !== "NGN" ||
-    !Number.isSafeInteger(amount) ||
-    amount !== order.amount_ngn ||
-    !/^[0-9]+$/.test(id)
-  ) {
+  if (!transactionMatchesOrder(verified, order)) {
     throw new Error("PAYMENT_VERIFICATION_MISMATCH");
   }
+  const amount = Number(verified.amount);
+  const id = String(verified.id);
 
   const { data, error } = await admin.rpc("fulfill_blink_flutterwave_verification", {
     p_tx_ref: reference,
