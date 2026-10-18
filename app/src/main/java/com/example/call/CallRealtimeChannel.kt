@@ -38,15 +38,17 @@ class CallRealtimeChannel(
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connected = AtomicBoolean(false)
+    private val connecting = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
     private val refCounter = AtomicInteger(1)
-    private var socket: WebSocket? = null
+    @Volatile private var socket: WebSocket? = null
+    private var reconnectFailures = 0
     private var heartbeatJob: Job? = null
     private var reconnectJob: Job? = null
     private var lastTokenSent = ""
 
     fun connect() {
-        if (closed.get() || connected.get()) return
+        if (closed.get() || connected.get() || !connecting.compareAndSet(false, true)) return
         val base = SupabaseConfig.url.trimEnd('/')
         val wsUrl = if (base.startsWith("https://")) {
             "wss://${base.removePrefix("https://")}/realtime/v1/websocket?apikey=${SupabaseConfig.anonKey}&v=1.0.0"
@@ -61,6 +63,7 @@ class CallRealtimeChannel(
         heartbeatJob?.cancel()
         reconnectJob?.cancel()
         connected.set(false)
+        connecting.set(false)
         onConnection(false)
         runCatching { socket?.close(1000, "Call finished") }
         socket = null
@@ -68,11 +71,13 @@ class CallRealtimeChannel(
 
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            if (closed.get()) {
-                webSocket.close(1000, "Already closed")
+            if (closed.get() || (socket != null && socket !== webSocket)) {
+                webSocket.close(1000, "No longer active")
                 return
             }
+            connecting.set(false)
             connected.set(true)
+            reconnectFailures = 0
             lastTokenSent = ""
             onConnection(true)
             sendAccessToken(force = true)
@@ -86,12 +91,12 @@ class CallRealtimeChannel(
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            handleDisconnect()
+            handleDisconnect(webSocket)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             Log.w(TAG, "Call realtime socket failed: ${t.message}")
-            handleDisconnect()
+            handleDisconnect(webSocket)
         }
     }
 
@@ -164,14 +169,19 @@ class CallRealtimeChannel(
         }
     }
 
-    private fun handleDisconnect() {
-        if (!connected.compareAndSet(true, false) && closed.get()) return
+    private fun handleDisconnect(disconnectedSocket: WebSocket) {
+        // A late callback from an older socket must never close or replace a
+        // healthy newly connected socket.
+        if (socket !== disconnectedSocket || closed.get()) return
+        connected.set(false)
+        connecting.set(false)
         heartbeatJob?.cancel()
+        socket = null
         onConnection(false)
-        if (closed.get()) return
+        reconnectFailures++
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(1_500L)
+            delay(CallConnectionRecoveryPolicy.realtimeReconnectDelayMillis(reconnectFailures))
             if (!closed.get() && !connected.get()) connect()
         }
     }
