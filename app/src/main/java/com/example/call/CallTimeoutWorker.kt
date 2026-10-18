@@ -30,13 +30,29 @@ class CallTimeoutWorker(appContext: Context, params: WorkerParameters) : Corouti
             SupabaseService.initialize(applicationContext)
             val call = CallRepository().expireCall(callId).getOrThrow()
             if (call.status == CallStatus.MISSED) {
-                IncomingCallNotification.cancel(applicationContext, callId)
+                CallNotificationLedger.markUpdated(
+                    applicationContext, CallRepository().currentUserId(), callId, "missed"
+                )
+                IncomingCallNotification.handleCallUpdate(applicationContext, callId, "missed")
                 IncomingCallNotification.showMissed(
                     context = applicationContext,
                     callId = callId,
                     callType = callType,
                     peerName = peerName
                 )
+            } else if (call.status.isTerminal ||
+                call.status in setOf(CallStatus.CONNECTING, CallStatus.CONNECTED)) {
+                // FCM can be lost; expire_call returns authoritative server state.
+                // Don't leave a ghost ring if another device answered or declined.
+                val event = if (call.status in setOf(CallStatus.CONNECTING, CallStatus.CONNECTED)) {
+                    "answered"
+                } else {
+                    call.status.wireValue
+                }
+                CallNotificationLedger.markUpdated(
+                    applicationContext, CallRepository().currentUserId(), callId, event
+                )
+                IncomingCallNotification.handleCallUpdate(applicationContext, callId, event)
             }
             Result.success()
         }.getOrElse {
