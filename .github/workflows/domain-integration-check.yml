@@ -16,6 +16,8 @@ on:
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
@@ -36,6 +38,8 @@ on:
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
@@ -80,8 +84,8 @@ jobs:
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
           grep -F 'Uri.parse("https://blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
-      # Native Android verification still targets the reserved www.blink.com.ng domain.
-      # The temporary Pages project host is a separate web-only URL until Android is updated.
+      # Production Android App Links target blink.com.ng. Google OAuth and
+      # recovery callbacks must be approved in Supabase Auth URL Configuration.
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
 
@@ -105,6 +109,12 @@ jobs:
 
       - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
         run: node scripts/test_landing_phase1.mjs
+
+      - name: Verify official Android App Links route matrix and signing
+        run: node scripts/test_android_prod_links.mjs
+
+      - name: Validate live verification script syntax
+        run: node --check scripts/verify_live_blink_integrations.mjs
 
       - name: Validate existing Android signing association
         shell: bash
