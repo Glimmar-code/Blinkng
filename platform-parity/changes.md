@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 6 Stories rebased onto current Testlab (CI candidate)
+
+- Ported real 24-hour Stories row in Messages, blue unseen/muted seen rings, owner viewer/likes history, explicit repost permissions and DM story reply references from tested source PR #357 while preserving current Testlab's other features.
+- Protected SQL migration for story insights/reposts is staged in GitHub ONLY; live Supabase has not received it. Do not publish client features that require untested schema changes.
+- Updated Supabase CI parser pin from withdrawn 7.10 to available 7.21. Must pass fresh Android release/debug builds, Windows quality, migration syntax and a separate RLS/repost/expiry staging test before production rollout.
+
 ## 2026-10-18 — Feature 4 profile visitor integration (CI candidate only)
 
 - Updated Feature 4 against current Testlab while preserving the merged Feature 2 notification quick actions, Feature 3 Find Friends, and Feature 9 Earning.

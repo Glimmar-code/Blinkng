@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.blinkng.shared.notification.BlinkStoryPresentation
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
@@ -3957,7 +3958,11 @@ private suspend fun restoreSupabaseSession() {
     fun closeStory() { _uiState.value = _uiState.value.copy(activeViewingStory = null) }
     fun createStory(storyImage: String, caption: String, faculty: String = "") {
         val p=_uiState.value.myProfile
-        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
+        val s=Story(
+            UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,
+            "Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge,
+            createdAt = java.time.Instant.now().toString(), authorId = p.id,
+        )
         viewModelScope.launch(Dispatchers.IO){
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
@@ -3977,7 +3982,11 @@ private suspend fun restoreSupabaseSession() {
                 val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
                 val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
                 val p=_uiState.value.myProfile
-                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
+                val story=Story(
+                    UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,
+                    caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,
+                    createdAt = java.time.Instant.now().toString(), isVideo = isVideo, authorId = p.id,
+                )
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
                 _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
                 showToast("Story shared.")
@@ -3989,7 +3998,14 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-    fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
+    fun markStoryViewed(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser) return
+        _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map {
+            if (it.id == storyId) it.copy(hasUnseen = false) else it
+        })
+        viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) }
+    }
     fun toggleStoryLike(storyId: String) {
         var next = false
         var count = 0
@@ -4029,24 +4045,60 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun replyToStory(storyUsername: String, replyText: String) {
-        val cleanText = replyText.trim()
-        val cleanUser = storyUsername.trim().removePrefix("@")
-        if (cleanText.isBlank() || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+    /** Story replies are genuine DMs with a persistent, tappable story reference. */
+    fun replyToStory(story: Story, replyText: String) {
+        val cleanUser = story.username.trim().removePrefix("@")
+        val content = BlinkStoryPresentation.reply(story.id, story.caption, replyText)
+        if (cleanUser.isBlank() || cleanUser.equals("null", true) || content == null) return
+        if (story.isUser || !BlinkStoryPresentation.active(story.createdAt, true)) {
+            showToast("This story is no longer available for replies.")
+            return
+        }
         viewModelScope.launch {
-            chatRepository.sendMessage(cleanUser, cleanText).fold(
+            chatRepository.sendMessage(cleanUser, content).fold(
                 onSuccess = {
-                    showToast("💬 Message sent to @$cleanUser")
-                    supabaseService.recordActivity(
-                        cleanUser,
-                        "replied to your story",
-                        NotificationFilter.ALL,
-                        targetUsername = _uiState.value.myProfile.username,
-                        targetType = "CHAT"
-                    )
+                    showToast("Story reply sent in Messages.")
                 },
-                onFailure = { showToast("Story reply wasn't sent.") }
+                onFailure = { showToast("Story reply wasn't sent. Please try again.") },
             )
+        }
+    }
+
+    /** Sharing is allowed only after the owner explicitly permits reposts. */
+    fun setStoryRepostsAllowed(storyId: String, allowed: Boolean) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (!story.isUser || !BlinkStoryPresentation.active(story.createdAt, true)) return
+        viewModelScope.launch {
+            val saved = runCatching {
+                supabaseService.setStoryRepostsAllowed(storyId, allowed)
+            }.getOrDefault(false)
+            if (saved) {
+                val current = _uiState.value
+                val updated = current.stories.map {
+                    if (it.id == storyId) it.copy(allowReposts = allowed) else it
+                }
+                _uiState.value = current.copy(
+                    stories = updated,
+                    activeViewingStory = updated.firstOrNull { it.id == storyId },
+                )
+                showToast(if (allowed) "Friends can repost this story." else "Story reposts disabled.")
+            } else showToast("Couldn't update story repost permissions.")
+        }
+    }
+
+    fun repostStory(story: Story) {
+        if (story.isUser || !story.allowReposts ||
+            !BlinkStoryPresentation.active(story.createdAt, true)) {
+            showToast("This story isn't available for reposting.")
+            return
+        }
+        viewModelScope.launch {
+            val ok = runCatching { supabaseService.repostStory(story.id) }.getOrDefault(false)
+            if (ok) {
+                val fresh = runCatching { postRepository.fetchStories() }.getOrNull()
+                if (fresh != null) _uiState.value = _uiState.value.copy(stories = fresh)
+                showToast("Reposted to your Story.")
+            } else showToast("Couldn't repost this story.")
         }
     }
 
