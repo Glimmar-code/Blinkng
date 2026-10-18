@@ -2590,6 +2590,7 @@ suspend fun uploadPostMedia(
                         likesCount = o.optInt("likes_count", 0),
                         isLiked = liked.contains(sid),
                         createdAt = timestamp,
+                        authorId = u,
                         isVideo = o.optString("media_type").equals("video", ignoreCase = true) ||
                             o.optString("video_url").isNotBlank(),
                         verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
