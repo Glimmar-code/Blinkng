@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.blinkng.shared.notification.BlinkSocialEmailCategory
+import com.blinkng.shared.notification.BlinkNotificationPresentation
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -372,8 +373,10 @@ class DesktopSupabaseClient(
                 DesktopNotification(
                     id = "notification:$rawId",
                     type = type,
-                    text = text,
-                    subText = row.optNullableString("sub_text"),
+                    text = BlinkNotificationPresentation.title(text),
+                    subText = row.optNullableString("sub_text")
+                        ?.let { BlinkNotificationPresentation.body(it, "") }
+                        ?.takeIf(String::isNotBlank),
                     postId = row.optNullableString("post_id")
                         ?: targetId.takeIf { targetType.equals("post", true) },
                     isRead = row.optBoolean("is_read"),
@@ -397,7 +400,9 @@ class DesktopSupabaseClient(
                 DesktopNotification(
                     id = "activity:$rawId",
                     type = type,
-                    text = row.optString("message").ifBlank { type.replace('_', ' ') },
+                    text = BlinkNotificationPresentation.title(
+                        row.optString("message").ifBlank { type.replace('_', ' ') },
+                    ),
                     subText = null,
                     postId = targetId.takeIf { targetType.equals("post", true) },
                     isRead = row.optBoolean("is_read"),

@@ -42,9 +42,9 @@ object BlinkAnnouncementInboxRules {
         val stableId = id.trim()
         if (stableId.isBlank() || stableId.length > 100 ||
             stableId.any { !it.isLetterOrDigit() && it !in "-_:." }) return null
-        val safeTitle = title.trim().take(MAX_TITLE).ifBlank { "BLINK announcement" }
-        val safeMessage = message.trim().take(MAX_MESSAGE)
-        if (safeMessage.isBlank() && title.isBlank()) return null
+        val safeTitle = BlinkNotificationPresentation.title(title, "BLINK announcement").take(MAX_TITLE)
+        val safeMessage = BlinkNotificationPresentation.body(message, "").take(MAX_MESSAGE)
+        if (safeMessage.isBlank() && title.trim().lowercase() in setOf("", "null", "undefined")) return null
         return BlinkAnnouncementPreview(stableId, safeTitle, safeMessage, publishedAt.take(64))
     }
 
