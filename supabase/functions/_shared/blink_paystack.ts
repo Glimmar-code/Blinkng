@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { transactionMatchesOrder } from "./paystack_integrity.mjs";
+import { merchantKeyMatchesMode, transactionMatchesOrder } from "./paystack_integrity.mjs";
 
 const responseHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,7 +32,7 @@ export async function paystackApi(path: string, method = "GET", payload?: unknow
   const secret = requiredSecret("PAYSTACK_SECRET_KEY");
   // Fail closed before *any* Paystack API call: staging must never charge live money
   // when an operator accidentally configures a live secret in the test environment.
-  if ((mode !== "test" && mode !== "live") || !secret.startsWith(`sk_${mode}_`)) {
+  if (!merchantKeyMatchesMode(secret, mode)) {
     throw new Error("PAYSTACK_MERCHANT_MODE_MISMATCH");
   }
   const res = await fetch(`https://api.paystack.co/${path}`, {
