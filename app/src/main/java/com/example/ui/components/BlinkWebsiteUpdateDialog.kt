@@ -2,17 +2,24 @@ package com.example.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -29,14 +36,15 @@ import com.example.update.WebsiteApkDownloadCoordinator
 fun BlinkWebsiteUpdateDialog(
     release: BlinkReleaseInfo,
     downloadState: WebsiteApkDownloadCoordinator.State,
-    onUpdateNow: () -> Unit,
+    onUpdateNow: (Boolean) -> Unit,
     onInstall: () -> Unit,
-    onCancelDownload: () -> Unit,
+    onPauseDownload: () -> Unit,
     onOpenWebsite: () -> Unit,
     onLater: () -> Unit,
 ) {
     val downloading = downloadState is WebsiteApkDownloadCoordinator.State.Downloading
-    Dialog(onDismissRequest = { if (!downloading) onLater() }) {
+    var unmeteredOnly by rememberSaveable { mutableStateOf(false) }
+    Dialog(onDismissRequest = onLater) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = Color(0xFF101010),
@@ -59,6 +67,14 @@ fun BlinkWebsiteUpdateDialog(
                     color = Color(0xFFE2E2E2),
                 )
 
+                if (!downloading && downloadState !is WebsiteApkDownloadCoordinator.State.Ready) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = unmeteredOnly, onCheckedChange = { unmeteredOnly = it })
+                        Text("Unmetered network only (e.g. Wi-Fi)", color = Color.White,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
                 when (downloadState) {
                     WebsiteApkDownloadCoordinator.State.Idle -> {
                         Text(
@@ -67,7 +83,7 @@ fun BlinkWebsiteUpdateDialog(
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(
-                            onClick = onUpdateNow,
+                            onClick = { onUpdateNow(unmeteredOnly) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                         ) { Text("Download update") }
@@ -79,14 +95,30 @@ fun BlinkWebsiteUpdateDialog(
                             ((downloadState.bytes * 100) / total).coerceIn(0, 100)
                         } else null
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        if (downloadState.waitingForNetwork) {
+                            Text("Waiting for permitted network or retry…", color = Color(0xFFBBBBBB))
+                        }
                         Text(
                             if (progress == null) "Downloading ${"%.1f".format(done)} MB…"
                             else "Downloading ${progress}% • ${"%.1f".format(done)} MB",
                             color = Color.White,
                         )
-                        TextButton(onClick = onCancelDownload, modifier = Modifier.fillMaxWidth()) {
-                            Text("Cancel download", color = Color(0xFFE2E2E2))
+                        TextButton(onClick = onPauseDownload, modifier = Modifier.fillMaxWidth()) {
+                            Text("Pause download", color = Color(0xFFE2E2E2))
                         }
+                        TextButton(onClick = onLater, modifier = Modifier.fillMaxWidth()) {
+                            Text("Continue in background", color = Color(0xFFE2E2E2))
+                        }
+                    }
+                    is WebsiteApkDownloadCoordinator.State.Paused -> {
+                        val downloadedMb = "%.1f".format(downloadState.bytes / (1024.0 * 1024.0))
+                        Text("Paused • ${downloadedMb} MB saved. Resume without starting over when the server supports it.",
+                            color = Color(0xFFE2E2E2))
+                        Button(
+                            onClick = { onUpdateNow(unmeteredOnly) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                        ) { Text("Resume download") }
                     }
                     is WebsiteApkDownloadCoordinator.State.Ready -> {
                         Text(
@@ -103,7 +135,7 @@ fun BlinkWebsiteUpdateDialog(
                     is WebsiteApkDownloadCoordinator.State.Failed -> {
                         Text(downloadState.message, color = Color(0xFFFFC1C1))
                         Button(
-                            onClick = onUpdateNow,
+                            onClick = { onUpdateNow(unmeteredOnly) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                         ) { Text("Retry download") }
