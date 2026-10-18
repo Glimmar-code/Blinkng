@@ -890,7 +890,7 @@ fun GetVerifiedSheet(
                             }
                         }
                     }
-                } else {
+                } else if (selectedBadge == VerificationBadge.GOLD) {
                     val isCurrentBadge = profile.verificationBadge == selectedBadge
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
@@ -904,13 +904,19 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                economyPolicy.cashCheckoutEnabled -> "Continue to secure Gold checkout"
+                                recurringCheckoutVerified -> "Continue to secure Gold checkout"
                                 else -> "Secure Gold checkout not connected"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
                     }
+                } else {
+                    Text(
+                        "You're viewing the Free plan. Core BLINK features don't require a subscription.",
+                        color = textSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    )
                 }
             }
         }
