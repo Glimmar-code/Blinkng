@@ -1,3 +1,9 @@
+## 2026-10-18 — Universal university directory on current Testlab
+
+- Builds on already merged campus registration; adds stable school IDs, search alias compatibility (including FUTA), state/category labels and moderated missing-university suggestions for Android and Windows. Connect and campus leaderboards resolve aliases to a common campus.
+- Adds `blink_universities` catalog and `profiles.university_id` foreign key in a staged migration. Existing users retain legacy text names until an exact match can be backfilled. Unreviewed university requests never auto-publish.
+- New schema has NOT been deployed to production; cross-account migration, seed integrity and security tests still required. Do not assert current NUC accreditation for all legacy records.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
