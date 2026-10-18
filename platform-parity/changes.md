@@ -1,3 +1,10 @@
+## 2026-10-18 — Feature 2: notification actions integrated with recent Testlab
+
+- Applies original PR #346's tested action policy, Android receiver/worker, mark-read/follow/like/profile access controls, remote-input recipient checks and Windows notification buttons on top of current Testlab. Existing safe notification fallbacks, Feature 3 Find Friends and Feature 9 Earning code remain intact.
+- The source branch's seven CI checks passed. Integration branch must independently pass Android quality/release smoke, Windows quality and security checks before Testlab merger.
+- Profile/deep-link and actor-based notification actions require on-device signed-in/out, account switching, action idempotency, offline retry, and server RLS verification prior to production.
+- Never merge directly to main from this branch; no live APK publication implied.
+
 ## 2026-10-18 — Feature 3: Find Friends integration after passing source-branch CI
 
 - Based on the current Testlab head with the existing notification safety and Menu → Earning changes preserved. Includes account-scoped friend discovery onboarding, Connect and Menu entry, visible same-campus suggestions, real Follow actions, Android one-contact picker and editable SMS, system invite sharing, and Windows manual invite/search parity.

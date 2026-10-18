@@ -93,6 +93,10 @@
             android:name=".notification.NotificationReplyReceiver"
             android:enabled="true"
             android:exported="false" />
+        <receiver
+            android:name=".notification.NotificationQuickActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

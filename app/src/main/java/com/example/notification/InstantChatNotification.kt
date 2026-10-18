@@ -11,6 +11,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import com.example.MainActivity
+import com.blinkng.shared.notification.BlinkNotificationQuickAction
+import com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy
+import com.blinkng.shared.notification.BlinkNotificationKind
 
 /**
  * Fast path for direct-message notifications.
@@ -27,6 +30,7 @@ object InstantChatNotification {
     const val EXTRA_SENDER_USERNAME = "blink_direct_reply_sender_username"
     const val EXTRA_SENDER_NAME = "blink_direct_reply_sender_name"
     const val EXTRA_SENDER_AVATAR = "blink_direct_reply_sender_avatar"
+    const val EXTRA_EXPECTED_ACCOUNT = "blink_direct_reply_expected_account"
 
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
     private const val MESSAGE_ID_BASE = 1000
@@ -39,7 +43,8 @@ object InstantChatNotification {
         messageText: String,
         senderAvatar: String = "",
         conversationId: String = "",
-        messageId: String = ""
+        messageId: String = "",
+        expectedAccount: String = "",
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
         if (!MessageNotificationLedger.claim(context, messageId)) return
@@ -71,10 +76,11 @@ object InstantChatNotification {
             senderName = senderName,
             senderAvatar = senderAvatar,
             conversationId = conversationId,
-            originalMessageId = messageId
+            originalMessageId = messageId,
+            expectedAccount = expectedAccount,
         )
 
-        val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
+        val builder = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
             .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(sender.name)
             .setContentText(messageText)
@@ -86,13 +92,21 @@ object InstantChatNotification {
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(contentIntent)
-            .addAction(replyAction)
             .setGroup(GROUP_KEY_MESSAGES)
             .setGroupSummary(false)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .build()
-
-        postNotification(context, notificationId, notification)
+        val allowedActions = BlinkNotificationQuickActionPolicy.available(
+            BlinkNotificationKind.MESSAGE,
+            recipientBound = BlinkNotificationQuickActionPolicy.isId(expectedAccount),
+        )
+        if (BlinkNotificationQuickAction.REPLY in allowedActions) builder.addAction(replyAction)
+        if (BlinkNotificationQuickAction.MARK_READ in allowedActions) {
+            BlinkNotificationHelper.buildQuickAction(
+                context, NotificationQuickActionWorker.ACTION_MARK_READ,
+                expectedAccount, "", notificationId, username = senderUsername,
+            )?.let(builder::addAction)
+        }
+        postNotification(context, notificationId, builder.build())
     }
 
     fun showReplyQueued(
@@ -164,7 +178,8 @@ object InstantChatNotification {
         senderName: String,
         senderAvatar: String,
         conversationId: String,
-        originalMessageId: String
+        originalMessageId: String,
+        expectedAccount: String,
     ): NotificationCompat.Action {
         val remoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
             .setLabel("Reply")
@@ -174,10 +189,13 @@ object InstantChatNotification {
             action = ACTION_DIRECT_REPLY
             // Intent extras do not participate in PendingIntent identity, so give each
             // conversation a distinct data URI as well as a distinct request code.
-            data = Uri.parse("blink://notification/reply/${Uri.encode(conversationId.ifBlank { senderUsername })}")
+            data = Uri.parse(
+                "blink://notification/reply/${Uri.encode(expectedAccount)}/${Uri.encode(conversationId.ifBlank { senderUsername })}"
+            )
             putExtra(EXTRA_NOTIFICATION_ID, notificationId)
             putExtra(EXTRA_CONVERSATION_ID, conversationId)
             putExtra(EXTRA_ORIGINAL_MESSAGE_ID, originalMessageId)
+            putExtra(EXTRA_EXPECTED_ACCOUNT, expectedAccount)
             putExtra(EXTRA_SENDER_USERNAME, senderUsername)
             putExtra(EXTRA_SENDER_NAME, senderName)
             putExtra(EXTRA_SENDER_AVATAR, senderAvatar)

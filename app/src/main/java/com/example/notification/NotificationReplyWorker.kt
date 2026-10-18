@@ -17,6 +17,8 @@ class NotificationReplyWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        val expectedAccount = inputData.getString(KEY_EXPECTED_ACCOUNT).orEmpty()
+        if (!com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(expectedAccount)) return Result.failure()
         val receiverUsername = inputData.getString(KEY_RECEIVER_USERNAME)?.trim().orEmpty()
         val receiverName = inputData.getString(KEY_RECEIVER_NAME).orEmpty()
         val replyText = inputData.getString(KEY_REPLY_TEXT)?.trim().orEmpty()
@@ -25,6 +27,8 @@ class NotificationReplyWorker(
         if (receiverUsername.isBlank() || replyText.isBlank()) return Result.failure()
 
         SupabaseService.initialize(applicationContext)
+        // Do not send as account B when a reply was queued for account A.
+        if (SupabaseService().getCurrentUserId() != expectedAccount) return Result.failure()
         val repository = ChatRepository()
         val sendResult = repository.sendMessage(receiverUsername, replyText)
 
@@ -71,6 +75,7 @@ class NotificationReplyWorker(
         const val KEY_RECEIVER_NAME = "receiver_name"
         const val KEY_REPLY_TEXT = "reply_text"
         const val KEY_NOTIFICATION_ID = "notification_id"
+        const val KEY_EXPECTED_ACCOUNT = "expected_account"
         private const val MAX_ATTEMPTS = 6
     }
 }

@@ -423,6 +423,39 @@ class DesktopSupabaseClient(
             .take(150)
     }
 
+    /** Idempotent quick actions use the same signed-in session and server RLS as the feed. */
+    suspend fun followBack(profileId: String) = withContext(Dispatchers.IO) {
+        require(com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(profileId))
+        require(profileId != requireSession().userId) { "You cannot follow yourself." }
+        postObject("/rest/v1/rpc/follow_user", JSONObject().put("p_following_id", profileId))
+    }
+
+    suspend fun likePostOnce(postId: String) = withContext(Dispatchers.IO) {
+        require(com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(postId))
+        val uid = requireSession().userId
+        val exists = getArray(
+            "/rest/v1/post_likes?post_id=eq.${encode(postId)}&user_id=eq.${encode(uid)}&select=post_id&limit=1"
+        ).length() > 0
+        if (!exists) postArray(
+            "/rest/v1/post_likes",
+            JSONObject().put("post_id", postId).put("user_id", uid),
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
+    suspend fun likeCommentOnce(commentId: String) = withContext(Dispatchers.IO) {
+        require(com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(commentId))
+        val uid = requireSession().userId
+        val exists = getArray(
+            "/rest/v1/comment_likes?comment_id=eq.${encode(commentId)}&user_id=eq.${encode(uid)}&select=comment_id&limit=1"
+        ).length() > 0
+        if (!exists) postArray(
+            "/rest/v1/comment_likes",
+            JSONObject().put("comment_id", commentId).put("user_id", uid),
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
     suspend fun markNotificationRead(notificationId: String) = withContext(Dispatchers.IO) {
         val isActivity = notificationId.startsWith("activity:")
         val rowId = notificationId

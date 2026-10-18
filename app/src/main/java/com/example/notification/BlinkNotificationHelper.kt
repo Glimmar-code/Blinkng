@@ -20,6 +20,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
 import com.blinkng.shared.notification.BlinkNotificationPresentation
+import com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy
+import com.blinkng.shared.notification.BlinkNotificationQuickAction
+import com.blinkng.shared.notification.BlinkNotificationKind
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.absoluteValue
@@ -102,11 +105,13 @@ object BlinkNotificationHelper {
     const val EXTRA_PARTNER_AVATAR = "EXTRA_PARTNER_AVATAR"
     const val EXTRA_POST_ID = "EXTRA_POST_ID"
     const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
+    const val EXTRA_PROFILE_USERNAME = "EXTRA_PROFILE_USERNAME"
 
     const val ACTION_OPEN_CHAT = "OPEN_CHAT"
     const val ACTION_OPEN_POST = "OPEN_POST"
     const val ACTION_OPEN_MARKET = "OPEN_MARKET"
     const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
+    const val ACTION_OPEN_PROFILE = "OPEN_PROFILE"
 
     // ================================================================
     // COLORS
@@ -475,6 +480,58 @@ object BlinkNotificationHelper {
         )
 
         context.startActivity(intent)
+    }
+
+
+    /** Scoped action intent. Explicit receiver plus unique data URI prevents PendingIntent aliasing. */
+    fun buildQuickAction(
+        context: Context,
+        action: String,
+        expectedAccount: String,
+        targetId: String,
+        notificationId: Int,
+        username: String = "",
+    ): NotificationCompat.Action? {
+        if (!BlinkNotificationQuickActionPolicy.isId(expectedAccount)) return null
+        if (action != NotificationQuickActionWorker.ACTION_MARK_READ &&
+            !BlinkNotificationQuickActionPolicy.isId(targetId)) return null
+        if (action == NotificationQuickActionWorker.ACTION_MARK_READ && username.isBlank()) return null
+        val intent = Intent(context, NotificationQuickActionReceiver::class.java).apply {
+            data = Uri.parse(
+                "blink://notification/quick/${Uri.encode(expectedAccount)}/${Uri.encode(action)}/" +
+                    "${Uri.encode(targetId.ifBlank { username })}/$notificationId"
+            )
+            putExtra(NotificationQuickActionWorker.KEY_ACTION, action)
+            putExtra(NotificationQuickActionWorker.KEY_USER_ID, expectedAccount)
+            putExtra(NotificationQuickActionWorker.KEY_TARGET_ID, targetId)
+            putExtra(NotificationQuickActionWorker.KEY_USERNAME, username)
+            putExtra(NotificationQuickActionWorker.KEY_NOTIFICATION_ID, notificationId)
+        }
+        val pending = PendingIntent.getBroadcast(
+            context, positiveHash("${expectedAccount}_${action}_$targetId$username$notificationId"),
+            intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val label = when (action) {
+            NotificationQuickActionWorker.ACTION_FOLLOW -> "Follow Back"
+            NotificationQuickActionWorker.ACTION_LIKE_POST,
+            NotificationQuickActionWorker.ACTION_LIKE_COMMENT -> "Like"
+            NotificationQuickActionWorker.ACTION_MARK_READ -> "Mark Read"
+            else -> return null
+        }
+        return NotificationCompat.Action.Builder(0, label, pending).build()
+    }
+
+    private fun buildProfilePendingIntent(context: Context, username: String): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_PROFILE)
+            putExtra(EXTRA_PROFILE_USERNAME, username)
+            data = Uri.parse("blink://notification/profile/${Uri.encode(username)}")
+        }
+        return PendingIntent.getActivity(
+            context, positiveHash("profile_$username"), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     // ================================================================
@@ -879,7 +936,9 @@ object BlinkNotificationHelper {
         context: Context,
         username: String,
         comment: String,
-        postId: String
+        postId: String,
+        commentId: String = "",
+        expectedAccount: String = "",
     ) {
 
         if (
@@ -895,8 +954,15 @@ object BlinkNotificationHelper {
         )
         val actor = BlinkNotificationPresentation.username(username)
         val safeComment = BlinkNotificationPresentation.body(comment, "New comment on your post")
+        val notificationId = COMMENT_ID_BASE + positiveHash("${username}_${postId}_${comment}") % 700
+        val actions = BlinkNotificationQuickActionPolicy.available(
+            BlinkNotificationKind.COMMENT,
+            recipientBound = BlinkNotificationQuickActionPolicy.isId(expectedAccount),
+            commentId = commentId,
+            postId = postId,
+        )
 
-        val notification =
+        val builder =
             NotificationCompat.Builder(
                 context,
                 CHANNEL_COMMENTS
@@ -936,14 +1002,18 @@ object BlinkNotificationHelper {
                 .setGroup(
                     GROUP_KEY_SOCIAL
                 )
-                .build()
+        if (BlinkNotificationQuickAction.LIKE_COMMENT in actions) {
+            buildQuickAction(
+                context, NotificationQuickActionWorker.ACTION_LIKE_COMMENT,
+                expectedAccount, commentId, notificationId,
+            )?.let(builder::addAction)
+        }
+        builder.addAction(0, "Reply", buildPostPendingIntent(context, postId))
+        val notification = builder.build()
 
         notifySafely(
             context,
-            COMMENT_ID_BASE +
-                    positiveHash(
-                        "${username}_${postId}_${comment}"
-                    ) % 700,
+            notificationId,
             notification
         )
     }
@@ -956,7 +1026,8 @@ object BlinkNotificationHelper {
         context: Context,
         username: String,
         postId: String,
-        body: String
+        body: String,
+        expectedAccount: String = "",
     ) {
 
         if (
@@ -972,8 +1043,14 @@ object BlinkNotificationHelper {
         )
         val actor = BlinkNotificationPresentation.username(username)
         val safeBody = BlinkNotificationPresentation.body(body, "You were mentioned in a post.")
+        val notificationId = MENTION_ID_BASE + positiveHash("${username}_$postId") % 700
+        val actions = BlinkNotificationQuickActionPolicy.available(
+            BlinkNotificationKind.MENTION,
+            recipientBound = BlinkNotificationQuickActionPolicy.isId(expectedAccount),
+            postId = postId,
+        )
 
-        val notification =
+        val builder =
             NotificationCompat.Builder(
                 context,
                 CHANNEL_MENTIONS
@@ -1009,14 +1086,18 @@ object BlinkNotificationHelper {
                 .setGroup(
                     GROUP_KEY_SOCIAL
                 )
-                .build()
+        if (BlinkNotificationQuickAction.LIKE_POST in actions) {
+            buildQuickAction(
+                context, NotificationQuickActionWorker.ACTION_LIKE_POST,
+                expectedAccount, postId, notificationId,
+            )?.let(builder::addAction)
+        }
+        builder.addAction(0, "View Post", buildPostPendingIntent(context, postId))
+        val notification = builder.build()
 
         notifySafely(
             context,
-            MENTION_ID_BASE +
-                    positiveHash(
-                        "${username}_${postId}"
-                    ) % 700,
+            notificationId,
             notification
         )
     }
@@ -1027,7 +1108,9 @@ object BlinkNotificationHelper {
 
     fun showFollowNotification(
         context: Context,
-        username: String
+        username: String,
+        actorId: String = "",
+        expectedAccount: String = "",
     ) {
 
         if (
@@ -1042,8 +1125,14 @@ object BlinkNotificationHelper {
             context
         )
         val actor = BlinkNotificationPresentation.username(username)
+        val notificationId = SOCIAL_ID_BASE + positiveHash("follow_$username") % 700
+        val actions = BlinkNotificationQuickActionPolicy.available(
+            BlinkNotificationKind.FOLLOW,
+            recipientBound = BlinkNotificationQuickActionPolicy.isId(expectedAccount),
+            senderId = actorId,
+        )
 
-        val notification =
+        val builder =
             NotificationCompat.Builder(
                 context,
                 CHANNEL_FOLLOWS
@@ -1065,14 +1154,21 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
-                .build()
+        if (actor.isNotBlank()) {
+            builder.setContentIntent(buildProfilePendingIntent(context, actor))
+            builder.addAction(0, "View Profile", buildProfilePendingIntent(context, actor))
+        }
+        if (BlinkNotificationQuickAction.FOLLOW_BACK in actions) {
+            buildQuickAction(
+                context, NotificationQuickActionWorker.ACTION_FOLLOW,
+                expectedAccount, actorId, notificationId,
+            )?.let(builder::addAction)
+        }
+        val notification = builder.build()
 
         notifySafely(
             context,
-            SOCIAL_ID_BASE +
-                    positiveHash(
-                        "follow_$username"
-                    ) % 700,
+            notificationId,
             notification
         )
     }
