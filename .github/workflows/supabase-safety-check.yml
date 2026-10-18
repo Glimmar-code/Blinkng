@@ -36,10 +36,18 @@ jobs:
         run: python3 scripts/check_supabase_safety.py
 
       - name: Install PostgreSQL SQL parser
-        run: python3 -m pip install --disable-pip-version-check --no-cache-dir 'pglast==7.10'
+        run: python3 -m pip install --disable-pip-version-check --no-cache-dir 'pglast==7.21'
 
       - name: Validate migration SQL syntax
         run: python3 scripts/check_supabase_sql_syntax.py
+
+      - name: Set up Node for payment tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify Paystack payment integrity
+        run: node --test scripts/test_paystack_integrity.mjs
 
       - name: Detect complete local schema baseline
         id: baseline
