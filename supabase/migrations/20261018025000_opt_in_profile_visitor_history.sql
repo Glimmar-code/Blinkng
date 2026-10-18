@@ -68,10 +68,16 @@ begin
     updated_at = now();
 
   if not p_participate then
-    -- Withdrawal of participation also erases the visible visit trail.
+    -- Withdrawal removes existing identifiable history, including legacy alerts.
     delete from public.profile_visit_events
       where viewer_id = v_uid or profile_id = v_uid;
     delete from public.profile_visit_receipts where user_id = v_uid;
+    delete from public.profile_views
+      where viewer_id = v_uid or profile_id = v_uid;
+    delete from public.activities
+      where actor_id = v_uid
+        and upper(coalesce(entity_type,'')) = 'PROFILE'
+        and message = 'viewed your profile';
   end if;
 
   return jsonb_build_object('participate', p_participate,
@@ -210,6 +216,52 @@ begin
   set last_seen_at = greatest(public.profile_visit_receipts.last_seen_at, excluded.last_seen_at);
   return true;
 end; $$;
+
+-- Legacy Android versions may still use create_activity(PROFILE). Stop those
+-- paths leaking visitor identity when either participant has opted out.
+create or replace function public.guard_unconsented_legacy_profile_visit()
+returns trigger language plpgsql security definer
+set search_path = public, pg_temp as $
+declare v_owner uuid; v_viewer uuid;
+begin
+  if tg_table_name = 'profile_views' then
+    v_owner := new.profile_id;
+    v_viewer := new.viewer_id;
+  else
+    if upper(coalesce(new.entity_type, '')) <> 'PROFILE'
+       or new.message <> 'viewed your profile' then return new; end if;
+    v_owner := new.recipient_id;
+    v_viewer := new.actor_id;
+  end if;
+  if v_owner is null or v_viewer is null or v_owner = v_viewer then return null; end if;
+  if not exists (
+    select 1 from public.profile_visit_settings s
+    where s.user_id = v_owner and s.participate
+  ) or not exists (
+    select 1 from public.profile_visit_settings s
+    where s.user_id = v_viewer and s.participate
+  ) then return null; end if;
+  if exists (
+    select 1 from public.blocks b
+    where (b.blocker_id = v_viewer and b.blocked_id = v_owner)
+       or (b.blocker_id = v_owner and b.blocked_id = v_viewer)
+  ) then return null; end if;
+  return new;
+end; $;
+
+revoke all on function public.guard_unconsented_legacy_profile_visit() from public, anon, authenticated;
+
+drop trigger if exists trg_profile_visit_legacy_consent
+  on public.profile_views;
+create trigger trg_profile_visit_legacy_consent before insert
+  on public.profile_views for each row
+  execute function public.guard_unconsented_legacy_profile_visit();
+
+drop trigger if exists trg_profile_activity_legacy_consent
+  on public.activities;
+create trigger trg_profile_activity_legacy_consent before insert
+  on public.activities for each row
+  execute function public.guard_unconsented_legacy_profile_visit();
 
 revoke all on function public.get_my_profile_visit_settings() from public, anon;
 revoke all on function public.set_my_profile_visit_settings(boolean, boolean) from public, anon;
