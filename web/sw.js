@@ -1,9 +1,10 @@
-const CACHE='blink-web-v22-go54-mobile-pagespeed';
+const CACHE='blink-web-v23-homepage-phase1';
 const SHELL=[
   './',
   './index.html',
   './404.html',
   './styles.css',
+  './landing.css',
   './parity.css',
   './config.js',
   './app.js',

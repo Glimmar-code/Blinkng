@@ -9,12 +9,14 @@ on:
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
   pull_request:
     paths:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
 
 permissions:
   contents: read
@@ -32,6 +34,9 @@ jobs:
 
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
+        run: node scripts/test_landing_phase1.mjs
 
       - name: JavaScript syntax
         run: |
