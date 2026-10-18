@@ -27,7 +27,7 @@ object BlinkStoryPresentation {
         if (!uuid.matches(storyId) || message.trim().isEmpty()) return null
         // Caption is not copied to the DM: the story itself remains protected by
         // its original availability and audience restrictions.
-        return "[BLINK story:$storyId]\\n${message.trim().take(1000)}"
+        return "[BLINK story:$storyId]\n${message.trim().take(1000)}"
     }
 
     data class StoryReply(val storyId: String, val text: String)
