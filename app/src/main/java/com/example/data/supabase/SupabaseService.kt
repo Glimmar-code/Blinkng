@@ -2568,6 +2568,10 @@ suspend fun uploadPostMedia(
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("id")
+                val timestamp = o.optString("created_at")
+                if (!com.blinkng.shared.notification.BlinkStoryPresentation.active(timestamp, o.optBoolean("active", true))) {
+                    continue
+                }
                 val u = o.optString("user_id")
                 val prof = if (u.isNotBlank()) fetchProfileById(u)?.also { cache[u] = it } else null
                 add(
@@ -2585,6 +2589,9 @@ suspend fun uploadPostMedia(
                         university = prof?.university.orEmpty(),
                         likesCount = o.optInt("likes_count", 0),
                         isLiked = liked.contains(sid),
+                        createdAt = timestamp,
+                        isVideo = o.optString("media_type").equals("video", ignoreCase = true) ||
+                            o.optString("video_url").isNotBlank(),
                         verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
                     )
                 )
