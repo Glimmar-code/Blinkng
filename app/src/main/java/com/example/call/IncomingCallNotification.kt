@@ -54,8 +54,7 @@ object IncomingCallNotification {
         // This guarantees an Answer/Decline surface even when notification permission or
         // heads-up presentation is disabled. Background and lock-screen calls continue to
         // use Android CallStyle/full-screen notifications, which is the platform-safe path.
-        if (shouldUseInAppBanner(context)) {
-            IncomingCallBannerActivity.show(
+        if (shouldUseInAppBanner(context) && IncomingCallBannerActivity.show(
                 context = context.applicationContext,
                 callId = callId,
                 callType = callType,
@@ -64,7 +63,7 @@ object IncomingCallNotification {
                 peerName = peerName,
                 peerAvatar = peerAvatar,
                 conversationId = conversationId
-            )
+            )) {
             return
         }
 
@@ -218,7 +217,7 @@ object IncomingCallNotification {
             IncomingCallBannerActivity.dismiss(callId)
             return
         }
-        if (normalized in setOf("cancelled", "declined", "ended", "missed", "failed")) {
+        if (normalized in setOf("cancelled", "declined", "ended", "missed", "failed", "busy")) {
             cancel(context, callId)
             IncomingCallBannerActivity.dismiss(callId)
             if (BlinkCallForegroundService.activeCallId == callId) {
