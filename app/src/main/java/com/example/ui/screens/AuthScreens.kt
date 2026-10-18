@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import com.example.data.local.rememberPersistentTextState
+import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.blinkng.shared.discovery.BlinkCampusRegistrationPolicy
+import com.example.data.models.NigerianUniversitySearch
 import com.example.auth.RememberedLoginStore
 import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthLaunchGate
@@ -721,7 +724,8 @@ fun SignUpScreen(
         username: String,
         email: String,
         password: String,
-        faculty: String
+        university: String,
+        accountType: String
     ) -> Unit,
     onGoogleSignUp: (String) -> Unit,
     onSwitchToSignIn: () -> Unit
@@ -739,9 +743,9 @@ fun SignUpScreen(
         mutableStateOf(false)
     }
 
-    var faculty by remember {
-        mutableStateOf("SIMME")
-    }
+    var university by rememberSaveable { mutableStateOf("") }
+    var accountType by rememberSaveable { mutableStateOf("") }
+    var universityDialog by remember { mutableStateOf(false) }
 
     var validationError by remember {
         mutableStateOf<String?>(null)
@@ -776,6 +780,8 @@ fun SignUpScreen(
                 username.trim().length >= 3 &&
                 email.contains("@") &&
                 isStrongBlinkPassword(password) &&
+                university.isNotBlank() &&
+                accountType.isNotBlank() &&
                 acceptTerms
 
     Box(
@@ -960,40 +966,23 @@ fun SignUpScreen(
                 )
 
                 Text(
-                    "Choose your faculty",
+                    "Your university",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = DarkTextSecondary
                 )
-
-                Spacer(
-                    modifier = Modifier.height(7.dp)
-                )
-
-                val faculties =
-                    listOf(
-                        "SIMME",
-                        "ENGINEERING",
-                        "LAW",
-                        "ARTS",
-                        "SCIENCE"
-                    )
-
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-
-                    items(faculties) { fac ->
-
-                        val selected =
-                            faculty == fac
-
+                Spacer(modifier = Modifier.height(7.dp))
+                UniversityPicker(selected = university, onClick = { universityDialog = true })
+                Text("Choose your actual university.", color = DarkTextSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("I am a", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkTextSecondary)
+                Spacer(modifier = Modifier.height(7.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(BlinkCampusAccountType.entries) { type ->
                         PremiumChoiceChip(
-                            text = fac,
-                            selected = selected,
-                            onClick = {
-                                faculty = fac
-                            }
+                            text = type.label,
+                            selected = accountType == type.name,
+                            onClick = { accountType = type.name; validationError = null }
                         )
                     }
                 }
@@ -1050,6 +1039,9 @@ fun SignUpScreen(
                                 validationError =
                                     "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
 
+                            university.isBlank() || accountType.isBlank() ->
+                                validationError = "Select your university and account type."
+
                             !acceptTerms ->
                                 validationError =
                                     "Please accept the community guidelines and terms."
@@ -1060,7 +1052,8 @@ fun SignUpScreen(
                                     username.trim(),
                                     email.trim(),
                                     password,
-                                    faculty
+                                    university,
+                                    accountType
                                 )
                         }
                     },
@@ -1132,6 +1125,17 @@ fun SignUpScreen(
                 }
             }
         }
+    }
+    if (universityDialog) {
+        UniversityPickerDialog(
+            selected = university,
+            onDismiss = { universityDialog = false },
+            onSelected = {
+                university = it
+                universityDialog = false
+                validationError = null
+            },
+        )
     }
 }
 
