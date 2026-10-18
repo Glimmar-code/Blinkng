@@ -74,3 +74,28 @@
 @media(max-width:680px){.landing-container{width:min(100% - 32px,540px)}.landing-header-inner{min-height:66px}.landing-desktop-nav{display:none}.landing-header-actions{margin-left:auto}.landing-menu{display:block}.landing-top-cta{font-size:13px;padding:10px 12px;min-height:44px}.landing-hero{padding-top:39px;padding-bottom:43px;gap:30px}.landing-hero h1{font-size:clamp(38px,10.4vw,57px)}.landing-preview{padding:21px;border-radius:21px}.landing-section-head{align-items:start;flex-direction:column}.landing-feature-grid{grid-template-columns:1fr}.landing-feature-card{padding:22px}.landing-bottom-cta{flex-direction:column;align-items:start;margin-bottom:30px}}
 @media(max-width:420px){.landing-container{width:calc(100% - 28px)}.landing-brand{font-size:19px}.landing-brand img{width:34px;height:34px}.landing-header-inner{gap:9px}.landing-top-cta{font-size:12px;padding:8px 10px}.landing-hero h1{font-size:clamp(37px,10.5vw,47px)}.landing-actions .landing-action{flex:1;white-space:normal}.landing-search-row{display:grid;grid-template-columns:minmax(0,1fr)}.landing-search-submit{width:100%}}
 @media(prefers-reduced-motion:reduce){.landing-page *{transition:none!important;animation:none!important;scroll-behavior:auto!important}.landing-action:hover,.landing-top-cta:hover,.landing-feature-card:hover,.landing-search-submit:hover{transform:none}}
+
+
+/* Phase 2 functional discovery: no public user data exposed in campus search. */
+.discovery-section{padding-bottom:clamp(36px,5vw,68px)}
+.discovery-support{color:#aeb0bf;line-height:1.65;margin:0 0 18px;font-size:14px;max-width:760px}
+.discovery-tour{background:linear-gradient(145deg,#171820,#101117);border:1px solid rgba(255,255,255,.13);border-radius:23px;padding:clamp(18px,3.5vw,33px)}
+.discovery-tabs{display:flex;flex-wrap:wrap;gap:9px}
+.discovery-tabs button{color:#c8cad4;cursor:pointer;padding:11px 17px;min-height:45px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);font:inherit;font-weight:790}
+.discovery-tabs button[aria-selected="true"]{background:#fff;color:#0a0b0d;border-color:#fff}
+.discovery-tour-body{padding-block:clamp(20px,3.5vw,38px) 7px}
+.discovery-tour-body h3{margin:0 0 11px;font-size:clamp(24px,3vw,34px);letter-spacing:-.035em}
+.discovery-tour-body p{font-size:15px;color:#b3b5c1;line-height:1.7;max-width:680px;margin:0 0 21px}
+.discovery-campuses{max-width:800px;background:#12141b;border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:clamp(16px,3vw,27px)}
+.discovery-campuses>label{display:block;font-weight:820;margin-bottom:12px}
+.discovery-campuses input{min-height:52px;width:100%;border-color:#3a3b44;color:#fff;background:#0b0d14}
+.discovery-status{font-size:13px;line-height:1.5;color:#b5b7c4;margin:9px 0 11px;min-height:19px}
+.campus-results{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.campus-option{width:100%;border:1px solid rgba(255,255,255,.09);border-radius:12px;text-align:left;background:#191b23;color:#f4f4f7;cursor:pointer;font-size:14px;line-height:1.4;font-weight:700;min-height:44px;padding:11px 13px}
+.campus-option:hover{border-color:rgba(255,255,255,.40);background:#252630}
+.campus-selection{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:15px;background:#22232a;border:1px solid rgba(255,255,255,.12);border-radius:15px;padding:15px;margin-top:11px}
+.campus-selection[hidden]{display:none}
+.campus-selection>span{color:#ceced9;font-size:14px;max-width:100%}
+.campus-selection strong{color:#fff;display:block;margin-top:4px}
+.discovery-tour .landing-action{width:fit-content;max-width:100%}
+@media(max-width:680px){.discovery-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.discovery-tabs button{width:100%}.campus-selection{align-items:stretch}.campus-selection .landing-action{width:100%;white-space:normal}.discovery-tour .landing-action{white-space:normal}}
