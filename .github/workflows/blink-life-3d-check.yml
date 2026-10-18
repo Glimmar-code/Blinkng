@@ -146,6 +146,10 @@ jobs:
             -out "$RUNNER_TEMP/blink-life-cert/cert.pem" \
             -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' \
             >/dev/null 2>&1
+          # Keep a separate runner-owned copy of the PUBLIC cert for the
+          # host TLS probe. The container's key remains owned by uid 10001.
+          install -m 0644 "$RUNNER_TEMP/blink-life-cert/cert.pem" \
+            "$RUNNER_TEMP/blink-life-trust.pem"
           sudo chown -R 10001:65534 "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
           # Public certificate must be readable by the host-side TLS probe.
           # Keep the private key owned by the unprivileged container UID only.
@@ -195,7 +199,7 @@ jobs:
           check_ready
           python3 scripts/blink_life_staging_preflight.py \
             --host localhost --port 24567 --loopback-only \
-            --cafile "$RUNNER_TEMP/blink-life-cert/cert.pem"
+            --cafile "$RUNNER_TEMP/blink-life-trust.pem"
           if python3 scripts/blink_life_staging_preflight.py \
               --host localhost --port 24567 --loopback-only; then
             echo 'Self-signed game server unexpectedly trusted without CA!'
@@ -205,7 +209,7 @@ jobs:
           check_ready
           python3 scripts/blink_life_staging_preflight.py \
             --host localhost --port 24567 --loopback-only \
-            --cafile "$RUNNER_TEMP/blink-life-cert/cert.pem"
+            --cafile "$RUNNER_TEMP/blink-life-trust.pem"
           echo 'PASS: unprivileged staging Docker container healthy, encrypted and restartable'
       - name: Always discard test container and certificates
         if: always()
@@ -215,4 +219,5 @@ jobs:
           # Docker bind mounts were assigned to uid 10001 for least privilege.
           # Restore ownership before deleting CI-only data and credentials.
           sudo rm -rf "$RUNNER_TEMP/blink-life-cert" "$RUNNER_TEMP/blink-life-state"
+          rm -f "$RUNNER_TEMP/blink-life-trust.pem"
 
