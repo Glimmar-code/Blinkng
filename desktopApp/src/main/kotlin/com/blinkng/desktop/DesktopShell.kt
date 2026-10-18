@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -100,6 +102,7 @@ import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
+import com.blinkng.desktop.ui.DesktopPaystackCheckoutPanel
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -604,7 +607,7 @@ private fun DesktopSidebar(
 private fun DesktopRightPanel(state: DesktopAppState) {
     val profile = state.profile
     Column(
-        modifier = Modifier.width(300.dp).fillMaxHeight().padding(20.dp),
+        modifier = Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Your Blink", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -614,6 +617,14 @@ private fun DesktopRightPanel(state: DesktopAppState) {
         Text("${profile?.followingCount ?: 0} following", fontWeight = FontWeight.SemiBold)
         Text("${profile?.coinBalance ?: 0} Blink Coins", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         HorizontalDivider()
+        state.session?.userId?.let { userId ->
+            DesktopPaystackCheckoutPanel(
+                client = state.client,
+                userId = userId,
+                onPaymentConfirmed = { state.refreshProfile() },
+            )
+            HorizontalDivider()
+        }
         Text("Windows status", fontWeight = FontWeight.Bold)
         Text(
             "Closing the window keeps Blinkng in the system tray so calls and notifications can continue while the desktop client is running.",
