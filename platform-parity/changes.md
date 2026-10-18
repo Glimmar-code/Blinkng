@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 4 profile visitor integration (CI candidate only)
+
+- Updated Feature 4 against current Testlab while preserving the merged Feature 2 notification quick actions, Feature 3 Find Friends, and Feature 9 Earning.
+- Eye counter on own profile, owner-only visitor history, consent controls and Windows parity share Supabase auth-bound RPCs. New backend SQL is committed but **not deployed to staging or production**.
+- Enabling identifiable visitor data requires a separate two-account staging privacy/security and migration compatibility test, including old app behavior, blocks, opt-outs and unread watermark. Do not merge to Testlab until CI passes, and do not merge to main or publish based on CI alone.
+
 ## 2026-10-18 — Feature 2: notification actions integrated with recent Testlab
 
 - Applies original PR #346's tested action policy, Android receiver/worker, mark-read/follow/like/profile access controls, remote-input recipient checks and Windows notification buttons on top of current Testlab. Existing safe notification fallbacks, Feature 3 Find Friends and Feature 9 Earning code remain intact.
