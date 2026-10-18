@@ -1,11 +1,13 @@
 /* BLINK official public-page anonymous analytics.
- * Disabled until site owner reviews production privacy, Edge config and policy.
- * Aggregates only public page categories and APK link taps, no user data.
+ * Explicitly activated by site owner 2026-10-18 after security and privacy review.
+ * Aggregates only public page categories and APK link taps; no visitor identifiers.
  */
 (() => {
   'use strict';
-  const ENABLED = false; // Explicit activation review required.
+  const ENABLED = true; // Owner-authorized production activation (18 Oct 2026).
   if(!ENABLED)return;
+  // Preview builds, insecure local servers and third-party copies never contribute.
+  if(location.protocol!=='https:' || location.hostname!=='blink.com.ng')return;
   if(navigator.globalPrivacyControl === true || navigator.doNotTrack === '1')return;
   const pages = new Map([
     ['/','home'],['/about/','about'],['/features/','features'],
