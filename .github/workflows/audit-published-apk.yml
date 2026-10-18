@@ -1,0 +1,49 @@
+name: Verify published BLINK APK
+
+# Read-only verification after each official release, with daily drift detection.
+# This does not build, promote, unpublish, or overwrite release assets.
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-blink-latest-public-apk
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.repository == 'Glimmar-code/Blinkng'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out trusted production auditor
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Regression-test release integrity and auditor
+        run: |
+          python3 .github/scripts/test_publish_verified_apk.py -v
+          python3 .github/scripts/test_release_audit.py -v
+
+      - name: Download the public latest release and verify its actual bytes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_EVENT_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/audit_published_apk.py \
+            --repository Glimmar-code/Blinkng \
+            --expected-tag "${RELEASE_EVENT_TAG:-}"
