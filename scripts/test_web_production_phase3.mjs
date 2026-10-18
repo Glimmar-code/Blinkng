@@ -27,9 +27,9 @@ const cache={
   match:async key=>stored.get(typeof key==='string'?key:key.url),
   put:async(key,value)=>{putCalls.push(typeof key==='string'?key:key.url);stored.set(typeof key==='string'?key:key.url,value);}
 };
-const cacheNames=['blink-web-v23-homepage-phase1','other-website-assets','blink-web-v25-production-safe-cache'];
+const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell'];
 const caches={
-  open:async name=>{assert.ok(name==='blink-web-v25-production-safe-cache');return cache;},
+  open:async name=>{assert.ok(name==='blink-web-v26-mobile-lean-shell');return cache;},
   keys:async()=>cacheNames,
   delete:async name=>{deleted.push(name);return true;}
 };
@@ -61,7 +61,7 @@ await Promise.all(installTasks);
 const activation=[];
 handlers.activate({waitUntil:p=>activation.push(Promise.resolve(p))});
 await Promise.all(activation);
-assert.deepEqual(deleted,['blink-web-v23-homepage-phase1'],'Do not delete caches owned by unrelated applications');
+assert.deepEqual(deleted,['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache'],'Only old BLINK caches may be removed; other apps are untouched');
 
 networkCalls=[];putCalls.length=0;
 const profile=dispatch('https://blink.com.ng/@person',{mode:'navigate'});
