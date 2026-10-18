@@ -12,7 +12,7 @@ class BlinkDiscoveryPolicyTest {
     }
 
     @Test fun knownAndSkippedStepsDoNotRepeat() {
-        val completed = setOf("welcome", "reels")
+        val completed = setOf("welcome", "friends", "reels")
         assertEquals("shake_report", BlinkDiscoveryPolicy.next(completed, 45_000, true, 0, Long.MAX_VALUE)?.id)
         assertNull(BlinkDiscoveryPolicy.next(BlinkDiscoveryPolicy.allIds(), 1_000_000, true, 0, Long.MAX_VALUE))
     }
@@ -21,7 +21,7 @@ class BlinkDiscoveryPolicyTest {
         assertNull(BlinkDiscoveryPolicy.next(emptySet(), 90_000, false, 0, Long.MAX_VALUE))
         assertNull(BlinkDiscoveryPolicy.next(emptySet(), 90_000, true, BlinkDiscoveryPolicy.MAX_PER_SESSION, Long.MAX_VALUE))
         assertNull(BlinkDiscoveryPolicy.next(setOf("welcome"), 30_000, true, 1, 1_000))
-        assertEquals("reels", BlinkDiscoveryPolicy.next(setOf("welcome"), 30_000, true, 1, 12_000)?.id)
+        assertEquals("friends", BlinkDiscoveryPolicy.next(setOf("welcome"), 30_000, true, 1, 12_000)?.id)
     }
 
     @Test fun routesReferToRealSharedFeatureIds() {
