@@ -14,6 +14,7 @@ data class DesktopProfile(
     val username: String,
     val avatarUrl: String?,
     val university: String?,
+    val accountType: String? = null,
     val faculty: String?,
     val department: String?,
     val bio: String?,
