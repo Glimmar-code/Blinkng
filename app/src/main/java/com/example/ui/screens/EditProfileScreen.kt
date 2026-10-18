@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ContactField
 import com.example.data.models.NigerianUniversities
 import com.example.data.models.NigerianUniversitySearch
+import com.blinkng.shared.discovery.BlinkCampusAccountType
 import com.example.data.models.UserProfile
 import com.example.data.repository.ProfileRepository
 import com.example.data.supabase.ProfileMediaType
@@ -106,9 +107,10 @@ fun EditProfileScreen(
     }
 
     var university by remember {
-        mutableStateOf(
-            profile.university
-        )
+        mutableStateOf(profile.university)
+    }
+    var accountType by remember {
+        mutableStateOf(profile.accountType)
     }
 
     var faculty by remember {
@@ -466,7 +468,9 @@ fun EditProfileScreen(
                                                 bio.trim(),
 
                                             university =
-                                                university.trim(),
+                                                NigerianUniversitySearch.canonical(university) ?: university.trim(),
+
+                                            accountType = accountType,
 
                                             faculty =
                                                 faculty.trim(),
@@ -889,14 +893,25 @@ fun EditProfileScreen(
                 ) {
 
                     UniversityPicker(
-                        selected =
-                            university,
-                        onClick =
-                            {
-                                universityDialog =
-                                    true
-                            }
+                        selected = university,
+                        onClick = { universityDialog = true }
                     )
+                    Text(
+                        "Campus account type (self-declared)",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BlinkCampusAccountType.entries.forEach { role ->
+                            FilterChip(
+                                selected = accountType == role.name,
+                                onClick = { accountType = role.name },
+                                label = { Text(role.label) }
+                            )
+                        }
+                    }
 
                     ProfileField(
                         value =
@@ -1307,7 +1322,9 @@ fun EditProfileScreen(
                                             bio.trim(),
 
                                         university =
-                                            university.trim(),
+                                            NigerianUniversitySearch.canonical(university) ?: university.trim(),
+
+                                        accountType = accountType,
 
                                         faculty =
                                             faculty.trim(),
