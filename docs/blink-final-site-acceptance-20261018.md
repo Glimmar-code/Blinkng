@@ -27,7 +27,7 @@ Canonical public website: **https://blink.com.ng/**. Your domain was purchased t
 ### Native Android App Links
 1. Install the **latest signed BLINK APK** from the official Download page.
 2. Android Settings → Apps → BLINK → Open by default / Opening links: ensure supported links are enabled.
-3. Tap a real `https://blink.com.ng/@<existing-public-username>` link from a message or a different app. Test public post, reel and market links too; they should open BLINK rather than only the browser.
+3. Tap a real `https://blink.com.ng/@<existing-public-username>` link from a message or a different app. Also test public post and reel links; they should open BLINK rather than only the browser. Marketplace links are not yet included in the Android verified intent-filter matrix.
 4. If verification still fails, developers can inspect `adb shell pm get-app-links com.aistudio.blink.appvtwo` and request re-verification with `adb shell pm verify-app-links --re-verify com.aistudio.blink.appvtwo`. Android's installed app association cannot be proven just by a valid JSON file.
 
 ### Google Search Console (Google controls indexing)
