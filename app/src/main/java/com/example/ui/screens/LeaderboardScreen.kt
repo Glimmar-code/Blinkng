@@ -116,7 +116,9 @@ fun LeaderboardScreen(
         val rankedScope = when (scope) {
             LeaderboardScope.WORLD -> world
             LeaderboardScope.CAMPUS -> rankWithinScope(
-                world.filter { it.university.equals(campusName, ignoreCase = true) }
+                world.filter {
+                            com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campusName)
+                        }
             )
             LeaderboardScope.FACULTY -> rankWithinScope(
                 world.filter { it.faculty.equals(facultyName, ignoreCase = true) }
