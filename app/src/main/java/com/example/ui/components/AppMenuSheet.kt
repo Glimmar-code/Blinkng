@@ -134,6 +134,7 @@ fun AppMenuSheet(
     onOpenBecomeSeller: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenActivity: () -> Unit,
+    onOpenEarning: () -> Unit,
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onShowToast: (String) -> Unit,
@@ -155,6 +156,7 @@ fun AppMenuSheet(
         addAll(listOf(
             "Profile view profile",
             "Activity mentions and notifications",
+            "Earning wallet missions rewards Blink Coins transaction history",
             "Leaderboard campus ranking and points",
             "Marketplace browse campus listings",
             "List an item create a marketplace listing",
@@ -264,6 +266,13 @@ fun AppMenuSheet(
 
             SearchableMenuItemRow(menuQuery, Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
                 onDismiss(); onOpenActivity()
+            }
+            SearchableMenuItemRow(
+                menuQuery, Icons.Outlined.AccountBalanceWallet,
+                "Earning", "Coins, missions, rewards and history"
+            ) {
+                onDismiss()
+                onOpenEarning()
             }
             SearchableMenuItemRow(menuQuery, Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
                 onDismiss(); onOpenLeaderboard()

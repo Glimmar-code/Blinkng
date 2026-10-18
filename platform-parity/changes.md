@@ -1,3 +1,11 @@
+## 2026-10-18 — Feature 9: Menu → Earning & wallet history (Testlab candidate)
+
+- **Android Menu:** introduced prominent searchable **Earning** entry under Menu, opening an account-scoped black-and-white, mobile-friendly sheet. It supports authenticated current coin balance, existing daily streak, live daily missions with actual backend-validated claim actions, optional ad flow via existing AdMob claim checks, explicit opt-in invitation sharing and limited owner-only coin transaction history.
+- **Security:** never credits coins locally. The **available wallet balance is shown only after the existing signed-in `get_blink_store_state` RPC confirms it**; on failed fetch, the last locally displayed balance is labelled unconfirmed. History is RPC-bound to auth.uid() by existing server code; UI never accepts an arbitrary user ID for balance queries.
+- **Clarity:** BLINK Coins are not money, there is NO real-money cash-out, referral rewards currently **do not** earn coins, and merely checking in does not create an unverified coin bonus. Mission claim progress and rewarded ad credit remain owned by preexisting Supabase RPCs and verification pipeline. Share invitations only through the OS sharesheet, not spam or device contact uploads.
+- **Desktop:** existing Windows Profile already implements verified account economy state, daily mission claims and a coin balance. Adding a dedicated Windows Earning item is not included in this Android menu enhancement.
+- **Staging gate:** Android unit test and APK build, Menu navigation, reconnect/stale balance, account switching, viewing history of only the account owner, mission already-claimed/failed paths, optional ads permission/SSV behavior, dark/light mode and small-screen scrolling. No main merge or published APK before CI and device regression checks pass. No Supabase migration required: reuses existing wallet, daily mission and transaction history RPCs.
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
