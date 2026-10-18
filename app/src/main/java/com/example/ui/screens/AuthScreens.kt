@@ -1148,35 +1148,20 @@ fun SignUpScreen(
 fun ProfileSetupOnboardingScreen(
     studentName: String,
     studentUsername: String,
+    initialUniversity: String = "",
+    initialAccountType: String = "",
     onComplete: (
         university: String,
+        faculty: String,
         department: String,
         level: String,
+        accountType: String,
         bio: String,
         skills: List<String>
     ) -> Unit
 ) {
 
-    val universities = listOf(
-        "University of Lagos",
-        "University of Benin",
-        "Obafemi Awolowo University",
-        "University of Nigeria Nsukka",
-        "Ahmadu Bello University",
-        "Federal University of Technology Akure",
-        "University of Ibadan",
-        "Lagos State University",
-        "Covenant University"
-    )
-
-    val levels = listOf(
-        "100 Level",
-        "200 Level",
-        "300 Level",
-        "400 Level",
-        "500 Level",
-        "Postgraduate"
-    )
+    val levels = BlinkCampusRegistrationPolicy.academicLevels
 
     val interests = listOf(
         "Product Design",
@@ -1193,17 +1178,18 @@ fun ProfileSetupOnboardingScreen(
         "Tech"
     )
 
-    var selectedUniversity by remember {
-        mutableStateOf(
-            "Federal University of Technology Akure"
-        )
+    var selectedUniversity by remember(initialUniversity) {
+        mutableStateOf(NigerianUniversitySearch.canonical(initialUniversity).orEmpty())
     }
+    var accountType by remember(initialAccountType) {
+        mutableStateOf(BlinkCampusAccountType.fromWire(initialAccountType)?.name.orEmpty())
+    }
+    var universityDialog by remember { mutableStateOf(false) }
+    var faculty by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:faculty:7")
 
     var department by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:department:5")
 
-    var selectedLevel by remember {
-        mutableStateOf("200 Level")
-    }
+    var selectedLevel by remember { mutableStateOf("") }
 
     var bio by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:bio:6")
 
@@ -1215,6 +1201,17 @@ fun ProfileSetupOnboardingScreen(
         remember {
             mutableStateListOf<String>()
         }
+
+    if (universityDialog) {
+        UniversityPickerDialog(
+            selected = selectedUniversity,
+            onDismiss = { universityDialog = false },
+            onSelected = {
+                selectedUniversity = it
+                universityDialog = false
+            },
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -1313,24 +1310,28 @@ fun ProfileSetupOnboardingScreen(
                                     modifier = Modifier.height(17.dp)
                                 )
 
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-
-                                    items(universities) { university ->
-
+                                UniversityPicker(
+                                    selected = selectedUniversity,
+                                    onClick = { universityDialog = true },
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("Your account type", color = Color.White, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(BlinkCampusAccountType.entries) { type ->
                                         PremiumChoiceChip(
-                                            text = university,
-                                            selected =
-                                                selectedUniversity ==
-                                                        university,
-                                            onClick = {
-                                                selectedUniversity =
-                                                    university
-                                            }
+                                            text = type.label,
+                                            selected = accountType == type.name,
+                                            onClick = { accountType = type.name },
                                         )
                                     }
                                 }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Choose your real university; selecting a campus does not confirm official student identity.",
+                                    color = DarkTextSecondary,
+                                    fontSize = 11.sp,
+                                )
                             }
 
                             1 -> {
@@ -1345,11 +1346,18 @@ fun ProfileSetupOnboardingScreen(
                                 )
 
                                 PremiumOnboardingField(
+                                    value = faculty,
+                                    onValueChange = { faculty = it },
+                                    label = if (accountType == "STUDENT") "Faculty / School" else "Faculty / School (optional)",
+                                    icon = Icons.Default.School,
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                PremiumOnboardingField(
                                     value = department,
                                     onValueChange = {
                                         department = it
                                     },
-                                    label = "Department / Course",
+                                    label = if (accountType == "STUDENT") "Department / Course" else "Department / Course (optional)",
                                     icon = Icons.Default.School
                                 )
 
@@ -1357,32 +1365,25 @@ fun ProfileSetupOnboardingScreen(
                                     modifier = Modifier.height(18.dp)
                                 )
 
-                                Text(
-                                    "Academic level",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-
-                                Spacer(
-                                    modifier = Modifier.height(8.dp)
-                                )
-
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                                ) {
-
-                                    items(levels) { level ->
-
-                                        PremiumChoiceChip(
-                                            text = level,
-                                            selected =
-                                                selectedLevel == level,
-                                            onClick = {
-                                                selectedLevel = level
-                                            }
-                                        )
+                                if (accountType == BlinkCampusAccountType.STUDENT.name) {
+                                    Text(
+                                        "Academic level",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        items(levels) { level ->
+                                            PremiumChoiceChip(
+                                                text = level,
+                                                selected = selectedLevel == level,
+                                                onClick = { selectedLevel = level }
+                                            )
+                                        }
                                     }
+                                } else {
+                                    selectedLevel = ""
                                 }
                             }
 
@@ -1538,8 +1539,10 @@ fun ProfileSetupOnboardingScreen(
 
                                 onComplete(
                                     selectedUniversity,
-                                    department,
-                                    selectedLevel,
+                                    faculty.trim(),
+                                    department.trim(),
+                                    if (accountType == "STUDENT") selectedLevel else "",
+                                    accountType,
                                     bio,
                                     selectedInterests.toList()
                                 )
@@ -1548,10 +1551,11 @@ fun ProfileSetupOnboardingScreen(
                         enabled =
                             when (currentStep) {
                                 0 ->
-                                    selectedUniversity.isNotBlank()
+                                    selectedUniversity.isNotBlank() && accountType.isNotBlank()
 
                                 1 ->
-                                    department.isNotBlank()
+                                    !BlinkCampusRegistrationPolicy.requiresAcademicDetails(accountType) ||
+                                        (faculty.isNotBlank() && department.isNotBlank() && selectedLevel in levels)
 
                                 2 ->
                                     selectedInterests.isNotEmpty()
