@@ -3,6 +3,8 @@ package com.example.call
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,25 +18,34 @@ class CallActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val callId = intent.getStringExtra(CallActivity.EXTRA_CALL_ID).orEmpty()
-        if (callId.isBlank()) return
+        if (callId.isBlank() ||
+            intent.action !in setOf(ACTION_DECLINE, ACTION_END)) return
         IncomingCallNotification.cancel(context, callId)
+        IncomingCallBannerActivity.dismiss(callId)
 
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                SupabaseService.initialize(context.applicationContext)
                 val repository = CallRepository()
-                when (intent.action) {
-                    ACTION_DECLINE -> {
-                        repository.declineCall(callId)
-                        repository.dispatchPush(callId, "declined")
-                    }
-                    ACTION_END -> {
-                        val result = repository.endCall(callId, "ended")
-                        val event = result.getOrNull()?.status?.wireValue ?: "ended"
-                        repository.dispatchPush(callId, event)
-                    }
+                val event = when (intent.action) {
+                    ACTION_DECLINE -> repository.declineCall(callId).getOrNull()
+                        ?.status?.wireValue
+                    ACTION_END -> repository.endCall(callId, "ended").getOrNull()
+                        ?.status?.wireValue
+                    else -> null
                 }
-                context.stopService(Intent(context, BlinkCallForegroundService::class.java))
+                if (event != null) {
+                    CallNotificationLedger.markUpdated(
+                        context, repository.currentUserId(), callId, event
+                    )
+                    repository.dispatchPush(callId, event)
+                }
+                if (BlinkCallForegroundService.activeCallId == callId) {
+                    context.stopService(Intent(context, BlinkCallForegroundService::class.java))
+                }
+            } catch (error: Exception) {
+                Log.w("BlinkCalls", "Call action could not be completed", error)
             } finally {
                 pendingResult.finish()
             }
