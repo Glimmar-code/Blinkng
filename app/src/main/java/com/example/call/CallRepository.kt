@@ -185,11 +185,10 @@ class CallRepository {
             runCatching {
                 val scoped = fetchTurnConfiguration("get-call-ice-config", callId)
                 val servers = scoped.getOrElse { error ->
-                    val httpError = error as? CallApiException
-                    // Never bypass explicit authorization failures. Only use
-                    // the compatibility path when the new endpoint is missing
-                    // or not configured in the current Supabase environment.
-                    if (httpError?.statusCode !in setOf(404, 503)) throw error
+                    // The backend can report 404 for nonparticipants, too.
+                    // Only an explicitly missing endpoint or missing TURN
+                    // configuration may use the legacy compatibility endpoint.
+                    if (error !is CallIceCompatibilityException) throw error
                     fetchTurnConfiguration("call-turn-credentials", callId).getOrThrow()
                 }
                 CallIceConfigParser.parse(servers).flatMap { item ->
@@ -217,6 +216,10 @@ class CallRepository {
             response.use {
                 val text = it.body?.string().orEmpty()
                 if (!it.isSuccessful) {
+                    if (functionName == "get-call-ice-config" &&
+                        CallIceConfigParser.allowLegacyFallback(it.code, text)) {
+                        throw CallIceCompatibilityException()
+                    }
                     throw CallApiException(
                         parseError(text, "Call relay configuration unavailable."),
                         it.code
@@ -375,3 +378,4 @@ class CallRepository {
 }
 
 class CallApiException(message: String, val statusCode: Int) : Exception(message)
+private class CallIceCompatibilityException : Exception("Call relay endpoint not deployed")
