@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/blink-live-integrations-smoke.yml'
       - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/verify_live_browser_analytics.mjs'
   workflow_run:
     workflows: ["Deploy Blink web"]
     types: [completed]
@@ -36,3 +37,9 @@ jobs:
         env:
           BLINK_VERIFY_SYNTHETIC_ANALYTICS: '1'
         run: node scripts/verify_live_blink_integrations.mjs
+      - name: Install Playwright Chrome for a real public-only browser measurement
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify anonymous page-view request from real mobile Chrome
+        run: node scripts/verify_live_browser_analytics.mjs
