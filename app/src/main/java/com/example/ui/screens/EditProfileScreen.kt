@@ -11,6 +11,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ContactField
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
+import com.blinkng.shared.discovery.BlinkCampusAccountType
 import com.example.data.models.UserProfile
 import com.example.data.repository.ProfileRepository
 import com.example.data.supabase.ProfileMediaType
@@ -105,9 +110,10 @@ fun EditProfileScreen(
     }
 
     var university by remember {
-        mutableStateOf(
-            profile.university
-        )
+        mutableStateOf(profile.university)
+    }
+    var accountType by remember {
+        mutableStateOf(profile.accountType)
     }
 
     var faculty by remember {
@@ -465,7 +471,9 @@ fun EditProfileScreen(
                                                 bio.trim(),
 
                                             university =
-                                                university.trim(),
+                                                NigerianUniversitySearch.canonical(university) ?: university.trim(),
+
+                                            accountType = accountType,
 
                                             faculty =
                                                 faculty.trim(),
@@ -888,14 +896,25 @@ fun EditProfileScreen(
                 ) {
 
                     UniversityPicker(
-                        selected =
-                            university,
-                        onClick =
-                            {
-                                universityDialog =
-                                    true
-                            }
+                        selected = university,
+                        onClick = { universityDialog = true }
                     )
+                    Text(
+                        "Campus account type (self-declared)",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BlinkCampusAccountType.entries.forEach { role ->
+                            FilterChip(
+                                selected = accountType == role.name,
+                                onClick = { accountType = role.name },
+                                label = { Text(role.label) }
+                            )
+                        }
+                    }
 
                     ProfileField(
                         value =
@@ -1306,7 +1325,9 @@ fun EditProfileScreen(
                                             bio.trim(),
 
                                         university =
-                                            university.trim(),
+                                            NigerianUniversitySearch.canonical(university) ?: university.trim(),
+
+                                        accountType = accountType,
 
                                         faculty =
                                             faculty.trim(),
@@ -1731,7 +1752,7 @@ private fun ProfileField(
 }
 
 @Composable
-private fun UniversityPicker(
+fun UniversityPicker(
     selected: String,
     onClick: () -> Unit
 ) {
@@ -1774,7 +1795,7 @@ private fun UniversityPicker(
                 contentDescription =
                     null,
                 tint =
-                    BlinkPink
+                    MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(
@@ -1823,35 +1844,17 @@ private fun UniversityPicker(
 }
 
 @Composable
-private fun UniversityPickerDialog(
+fun UniversityPickerDialog(
     selected: String,
     onDismiss: () -> Unit,
     onSelected: (String) -> Unit
 ) {
 
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/EditProfileScreen.kt:query:1")
+    var query by rememberSaveable { mutableStateOf("") }
 
-    val universities =
-        remember(
-            query
-        ) {
-
-            if (
-                query.isBlank()
-            ) {
-                NigerianUniversities.all
-            } else {
-                NigerianUniversities
-                    .all
-                    .filter {
-                        it.contains(
-                            query,
-                            ignoreCase =
-                                true
-                        )
-                    }
-            }
-        }
+    val universities = remember(query) {
+        NigerianUniversitySearch.search(query, limit = NigerianUniversities.all.size)
+    }
 
     AlertDialog(
         onDismissRequest =
@@ -1954,10 +1957,7 @@ private fun UniversityPickerDialog(
                                 selected ==
                                     university
                             )
-                                BlinkPink.copy(
-                                    alpha =
-                                        0.09f
-                                )
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                             else
                                 Color.Transparent
                     ) {
@@ -1986,7 +1986,7 @@ private fun UniversityPickerDialog(
                                         selected ==
                                             university
                                     )
-                                        BlinkPink
+                                        MaterialTheme.colorScheme.onSurface
                                     else
                                         MaterialTheme
                                             .colorScheme
@@ -2057,7 +2057,7 @@ private fun CoverEditor(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            BlinkPink,
+                            MaterialTheme.colorScheme.onSurface,
                             Color(
                                 0xFF7C3AED
                             )
@@ -2173,7 +2173,7 @@ private fun AvatarEditor(
                             )
                             .border(
                                 2.dp,
-                                BlinkPink,
+                                MaterialTheme.colorScheme.onSurface,
                                 CircleShape
                             )
                 )
@@ -2191,7 +2191,7 @@ private fun AvatarEditor(
                             32.dp
                         )
                         .background(
-                            BlinkPink,
+                            MaterialTheme.colorScheme.onSurface,
                             CircleShape
                         )
             ) {
