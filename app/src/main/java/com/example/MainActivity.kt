@@ -531,7 +531,7 @@ class MainActivity : ComponentActivity() {
                                 safeToShow = idleHomeForPrompts &&
                                     websiteUpdateCheckFinished &&
                                     (websiteRelease == null || websiteUpdateDismissed) &&
-                                    !adminAnnouncementOpen,
+                                    !adminAnnouncementOpen && !showFindFriends,
                                 onNavigate = { route ->
                                     when (route) {
                                         "friends" -> { showFindFriends = true }
