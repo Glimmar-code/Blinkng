@@ -408,6 +408,7 @@ class CallActivity : ComponentActivity() {
                 if (refreshed != null) applyCallUpdate(refreshed)
                 if (
                     refreshed?.status == CallStatus.CONNECTING &&
+                    !rtcConnected &&
                     connectingSinceMillis > 0L &&
                     System.currentTimeMillis() - connectingSinceMillis > 35_000L
                 ) {
@@ -472,15 +473,25 @@ class CallActivity : ComponentActivity() {
             CallStatus.RINGING -> statusText = if (isCaller) "Calling…" else "Incoming call"
             CallStatus.CONNECTING -> {
                 incomingRinging = false
-                statusText = "Connecting…"
+                statusText = when {
+                    rtcConnected -> "Connected"
+                    connectedMarked -> "Reconnecting…"
+                    else -> "Connecting…"
+                }
                 if (connectingSinceMillis == 0L) connectingSinceMillis = System.currentTimeMillis()
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
                 incomingRinging = false
-                statusText = "Connected"
+                // Server call state can lag a dropped peer connection. Only
+                // show "Connected" when WebRTC has actually recovered.
+                statusText = when {
+                    rtcConnected -> "Connected"
+                    connectedMarked -> "Reconnecting…"
+                    else -> "Connecting…"
+                }
                 if (!mediaStarted) requestMediaPermissions(incomingAnswer = !isCaller)
-                startDurationTimer()
+                if (rtcConnected) startDurationTimer()
             }
             else -> if (updated.status.isTerminal) finishTerminal(updated.status)
         }
@@ -550,6 +561,7 @@ class CallActivity : ComponentActivity() {
                         reconnectJob?.cancel()
                         reconnectJob = null
                         statusText = "Connected"
+                        startDurationTimer()
                         if (!connectedMarked) {
                             connectedMarked = true
                             lifecycleScope.launch {
@@ -566,7 +578,13 @@ class CallActivity : ComponentActivity() {
                         scheduleIceRestart()
                     }
                     PeerConnection.PeerConnectionState.CLOSED -> Unit
-                    else -> if (!incomingRinging) statusText = "Connecting…"
+                    else -> if (!incomingRinging) {
+                        statusText = if (connectedMarked && !rtcConnected) {
+                            "Reconnecting…"
+                        } else {
+                            "Connecting…"
+                        }
+                    }
                 }
             }
         }
