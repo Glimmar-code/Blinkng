@@ -117,6 +117,8 @@ data class Story(
     val createdAt: String = "",
     val isVideo: Boolean = false,
     val authorId: String = "",
+    val allowReposts: Boolean = false,
+    val repostedFromId: String? = null,
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
