@@ -23,10 +23,16 @@ $$;
 \i supabase/migrations/20261018090100_blink_site_aggregate_metrics.sql
 
 -- RLS is enabled and public reads are forbidden.
-select case when
-  (select relrowsecurity from pg_class where oid='public.blink_site_metric_daily'::regclass)
-  and (select relrowsecurity from pg_class where oid='private.blink_site_metric_minute_limiter'::regclass)
-then 'PASS RLS enabled' else (1/0)::text end;
+do $
+begin
+  if not (
+    (select relrowsecurity from pg_class where oid='public.blink_site_metric_daily'::regclass)
+    and (select relrowsecurity from pg_class where oid='private.blink_site_metric_minute_limiter'::regclass)
+  ) then
+    raise exception 'RLS_MISSING';
+  end if;
+  raise notice 'PASS RLS enabled';
+end $;
 
 set role anon;
 do $$
@@ -103,18 +109,30 @@ exception when insufficient_privilege then null;
 end $$;
 reset role;
 
-select case when
-  (select total from public.blink_site_metric_daily where page='home' and kind='view')=120
-  and (select total from public.blink_site_metric_daily where page='download' and kind='download')=1
-then 'PASS server rate cap and daily aggregates' else (1/0)::text end;
+do $
+begin
+  if not (
+    (select total from public.blink_site_metric_daily where page='home' and kind='view')=120
+    and (select total from public.blink_site_metric_daily where page='download' and kind='download')=1
+  ) then
+    raise exception 'RATE_CAP_OR_DAILY_TOTAL_BROKEN';
+  end if;
+  raise notice 'PASS server rate cap and daily aggregates';
+end $;
 
 -- Admin RPC only uses fixture admin bit here; production identity is
 -- validated by private.require_blink_admin() and active_blink_admin_role().
 set role authenticated;
 select set_config('request.jwt.claim.admin_fixture','yes',false);
-select case when
-  (public.get_blink_site_metrics(30)->'records') @> '[{"page":"home","kind":"view","count":120},{"page":"download","kind":"download","count":1}]'::jsonb
-then 'PASS authorized admin-only aggregate RPC' else (1/0)::text end;
+do $
+begin
+  if not (
+    (public.get_blink_site_metrics(30)->'records') @> '[{"page":"home","kind":"view","count":120},{"page":"download","kind":"download","count":1}]'::jsonb
+  ) then
+    raise exception 'ADMIN_AGGREGATE_COUNTS_INVALID';
+  end if;
+  raise notice 'PASS authorized admin-only aggregate RPC';
+end $;
 reset role;
 
 select 'PASS disposable PostgreSQL analytics roles, RLS, caps, data schema and admin RPC';
