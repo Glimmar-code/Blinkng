@@ -72,7 +72,7 @@ fun StoryViewerDialog(
     // Owners can view their own story and open its private engagement history.
     val storyList = remember(stories) { stories }
 
-    var currentIndex by rememberSaveable {
+    var currentIndex by rememberSaveable(initialStory.id) {
         val idx = storyList.indexOfFirst { it.id == initialStory.id || it.username == initialStory.username }
         mutableIntStateOf(if (idx >= 0) idx else 0)
     }
