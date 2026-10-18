@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Real Chrome network smoke, public homepage only; no sign-in or user data.
-// Records one anonymous test homepage view and inspects the request body.
+// Records one test homepage view and APK-link tap without requesting an APK.
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
@@ -28,8 +28,31 @@ try{
  });
  assert.ok(next.analyticsScriptLoaded,'Anonymous metric script missing from public page');
  assert.equal(next.canonical,'https://blink.com.ng/','Public site canonical mismatch');
+ // The click is synthetic. Cancel navigation before the event reaches
+ // BLINK's analytics listener; no APK is fetched or installed by this test.
+ await page.evaluate(()=>{
+   document.addEventListener('click',event=>{
+     if(event.target instanceof Element &&
+        event.target.closest('a[href*="/releases/latest/download/Blink-latest.apk"]')){
+       event.preventDefault();
+     }
+   },{capture:true});
+ });
+ const apkMetric=page.waitForResponse(response=>
+   response.url()===endpoint &&
+   response.request().method()==='POST' &&
+   response.request().postDataJSON()?.kind==='download',
+   {timeout:20000}
+ );
+ const apkLink=page.locator('a[href*="/releases/latest/download/Blink-latest.apk"]').first();
+ assert.ok(await apkLink.isVisible(),'Official APK download link missing from mobile homepage');
+ await apkLink.dispatchEvent('click');
+ const apkResponse=await apkMetric;
+ assert.equal(apkResponse.status(),204,'Official APK tap not counted');
+ assert.deepEqual(apkResponse.request().postDataJSON(),{page:'home',kind:'download'},
+   'APK event cannot carry user identifiers');
  assert.deepEqual(errors,[],'Public page script crashed');
- console.log('PASS real mobile Chrome: official homepage sent one cookie-free aggregate page view (204)');
+ console.log('PASS real mobile Chrome: homepage view and APK-link tap recorded (both 204)');
  console.log('INFO This is a synthetic verification visit, not a unique human visitor.');
  await context.close();
 }finally{await browser.close();}
