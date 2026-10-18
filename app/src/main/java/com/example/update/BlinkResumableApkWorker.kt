@@ -113,6 +113,12 @@ class BlinkResumableApkWorker(
         if (existing > 0L) builder.header("Range", "bytes=${existing}-")
 
         client.newCall(builder.build()).execute().use { response ->
+            if (response.code == 416 && existing > 0L) {
+                // The server rejected a saved range (e.g. stale or corrupt
+                // partial). Drop it; the next bounded retry starts from zero.
+                partial.delete()
+                throw IOException("Saved APK byte range is no longer valid")
+            }
             val effective = response.request.url
             require(BlinkApkUpdatePolicy.isOfficialAssetOrigin(effective.scheme, effective.host)) {
                 "APK must come from official GitHub delivery"
