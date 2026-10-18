@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -15,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,6 +39,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
+import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.blinkng.shared.discovery.BlinkUniversitySearch
 import kotlinx.coroutines.launch
 
 private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
@@ -45,17 +52,22 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var password by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var universityQuery by remember { mutableStateOf("") }
+    var chosenUniversity by remember { mutableStateOf("") }
+    var accountType by remember { mutableStateOf("") }
+    var showUniversities by remember { mutableStateOf(false) }
+    var showAccountTypes by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Surface(
-            modifier = Modifier.widthIn(max = 520.dp).padding(24.dp),
+            modifier = Modifier.widthIn(max = 560.dp).heightIn(max = 760.dp).padding(24.dp),
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 6.dp,
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 BlinkDesktopLogo(size = 46.dp, showText = true)
@@ -85,6 +97,63 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         label = { Text("Username") },
                         prefix = { Text("@") },
                     )
+                    OutlinedTextField(
+                        value = universityQuery,
+                        onValueChange = {
+                            universityQuery = it
+                            chosenUniversity = ""
+                            showUniversities = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search and select your university") },
+                    )
+                    if (showUniversities) {
+                        val universities = BlinkUniversitySearch.search(universityQuery, limit = 6)
+                        if (universities.isEmpty()) {
+                            Text("No matching institution. Try a full name or abbreviation.",
+                                style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                universities.forEach { name ->
+                                    OutlinedButton(
+                                        onClick = {
+                                            chosenUniversity = name
+                                            universityQuery = name
+                                            showUniversities = false
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text(name) }
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        if (chosenUniversity.isNotBlank()) "University selected: $"+"chosenUniversity"
+                        else "A university from the directory is required.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Box {
+                        OutlinedButton(onClick = { showAccountTypes = true }) {
+                            Text(
+                                "Account type: " + (BlinkCampusAccountType.fromWire(accountType)?.label ?: "Select")
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showAccountTypes,
+                            onDismissRequest = { showAccountTypes = false },
+                        ) {
+                            BlinkCampusAccountType.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        accountType = option.name
+                                        showAccountTypes = false
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
 
                 OutlinedTextField(
@@ -121,7 +190,10 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             runCatching {
                                 when (mode) {
                                     AuthMode.SIGN_IN -> state.signIn(email, password)
-                                    AuthMode.SIGN_UP -> state.signUp(email, password, username, fullName)
+                                    AuthMode.SIGN_UP -> state.signUp(
+                                        email, password, username, fullName,
+                                        chosenUniversity, accountType,
+                                    )
                                     AuthMode.RESET -> {
                                         state.sendPasswordReset(email)
                                         notice = "Password reset email sent. Check your inbox."
@@ -130,7 +202,8 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             }
                         }
                     },
-                    enabled = !state.busy,
+                    enabled = !state.busy &&
+                        (mode != AuthMode.SIGN_UP || (chosenUniversity.isNotBlank() && accountType.isNotBlank())),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) {
                     if (state.busy) {
