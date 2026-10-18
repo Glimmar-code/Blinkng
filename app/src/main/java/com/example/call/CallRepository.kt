@@ -11,6 +11,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import org.webrtc.PeerConnection
 import java.util.concurrent.TimeUnit
 
 class CallRepository {
@@ -168,6 +169,50 @@ class CallRepository {
                     buildList {
                         for (index in 0 until rows.length()) add(CallSignal.fromJson(rows.getJSONObject(index)))
                     }
+                }
+            }
+        }
+
+    /**
+     * Fetch time-limited TURN credentials from the authenticated Edge Function.
+     * Never store the TURN shared secret or a service-role key in the APK.
+     */
+    suspend fun fetchIceServers(callId: String): Result<List<PeerConnection.IceServer>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val payload = JSONObject().put("call_id", callId)
+                val response = executeAuthorized {
+                    Request.Builder()
+                        .url("$baseUrl/functions/v1/get-call-ice-config")
+                        .post(payload.toString().toRequestBody(jsonMediaType))
+                }
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        throw CallApiException(parseError(body, "TURN configuration unavailable."), it.code)
+                    }
+                    val servers = JSONObject(body).optJSONArray("ice_servers")
+                        ?: throw CallApiException("No call relay configuration was returned.", 502)
+                    buildList {
+                        for (index in 0 until servers.length()) {
+                            val row = servers.optJSONObject(index) ?: continue
+                            val urls = row.optJSONArray("urls") ?: continue
+                            val username = row.optString("username")
+                            val credential = row.optString("credential")
+                            for (i in 0 until urls.length()) {
+                                val url = urls.optString(i).trim()
+                                if (!url.startsWith("stun:") &&
+                                    !url.startsWith("turn:") &&
+                                    !url.startsWith("turns:")) continue
+                                val builder = PeerConnection.IceServer.builder(url)
+                                if (username.isNotBlank()) builder.setUsername(username)
+                                if (credential.isNotBlank()) builder.setPassword(credential)
+                                add(builder.createIceServer())
+                            }
+                        }
+                    }.also { if (it.none { server -> server.urls.any { url -> url.startsWith("turn") } }) {
+                        throw CallApiException("TURN relay is missing from call configuration.", 503)
+                    } }
                 }
             }
         }
