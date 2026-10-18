@@ -63,7 +63,7 @@ assert.ok(authBlock.includes("history.replaceState({},'',routeHref('/login'))"),
 assert.ok(authBlock.includes('Google sign-in could not be completed. Please try again.'),'OAuth error must not echo arbitrary error description');
 assert.ok(authBlock.includes("const next=type==='recovery'?'/settings/password'"),'Recovery must target password update screen');
 assert.ok(app.includes("const redirect=SITE_URL+'/settings/password'"),'Password reset uses configured canonical domain');
-assert.ok(app.includes("redirect_to:`\${redirectBase}/`"),'Google OAuth uses canonical redirect');
+assert.ok(app.includes("redirect_to:`${redirectBase}/`"),'Google OAuth uses canonical redirect');
 assert.ok(index.includes('<link rel="canonical" href="https://blink.com.ng/" />'),'Public homepage SEO canonical is preserved');
 assert.ok(index.includes('<meta name="referrer" content="strict-origin-when-cross-origin" />'),'Website needs a referrer policy');
 console.log('PASS: bounded API timeouts, external aborts, safe OAuth errors and route-specific SEO privacy');
