@@ -1,3 +1,9 @@
+## 2026-10-18 — Universal university directory depends on latest campus registration integration
+
+- Ported NUC-reviewed shared institution search and stable university IDs, Android picker with moderated missing-institution requests, Windows shared registration, canonical Connect and campus leaderboard comparisons. Based on Feature 5 integration branch and not the stale original feature branch.
+- Versioned SQL migration is committed for later staging. It cannot be safely applied to the live Supabase project until environment-compatible, cross-account and existing-user data tests are completed; NUC completeness and school programme accreditations still require official reconciliation.
+- Requires full Android/Windows CI and staging RLS tests prior to main release. Testlab integration may follow Feature 5 once its CI passes and database migration strategy is accepted.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
