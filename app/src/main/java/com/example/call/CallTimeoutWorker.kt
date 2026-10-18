@@ -8,6 +8,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.data.supabase.SupabaseService
+import com.example.notification.BlinkNotificationType
+import com.example.notification.NotificationPreferenceStore
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,12 +36,16 @@ class CallTimeoutWorker(appContext: Context, params: WorkerParameters) : Corouti
                     applicationContext, CallRepository().currentUserId(), callId, "missed"
                 )
                 IncomingCallNotification.handleCallUpdate(applicationContext, callId, "missed")
-                IncomingCallNotification.showMissed(
-                    context = applicationContext,
-                    callId = callId,
-                    callType = callType,
-                    peerName = peerName
-                )
+                if (NotificationPreferenceStore.isAllowed(
+                        applicationContext, BlinkNotificationType.CALL_UPDATE
+                    )) {
+                    IncomingCallNotification.showMissed(
+                        context = applicationContext,
+                        callId = callId,
+                        callType = callType,
+                        peerName = peerName
+                    )
+                }
             } else if (call.status.isTerminal ||
                 call.status in setOf(CallStatus.CONNECTING, CallStatus.CONNECTED)) {
                 // FCM can be lost; expire_call returns authoritative server state.
