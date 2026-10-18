@@ -1,0 +1,32 @@
+name: BLINK production integrations smoke
+
+on:
+  workflow_run:
+    workflows: ["Deploy Blink web"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-site:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout precisely deployed main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Allow GitHub Pages CDN to serve the new immutable revision
+        run: sleep 20
+      - name: Check live SEO, Auth provider, official App Links and anonymous analytics
+        env:
+          BLINK_VERIFY_SYNTHETIC_ANALYTICS: '1'
+        run: node scripts/verify_live_blink_integrations.mjs
