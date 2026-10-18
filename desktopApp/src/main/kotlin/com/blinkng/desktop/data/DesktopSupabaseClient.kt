@@ -685,6 +685,34 @@ class DesktopSupabaseClient(
         catalog to inventory
     }
 
+    /** Same server-authoritative Paystack functions used on Android. No merchant keys or client prices. */
+    suspend fun initializePaystackCheckout(kind: String, itemCode: String): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            require(kind in setOf("verification", "coin_pack")) { "Invalid purchase category." }
+            require(itemCode.matches(Regex("^[a-zA-Z0-9_]{1,30}$"))) { "Invalid purchase selection." }
+            val result = postObject(
+                "/functions/v1/paystack-checkout",
+                JSONObject().put("kind", kind).put("itemCode", itemCode),
+            ) as JSONObject
+            val url = result.optString("checkoutUrl")
+            val reference = result.optString("reference")
+            check(url.startsWith("https://checkout.paystack.com/") &&
+                reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+                "Checkout URL failed security validation."
+            }
+            url to reference
+        }
+
+    suspend fun confirmPaystackCheckout(reference: String): Boolean = withContext(Dispatchers.IO) {
+        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+            "Invalid payment reference."
+        }
+        val response = postObject(
+            "/functions/v1/paystack-confirm", JSONObject().put("reference", reference),
+        ) as JSONObject
+        response.optString("status") == "fulfilled"
+    }
+
     suspend fun fetchCoinBalance(): Long = withContext(Dispatchers.IO) {
         val rows = getArray(
             "/rest/v1/user_balances?user_id=eq.${encode(requireSession().userId)}&select=spendable_coin_balance&limit=1",
