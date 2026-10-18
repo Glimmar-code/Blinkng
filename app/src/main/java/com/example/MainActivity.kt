@@ -180,6 +180,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            BlinkNotificationHelper.ACTION_OPEN_PROFILE -> {
+                val username = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PROFILE_USERNAME).orEmpty()
+                if (username.isNotBlank()) viewModel.openProfile(username)
+                else viewModel.openActivity(true)
+            }
+
             BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
                 viewModel.setTab(MainTab.MARKET)
             }
