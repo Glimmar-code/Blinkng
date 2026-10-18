@@ -105,14 +105,16 @@ fun StoryViewerDialog(
     LaunchedEffect(currentStory.id) {
         progress = 0f
         val stepMs = 50L
-        val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
-        val increment = stepMs.toFloat() / totalMs.toFloat()
+        var elapsedMs = 0L
 
-        while (progress < 1f) {
+        while (true) {
             delay(stepMs)
-            if (!isPaused) {
-                progress = (progress + increment).coerceAtMost(1f)
-            }
+            if (!isPaused && !showInsights) elapsedMs += stepMs
+            // The media duration becomes known asynchronously after video loads.
+            // Read it on every tick so video stories aren't cut to the image timer.
+            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
+            progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
+            if (progress >= 1f) break
         }
 
         if (!isPaused && progress >= 1f) {
