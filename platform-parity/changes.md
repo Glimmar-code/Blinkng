@@ -1,3 +1,10 @@
+## 2026-10-18 — Feature 5 registration integrated for Testlab CI (staging candidate)
+
+- Re-applies tested Feature 5 / PR #353 on latest Testlab while preserving Find Friends, Earning, notification quick actions and profile viewer work.
+- Android/Windows email sign-up requires a real listed university and Student/Aspirant/Graduate/Staff account type. Student onboarding records faculty, department and academic level, never fabricated FUTA/200-level defaults. Uses one shared school catalog and aliases.
+- DB migration introducing self-declared account_type is committed, **not applied to production or staging**. Manual disposable-database/RLS and real-device QA are still required before promoting to main. This role does not independently prove student identity.
+- Feature 8 university directory must integrate **after** this migration and compilation gate, with NUC review and moderated requests.
+
 ## 2026-10-18 — Feature 2: notification actions integrated with recent Testlab
 
 - Applies original PR #346's tested action policy, Android receiver/worker, mark-read/follow/like/profile access controls, remote-input recipient checks and Windows notification buttons on top of current Testlab. Existing safe notification fallbacks, Feature 3 Find Friends and Feature 9 Earning code remain intact.
