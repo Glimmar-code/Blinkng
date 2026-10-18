@@ -167,8 +167,8 @@ begin
         (v_prior_expiration is null or v_prior_expiration>now()) then 'GOLD'
       else v_order.item_code end;
     v_new_expiration := case
-      when v_prior_badge in ('BLUE','GOLD') and v_prior_expiration is null
-      then null -- leave previously permanent admin-awarded badges permanent
+      when v_prior_badge=v_order.item_code and v_prior_expiration is null
+      then null -- preserve only an existing permanent badge of the same tier
       else greatest(coalesce(v_prior_expiration,now()),now()) +
         make_interval(days=>v_order.duration_days)
       end;
