@@ -12,6 +12,8 @@ const OWNER = 'Glimmar-code';
 const REPO = 'Blinkng';
 const OPT_IN = 'auto-promote';
 const STAGING = 'staging-verified';
+const APPROVE = 'BLINK APPROVE ';
+const REVOKE = 'BLINK REVOKE ';
 const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build'];
 
 function filePathsRequireStaging(files) {
@@ -80,6 +82,33 @@ function preflight(pr, changedFiles) {
   if (filePathsRequireStaging(changedFiles) && !labels.has(STAGING)) return 'Staging verification is not attested';
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') return 'PR is not cleanly mergeable';
   if ((pr.changed_files || 0) > changedFiles.length) return 'Could not examine every changed file';
+  return null;
+}
+
+/**
+ * An opt-in label is NOT authorization to ship. BLINK's repository owner must
+ * explicitly approve the exact current commit SHA in a PR comment.
+ *
+ * GitHub does not permit PR authors to approve their own PRs via a review, so
+ * this exact owner-authored command supports single-maintainer releases.
+ * A new push changes the SHA and invalidates all previous approvals.
+ * The latest owner command for that SHA wins (including revocation).
+ */
+function approvalGate(comments, headSha) {
+  if (!/^[a-f0-9]{40}$/.test(headSha || '')) {
+    return 'Invalid release head SHA';
+  }
+  let decision = null;
+  for (const comment of [...(comments || [])].sort((a, b) => a.id - b.id)) {
+    if (comment.user?.login !== OWNER) continue;
+    const body = (comment.body || '').trim();
+    if (body === APPROVE + headSha) decision = 'approved';
+    if (body === REVOKE + headSha) decision = 'revoked';
+  }
+  if (decision === 'revoked') return 'Repository owner revoked this exact release';
+  if (decision !== 'approved') {
+    return 'Explicit owner approval missing for current SHA: ' + APPROVE + headSha;
+  }
   return null;
 }
 
@@ -181,6 +210,14 @@ async function run({github, context, core}) {
       const fail = checkGate(checks, requiredChecks(paths), number, pr.base.sha, pr.head.sha);
       if (fail) { core.info('#' + number + ': ' + fail); continue; }
 
+      // Verify final human approval only after all checks have passed, and
+      // immediately before the final PR/main consistency check and merge.
+      const comments = await github.paginate(github.rest.issues.listComments, {
+        owner: OWNER, repo: REPO, issue_number: number, per_page: 100
+      });
+      const approvalFailure = approvalGate(comments, pr.head.sha);
+      if (approvalFailure) { core.info('#' + number + ': ' + approvalFailure); continue; }
+
       const {data: current} = await github.rest.pulls.get({owner: OWNER, repo: REPO, pull_number: number});
       const {data: finalMain} = await github.rest.repos.getBranch({owner: OWNER, repo: REPO, branch: 'main'});
       if (current.head.sha !== pr.head.sha || current.base.sha !== pr.base.sha ||
@@ -219,5 +256,6 @@ module.exports = run;
 module.exports.preflight = preflight;
 module.exports.requiredChecks = requiredChecks;
 module.exports.checkGate = checkGate;
+module.exports.approvalGate = approvalGate;
 module.exports.filePathsRequireStaging = filePathsRequireStaging;
 module.exports.releaseWorkflows = releaseWorkflows;
