@@ -189,7 +189,9 @@ object InstantChatNotification {
             action = ACTION_DIRECT_REPLY
             // Intent extras do not participate in PendingIntent identity, so give each
             // conversation a distinct data URI as well as a distinct request code.
-            data = Uri.parse("blink://notification/reply/${Uri.encode(conversationId.ifBlank { senderUsername })}")
+            data = Uri.parse(
+                "blink://notification/reply/${Uri.encode(expectedAccount)}/${Uri.encode(conversationId.ifBlank { senderUsername })}"
+            )
             putExtra(EXTRA_NOTIFICATION_ID, notificationId)
             putExtra(EXTRA_CONVERSATION_ID, conversationId)
             putExtra(EXTRA_ORIGINAL_MESSAGE_ID, originalMessageId)
