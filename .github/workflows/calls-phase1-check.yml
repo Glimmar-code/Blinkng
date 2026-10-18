@@ -1,0 +1,51 @@
+name: BLINK calls Phase 1 quality gate
+
+on:
+  push:
+    branches: [Testlab]
+    paths:
+      - '.github/workflows/calls-phase1-check.yml'
+      - 'app/src/main/java/com/example/call/**'
+      - 'app/src/test/java/com/example/call/**'
+      - 'supabase/functions/get-call-ice-config/**'
+      - 'docs/native-calls.md'
+  pull_request:
+    paths:
+      - 'app/src/main/java/com/example/call/**'
+      - 'app/src/test/java/com/example/call/**'
+      - 'supabase/functions/get-call-ice-config/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blink-calls-phase1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-call-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile Android call code
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+      - name: Call unit tests
+        run: gradle :app:testDebugUnitTest --tests 'com.example.call.*' --stacktrace --no-daemon
+
+  edge-credential-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Validate TURN credential Edge Function
+        run: deno check supabase/functions/get-call-ice-config/index.ts
