@@ -569,7 +569,8 @@ class SupabaseService {
         username: String,
         fullName: String,
         faculty: String = "",
-        university: String = ""
+        university: String = "",
+        accountType: String = ""
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -599,6 +600,7 @@ class SupabaseService {
                         put("name", cleanFullName)
                         put("faculty", faculty)
                         put("university", university)
+                        if (accountType.isNotBlank()) put("account_type", accountType)
                     })
                 }
 
@@ -644,7 +646,8 @@ class SupabaseService {
                         username = cleanUsername,
                         fullName = cleanFullName,
                         faculty = faculty,
-                        university = university
+                        university = university,
+                        accountType = accountType
                     )
 
                     Result.success(profile)
@@ -991,7 +994,8 @@ fun getCurrentUserId(): String? {
         username: String,
         fullName: String,
         faculty: String? = null,
-        university: String? = null
+        university: String? = null,
+        accountType: String? = null
     ): UserProfile = withContext(Dispatchers.IO) {
         val uid = userId.takeIf { isValidUuid(it) } ?: getCurrentUserId()
             ?: throw IllegalStateException("No valid authenticated Supabase user ID.")
@@ -1003,6 +1007,7 @@ fun getCurrentUserId(): String? {
             put("username", cleanUsername); put("full_name", fullName.trim().ifBlank { cleanUsername })
             faculty?.trim()?.takeIf { it.isNotBlank() }?.let { put("faculty", it) }
             university?.trim()?.takeIf { it.isNotBlank() }?.let { put("university", it) }
+            accountType?.trim()?.takeIf { it.isNotBlank() }?.let { put("account_type", it) }
             put("updated_at", nowIso())
         }
         executeRequest(newRequestBuilder("/rest/v1/profiles", true)
@@ -1554,6 +1559,8 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
+                // Legacy users remain unclassified until they choose a role.
+                if (profile.accountType.isNotBlank()) put("account_type", profile.accountType)
                 put("faculty", profile.faculty)
                 put("department", profile.department)
                 put("course_of_study", profile.courseOfStudy)
@@ -3402,6 +3409,7 @@ suspend fun uploadPostMedia(
             professionalHeadline = obj.cleanString("professional_headline"),
             currentJobTitle = obj.cleanString("current_job_title"),
             university = obj.cleanString("university"),
+            accountType = obj.cleanString("account_type"),
             faculty = obj.cleanString("faculty"),
             department = obj.cleanString("department"),
             courseOfStudy = obj.cleanString("course_of_study"),
