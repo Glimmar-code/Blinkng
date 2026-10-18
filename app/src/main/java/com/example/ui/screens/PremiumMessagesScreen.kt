@@ -69,6 +69,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
@@ -108,6 +109,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,6 +119,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -154,6 +157,8 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
+import com.blinkng.shared.notification.BlinkStoryPresentation
+import com.example.data.repository.FollowStateStore
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkMessageTheme
@@ -339,6 +344,16 @@ fun PremiumMessagesScreen(
                         isLoadingMessages = isLoadingMessages,
                         interactionActions = interactionActions,
                         onProfileClick = onProfileClick,
+                        onStoryReferenceClick = { storyId ->
+                            val original = stories.firstOrNull {
+                                it.id == storyId && BlinkStoryPresentation.active(it.createdAt, true)
+                            }
+                            if (original == null) {
+                                Toast.makeText(context, "Story expired or unavailable.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                onStoryClick(original)
+                            }
+                        },
                         onStartCall = { conversation, kind ->
                             launchSecureCall(context, conversation, kind)
                         },
@@ -438,6 +453,7 @@ private fun PremiumMessagesMasterDetail(
     isLoadingMessages: (String) -> Boolean,
     interactionActions: ChatInteractionActions,
     onProfileClick: (String) -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
     isConnected: Boolean
 ) {
@@ -496,6 +512,7 @@ private fun PremiumMessagesMasterDetail(
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
                 onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                onStoryReferenceClick = onStoryReferenceClick,
                 onAudioCall = {
                     onStartCall(displayedConversation, MessageCallKind.AUDIO)
                 },
@@ -663,6 +680,12 @@ private fun PremiumMessagesHome(
                     palette = palette
                 )
             }
+
+            Text(
+                "Stories", color = palette.textPrimary, fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 18.dp, top = 10.dp),
+            )
 
             AnimatedVisibility(
                 visible = entered,
@@ -861,6 +884,10 @@ private fun SearchMatchesField(
     )
 }
 
+/**
+ * Messages shows actual, non-expired stories only. A chat partner's "online" flag
+ * is never drawn as a story ring. Followers and chat contacts are eligible.
+ */
 @Composable
 private fun MatchesRail(
     conversations: List<ChatConversation>,
@@ -868,63 +895,91 @@ private fun MatchesRail(
     palette: MessagePalette,
     onAddStoryClick: () -> Unit,
     onOpenConversation: (String) -> Unit,
-    onStoryClick: (Story) -> Unit
+    onStoryClick: (Story) -> Unit,
 ) {
-    val matches = remember(conversations, stories) {
-        val people = mutableListOf<MatchPerson>()
-        conversations.forEach { conversation ->
-            people += MatchPerson(
-                id = "conversation_${conversation.id}",
-                name = conversation.partnerName,
-                username = conversation.partnerUsername,
-                avatar = conversation.partnerAvatar,
-                isOnline = conversation.isOnline,
-                hasUnseenStory = false,
-                verificationBadge = when {
-                    conversation.verificationBadge != VerificationBadge.NONE -> conversation.verificationBadge
-                    conversation.isVerified -> VerificationBadge.BLUE
-                    else -> VerificationBadge.NONE
-                },
-                conversation = conversation
-            )
+    val following by FollowStateStore.followingIds.collectAsState()
+    LaunchedEffect(Unit) { FollowStateStore.refresh() }
+    val now = remember(stories) { java.time.Instant.now() }
+    val active = remember(stories, following, conversations, now) {
+        val contacts = conversations.map {
+            it.partnerUsername.removePrefix("@").lowercase(Locale.ROOT)
+        }.toSet()
+        stories.filter {
+            (it.createdAt.isNotBlank() &&
+                BlinkStoryPresentation.active(it.createdAt, true, now))
+        }.filter { story ->
+            story.isUser || story.authorId in following ||
+                story.username.removePrefix("@").lowercase(Locale.ROOT) in contacts
         }
-        val existingUsers = people.map { it.username.lowercase(Locale.ROOT) }.toMutableSet()
-        stories.filterNot { it.isUser }.forEach { story ->
-            val normalized = story.username.removePrefix("@").lowercase(Locale.ROOT)
-            if (normalized !in existingUsers) {
-                existingUsers += normalized
-                people += MatchPerson(
-                    id = "story_${story.id}",
-                    name = story.displayLabel,
-                    username = normalized,
-                    avatar = story.avatar,
-                    isOnline = false,
-                    hasUnseenStory = story.hasUnseen,
-                    verificationBadge = story.verificationBadge,
-                    story = story
-                )
-            }
-        }
-        people.take(12)
     }
+    val mine = active.filter { it.isUser }.maxByOrNull { it.createdAt }
+    val otherStories = active.filterNot { it.isUser }
+        .groupBy { it.authorId.ifBlank { it.username.lowercase(Locale.ROOT) } }
+        .mapNotNull { (_, batch) -> batch.maxByOrNull { it.createdAt } }
+        .sortedWith(compareByDescending<Story> { it.hasUnseen }.thenByDescending { it.createdAt })
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.testTag("message_stories_row"),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "add_story") {
-            AddMatchItem(palette = palette, onClick = onAddStoryClick)
+        item(key = "your_story") {
+            if (mine != null) {
+                MessageStoryCircle(mine, "Your Story", palette, onClick = { onStoryClick(mine) })
+            } else {
+                AddMatchItem(palette = palette, onClick = onAddStoryClick)
+            }
         }
-        items(matches, key = { it.id }) { person ->
-            MatchItem(
-                person = person,
-                palette = palette,
-                onClick = {
-                    person.conversation?.let { onOpenConversation(it.partnerUsername) }
-                        ?: person.story?.let(onStoryClick)
-                }
+        items(otherStories, key = { "active_${it.id}" }) { story ->
+            MessageStoryCircle(
+                story, story.displayLabel.substringBefore(" ").take(10),
+                palette, onClick = { onStoryClick(story) },
             )
         }
+        if (mine != null) {
+            item(key = "story_add") {
+                AddMatchItem(palette = palette, onClick = onAddStoryClick)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageStoryCircle(
+    story: Story,
+    label: String,
+    palette: MessagePalette,
+    onClick: () -> Unit,
+) {
+    val ring = BlinkStoryPresentation.ring(true, story.hasUnseen)
+    Column(
+        modifier = Modifier.width(62.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag("message_story_${story.id}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val ringColor = when (ring) {
+            BlinkStoryPresentation.Ring.UNVIEWED -> Color(0xFF1687FF)
+            BlinkStoryPresentation.Ring.VIEWED -> palette.textSecondary.copy(alpha = .55f)
+            BlinkStoryPresentation.Ring.NONE -> Color.Transparent
+        }
+        Box(
+            modifier = Modifier.size(57.dp)
+                .border(2.dp, ringColor, CircleShape)
+                .padding(3.dp),
+        ) {
+            AvatarImage(
+                url = story.avatar,
+                name = story.displayLabel,
+                palette = palette,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            label, fontSize = 10.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, color = palette.textSecondary,
+        )
     }
 }
 
@@ -1169,7 +1224,8 @@ private fun ConversationCard(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    conversation.lastMessage.ifBlank { "Start the conversation" },
+                    BlinkStoryPresentation.parseReply(conversation.lastMessage)?.let { "Story reply: ${it.text}" }
+                        ?: conversation.lastMessage.ifBlank { "Start the conversation" },
                     color = if (conversation.unreadCount > 0) palette.textSecondary else palette.textMuted,
                     fontSize = 11.sp,
                     fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
@@ -1213,6 +1269,7 @@ private fun PremiumChatDetail(
     onSendVideo: (Uri) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
     isConnected: Boolean,
@@ -1395,7 +1452,8 @@ private fun PremiumChatDetail(
                                 editingMessage = null
                             },
                             onActions = { selectedMessage = message },
-                            onRetry = { onRetry(message) }
+                            onRetry = { onRetry(message) },
+                            onStoryReferenceClick = onStoryReferenceClick,
                         )
                     }
                 }
@@ -1716,7 +1774,8 @@ private fun MessageBubble(
     palette: MessagePalette,
     onReply: () -> Unit,
     onActions: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -1804,7 +1863,10 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    MessageContent(message = message, isMine = isMine, palette = palette)
+                    MessageContent(
+                        message = message, isMine = isMine, palette = palette,
+                        onStoryReferenceClick = onStoryReferenceClick,
+                    )
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -1860,7 +1922,12 @@ private fun MessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: MessagePalette) {
+private fun MessageContent(
+    message: ChatMessage,
+    isMine: Boolean,
+    palette: MessagePalette,
+    onStoryReferenceClick: (String) -> Unit,
+) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
@@ -1907,12 +1974,40 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
                 }
             }
+            val storyReply = BlinkStoryPresentation.parseReply(message.text)
+            if (storyReply != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = contentColor.copy(alpha = .09f),
+                    border = BorderStroke(1.dp, contentColor.copy(alpha = .25f)),
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                        .clickable { onStoryReferenceClick(storyReply.storyId) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.AutoStories, contentDescription = null,
+                            tint = contentColor, modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Column {
+                            Text("Story reply", color = contentColor, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "View original · available for 24 hours",
+                                color = contentColor.copy(alpha = .8f), fontSize = 10.sp,
+                            )
+                        }
+                    }
+                }
+            }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
                     (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
-                    message.text,
+                    storyReply?.text ?: message.text,
                     color = contentColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -2636,7 +2731,7 @@ private fun RingAvatar(
     size: Dp,
     modifier: Modifier = Modifier,
     online: Boolean? = null,
-    emphasizeRing: Boolean = true
+    emphasizeRing: Boolean = false
 ) {
     Box(modifier = modifier.size(size)) {
         Box(
