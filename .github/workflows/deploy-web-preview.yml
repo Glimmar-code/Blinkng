@@ -10,6 +10,10 @@ on:
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'
       - 'scripts/check_github_pages_site.py'
+      # Keep live SEO, Auth provider and browser-analytics checks aligned with web publication.
+      - '.github/workflows/blink-live-integrations-smoke.yml'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/verify_live_browser_analytics.mjs'
   workflow_dispatch:
 
 permissions:
