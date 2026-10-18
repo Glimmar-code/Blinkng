@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 5 registration re-integrated after Profile Visitors merger
+
+- This fresh integration branch is based on Testlab **after Feature 4** was merged. It preserves notifications, Find Friends, Earning and owner-only Profile Visitors, unlike the superseded Feature 5 PR #375 base.
+- Android signup uses university selection dialog in the correct `SignUpScreen` scope (not Welcome), with required university and self-declared Student/Aspirant/Graduate/Staff identity; student onboarding collects actual academic details.
+- Desktop signup, shared directory, profile updates and pending schema migration included. Static CI and APK checks are required. **Do not apply migration to production or merge main** without disposable staging, RLS and signup/relogin tests.
+
 ## 2026-10-18 — Feature 4 profile visitor integration (CI candidate only)
 
 - Updated Feature 4 against current Testlab while preserving the merged Feature 2 notification quick actions, Feature 3 Find Friends, and Feature 9 Earning.
