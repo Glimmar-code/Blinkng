@@ -1,3 +1,11 @@
+## 2026-10-18 — In-app signed website APK updates (Phase 3, Testlab only)
+
+- **Shared:** `BlinkApkUpdatePolicy` restricts official release hosts to HTTPS GitHub assets, enforces a 100 MiB transfer cap, matches source app/package/version, and rejects certificate changes. Shared release metadata remains read-only and is checked against the active published release.
+- **Android:** opt-in installation from the official GitHub Release can download into BLINK's private cache, show user-visible progress, verify SHA-256, compare the candidate Android archive version/applicationId/signing certificate against the installed app, and offer an Android OS installer confirmation through a narrowly scoped FileProvider. Unknown-app installation permission is user controlled in Android Settings. No silent installs.
+- **Windows:** **PARITY-EXCEPTION: android-package-installer-20261018** — Windows does not use APKs or the Android package installer. Windows retains its own desktop update mechanism and consumes shared update-version and package-security policies where applicable; the Android-specific FileProvider and package install prompts have no Windows equivalent. No change to Windows login, data, permissions, ranking, notifications or backend behavior.
+- **Google Play:** Google Play-installed copies keep the existing Google Play in-app update flow; sideload APK prompts are skipped for Play-installed copies.
+- **No production merge:** Testlab only, pending Android lint/build/unit tests, device installation tests (including Android 8–15, limited storage, slow networks, cancellation, unknown-source approval and certificate mismatch) and Windows parity. Pausable/resumable background download is Phase 4; do not claim it here.
+
 ## 2026-10-17 — Compact PostCard promotion from verified Testlab (#337)
 
 - **Promotion strategy:** because Testlab diverged from main, selectively reimplement the X-inspired layout on the latest production ancestor instead of merging the entire outdated Testlab branch. The original Testlab code and CI were reviewed in PR #337.
