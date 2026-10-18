@@ -13,7 +13,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
@@ -81,15 +80,6 @@ fun BlinkVerificationPlansSection(
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            listOf(
-                Triple("Basic app", true, true),
-                Triple("Profile badge", false, true),
-                Triple("Seller application", false, true),
-            ).forEach { (feature, free, paid) ->
-                // Render rows below instead; the contract is deliberately explicit.
-            }
-        }
         listOf(
             Triple("Post, reels, messages", true, true),
             Triple("Verified profile badge", false, true),
