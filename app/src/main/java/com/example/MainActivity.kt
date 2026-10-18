@@ -33,6 +33,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
+import com.example.data.models.VerificationBadge
+import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -64,6 +66,65 @@ class MainActivity : ComponentActivity() {
     private lateinit var rewardedAdManager: BlinkRewardedAdManager
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
+    private val paystackClient by lazy { BlinkPaystackCheckoutService() }
+    private val paystackPrefs by lazy { getSharedPreferences("blink_paystack_checkout", MODE_PRIVATE) }
+    private var pendingPaystackReference by mutableStateOf<String?>(null)
+    private var paystackCheckoutBusy by mutableStateOf(false)
+    private var showCoinPackPicker by mutableStateOf(false)
+    private var showPendingPaystackDialog by mutableStateOf(false)
+
+    private fun startPaystackCheckout(kind: String, packId: String? = null) {
+        if (paystackCheckoutBusy) return
+        if (pendingPaystackReference != null) {
+            showPendingPaystackDialog = true
+            viewModel.showToast("Check or discard your previous checkout before starting another.")
+            return
+        }
+        paystackCheckoutBusy = true
+        lifecycleScope.launch {
+            try {
+                val checkout = paystackClient.initialize(kind, packId)
+                pendingPaystackReference = checkout.reference
+                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                showPendingPaystackDialog = true
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.checkoutUrl))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+            } catch (e: Exception) {
+                viewModel.showToast(e.message ?: "Unable to open Paystack.")
+            } finally {
+                paystackCheckoutBusy = false
+            }
+        }
+    }
+
+    private fun clearPendingPaystackPayment() {
+        pendingPaystackReference = null
+        showPendingPaystackDialog = false
+        paystackPrefs.edit().remove("reference").apply()
+        // Discarding a LOCAL pending reference does not cancel a provider payment.
+        // A paid order can still be fulfilled by the signed webhook.
+    }
+
+    private fun checkPendingPaystackPayment() {
+        val reference = pendingPaystackReference ?: return
+        if (paystackCheckoutBusy) return
+        paystackCheckoutBusy = true
+        lifecycleScope.launch {
+            try {
+                if (paystackClient.confirm(reference)) {
+                    clearPendingPaystackPayment()
+                    viewModel.openGetVerified(false)
+                    viewModel.refreshProfileRewards()
+                    viewModel.fetchSupabaseData()
+                    viewModel.showToast("Paystack payment confirmed. Your purchase is ready.")
+                } else viewModel.showToast("Payment is still pending. Check again after payment succeeds.")
+            } catch (e: Exception) {
+                viewModel.showToast(e.message ?: "Unable to confirm this payment yet.")
+            } finally {
+                paystackCheckoutBusy = false
+            }
+        }
+    }
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -291,6 +352,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingPaystackReference = paystackPrefs.getString("reference", null)
+        showPendingPaystackDialog = pendingPaystackReference != null
         rewardedAdManager = BlinkRewardedAdManager(
             activity = this,
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
@@ -1222,7 +1285,7 @@ fun MainAppContent(
                     economyPolicy = uiState.economyPolicy,
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
-                    onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onBuyBlinkCoins = { showCoinPackPicker = true },
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1399,13 +1462,16 @@ fun MainAppContent(
                 isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
                 onWatchAdForCoins = onWatchAdForCoins,
-                onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onBuyBlinkCoins = { showCoinPackPicker = true },
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
-                    viewModel.applyVerification(tier)
-                }
+                    startPaystackCheckout(if (tier == VerificationBadge.GOLD) "GOLD_VERIFICATION" else "BLUE_VERIFICATION")
+                },
+                pendingCashPayment = pendingPaystackReference != null,
+                cashCheckoutBusy = paystackCheckoutBusy,
+                onCheckCashPayment = { checkPendingPaystackPayment() }
             )
         }
 
@@ -1513,6 +1579,53 @@ fun MainAppContent(
                     showEarning = false
                     viewModel.openGetVerified(true)
                 },
+            )
+        }
+
+        // Server-authoritative cash checkout for Blink Coins.
+        if (showCoinPackPicker) {
+            AlertDialog(
+                onDismissRequest = { showCoinPackPicker = false },
+                title = { Text("Buy Blink Coins") },
+                text = {
+                    Column {
+                        Text("Choose a package. Checkout opens securely through Paystack.")
+                        Spacer(Modifier.height(8.dp))
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            TextButton(
+                                onClick = {
+                                    showCoinPackPicker = false
+                                    startPaystackCheckout("COIN_PACK", pack.id)
+                                },
+                                enabled = uiState.economyPolicy.cashCheckoutEnabled && !paystackCheckoutBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("₦${pack.priceNgn} • ${pack.coins} coins") }
+                        }
+                        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+                            Text("Cash checkout is not enabled until secure setup is complete.")
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showCoinPackPicker = false }) { Text("Close") } }
+            )
+        }
+        if (showPendingPaystackDialog && pendingPaystackReference != null) {
+            AlertDialog(
+                onDismissRequest = { showPendingPaystackDialog = false },
+                title = { Text("Check your Paystack payment") },
+                text = {
+                    Text("After paying, tap Check payment. BLINK only activates purchases confirmed by Paystack.")
+                },
+                confirmButton = {
+                    TextButton(enabled = !paystackCheckoutBusy,
+                        onClick = { checkPendingPaystackPayment() }) { Text("Check payment") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = { showPendingPaystackDialog = false }) { Text("Later") }
+                        TextButton(onClick = { clearPendingPaystackPayment() }) { Text("Discard pending") }
+                    }
+                }
             )
         }
 
