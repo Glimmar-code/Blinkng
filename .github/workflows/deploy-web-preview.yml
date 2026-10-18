@@ -134,10 +134,29 @@ jobs:
         with:
           enablement: true
 
+      # upload-pages-artifact excludes root dot-directories by default. That
+      # drops .well-known/assetlinks.json, breaking verified Android App Links.
+      # Build the same Pages tar ourselves to keep the Android association.
+      - name: Package web artifact including .well-known App Links
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s web/.well-known/assetlinks.json
+          tar --dereference --hard-dereference \
+            --directory web \
+            -cvf "$RUNNER_TEMP/artifact.tar" \
+            --exclude=.git --exclude=.github .
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './.well-known/assetlinks.json'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './app-ads.txt'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './landing.css'
+
       - name: Upload web artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          path: web
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Deploy to GitHub Pages
         id: deployment
