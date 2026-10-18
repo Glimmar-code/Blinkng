@@ -35,6 +35,7 @@ import com.example.ui.theme.*
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.verification.BlinkVerificationTier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +62,10 @@ fun GetVerifiedSheet(
         )
     }
     val isGoldEligible = profile.followerCount >= 1000
+    var selectedMonths by remember { mutableIntStateOf(1) }
+    // Legacy cash button must stay disabled until the provider's signed checkout
+    // and webhook reconcile exactly the selected tier and duration.
+    val recurringCheckoutVerified = false
     var showDailyMissions by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -125,7 +130,7 @@ fun GetVerifiedSheet(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "BLINK Verified is a renewable ${economyPolicy.blueVerificationDurationDays}-day status. Pay with Blink Coins or use secure cash checkout when available.",
+                        text = "Compare Free, Blue and Gold. Choose 1, 3, 6 or 12 months. No automatic billing is enabled.",
                         fontSize = 13.sp,
                         color = textSecondary,
                         textAlign = TextAlign.Center,
@@ -133,6 +138,27 @@ fun GetVerifiedSheet(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
+            }
+
+            item {
+                BlinkVerificationPlansSection(
+                    selectedTier = when (selectedBadge) {
+                        VerificationBadge.BLUE -> BlinkVerificationTier.BLUE
+                        VerificationBadge.GOLD -> BlinkVerificationTier.GOLD
+                        else -> BlinkVerificationTier.FREE
+                    },
+                    months = selectedMonths,
+                    onTierSelected = { tier ->
+                        when (tier) {
+                            BlinkVerificationTier.FREE -> { selectedBadge = VerificationBadge.NONE }
+                            BlinkVerificationTier.BLUE -> { selectedBadge = VerificationBadge.BLUE }
+                            BlinkVerificationTier.GOLD -> { selectedBadge = VerificationBadge.GOLD }
+                        }
+                    },
+                    onMonthsSelected = { selectedMonths = it },
+                    checkoutReady = recurringCheckoutVerified,
+                    renewalAvailable = false,
+                )
             }
 
             // User Info Snapshot
@@ -262,7 +288,7 @@ fun GetVerifiedSheet(
 
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "₦${economyPolicy.blueVerificationCashNgn}",
+                                    text = "₦${economyPolicy.blueVerificationCashNgn} / month",
                                     fontWeight = FontWeight.Black,
                                     fontSize = 18.sp,
                                     color = BlinkBlue
@@ -386,7 +412,7 @@ fun GetVerifiedSheet(
 
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "₦2,000",
+                                    text = "₦2,000 / month",
                                     fontWeight = FontWeight.Black,
                                     fontSize = 18.sp,
                                     color = BlinkGold
@@ -828,15 +854,15 @@ fun GetVerifiedSheet(
 
                             OutlinedButton(
                                 onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled,
+                                enabled = !isGoldActive && recurringCheckoutVerified && selectedMonths == 1,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} securely", fontWeight = FontWeight.Bold)
+                                Text("Secure subscription checkout (coming soon)", fontWeight = FontWeight.Bold)
                             }
-                            if (!economyPolicy.cashCheckoutEnabled && !isGoldActive) {
+                            if (!recurringCheckoutVerified && !isGoldActive) {
                                 Text(
-                                    "Cash checkout is prepared but stays off until a verified Paystack/payment checkout is connected. No fake payment can activate a badge.",
+                                    "No cash subscription checkout or recurring charge can begin until secure provider verification is available. BLINK Coin verification is a separate 30-day purchase.",
                                     fontSize = 10.5.sp,
                                     color = textSecondary,
                                     textAlign = TextAlign.Center,
@@ -869,7 +895,7 @@ fun GetVerifiedSheet(
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
                         onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && economyPolicy.cashCheckoutEnabled,
+                        enabled = eligible && recurringCheckoutVerified && selectedMonths == 1,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
