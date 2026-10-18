@@ -29,8 +29,11 @@ class ReleaseIntegrityTests(unittest.TestCase):
                 archive.writestr(name, b"valid web game")
         self.pack_sha = hashlib.sha256(self.pack.read_bytes()).hexdigest()
         self.info = self.root / "release-info.txt"
+        self.commit = "c" * 40
+        self.main_head = self.commit
+        self.main_checks = 0
         self.info.write_text("applicationId=com.aistudio.blink.appvtwo\nversionCode=123\n"
-                             "versionName=1.0.123\ncommit=abc\nproductionSource=main\n"
+                             f"versionName=1.0.123\ncommit={self.commit}\nproductionSource=main\n"
                              f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\n"
                              f"gamePackSha256={self.pack_sha}\ngamePackSize={self.pack.stat().st_size}\n")
         self.calls = []
@@ -58,9 +61,15 @@ class ReleaseIntegrityTests(unittest.TestCase):
                 (dest / name).write_bytes(content)
         return subprocess.CompletedProcess(args, 0, '', '')
 
+    def fake_current_main(self, repository, commit):
+        self.main_checks += 1
+        if self.main_head != commit:
+            raise ValueError("Stale Android release")
+
     def run_publish(self):
-        with patch.object(publisher, "gh", self.fake_gh):
-            publisher.publish(self.root, "owner/repo", "abc")
+        with patch.object(publisher, "gh", self.fake_gh), \
+             patch.object(publisher, "require_current_main", self.fake_current_main):
+            publisher.publish(self.root, "owner/repo", self.commit)
 
     def test_valid_release_is_promoted_only_after_download(self):
         self.run_publish()
@@ -69,6 +78,41 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertIn("--draft=false", self.calls[-1])
         self.assertEqual(self.assets["blink-life-web.zip.sha256"],
                          f"{self.pack_sha}  blink-life-web.zip\n".encode())
+
+    def test_main_freshness_checked_twice(self):
+        self.run_publish()
+        self.assertEqual(self.main_checks, 2)
+
+    def test_stale_main_prevents_creating_any_release(self):
+        self.main_head = "a" * 40
+        with self.assertRaisesRegex(ValueError, "Stale"):
+            self.run_publish()
+        self.assertEqual(self.calls, [])
+
+    def test_main_advances_during_upload_prevents_publication(self):
+        checks = 0
+        def move_main(_, commit):
+            nonlocal checks
+            checks += 1
+            if checks == 2:
+                raise ValueError("Stale Android release")
+        with patch.object(publisher, "gh", self.fake_gh), \
+             patch.object(publisher, "require_current_main", move_main):
+            with self.assertRaisesRegex(ValueError, "Stale"):
+                publisher.publish(self.root, "owner/repo", self.commit)
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_current_main_api_blocks_stale_commit(self):
+        current = "f" * 40
+        result = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        with patch.object(publisher.subprocess, "run", return_value=result) as request:
+            publisher.require_current_main("Glimmar-code/Blinkng", current)
+            request.assert_called_once()
+        with patch.object(publisher.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(ValueError, "Stale"):
+                publisher.require_current_main("Glimmar-code/Blinkng", "a" * 40)
+        with self.assertRaisesRegex(ValueError, "complete"):
+            publisher.require_current_main("Glimmar-code/Blinkng", "invalid")
 
     def test_damaged_download_is_never_published(self):
         self.corrupt = True
@@ -101,7 +145,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_duplicate_metadata_is_rejected(self):
         self.info.write_text(self.info.read_text() + "versionCode=999\n")
         with self.assertRaisesRegex(ValueError, "duplicate"):
-            publisher.metadata(self.info, "abc")
+            publisher.metadata(self.info, self.commit)
 
     def test_ambiguous_artifacts_are_rejected(self):
         shutil.copyfile(self.apk, self.root / "second.apk")
