@@ -307,6 +307,7 @@ class MainActivity : ComponentActivity() {
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
             var adminAnnouncementOpen by remember { mutableStateOf(false) }
+            var showFindFriends by remember(uiState.myProfile.id) { mutableStateOf(false) }
             // A check is done on authenticated login, never on every recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 websiteRelease = null
@@ -506,7 +507,8 @@ class MainActivity : ComponentActivity() {
                                         viewModel = viewModel,
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
-                                        onAdPrivacyOptions = ::showAdPrivacyOptions
+                                        onAdPrivacyOptions = ::showAdPrivacyOptions,
+                                        onFindFriends = { showFindFriends = true },
                                     )
                                 }
                             }
@@ -529,9 +531,10 @@ class MainActivity : ComponentActivity() {
                                 safeToShow = idleHomeForPrompts &&
                                     websiteUpdateCheckFinished &&
                                     (websiteRelease == null || websiteUpdateDismissed) &&
-                                    !adminAnnouncementOpen,
+                                    !adminAnnouncementOpen && !showFindFriends,
                                 onNavigate = { route ->
                                     when (route) {
+                                        "friends" -> { showFindFriends = true }
                                         "reels" -> {
                                             viewModel.setTab(MainTab.HOME)
                                             viewModel.setFeedSubTab(1)
@@ -551,13 +554,28 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        if (uiState.destination == AppDestination.MAIN &&
+                            uiState.myProfile.id.isNotBlank() && showFindFriends) {
+                            BlinkFindFriendsDialog(
+                                accountId = uiState.myProfile.id,
+                                university = uiState.myProfile.university,
+                                profiles = uiState.profiles,
+                                onDismiss = { showFindFriends = false },
+                                onOpenProfile = { username ->
+                                    showFindFriends = false
+                                    viewModel.openProfile(username)
+                                },
+                            )
+                        }
+
                         if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
                             BlinkLoginAnnouncementHost(
                                 accountId = uiState.myProfile.id,
                                 activities = uiState.activities,
                                 safeToShow = idleHomeForPrompts &&
                                     websiteUpdateCheckFinished &&
-                                    (websiteRelease == null || websiteUpdateDismissed),
+                                    (websiteRelease == null || websiteUpdateDismissed) &&
+                                    !showFindFriends,
                                 onOpenNotifications = { viewModel.openActivity(true) },
                                 onShowingChanged = { adminAnnouncementOpen = it },
                             )
@@ -592,7 +610,8 @@ fun MainAppContent(
     viewModel: BlinkViewModel,
     onWatchAdForCoins: () -> Unit,
     isAdPrivacyOptionsRequired: Boolean,
-    onAdPrivacyOptions: () -> Unit
+    onAdPrivacyOptions: () -> Unit,
+    onFindFriends: () -> Unit,
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -816,6 +835,7 @@ fun MainAppContent(
                         onOpenCreatePost = { viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         onOpenMenu = { viewModel.openMenu(true) },
+                        onFindFriends = onFindFriends,
                         onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
                         isLoading = uiState.isFeedLoading,
@@ -1457,6 +1477,7 @@ fun MainAppContent(
                 onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                 onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
                 onOpenActivity = { viewModel.openActivity(true) },
+                onFindFriends = onFindFriends,
                 onOpenEarning = { showEarning = true },
                 onToggleTheme = { viewModel.toggleDarkMode() },
                 onLogout = { viewModel.logout() },
