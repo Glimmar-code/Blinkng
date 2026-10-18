@@ -5,9 +5,9 @@ Blink uses WebRTC for one-to-one voice and video media, Supabase for authenticat
 ## Production requirements
 
 - Keep the Supabase project URL/publishable client key in the normal app configuration. Never ship a service-role key in the APK.
-- Configure `BLINK_TURN_URL`, `BLINK_TURN_USERNAME`, and `BLINK_TURN_CREDENTIAL` in the release/CI environment. STUN-only builds are useful for development but are not reliable across carrier-grade NAT and restrictive networks.
+- Prefer short-lived authenticated TURN credentials delivered by `get-call-ice-config` from Supabase. The existing `call-turn-credentials` endpoint is a temporary compatible server-side fallback. **Never place the coturn master secret in a release APK.** Legacy `BLINK_TURN_URL`, `BLINK_TURN_USERNAME` and `BLINK_TURN_CREDENTIAL` BuildConfig values exist only as a migration fallback and must be retired before security sign-off. STUN-only builds are not reliable across mobile carriers.
 - Keep `FIREBASE_SERVICE_ACCOUNT_JSON` only in the Supabase Edge Function environment for `send-call-notification`; never place that credential in Android source or BuildConfig.
-- Android 13+ users must grant notification permission for incoming-call notifications.
+- Android 13+ users generally need notification permission to display incoming-call alerts; validate Android's calling-specific permission behavior on actual devices. Blocking notifications must not block remote call-end control messages.
 - Voice calls require microphone permission. Video calls require microphone and camera permission.
 - Android foreground-service runtime types must match the active call: microphone for voice, microphone + camera for video.
 - WebRTC signaling writes are serialized and incoming signals are reconciled from the database so out-of-order Realtime delivery cannot skip SDP.
