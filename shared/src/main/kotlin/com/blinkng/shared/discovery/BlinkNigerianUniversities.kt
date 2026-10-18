@@ -410,14 +410,14 @@ object BlinkNigerianUniversities {
 
     val records: List<University> by lazy {
         buildList {
-            fun add(names: List<String>, ownership: Ownership) {
+            fun includeInstitutions(names: List<String>, ownership: Ownership) {
                 names.forEach { name ->
-                    add(University(stableId(name), name, ownership, stateOf(name)))
+                    this.add(University(stableId(name), name, ownership, stateOf(name)))
                 }
             }
-            add(federal + federalAdditional, Ownership.FEDERAL)
-            add(state + stateAdditional, Ownership.STATE)
-            add(private + privateAdditional, Ownership.PRIVATE)
+            includeInstitutions(federal + federalAdditional, Ownership.FEDERAL)
+            includeInstitutions(state + stateAdditional, Ownership.STATE)
+            includeInstitutions(private + privateAdditional, Ownership.PRIVATE)
         }.distinctBy { it.name.lowercase(java.util.Locale.ROOT) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
