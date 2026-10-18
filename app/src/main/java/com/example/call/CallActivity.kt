@@ -11,51 +11,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import coil.compose.AsyncImage
 import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.CoroutineScope
@@ -72,7 +33,6 @@ import org.json.JSONObject
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
-import org.webrtc.SurfaceViewRenderer
 import java.util.concurrent.atomic.AtomicBoolean
 
 class CallActivity : ComponentActivity() {
@@ -170,6 +130,8 @@ class CallActivity : ComponentActivity() {
     private var speakerOn by mutableStateOf(false)
     private var elapsedSeconds by mutableIntStateOf(0)
     private var errorText by mutableStateOf<String?>(null)
+    private var endingAction by mutableStateOf(false)
+    private var answeringAction by mutableStateOf(false)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -215,6 +177,7 @@ class CallActivity : ComponentActivity() {
                     speakerOn = speakerOn,
                     elapsedSeconds = elapsedSeconds,
                     rtcClient = rtcClient,
+                    endingAction = endingAction || answeringAction,
                     onAnswer = { answerIncoming() },
                     onDecline = { declineIncoming() },
                     onEnd = { endFromUi() },
@@ -348,9 +311,10 @@ class CallActivity : ComponentActivity() {
     }
 
     private fun answerIncoming() {
-        if (!incomingRinging || ending.get()) return
+        if (!incomingRinging || ending.get() || answeringAction) return
         answerRequested = false
-        statusText = "Connecting…"
+        answeringAction = true
+        statusText = "Answering…"
         requestMediaPermissions(incomingAnswer = true)
     }
 
@@ -361,8 +325,11 @@ class CallActivity : ComponentActivity() {
         if (mediaRequestedForIncomingAnswer && !isCaller && active.status == CallStatus.RINGING) {
             val answered = repository.answerCall(active.id).getOrElse { error ->
                 errorText = error.message ?: "Unable to answer this call."
+                answeringAction = false
+                statusText = "Incoming call"
                 return
             }
+            answeringAction = false
             call = answered
             CallNotificationLedger.markUpdated(
                 this, repository.currentUserId(), active.id, "answered"
@@ -641,6 +608,8 @@ class CallActivity : ComponentActivity() {
     private fun declineIncoming() {
         val active = call ?: return
         if (!ending.compareAndSet(false, true)) return
+        endingAction = true
+        statusText = "Declining…"
         lifecycleScope.launch {
             repository.declineCall(active.id)
             repository.dispatchPush(active.id, "declined")
@@ -651,6 +620,8 @@ class CallActivity : ComponentActivity() {
     private fun endFromUi() {
         val active = call ?: run { finish(); return }
         if (!ending.compareAndSet(false, true)) return
+        endingAction = true
+        statusText = "Ending call…"
         lifecycleScope.launch {
             val ended = repository.endCall(active.id, "ended").getOrNull()
             val event = ended?.status?.wireValue ?: "ended"
@@ -662,6 +633,7 @@ class CallActivity : ComponentActivity() {
     private suspend fun failAndFinish(reason: String) {
         val active = call ?: run { finish(); return }
         if (!ending.compareAndSet(false, true)) return
+        endingAction = true
         val ended = repository.endCall(active.id, "failed").getOrNull()
         repository.dispatchPush(active.id, "failed")
         errorText = if (reason == "connection_timeout") "The call could not connect." else errorText
@@ -675,10 +647,12 @@ class CallActivity : ComponentActivity() {
 
     private fun finishTerminal(status: CallStatus) {
         if (!ending.compareAndSet(false, true)) return
+        endingAction = true
         lifecycleScope.launch { finishCallUi(status) }
     }
 
     private suspend fun finishCallUi(status: CallStatus, delayMillis: Long = 650L) {
+        endingAction = true
         statusText = terminalLabel(status)
         incomingRinging = false
         call?.id?.let { IncomingCallNotification.cancel(this, it) }
@@ -700,182 +674,3 @@ class CallActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 }
 
-@Composable
-private fun CallScreen(
-    callType: CallType,
-    peerName: String,
-    peerUsername: String,
-    peerAvatar: String,
-    statusText: String,
-    errorText: String?,
-    incomingRinging: Boolean,
-    mediaReady: Boolean,
-    microphoneOn: Boolean,
-    cameraOn: Boolean,
-    speakerOn: Boolean,
-    elapsedSeconds: Int,
-    rtcClient: WebRtcCallClient?,
-    onAnswer: () -> Unit,
-    onDecline: () -> Unit,
-    onEnd: () -> Unit,
-    onToggleMic: () -> Unit,
-    onToggleCamera: () -> Unit,
-    onSwitchCamera: () -> Unit,
-    onToggleSpeaker: () -> Unit
-) {
-    val background = MaterialTheme.colorScheme.background
-    Surface(modifier = Modifier.fillMaxSize(), color = background) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (callType == CallType.VIDEO && mediaReady) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context -> SurfaceViewRenderer(context) },
-                    update = { renderer -> rtcClient?.attachRemoteRenderer(renderer) }
-                )
-                if (cameraOn) {
-                    AndroidView(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 56.dp, end = 18.dp)
-                            .size(width = 112.dp, height = 158.dp)
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)),
-                        factory = { context -> SurfaceViewRenderer(context) },
-                        update = { renderer -> rtcClient?.attachLocalRenderer(renderer) }
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 44.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (!(callType == CallType.VIDEO && mediaReady)) {
-                        AsyncImage(
-                            model = peerAvatar,
-                            contentDescription = peerName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(118.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                        Spacer(Modifier.size(16.dp))
-                    }
-                    Text(peerName.ifBlank { "Blink user" }, style = MaterialTheme.typography.headlineSmall)
-                    if (peerUsername.isNotBlank()) {
-                        Text("@$peerUsername", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                    }
-                    Spacer(Modifier.size(8.dp))
-                    Text(
-                        if (statusText == "Connected" && elapsedSeconds > 0) formatDuration(elapsedSeconds) else statusText,
-                        color = if (errorText == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
-                    )
-                    if (!errorText.isNullOrBlank()) {
-                        Spacer(Modifier.size(4.dp))
-                        Text(errorText, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                    }
-                }
-
-                if (incomingRinging) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CallRoundButton(
-                            icon = Icons.Default.CallEnd,
-                            label = "Decline",
-                            container = MaterialTheme.colorScheme.error,
-                            onClick = onDecline
-                        )
-                        CallRoundButton(
-                            icon = Icons.Default.Call,
-                            label = "Answer",
-                            container = Color(0xFF22C55E),
-                            onClick = onAnswer
-                        )
-                    }
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CallControlButton(
-                                icon = if (microphoneOn) Icons.Default.Mic else Icons.Default.MicOff,
-                                label = if (microphoneOn) "Mute" else "Unmute",
-                                onClick = onToggleMic
-                            )
-                            CallControlButton(
-                                icon = if (speakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                                label = "Speaker",
-                                onClick = onToggleSpeaker
-                            )
-                            if (callType == CallType.VIDEO) {
-                                CallControlButton(
-                                    icon = if (cameraOn) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                                    label = "Camera",
-                                    onClick = onToggleCamera
-                                )
-                                CallControlButton(
-                                    icon = Icons.Default.Cameraswitch,
-                                    label = "Flip",
-                                    onClick = onSwitchCamera
-                                )
-                            }
-                        }
-                        Spacer(Modifier.size(22.dp))
-                        CallRoundButton(
-                            icon = Icons.Default.CallEnd,
-                            label = "End",
-                            container = MaterialTheme.colorScheme.error,
-                            onClick = onEnd
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CallControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-            IconButton(onClick = onClick, modifier = Modifier.size(54.dp)) {
-                Icon(icon, contentDescription = label)
-            }
-        }
-        Spacer(Modifier.size(5.dp))
-        Text(label, fontSize = 10.sp)
-    }
-}
-
-@Composable
-private fun CallRoundButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    container: Color,
-    onClick: () -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Button(
-            onClick = onClick,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = container),
-            modifier = Modifier.size(66.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-        ) {
-            Icon(icon, contentDescription = label, tint = Color.White)
-        }
-        Spacer(Modifier.size(6.dp))
-        Text(label, fontSize = 11.sp)
-    }
-}
-
-private fun formatDuration(totalSeconds: Int): String {
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return "%02d:%02d".format(minutes, seconds)
-}
