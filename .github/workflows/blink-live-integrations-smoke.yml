@@ -1,6 +1,12 @@
 name: BLINK production integrations smoke
 
 on:
+  push:
+    branches:
+      - 'Testlab-web-final-live-verification-*'
+    paths:
+      - '.github/workflows/blink-live-integrations-smoke.yml'
+      - 'scripts/verify_live_blink_integrations.mjs'
   workflow_run:
     workflows: ["Deploy Blink web"]
     types: [completed]
@@ -11,14 +17,14 @@ permissions:
 
 jobs:
   verify-public-site:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
       - name: Checkout precisely deployed main commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
       - name: Node 22
         uses: actions/setup-node@v4
