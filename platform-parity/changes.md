@@ -1,3 +1,10 @@
+## 2026-10-18 — NUC university directory Testlab integration
+
+- Reapplies original Feature 8 incremental changes on top of current Testlab Feature 5 identity onboarding rather than overwriting newer production-related code.
+- Shared Android/Windows university list/search, stable campus IDs, normalized campus matching, and source-labelled additional school records. Database directory seed, profile ID checks and moderated school requests are **not deployed to production**.
+- Official NUC reconciliation and two-account/authenticated staging verification remain mandatory. Directory entries are not guarantees of student identity or current programme accreditation.
+- Run fresh Android/Windows quality and SQL parser checks before Testlab merge; before main promotion, verify SQL staging and safe backfill/migration against legacy user profiles.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
