@@ -106,3 +106,15 @@ content_path = "./supabase/templates/password_changed_notification.html"
 enabled = true
 subject = "BLINK security: your email was changed"
 content_path = "./supabase/templates/email_changed_notification.html"
+
+# Hosted verification checkout and manual confirmation require a signed-in user.
+[functions.flutterwave-checkout]
+verify_jwt = true
+
+[functions.flutterwave-confirm]
+verify_jwt = true
+
+# Public Flutterwave endpoint uses the configured verif-hash secret.
+# NEVER disable its explicit signature verification in application code.
+[functions.flutterwave-webhook]
+verify_jwt = false
