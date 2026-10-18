@@ -91,6 +91,9 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.notification.BlinkSocialEmailCategory
+import com.blinkng.shared.notification.BlinkNotificationKind
+import com.blinkng.shared.notification.BlinkNotificationQuickAction
+import com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy
 import com.blinkng.shared.discovery.BlinkFriendDiscoveryPolicy
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
@@ -396,6 +399,10 @@ fun NotificationsScreen(state: DesktopAppState) {
     }
     var showingSaved by remember(accountId) { mutableStateOf(false) }
     var loading by remember(accountId) { mutableStateOf(true) }
+    var followedActors by remember(accountId) { mutableStateOf<Set<String>>(emptySet()) }
+    var likedTargets by remember(accountId) { mutableStateOf<Set<String>>(emptySet()) }
+    var busyActions by remember(accountId) { mutableStateOf<Set<String>>(emptySet()) }
+    var actionError by remember(accountId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
@@ -430,6 +437,9 @@ fun NotificationsScreen(state: DesktopAppState) {
                 }
             }
         }
+        if (actionError != null) {
+            item { Text(actionError.orEmpty(), color = MaterialTheme.colorScheme.error) }
+        }
         if (showingSaved) {
             item {
                 Text(
@@ -461,6 +471,14 @@ fun NotificationsScreen(state: DesktopAppState) {
                 EmptyState("No live notifications loaded. Saved Updates remains available offline.")
             }
             items(notifications, key = { it.id }) { item ->
+                val kind = BlinkNotificationKind.fromWire(item.type)
+                val commentId = item.targetId.takeIf {
+                    item.targetType.equals("comment", ignoreCase = true)
+                }
+                val actions = BlinkNotificationQuickActionPolicy.available(
+                    kind, recipientBound = accountId.isNotBlank(),
+                    senderId = item.actorId, postId = item.postId, commentId = commentId,
+                )
                 Surface(
                     modifier = Modifier.fillMaxWidth().clickable {
                         if (!item.isRead) scope.launch {
@@ -488,6 +506,65 @@ fun NotificationsScreen(state: DesktopAppState) {
                             }
                             item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (actions.isNotEmpty()) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (BlinkNotificationQuickAction.FOLLOW_BACK in actions &&
+                                        item.actorId !in followedActors && item.actorId != accountId) {
+                                        OutlinedButton(
+                                            enabled = item.id !in busyActions,
+                                            onClick = {
+                                                val actor = item.actorId ?: return@OutlinedButton
+                                                busyActions = busyActions + item.id
+                                                scope.launch {
+                                                    runCatching { state.client.followBack(actor) }
+                                                        .onSuccess { followedActors = followedActors + actor; actionError = null }
+                                                        .onFailure { actionError = it.message ?: "Could not follow back." }
+                                                    busyActions = busyActions - item.id
+                                                }
+                                            },
+                                        ) { Text("Follow Back") }
+                                    }
+                                    val likeId = when {
+                                        BlinkNotificationQuickAction.LIKE_COMMENT in actions -> commentId
+                                        BlinkNotificationQuickAction.LIKE_POST in actions -> item.postId
+                                        else -> null
+                                    }
+                                    if (likeId != null && likeId !in likedTargets) {
+                                        OutlinedButton(
+                                            enabled = item.id !in busyActions,
+                                            onClick = {
+                                                busyActions = busyActions + item.id
+                                                scope.launch {
+                                                    runCatching {
+                                                        if (BlinkNotificationQuickAction.LIKE_COMMENT in actions) state.client.likeCommentOnce(likeId)
+                                                        else state.client.likePostOnce(likeId)
+                                                    }.onSuccess { likedTargets = likedTargets + likeId; actionError = null }
+                                                        .onFailure { actionError = it.message ?: "Could not like this content." }
+                                                    busyActions = busyActions - item.id
+                                                }
+                                            },
+                                        ) { Text("Like") }
+                                    }
+                                    if (!item.isRead) {
+                                        OutlinedButton(
+                                            enabled = item.id !in busyActions,
+                                            onClick = {
+                                                busyActions = busyActions + item.id
+                                                scope.launch {
+                                                    runCatching { state.client.markNotificationRead(item.id) }
+                                                        .onSuccess {
+                                                            notifications = notifications.map {
+                                                                if (it.id == item.id) it.copy(isRead = true) else it
+                                                            }
+                                                            actionError = null
+                                                        }.onFailure { actionError = it.message ?: "Could not mark notification read." }
+                                                    busyActions = busyActions - item.id
+                                                }
+                                            },
+                                        ) { Text("Mark Read") }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
