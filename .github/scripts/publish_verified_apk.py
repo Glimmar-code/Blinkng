@@ -87,7 +87,33 @@ def gh(repository, *args, check=True):
                           check=check, capture_output=True, text=True)
 
 
+def require_current_main(repository, commit):
+    """Block an old successful build from overwriting a newer production release.
+
+    Always ask GitHub for the *current* main ref. A checked-out Git ref or
+    workflow_run completion status can become stale while a build is running.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("Release commit must be a complete lowercase Git SHA")
+    response = subprocess.run(
+        ["gh", "api", f"repos/{repository}/git/ref/heads/main"],
+        check=True, capture_output=True, text=True, timeout=25,
+    )
+    result = json.loads(response.stdout)
+    current = (result.get("object") or {}).get("sha", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", current):
+        raise ValueError("Unable to verify current production main SHA")
+    if current != commit:
+        raise ValueError(
+            f"Stale Android release: candidate {commit} does not match main {current}; "
+            "keep the previous latest APK intact"
+        )
+
+
 def publish(source, repository, commit):
+    # Verify that the signed source is still the current production main, not
+    # merely a historic main ancestor. Recheck again just before publication.
+    require_current_main(repository, commit)
     apks = list(source.rglob("*.apk"))
     infos = list(source.rglob("release-info.txt"))
     packs = list(source.rglob("blink-life-web.zip"))
@@ -141,6 +167,9 @@ def publish(source, repository, commit):
         for original in (saved_info, checksum, pack_checksum):
             if (downloaded / original.name).read_bytes() != original.read_bytes():
                 raise ValueError("Uploaded release metadata changed; draft remains unpublished")
+        # A newer commit might land while draft assets are being uploaded.
+        # In that case leave this artifact unpublished, preserving latest.
+        require_current_main(repository, commit)
         # A failed download or validation leaves the previous latest release intact.
         gh(repository, "edit", tag, "--draft=false", "--latest")
         print(f"Published verified release {tag}: {expected}")
