@@ -53,6 +53,9 @@ fun GetVerifiedSheet(
     onRefreshDailyMissions: () -> Unit = {},
     onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
+    pendingCashPayment: Boolean = false,
+    cashCheckoutBusy: Boolean = false,
+    onCheckCashPayment: () -> Unit = {},
     onUpgrade: (VerificationBadge) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -854,15 +857,15 @@ fun GetVerifiedSheet(
 
                             OutlinedButton(
                                 onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !isGoldActive && recurringCheckoutVerified && selectedMonths == 1,
+                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled && selectedMonths == 1 && !cashCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Secure subscription checkout (coming soon)", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} securely (one-time)", fontWeight = FontWeight.Bold)
                             }
                             if (!recurringCheckoutVerified && !isGoldActive) {
                                 Text(
-                                    "No cash subscription checkout or recurring charge can begin until secure provider verification is available. BLINK Coin verification is a separate 30-day purchase.",
+                                    "One-time Paystack checkout is available only after activation; multi-month subscriptions require separate verification.",
                                     fontSize = 10.5.sp,
                                     color = textSecondary,
                                     textAlign = TextAlign.Center,
@@ -895,7 +898,7 @@ fun GetVerifiedSheet(
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
                         onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && recurringCheckoutVerified && selectedMonths == 1,
+                        enabled = eligible && economyPolicy.cashCheckoutEnabled && selectedMonths == 1 && !cashCheckoutBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -904,7 +907,7 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                recurringCheckoutVerified -> "Continue to secure Gold checkout"
+                                economyPolicy.cashCheckoutEnabled -> "Continue to secure one-time Gold checkout"
                                 else -> "Secure Gold checkout not connected"
                             },
                             fontWeight = FontWeight.Bold,
@@ -916,6 +919,21 @@ fun GetVerifiedSheet(
                         "You're viewing the Free plan. Core BLINK features don't require a subscription.",
                         color = textSecondary,
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    )
+                }
+                if (pendingCashPayment) {
+                    OutlinedButton(
+                        onClick = onCheckCashPayment,
+                        enabled = !cashCheckoutBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(100.dp)
+                    ) { Text("I've paid • Verify with Paystack", fontWeight = FontWeight.Bold) }
+                    Text(
+                        "BLINK only grants a badge after Paystack confirms your payment.",
+                        fontSize = 11.sp,
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
