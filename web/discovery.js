@@ -71,7 +71,7 @@
   };
   function initTour(root){
     const tabs=[...root.querySelectorAll('[data-tour-tab]')];
-    const heading=root.querySelector('#tour-heading'),body=root.querySelector('#tour-body'),action=root.querySelector('#tour-action');
+    const heading=root.querySelector('#tour-heading'),body=root.querySelector('#tour-body'),action=root.querySelector('#tour-action'),panel=root.querySelector('#tour-panel');
     if(!tabs.length||!heading||!body||!action)return;
     const render=key=>{
       const item=tour[key]||tour.feed;
@@ -80,6 +80,7 @@
         tab.setAttribute('aria-selected',String(selected));
         tab.tabIndex=selected?0:-1;
       });
+      if(panel)panel.setAttribute('aria-labelledby','tour-tab-'+key);
       heading.textContent=item.heading;body.textContent=item.body;action.textContent=item.action;
       action.setAttribute('href',(location.hostname.endsWith('github.io')?'/Blinkng':'')+item.path);
     };
