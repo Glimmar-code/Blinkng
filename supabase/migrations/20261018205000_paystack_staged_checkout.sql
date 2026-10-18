@@ -72,13 +72,14 @@ begin
   if not coalesce(v_enabled,false) then raise exception 'CASH_CHECKOUT_DISABLED'; end if;
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(v_user::text)::bigint);
-  select coalesce(email,''),upper(coalesce(verification_badge,'NONE')),verification_expires_at
-    into v_email,v_badge,v_expires
+  select upper(coalesce(verification_badge,'NONE')),verification_expires_at
+    into v_badge,v_expires
     from public.profiles where id=v_user;
   if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
-  -- Email used in Paystack must belong to the signed-in Supabase user (Edge Function).
-  -- This value is informational here: the handler confirms and sends auth.users.email.
-  if v_email='' then raise exception 'PROFILE_EMAIL_REQUIRED'; end if;
+  -- Never use a user-editable profile email for payment identity.
+  select lower(trim(coalesce(email,''))) into v_email
+    from auth.users where id=v_user;
+  if coalesce(v_email,'')='' then raise exception 'ACCOUNT_EMAIL_REQUIRED'; end if;
 
   select count(*)::integer into v_count from public.blink_paystack_orders
     where user_id=v_user and created_at>now()-interval '30 minutes';
