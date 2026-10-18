@@ -97,6 +97,7 @@ fun BlinkEarningSheet(
     val scope = rememberCoroutineScope()
     val api = remember(accountId) { BlinkEconomyService() }
     var history by remember(accountId) { mutableStateOf<List<WalletActivity>>(emptyList()) }
+    var confirmedBalance by remember(accountId) { mutableStateOf<Long?>(null) }
     var historyLoading by remember(accountId) { mutableStateOf(true) }
     var historyError by remember(accountId) { mutableStateOf<String?>(null) }
 
@@ -104,8 +105,10 @@ fun BlinkEarningSheet(
         historyLoading = true
         historyError = null
         api.state().onSuccess { response ->
+            confirmedBalance = response.optLong("balance").coerceAtLeast(0)
             history = parseWalletHistory(response)
         }.onFailure {
+            confirmedBalance = null
             historyError = "Couldn't load wallet history. Check your connection and retry."
             history = emptyList()
         }
@@ -156,12 +159,14 @@ fun BlinkEarningSheet(
                     Text("AVAILABLE BLINK COINS",
                         color = MaterialTheme.colorScheme.surface.copy(alpha = .8f),
                         style = MaterialTheme.typography.labelMedium)
-                    Text(balance.coerceAtLeast(0).toString(),
+                    Text(confirmedBalance?.toString() ?: "—",
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.surface)
                     Text(
-                        "In-app points only · not cash · withdrawals unavailable",
+                        if (confirmedBalance == null)
+                            "Balance not confirmed. Last displayed balance: ${balance.coerceAtLeast(0)} coins."
+                        else "In-app points only · not cash · withdrawals unavailable",
                         color = MaterialTheme.colorScheme.surface.copy(alpha = .85f),
                         style = MaterialTheme.typography.bodySmall,
                     )
