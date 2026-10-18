@@ -102,7 +102,7 @@ fun StoryViewerDialog(
     }
 
     // 5-second automatic progression
-    LaunchedEffect(currentIndex, isPaused) {
+    LaunchedEffect(currentStory.id) {
         progress = 0f
         val stepMs = 50L
         val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
