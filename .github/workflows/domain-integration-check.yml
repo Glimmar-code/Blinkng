@@ -18,6 +18,7 @@ on:
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -33,6 +34,7 @@ on:
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
 
 permissions:
   contents: read
@@ -77,6 +79,9 @@ jobs:
       # The temporary Pages project host is a separate web-only URL until Android is updated.
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
+        run: node scripts/test_web_production_phase3.mjs
 
       - name: Check Phase 2 university catalogue, public discovery and release metadata
         run: node scripts/test_discovery_phase2.mjs
