@@ -1169,10 +1169,11 @@ fun MainAppContent(
                 val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
-                LaunchedEffect(currentProfileToDisplay.id, currentProfileToDisplay.username, isMyProfile) {
-                    if (!isMyProfile && currentProfileToDisplay.username.isNotBlank()) {
+                LaunchedEffect(currentProfileToDisplay.id, isMyProfile) {
+                    if (!isMyProfile && currentProfileToDisplay.id.isNotBlank()) {
+                        // Server records only mutual opt-in identities, never self-views.
                         com.example.notification.ProfileViewActivityTracker.recordViewedProfile(
-                            currentProfileToDisplay.username
+                            currentProfileToDisplay.id
                         )
                     }
                 }
