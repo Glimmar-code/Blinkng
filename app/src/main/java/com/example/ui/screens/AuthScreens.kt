@@ -313,17 +313,6 @@ fun OnboardingScreen(
             }
         }
     }
-    if (universityDialog) {
-        UniversityPickerDialog(
-            selected = university,
-            onDismiss = { universityDialog = false },
-            onSelected = {
-                university = it
-                universityDialog = false
-                validationError = null
-            },
-        )
-    }
 }
 
 // ================================================================
@@ -1137,6 +1126,18 @@ fun SignUpScreen(
             }
         }
     }
+    if (universityDialog) {
+        UniversityPickerDialog(
+            selected = university,
+            onDismiss = { universityDialog = false },
+            onSelected = {
+                university = it
+                universityDialog = false
+                validationError = null
+            },
+        )
+    }
+
 }
 
 // ================================================================
