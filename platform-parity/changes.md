@@ -1,3 +1,9 @@
+## 2026-10-18 — Feature 6 real Stories integrated for Testlab validation
+
+- Actual active 24-hour Stories replace the mixed Recent avatar row in Messages. Read/unread story rings require content presence. Stories may be replied to by ordinary account-bound DM with tappable original reference; expired originals do not reopen.
+- Owner may view private insights. Per-story reposting needs affirmative author consent and a protected backend RPC. Media3 plays video stories.
+- Supabase migration `20261018050000_story_insights_and_safe_reposts.sql` is source-only and MUST be tested for column compatibility, RLS and two-account visibility before release. New features are NOT yet available in production. Verification check runs on latest Testlab code, retaining campus signup and Earning.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
