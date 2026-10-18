@@ -18,7 +18,8 @@ try{
  await page.goto('https://blink.com.ng/',{waitUntil:'domcontentloaded',timeout:25000});
  const response=await metric;
  assert.equal(response.status(),204,'BLINK homepage did not send an accepted live metric');
- assert.equal(response.request().headers()['origin'],'https://blink.com.ng','Metrics must originate on official site');
+ const headers=await response.request().allHeaders();
+ assert.equal(headers.origin,'https://blink.com.ng','Metrics must originate on official site');
  const body=response.request().postDataJSON();
  assert.deepEqual(body,{page:'home',kind:'view'},'No visitor details may be sent');
  const next=await page.evaluate(()=>{
