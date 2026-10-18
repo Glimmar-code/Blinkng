@@ -1,3 +1,9 @@
+## 2026-10-19 — BLINK Stories integrated with current Testlab (staging only)
+
+- Feature 6 from PR #389: strict 24h story lifetime, no false story rings, Media3 playback, private viewer/like insights, opt-in repost, safe story-linked DM replies and Windows parity contract.
+- Built against current Testlab including merged Blue/Gold quote previews and campus registration. Supabase story migration has NOT run on production. Android quality and SQL checks must pass. Security test with two accounts, blocked users, expired story and media permission still required prior to production/main release.
+- Cash payments and subscriptions remain controlled by separate Paystack configuration/verified webhook work.
+
 ## 2026-10-18 — Verification plan pricing integrated on current Testlab
 
 - Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
