@@ -134,9 +134,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Verified public BLINK links. Production default shareHost is
-                 blink.com.ng, with sharePathPrefix empty on the canonical domain.
-                 The host serves .well-known/assetlinks.json for the signed APK. -->
+            <!-- Verified public BLINK links. Production builds resolve shareHost to
+                 www.blink.com.ng; sharePathPrefix is empty on the canonical domain. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -145,7 +144,6 @@
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
-                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/market/" />
             </intent-filter>
 
             <!-- Supabase password-recovery redirect. Add blink://reset-password
