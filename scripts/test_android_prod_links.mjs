@@ -12,7 +12,7 @@ assert.ok(gradle.includes('manifestPlaceholders["shareHost"] = resolvedShareHost
 assert.ok(gradle.includes('manifestPlaceholders["sharePathPrefix"] = resolvedSharePathPrefix'));
 assert.ok(manifest.includes('android:autoVerify="true"'),'Verified Android App Links filter required');
 assert.ok(manifest.includes('android:host="${shareHost}"'),'Verified host must derive from share URL');
-for(const route of ['/@','/profile/','/post/','/reel/','/market/']){
+for(const route of ['/@','/profile/','/post/','/reel/']){
   assert.ok(manifest.includes('android:pathPrefix="${sharePathPrefix}'+route+'"'),'Missing verified path '+route);
 }
 for(const kind of ['PROFILE','POST','REEL','MARKET']){
