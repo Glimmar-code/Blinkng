@@ -40,6 +40,16 @@ class CallActionReceiver : BroadcastReceiver() {
                         context, repository.currentUserId(), callId, event
                     )
                     repository.dispatchPush(callId, event)
+                } else {
+                    // A notification action must not be lost just because the
+                    // network disappeared before the call status was saved.
+                    val action = when (intent.action) {
+                        ACTION_DECLINE -> CallEndRecoveryPolicy.Action.DECLINE
+                        else -> CallEndRecoveryPolicy.Action.END
+                    }
+                    CallEndRetryWorker.schedule(
+                        context, callId, repository.currentUserId(), action
+                    )
                 }
                 if (BlinkCallForegroundService.activeCallId == callId) {
                     context.stopService(Intent(context, BlinkCallForegroundService::class.java))
