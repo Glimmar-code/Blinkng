@@ -6,8 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import android.app.Application
 
 @RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [35])
 class CallIceConfigParserTest {
     @Test fun `call scoped response includes STUN and TURN`() {
         val config = CallIceConfigParser.parse(
