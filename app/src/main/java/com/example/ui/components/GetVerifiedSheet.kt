@@ -52,6 +52,9 @@ fun GetVerifiedSheet(
     onRefreshDailyMissions: () -> Unit = {},
     onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
+    pendingCashPayment: Boolean = false,
+    cashCheckoutBusy: Boolean = false,
+    onCheckCashPayment: () -> Unit = {},
     onUpgrade: (VerificationBadge) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -828,7 +831,7 @@ fun GetVerifiedSheet(
 
                             OutlinedButton(
                                 onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled,
+                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
@@ -836,7 +839,7 @@ fun GetVerifiedSheet(
                             }
                             if (!economyPolicy.cashCheckoutEnabled && !isGoldActive) {
                                 Text(
-                                    "Cash checkout is prepared but stays off until a verified Paystack/payment checkout is connected. No fake payment can activate a badge.",
+                                    "Paystack cash checkout is disabled until merchant setup and test payments pass.",
                                     fontSize = 10.5.sp,
                                     color = textSecondary,
                                     textAlign = TextAlign.Center,
@@ -869,7 +872,7 @@ fun GetVerifiedSheet(
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
                         onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && economyPolicy.cashCheckoutEnabled,
+                        enabled = eligible && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -885,6 +888,25 @@ fun GetVerifiedSheet(
                             color = Color.Black
                         )
                     }
+                }
+
+                if (pendingCashPayment) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onCheckCashPayment,
+                        enabled = !cashCheckoutBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Text("I've paid • Check Paystack payment", fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        "BLINK credits verified purchases only after Paystack confirms your transaction.",
+                        fontSize = 11.sp,
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
