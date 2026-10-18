@@ -9,6 +9,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.BuildConfig
 import com.example.call.CallTimeoutWorker
+import com.example.call.CallNotificationLedger
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.data.repository.ChatRepository
@@ -197,9 +198,18 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             "FCM message received from=${message.from} type=$type dataKeys=${data.keys.joinToString()} hasNotification=${message.notification != null}"
         )
 
+        // Calling has a stricter recipient contract than older social pushes:
+        // an absent recipient identifier must never ring the newly signed-in
+        // account after a device/account switch.
+        if ((type == BlinkNotificationType.INCOMING_CALL ||
+                type == BlinkNotificationType.CALL_UPDATE) &&
+            data["recipient_id"].isNullOrBlank()) {
+            Log.w(TAG, "Ignoring unaddressed call push.")
+            return
+        }
+
         // A token can have a pending FCM packet while the phone signs out of account A and
-        // signs into account B. New server payloads include recipient_id so such a packet can
-        // never surface in the wrong account. Old payloads remain backward compatible.
+        // signs into account B. Legacy non-call packets remain backward compatible.
         if (!NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
             Log.w(TAG, "Ignored push intended for a different Blink account.")
             return
@@ -243,7 +253,11 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             }
         }
 
-        if (!NotificationPreferenceStore.isAllowed(this, type)) {
+        // Call updates are control-plane messages: dismissing a ringing surface
+        // must work even if the user turns notifications off or enables quiet hours.
+        // Whether to display a missed-call *alert* remains preference-controlled.
+        if (type != BlinkNotificationType.CALL_UPDATE &&
+            !NotificationPreferenceStore.isAllowed(this, type)) {
             Log.d(TAG, "Notification suppressed by Blink preference/quiet-hour policy: $type")
             return
         }
@@ -359,37 +373,58 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.INCOMING_CALL -> {
                 val callId = data["call_id"].orEmpty()
                 val callerId = data["caller_id"].orEmpty()
-                if (callId.isNotBlank() && callerId.isNotBlank()) {
-                    val callType = CallType.fromWire(data["call_type"])
-                    IncomingCallNotification.showIncoming(
-                        context = this,
-                        callId = callId,
-                        callType = callType,
-                        peerId = callerId,
-                        peerUsername = sender,
-                        peerName = senderName,
-                        peerAvatar = senderAvatar,
-                        conversationId = conversationId
-                    )
-                    CallTimeoutWorker.schedule(
-                        context = this,
-                        callId = callId,
-                        callType = callType,
-                        peerName = senderName
-                    )
+                val calleeId = data["callee_id"].orEmpty()
+                if (!CallNotificationLedger.validRecipient(
+                        currentUid, data["recipient_id"], callerId, calleeId, true
+                    ) ||
+                    !CallNotificationLedger.claimInvite(
+                        this, currentUid, callId, data["timeout_at"]
+                    )) {
+                    Log.d(TAG, "Ignoring duplicate, expired or mismatched incoming call.")
+                    return
                 }
+                val callType = CallType.fromWire(data["call_type"])
+                IncomingCallNotification.showIncoming(
+                    context = this,
+                    callId = callId,
+                    callType = callType,
+                    peerId = callerId,
+                    peerUsername = sender,
+                    peerName = senderName,
+                    peerAvatar = senderAvatar,
+                    conversationId = conversationId
+                )
+                CallTimeoutWorker.schedule(
+                    context = this,
+                    callId = callId,
+                    callType = callType,
+                    peerName = senderName
+                )
             }
 
             BlinkNotificationType.CALL_UPDATE -> {
                 val callId = data["call_id"].orEmpty()
+                if (!CallNotificationLedger.isValidCallId(callId) ||
+                    !CallNotificationLedger.validRecipient(
+                        currentUid, data["recipient_id"],
+                        data["caller_id"], data["callee_id"], false
+                    )) {
+                    Log.w(TAG, "Ignoring invalid or mismatched call update.")
+                    return
+                }
                 val event = data["call_event"].orEmpty()
-                CallTimeoutWorker.cancel(this, callId)
+                CallNotificationLedger.markUpdated(this, currentUid, callId, event)
+                if (event.lowercase() in setOf("answered", "declined", "cancelled",
+                        "ended", "missed", "failed", "busy")) {
+                    CallTimeoutWorker.cancel(this, callId)
+                }
                 IncomingCallNotification.handleCallUpdate(
                     context = this,
                     callId = callId,
                     event = event
                 )
-                if (event.equals("missed", ignoreCase = true)) {
+                if (event.equals("missed", ignoreCase = true) &&
+                    NotificationPreferenceStore.isAllowed(this, type)) {
                     IncomingCallNotification.showMissed(
                         context = this,
                         callId = callId,
