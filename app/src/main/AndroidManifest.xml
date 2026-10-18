@@ -57,6 +57,7 @@
             android:name=".call.CallActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|fontScale|density"
             android:screenOrientation="portrait"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
