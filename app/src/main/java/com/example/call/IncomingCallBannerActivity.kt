@@ -78,21 +78,32 @@ class IncomingCallBannerActivity : ComponentActivity() {
             peerName: String,
             peerAvatar: String,
             conversationId: String
-        ) {
-            if (callId.isBlank() || activeCallId == callId) return
-            activeCallId = callId
-            context.startActivity(
-                Intent(context, IncomingCallBannerActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    putExtra(CallActivity.EXTRA_CALL_ID, callId)
-                    putExtra(EXTRA_CALL_TYPE, callType.wireValue)
-                    putExtra(EXTRA_PEER_ID, peerId)
-                    putExtra(EXTRA_PEER_USERNAME, peerUsername)
-                    putExtra(EXTRA_PEER_NAME, peerName)
-                    putExtra(EXTRA_PEER_AVATAR, peerAvatar)
-                    putExtra(EXTRA_CONVERSATION_ID, conversationId)
-                }
-            )
+        ): Boolean {
+            if (callId.isBlank()) return false
+            if (activeCallId == callId) return true
+            // Android can reject a background Activity launch even when the FCM
+            // callback briefly gives the process foreground importance.
+            // Return false so the caller can use Android's CallStyle notification.
+            val previousId = activeCallId
+            return runCatching {
+                context.startActivity(
+                    Intent(context, IncomingCallBannerActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        putExtra(CallActivity.EXTRA_CALL_ID, callId)
+                        putExtra(EXTRA_CALL_TYPE, callType.wireValue)
+                        putExtra(EXTRA_PEER_ID, peerId)
+                        putExtra(EXTRA_PEER_USERNAME, peerUsername)
+                        putExtra(EXTRA_PEER_NAME, peerName)
+                        putExtra(EXTRA_PEER_AVATAR, peerAvatar)
+                        putExtra(EXTRA_CONVERSATION_ID, conversationId)
+                    }
+                )
+                activeCallId = callId
+                true
+            }.getOrElse {
+                activeCallId = previousId
+                false
+            }
         }
 
         fun dismiss(callId: String) {
@@ -231,8 +242,11 @@ class IncomingCallBannerActivity : ComponentActivity() {
         IncomingCallNotification.cancel(this, callId)
         lifecycleScope.launch {
             val repository = CallRepository()
-            repository.declineCall(callId)
-            repository.dispatchPush(callId, "declined")
+            repository.declineCall(callId).onSuccess {
+                val userId = repository.currentUserId()
+                CallNotificationLedger.markUpdated(this@IncomingCallBannerActivity, userId, callId, "declined")
+                repository.dispatchPush(callId, "declined")
+            }
             finish()
         }
     }
