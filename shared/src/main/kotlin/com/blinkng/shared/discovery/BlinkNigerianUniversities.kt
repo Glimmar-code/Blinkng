@@ -192,16 +192,236 @@ object BlinkNigerianUniversities {
         "Wigwe University"
     )
 
-    val all: List<String> =
-        (
-            federal +
-                    state +
-                    private
-        )
-            .distinct()
-            .sortedWith(
-                compareBy(
-                    String.CASE_INSENSITIVE_ORDER
-                ) { it }
-            )
+
+    // NUC Nigerian University System directory review, 2026-10-18.
+    // These additional, explicitly listed institutions were absent from the
+    // earlier bundled catalogue. Retain earlier canonical names for existing
+    // BLINK profiles until an admin-approved migration maps their aliases.
+    // Source: https://enuc.nuc.edu.ng/nus
+    private val federalAdditional = listOf(
+        "Alex Ekwueme Federal University, Ndufu Alike",
+        "African Aviation and Aerospace University, Abuja",
+        "National University of Science and Technology, Abuja",
+        "Federal University of Agriculture, Mubi",
+        "Federal University of Agriculture, Bassam-Bari",
+        "Federal University of Agriculture, Zuru",
+        "Federal University of Agriculture and Technology, Obio-Akpa",
+        "Federal University of Agriculture and Developmental Studies, Iragbiji",
+        "Federal University of Agriculture and Technology, Okeho",
+        "Federal University of Medicine and Medical Sciences, Abeokuta",
+        "Federal University of Health Sciences, Kwale",
+        "Federal University of Health Sciences, Funtua",
+        "Federal University of Health Sciences, Azare",
+        "Federal University of Allied Health Sciences, Enugu",
+        "Federal University of Applied Sciences, Kachia",
+        "Federal University of Science and Technology, Kabo",
+        "Federal University of Science and Technology, Epe",
+        "Federal University of Technology, Ikot Abasi",
+        "Federal University of Technology and Environmental Studies, Iyin-Ekiti",
+        "Federal University of Environment and Technology, Tai",
+        "Federal University of Health Science and Technology, Tsafe",
+        "University of Maritime Studies, Oron",
+        "Alvan Ikoku Federal University of Education",
+        "Tai Solarin Federal University of Education",
+        "Adeyemi Federal University of Education",
+        "Nigerian Army University, Biu",
+        "Air Force Institute of Technology, Kaduna",
+    )
+
+    private val stateAdditional = listOf(
+        "Adekunle Ajasin University, Akungba-Akoko",
+        "Bayelsa Medical University",
+        "Bamidele Olumilua University of Education, Science and Technology",
+        "Confluence University of Science and Technology",
+        "Cross River University of Education and Entrepreneurship",
+        "Ebonyi State University of ICT, Science and Technology",
+        "Ebonyi State University of Aeronautics and Aerospace Engineering",
+        "Enugu State University of Medical and Applied Sciences",
+        "First Technical University, Ibadan",
+        "Gombe State University of Science and Technology",
+        "Ibrahim Badamasi Babangida University, Lapai",
+        "Jigawa State University of Allied and Medical Sciences",
+        "King David Umahi University of Medical Sciences",
+        "Kingsley Ozumba Mbadiwe University",
+        "Kwara State University of Education",
+        "Lagos University of Education",
+        "Lagos University of Science and Technology",
+        "Moshood Abiola University of Science and Technology",
+        "Prince Abubakar Audu University, Anyigba",
+        "Sa'adu Zungur University",
+        "Shehu Shagari University of Education",
+        "Taraba State University of Tropical Agriculture, Science, Technology and Climate Action",
+        "University of Agriculture and Environmental Sciences, Umuagwo",
+        "University of Delta, Agbor",
+        "University of Ilesa",
+        "University of Innovation, Science and Technology, Omuma",
+        "University of Medical Sciences, Ondo",
+        "Yobe State University, Damaturu",
+    )
+
+    private val privateAdditional = listOf(
+        "Abdulfattah Durojaiye University",
+        "Aletheia University",
+        "Al-Ansar University",
+        "Al-Istiqama University",
+        "Al-Bayan University",
+        "Al-Muhibbah Open University",
+        "Amadeus University",
+        "Amaj University",
+        "ANAN University",
+        "Augustine University",
+        "Azman University",
+        "Azione Verde University",
+        "Baba-Ahmed University",
+        "Bridget University Mbaise",
+        "British Canadian University",
+        "Canadian University of Nigeria",
+        "Capital City University",
+        "Chrisland University",
+        "City University Abuja",
+        "Claretian University of Nigeria",
+        "Clifford University",
+        "Coal City University",
+        "Cosmopolitan University",
+        "Eko University of Medical Sciences",
+        "El-Amin University",
+        "Elrazi University of Medical Sciences",
+        "Eranova University",
+        "European University of Nigeria",
+        "Euston University",
+        "Franco British International University",
+        "Gerar University of Medical Sciences",
+        "Godday Erewa University",
+        "Greenland University",
+        "Havilla University",
+        "Hensard University",
+        "High-Flyers University",
+        "Hillside University of Science and Technology",
+        "Huda University",
+        "Iconic Open University",
+        "Isaac Balami University of Aeronautics and Management",
+        "James Hope University",
+        "JEFAP University",
+        "Jimoh Babalola University",
+        "Jewel University",
+        "Karl-Kumm University",
+        "Kevin Eze University",
+        "Khalifa Isiyaku Rabiu University",
+        "Kwararafa University",
+        "Legacy University",
+        "Lens University",
+        "Lighthouse University",
+        "Lux Mundi University",
+        "Maduka University",
+        "Maranatha University",
+        "Margaret Lawrence University",
+        "Maria Assumpta University",
+        "Maryam Abacha American University of Nigeria",
+        "Michael and Cecilia Ibru University",
+        "Millennium Crest University",
+        "Minaret University",
+        "Monarch University",
+        "Mudiame University",
+        "New City University",
+        "Newgate University",
+        "North Eastern University, Gombe",
+        "Northwest University, Sokoto",
+        "Obong University",
+        "Ojaja University",
+        "Omega University Kaduna",
+        "Owolabi University",
+        "Peaceland University",
+        "Pearl University",
+        "Pen Resource University",
+        "Peter University",
+        "Philomath University",
+        "Phoenix University",
+        "Prime University",
+        "Rayhaan University",
+        "Regnum Medical University",
+        "Ritman University",
+        "Saisa University of Medical Sciences and Technology",
+        "Sam Maris University",
+        "Sani Bello University",
+        "Shanahan University",
+        "Southern Atlantic University",
+        "Spiritan University",
+        "Sports University",
+        "Tazkiyah University",
+        "The Duke Medical University, Calabar",
+        "Tonnie Iredia University of Communication",
+        "Topfaith University",
+        "Transatlantic University of Medicine and Health Sciences",
+        "Ummah University of Nigeria",
+        "Unique Open University",
+        "University of Fortune",
+        "University of Mkar",
+        "University of Offa",
+        "University on the Niger",
+        "Vision University",
+        "Wesley University of Science and Technology",
+        "West Midland Open University",
+    )
+
+    enum class Ownership { FEDERAL, STATE, PRIVATE }
+
+    data class University(
+        val id: String,
+        val name: String,
+        val ownership: Ownership,
+        val state: String,
+    )
+
+    private fun stableId(name: String): String =
+        "ng-university:" + name.lowercase(java.util.Locale.ROOT)
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+
+    private val stateNames = listOf(
+        "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa",
+        "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo",
+        "Ekiti", "Enugu", "FCT", "Gombe", "Imo", "Jigawa",
+        "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara",
+        "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun",
+        "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara",
+    )
+
+    private val knownStates = mapOf(
+        "Federal University of Technology, Akure" to "Ondo",
+        "Federal University of Technology, Minna" to "Niger",
+        "Federal University of Technology, Owerri" to "Imo",
+        "University of Lagos" to "Lagos", "University of Ibadan" to "Oyo",
+        "University of Ilorin" to "Kwara", "University of Benin" to "Edo",
+        "Obafemi Awolowo University, Ile-Ife" to "Osun",
+        "Ahmadu Bello University, Zaria" to "Kaduna",
+        "University of Nigeria, Nsukka" to "Enugu",
+        "Lagos State University" to "Lagos",
+        "Federal University of Agriculture, Abeokuta" to "Ogun",
+        "University of Port Harcourt" to "Rivers",
+        "Nnamdi Azikiwe University, Awka" to "Anambra",
+        "Bayero University, Kano" to "Kano",
+    )
+
+    private fun stateOf(name: String): String = knownStates[name] ?: stateNames
+        .sortedByDescending { it.length }
+        .firstOrNull { state ->
+            Regex("(?i)(^|[ ,])" + Regex.escape(state) + "(,|\\s+State|\\s*$)").containsMatchIn(name)
+        }.orEmpty()
+
+    val records: List<University> by lazy {
+        buildList {
+            fun includeInstitutions(names: List<String>, ownership: Ownership) {
+                names.forEach { name ->
+                    this.add(University(stableId(name), name, ownership, stateOf(name)))
+                }
+            }
+            includeInstitutions(federal + federalAdditional, Ownership.FEDERAL)
+            includeInstitutions(state + stateAdditional, Ownership.STATE)
+            includeInstitutions(private + privateAdditional, Ownership.PRIVATE)
+        }.distinctBy { it.name.lowercase(java.util.Locale.ROOT) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
+
+    val all: List<String> by lazy { records.map { it.name } }
+    val byId: Map<String, University> by lazy { records.associateBy { it.id } }
 }
