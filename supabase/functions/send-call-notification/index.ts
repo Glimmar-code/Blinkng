@@ -223,6 +223,9 @@ Deno.serve(async (req) => {
     call_event: event,
     call_id: String(call.id),
     call_type: callType,
+    // Android rejects late invites when they arrive after the server deadline.
+    timeout_at: String(call.timeout_at ?? ""),
+    sent_at: new Date().toISOString(),
     conversation_id: String(call.conversation_id),
     caller_id: String(call.caller_id),
     callee_id: String(call.callee_id),
