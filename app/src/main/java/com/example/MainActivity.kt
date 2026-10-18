@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPaymentReference by mutableStateOf<String?>(null)
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
+    private var showPendingPaymentPrompt by mutableStateOf(true)
 
     private fun startPaystackCheckout(kind: String, itemCode: String) {
         if (paymentInProgress) return
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val checkout = paystack.createCheckout(kind, itemCode)
                 pendingPaymentReference = checkout.reference
+                showPendingPaymentPrompt = true
                 paystackPrefs.edit().putString("reference", checkout.reference).apply()
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
@@ -104,6 +106,7 @@ class MainActivity : ComponentActivity() {
             try {
                 if (paystack.confirmPayment(reference)) {
                     pendingPaymentReference = null
+                    showPendingPaymentPrompt = false
                     paystackPrefs.edit().remove("reference").apply()
                     viewModel.fetchSupabaseData()
                     viewModel.showToast("Payment confirmed. Your BLINK purchase is active.")
@@ -1469,7 +1472,7 @@ fun MainAppContent(
         }
 
         // One pending transaction can be confirmed by a signed-in customer on any main screen.
-        if (pendingPaymentReference != null && !uiState.isGetVerifiedOpen) {
+        if (pendingPaymentReference != null && showPendingPaymentPrompt && !uiState.isGetVerifiedOpen) {
             AlertDialog(
                 onDismissRequest = { },
                 title = { Text("Check Paystack Payment") },
@@ -1482,9 +1485,8 @@ fun MainAppContent(
                 },
                 dismissButton = {
                     TextButton(onClick = {
-                        // Keep the transaction reference saved so it can be confirmed later.
-                        pendingPaymentReference = null
-                        paystackPrefs.edit().remove("reference").apply()
+                        // Hide only the prompt. Persist the reference for later confirmation.
+                        showPendingPaymentPrompt = false
                     }) { Text("Later") }
                 }
             )
