@@ -2,6 +2,12 @@
 (() => {
   'use strict';
   const ready = fn => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn, {once:true}) : fn();
+  // Load optional diagnostics only when explicitly enabled by the site tester.
+  // Ordinary visitors do not download the diagnostics module or send metrics.
+  if(new URLSearchParams(location.search).get('blink_perf')==='1'){
+    const prefix=location.hostname.endsWith('github.io')?'/Blinkng/':'/';
+    import(prefix+'performance-diagnostics.js').catch(()=>{});
+  }
   const aliases = new Map([
     ['futa', 'Federal University of Technology, Akure'],
     ['futminna', 'Federal University of Technology, Minna'],
