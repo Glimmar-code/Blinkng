@@ -3,11 +3,14 @@ package com.example.call
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
+/** Call actions must not report completion when Supabase rejected a state change. */
 class CallActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_DECLINE = "com.example.blink.call.DECLINE"
@@ -16,27 +19,50 @@ class CallActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val callId = intent.getStringExtra(CallActivity.EXTRA_CALL_ID).orEmpty()
+        val action = when (intent.action) {
+            ACTION_DECLINE -> CallEndRecoveryPolicy.Action.DECLINE
+            ACTION_END -> CallEndRecoveryPolicy.Action.END
+            else -> return
+        }
         if (callId.isBlank()) return
-        IncomingCallNotification.cancel(context, callId)
 
+        val appContext = context.applicationContext
+        IncomingCallNotification.cancel(appContext, callId)
+        IncomingCallBannerActivity.dismiss(callId)
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                SupabaseService.initialize(appContext)
                 val repository = CallRepository()
-                when (intent.action) {
-                    ACTION_DECLINE -> {
-                        repository.declineCall(callId)
-                        repository.dispatchPush(callId, "declined")
-                        BlinkTelecomManager.disconnect(callId, android.telecom.DisconnectCause.REJECTED)
-                    }
-                    ACTION_END -> {
-                        val result = repository.endCall(callId, "ended")
-                        val event = result.getOrNull()?.status?.wireValue ?: "ended"
-                        repository.dispatchPush(callId, event)
-                        BlinkTelecomManager.disconnect(callId, android.telecom.DisconnectCause.LOCAL)
-                    }
+                val userId = repository.currentUserId()
+                val outcome = when (action) {
+                    CallEndRecoveryPolicy.Action.DECLINE -> repository.declineCall(callId)
+                    else -> repository.endCall(callId, "ended")
                 }
-                context.stopService(Intent(context, BlinkCallForegroundService::class.java))
+                val persisted = outcome.getOrNull()
+                if (persisted != null) {
+                    repository.dispatchPush(callId, persisted.status.wireValue)
+                        .onFailure { Log.w("BlinkCalls", "Call status push failed") }
+                } else {
+                    CallEndRetryWorker.schedule(appContext, callId, userId, action)
+                }
+                BlinkTelecomManager.disconnect(
+                    callId,
+                    if (action == CallEndRecoveryPolicy.Action.DECLINE)
+                        android.telecom.DisconnectCause.REJECTED
+                    else android.telecom.DisconnectCause.LOCAL
+                )
+                if (BlinkCallForegroundService.activeCallId == callId) {
+                    appContext.stopService(Intent(appContext, BlinkCallForegroundService::class.java))
+                }
+            } catch (error: Exception) {
+                Log.w("BlinkCalls", "Could not complete call notification action", error)
+                runCatching {
+                    SupabaseService.initialize(appContext)
+                    CallEndRetryWorker.schedule(
+                        appContext, callId, CallRepository().currentUserId(), action
+                    )
+                }
             } finally {
                 pendingResult.finish()
             }
