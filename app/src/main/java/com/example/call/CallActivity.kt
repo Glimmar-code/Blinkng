@@ -393,6 +393,7 @@ class CallActivity : ComponentActivity() {
             return
         }
         mediaReady = true
+        cameraOn = rtcClient?.isCameraEnabled() ?: false
         speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
         startForegroundCall(active.id)
 
