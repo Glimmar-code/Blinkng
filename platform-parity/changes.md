@@ -1,3 +1,12 @@
+## 2026-10-18 — Feature 6: Messages stories, privacy-safe replies and insights (Testlab candidate)
+
+- **Shared:** 24-hour story lifecycle and unviewed/viewed/no-ring contract; structured DM reference containing only the story UUID, not an exposed original caption or media URL. Replies remain normal DMs after a story expires, but the story itself becomes unavailable.
+- **Android Messages:** rail now shows Your Story, real active stories from followed or chatted-with users only, not arbitrary online chat avatars. Blue ring is only for active unseen stories, muted for seen; no ring when there's no active story. Non-story profile pictures revert to neutral borders.
+- **Viewer:** owner can watch their own story, see private viewers/likers and choose per-story whether reposting is allowed. Eligible visitors can like, DM reply with a clickable in-chat preview (and gracefully handle an expired original), or repost only when the owner has opted in. Video stories play with Media3 rather than static image placeholders. Hold-to-pause no longer restarts progress.
+- **Server:** versioned migration for story owner-only engagement insights, explicit allow_reposts setting (off by default) and deduplicated, blocked-user-safe repost RPC. No migration deployed to production.
+- **Limitations:** desktop story viewer and Windows message story rails have not yet been built. Read-receipts and reply previews depend on receiving the migrated Supabase schema and up-to-date apps. The story catalog still needs full audience/visibility policy verification in staging. No claim of a completed server deployment.
+- **Release gate:** Testlab first; Android lint/unit/build, Supabase SQL static validation then staging migration and RLS/expiration/blocks/duplicate taps test, device Media3 playback, reply-to-DM end-to-end and story expiry UI; Windows parity if needed before production. Do not merge to main or publish until verified.
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
