@@ -14,7 +14,6 @@ data class DesktopProfile(
     val username: String,
     val avatarUrl: String?,
     val university: String?,
-    val accountType: String? = null,
     val faculty: String?,
     val department: String?,
     val bio: String?,
@@ -34,6 +33,7 @@ data class DesktopProfile(
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
+    val accountType: String? = null
 )
 
 data class DesktopFeedPost(
