@@ -154,6 +154,8 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
+import com.blinkng.shared.notification.BlinkStoryPresentation
+import com.example.data.repository.FollowStateStore
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkMessageTheme
@@ -861,6 +863,10 @@ private fun SearchMatchesField(
     )
 }
 
+/**
+ * Messages shows actual, non-expired stories only. A chat partner's "online" flag
+ * is never drawn as a story ring. Followers and chat contacts are eligible.
+ */
 @Composable
 private fun MatchesRail(
     conversations: List<ChatConversation>,
@@ -868,63 +874,91 @@ private fun MatchesRail(
     palette: MessagePalette,
     onAddStoryClick: () -> Unit,
     onOpenConversation: (String) -> Unit,
-    onStoryClick: (Story) -> Unit
+    onStoryClick: (Story) -> Unit,
 ) {
-    val matches = remember(conversations, stories) {
-        val people = mutableListOf<MatchPerson>()
-        conversations.forEach { conversation ->
-            people += MatchPerson(
-                id = "conversation_${conversation.id}",
-                name = conversation.partnerName,
-                username = conversation.partnerUsername,
-                avatar = conversation.partnerAvatar,
-                isOnline = conversation.isOnline,
-                hasUnseenStory = false,
-                verificationBadge = when {
-                    conversation.verificationBadge != VerificationBadge.NONE -> conversation.verificationBadge
-                    conversation.isVerified -> VerificationBadge.BLUE
-                    else -> VerificationBadge.NONE
-                },
-                conversation = conversation
-            )
+    val following by FollowStateStore.followingIds.collectAsState()
+    LaunchedEffect(Unit) { FollowStateStore.refresh() }
+    val now = remember(stories) { java.time.Instant.now() }
+    val active = remember(stories, following, conversations, now) {
+        val contacts = conversations.map {
+            it.partnerUsername.removePrefix("@").lowercase(Locale.ROOT)
+        }.toSet()
+        stories.filter {
+            (it.createdAt.isNotBlank() &&
+                BlinkStoryPresentation.active(it.createdAt, true, now))
+        }.filter { story ->
+            story.isUser || story.authorId in following ||
+                story.username.removePrefix("@").lowercase(Locale.ROOT) in contacts
         }
-        val existingUsers = people.map { it.username.lowercase(Locale.ROOT) }.toMutableSet()
-        stories.filterNot { it.isUser }.forEach { story ->
-            val normalized = story.username.removePrefix("@").lowercase(Locale.ROOT)
-            if (normalized !in existingUsers) {
-                existingUsers += normalized
-                people += MatchPerson(
-                    id = "story_${story.id}",
-                    name = story.displayLabel,
-                    username = normalized,
-                    avatar = story.avatar,
-                    isOnline = false,
-                    hasUnseenStory = story.hasUnseen,
-                    verificationBadge = story.verificationBadge,
-                    story = story
-                )
-            }
-        }
-        people.take(12)
     }
+    val mine = active.filter { it.isUser }.maxByOrNull { it.createdAt }
+    val otherStories = active.filterNot { it.isUser }
+        .groupBy { it.authorId.ifBlank { it.username.lowercase(Locale.ROOT) } }
+        .mapNotNull { (_, batch) -> batch.maxByOrNull { it.createdAt } }
+        .sortedWith(compareByDescending<Story> { it.hasUnseen }.thenByDescending { it.createdAt })
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.testTag("message_stories_row"),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "add_story") {
-            AddMatchItem(palette = palette, onClick = onAddStoryClick)
+        item(key = "your_story") {
+            if (mine != null) {
+                MessageStoryCircle(mine, "Your Story", palette, onClick = { onStoryClick(mine) })
+            } else {
+                AddMatchItem(palette = palette, onClick = onAddStoryClick)
+            }
         }
-        items(matches, key = { it.id }) { person ->
-            MatchItem(
-                person = person,
-                palette = palette,
-                onClick = {
-                    person.conversation?.let { onOpenConversation(it.partnerUsername) }
-                        ?: person.story?.let(onStoryClick)
-                }
+        items(otherStories, key = { "active_${it.id}" }) { story ->
+            MessageStoryCircle(
+                story, story.displayLabel.substringBefore(" ").take(10),
+                palette, onClick = { onStoryClick(story) },
             )
         }
+        if (mine != null) {
+            item(key = "story_add") {
+                AddMatchItem(palette = palette, onClick = onAddStoryClick)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageStoryCircle(
+    story: Story,
+    label: String,
+    palette: MessagePalette,
+    onClick: () -> Unit,
+) {
+    val ring = BlinkStoryPresentation.ring(true, story.hasUnseen)
+    Column(
+        modifier = Modifier.width(62.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag("message_story_${story.id}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val ringColor = when (ring) {
+            BlinkStoryPresentation.Ring.UNVIEWED -> Color(0xFF1687FF)
+            BlinkStoryPresentation.Ring.VIEWED -> palette.textSecondary.copy(alpha = .55f)
+            BlinkStoryPresentation.Ring.NONE -> Color.Transparent
+        }
+        Box(
+            modifier = Modifier.size(57.dp)
+                .border(2.dp, ringColor, CircleShape)
+                .padding(3.dp),
+        ) {
+            AvatarImage(
+                url = story.avatar,
+                name = story.displayLabel,
+                palette = palette,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            label, fontSize = 10.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, color = palette.textSecondary,
+        )
     }
 }
 
