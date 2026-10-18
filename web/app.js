@@ -56,14 +56,23 @@
 
   async function fetchWithTimeout(url, options={}, timeoutMs=API_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const upstream = options.signal;
+    let timedOut = false;
+    const cancelFromCaller = () => controller.abort(upstream?.reason);
+    if(upstream){
+      if(upstream.aborted)cancelFromCaller();
+      else upstream.addEventListener('abort',cancelFromCaller,{once:true});
+    }
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      return await fetch(url, {...options, signal: options.signal || controller.signal});
+      return await fetch(url, {...options, signal: controller.signal});
     } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('Request timed out. Check your connection and try again.');
+      if(timedOut && error?.name === 'AbortError')
+        throw new Error('Request timed out. Check your connection and try again.');
       throw error;
     } finally {
       clearTimeout(timer);
+      upstream?.removeEventListener('abort',cancelFromCaller);
     }
   }
 
@@ -175,7 +184,9 @@
     const hash=new URLSearchParams(location.hash.replace(/^#/,''));
     const oauthError=hash.get('error_description')||hash.get('error')||'';
     if(oauthError&&!hash.get('access_token')){
-      state.authError=oauthError;
+      // OAuth providers may put attacker-controlled strings in the callback.
+      // Do not echo a long or potentially sensitive fragment into the UI.
+      state.authError='Google sign-in could not be completed. Please try again.';
       storageRemove(OAUTH_NEXT_KEY);
       history.replaceState({},'',routeHref('/login'));
       return;
@@ -185,6 +196,13 @@
       const refresh_token=hash.get('refresh_token');
       const expires_in=Number(hash.get('expires_in')||3600);
       const type=hash.get('type');
+      // Reject incomplete callbacks before persisting a broken web session.
+      if(!refresh_token || !Number.isFinite(expires_in) || expires_in<=0){
+        state.authError='This sign-in link is incomplete or expired. Please try again.';
+        storageRemove(OAUTH_NEXT_KEY);
+        history.replaceState({},'',routeHref('/login'));
+        return;
+      }
       saveSession({
         access_token,
         refresh_token,
@@ -1137,7 +1155,18 @@
     };
   }
 
+  function updateRoutePrivacy(path){
+    // Public marketing pages have their own crawlable HTML. Private web
+    // app, auth and one-off share routes should never be indexed from the SPA.
+    const publicHome=path==='/'||path==='';
+    const robots=document.querySelector('meta[name="robots"]');
+    if(robots)robots.setAttribute('content',publicHome?'index,follow,max-image-preview:large':'noindex,nofollow');
+    const referrer=document.querySelector('meta[name="referrer"]');
+    if(referrer)referrer.setAttribute('content',publicHome?'strict-origin-when-cross-origin':'no-referrer');
+  }
+
   async function render(path=currentPath()){
+    updateRoutePrivacy(path);
     for(const timer of state.qualifiedTimers.values())clearTimeout(timer);
     state.qualifiedTimers.clear();
     state.viewObserver?.disconnect();state.viewObserver=null;

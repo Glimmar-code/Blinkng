@@ -12,6 +12,7 @@ on:
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
       - 'scripts/test_mobile_web_performance.mjs'
   pull_request:
     paths:
@@ -22,7 +23,7 @@ on:
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
-      - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
 
 permissions:
   contents: read
@@ -43,6 +44,9 @@ jobs:
 
       - name: Check mobile asset budgets and locally opt-in Core Web Vitals
         run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Test Phase 3 resilient authentication and private-route SEO
+        run: node scripts/test_web_production_phase3_authseo.mjs
 
       - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
         run: node scripts/test_web_production_phase3.mjs
