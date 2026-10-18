@@ -3456,6 +3456,36 @@ suspend fun uploadPostMedia(
             val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
             val userId = if (savedOnly) getCurrentUserId() ?: return@withContext emptyList() else null
 
+            // Recommended rankings are calculated on Supabase so pagination and
+            // seller diversity remain consistent between Android and Windows.
+            if (sort == "recommended" && !savedOnly && !verifiedOnly) {
+                val payload = JSONObject()
+                    .put("p_query", query.trim().take(80))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                    .put("p_category", category?.takeUnless { it.equals("All Categories", true) } ?: JSONObject.NULL)
+                    .put("p_limit", safeLimit)
+                    .put("p_offset", safeOffset)
+                    .put("p_min_price", minPrice ?: JSONObject.NULL)
+                    .put("p_max_price", maxPrice ?: JSONObject.NULL)
+                val records = executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/discover_market_items_v2",true)
+                        .post(payload.toString().toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(
+                        parseSupabaseError(raw,"Recommended Market items could not be loaded.")
+                    )
+                    JSONArray(raw.ifBlank { "[]" })
+                }
+                val ranked = buildList {
+                    for (i in 0 until records.length()) {
+                        parseMarketItem(records.getJSONObject(i)).let(::add)
+                    }
+                }
+                val saved = fetchMyMarketWishlistIds(ranked.map { it.id })
+                return@withContext ranked.map { it.copy(isSaved=it.id in saved) }
+            }
+
             val url = buildString {
                 append("/rest/v1/market_items?select=")
                 append(if (savedOnly) "*,marketplace_wishlist!inner(user_id)" else "*")
@@ -3661,6 +3691,47 @@ suspend fun uploadPostMedia(
         }
     }
 
+    /** Bounded video upload; keep the main APK independent of optional media. */
+    suspend fun uploadMarketVideo(userId: String, bytes: ByteArray, mimeType: String): String? =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(userId) || bytes.isEmpty() ||
+                bytes.size > 25 * 1024 * 1024 ||
+                mimeType !in setOf("video/mp4", "video/webm")
+            ) return@withContext null
+            runCatching {
+                val ext = if (mimeType == "video/webm") "webm" else "mp4"
+                val path = "users/$userId/listings/${UUID.randomUUID()}.$ext"
+                val response = executeRequest(
+                    newRequestBuilder("/storage/v1/object/market-video/$path",true)
+                        .addHeader("Content-Type",mimeType)
+                        .addHeader("x-upsert","false")
+                        .post(bytes.toRequestBody(mimeType.toMediaType()))
+                        .build()
+                )
+                response.use { reply ->
+                    if (!reply.isSuccessful) {
+                        throw IllegalStateException("Market video upload was rejected.")
+                    }
+                }
+                "$baseUrl/storage/v1/object/public/market-video/$path"
+            }.onFailure { Log.w(TAG,"MARKET_VIDEO_UPLOAD failed",it) }.getOrNull()
+        }
+
+    suspend fun deleteStagedMarketVideo(userId: String, url: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val prefix = "$baseUrl/storage/v1/object/public/market-video/users/$userId/listings/"
+            val name = url.removePrefix(prefix)
+            if (!isValidUuid(userId) || !url.startsWith(prefix) ||
+                !Regex("^[a-fA-F0-9-]{36}\\.(mp4|webm)$").matches(name)
+            ) return@withContext false
+            runCatching {
+                executeRequest(
+                    newRequestBuilder("/storage/v1/object/market-video/users/$userId/listings/$name",true)
+                        .delete().build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
     // Best-effort cleanup for photos uploaded during a listing attempt that failed.
     // Only delete objects in this authenticated user's own listings folder.
     suspend fun deleteStagedMarketMedia(userId: String, publicUrl: String): Boolean = withContext(Dispatchers.IO) {
@@ -3707,6 +3778,8 @@ suspend fun uploadPostMedia(
                 put("negotiable", item.isNegotiable)
                 put("delivery_method", item.deliveryMethod)
                 put("pickup_location", item.pickupLocation)
+                item.videoUrl.takeIf(String::isNotBlank)?.let { put("video_url", it) }
+                item.mediaDigest.takeIf { it.matches(Regex("^[a-f0-9]{64}$")) }?.let { put("media_digest", it) }
             }
 
             executeRequest(
@@ -4164,6 +4237,9 @@ suspend fun uploadPostMedia(
             sellerAvatar = obj.optString("seller_avatar", ""),
             sellerName = obj.optString("seller_name", ""),
             sellerId = obj.optString("seller_id", ""),
+            videoUrl = obj.cleanString("video_url"),
+            mediaDigest = obj.cleanString("media_digest"),
+            moderationState = obj.cleanString("moderation_state","approved"),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,
@@ -4347,6 +4423,7 @@ suspend fun uploadPostMedia(
             relationshipStatus = obj.cleanString("relationship_status").ifBlank { "Single" },
             lastSeenAt = obj.cleanString("last_seen_at").ifBlank { obj.cleanString("last_seen") },
             verifiedAtMillis = verifiedAtMillis,
+            verificationExpiresAtMillis = parseTimestampMillis(obj.cleanString("verification_expires_at")),
             createdAt = obj.cleanString("created_at"),
             joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
@@ -5134,25 +5211,186 @@ suspend fun uploadPostMedia(
             }
         }
 
-    suspend fun activateMarketplaceProfile(storeName: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().put("p_store_name", storeName.trim())
+    suspend fun registerVerifiedMarketSeller(
+        storeName: String,
+        phone: String,
+        whatsapp: String,
+        state: String,
+        city: String,
+        university: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = JSONObject()
+                .put("p_store_name", storeName.trim())
+                .put("p_phone", phone.trim())
+                .put("p_whatsapp", whatsapp.trim())
+                .put("p_state", state.trim())
+                .put("p_city", city.trim())
+                .put("p_university", university.trim())
             executeRequest(
-                newRequestBuilder("/rest/v1/rpc/activate_marketplace_profile", true)
+                newRequestBuilder("/rest/v1/rpc/register_verified_market_seller", true)
                     .post(body.toString().toRequestBody(jsonMediaType))
                     .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Seller activation failed."))
+                    Log.w(TAG, "Seller registration rejected: ${response.code}")
+                    return@use false
                 }
-                true
+                raw.trim().trim('"').equals("true", ignoreCase = true)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "activateMarketplaceProfile failed", e)
+        }.getOrElse {
+            Log.w(TAG, "Seller registration unavailable", it)
             false
         }
     }
+
+    /** All seller actions use Supabase authentication; the server enforces authorization. */
+    suspend fun completeMarketSellerProfile(
+        kind: String,
+        description: String,
+        category: String,
+        delivery: Boolean,
+        pickup: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("p_kind", kind)
+                .put("p_description", description)
+                .put("p_categories", JSONArray().put(category))
+                .put("p_delivery", delivery)
+                .put("p_pickup", pickup)
+                .put("p_logo_url", JSONObject.NULL)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/complete_market_seller_profile", true)
+                    .post(payload.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                response.isSuccessful && response.body?.string().orEmpty().trim().trim('"') == "true"
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun requestMarketModerationReview(itemId: String, reason: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId) || reason.trim().length !in 15..1000) {
+                return@withContext false
+            }
+            runCatching {
+                val payload = JSONObject()
+                    .put("p_item", itemId)
+                    .put("p_post", JSONObject.NULL)
+                    .put("p_reason", reason.trim())
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/request_market_content_review",true)
+                        .post(payload.toString().toRequestBody(jsonMediaType)).build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    suspend fun getMarketSellerDashboard(): JSONObject? = withContext(Dispatchers.IO) {
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_my_market_dashboard", true)
+                    .post("{}".toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONObject(response.body?.string().orEmpty().ifBlank { "{}" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun getMarketSellerCard(sellerId: String): JSONObject? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(sellerId)) return@withContext null
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_market_public_seller_card", true)
+                    .post(JSONObject().put("p_user", sellerId).toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONObject(response.body?.string().orEmpty().ifBlank { "{}" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun fetchMyMarketOffers(): JSONArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val userId = getCurrentUserId() ?: return@runCatching JSONArray()
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/market_offers?select=id,item_id,buyer_id,seller_id,asking_price,proposed_price,status,message,created_at&or=(buyer_id.eq.$userId,seller_id.eq.$userId)&order=created_at.desc&limit=100",
+                    true
+                ).get().build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun respondMarketOffer(
+        offerId: String, action: String, counterAmount: Long? = null,
+        message: String = ""
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(offerId)) return@withContext false
+        runCatching {
+            val request = JSONObject()
+                .put("p_offer",offerId)
+                .put("p_action",action)
+                .put("p_counter_amount",counterAmount ?: JSONObject.NULL)
+                .put("p_note",message.take(500))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/respond_market_offer",true)
+                    .post(request.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response -> response.isSuccessful && response.body?.string().orEmpty().trim().trim('"')=="true" }
+        }.getOrDefault(false)
+    }
+
+    suspend fun makeMarketOffer(itemId: String, amount: Long, message: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId) || amount <= 0L) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_item", itemId)
+                    .put("p_amount", amount).put("p_note", message.take(500))
+                executeRequest(newRequestBuilder("/rest/v1/rpc/make_market_offer", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    suspend fun fetchMyMarketOrders(): JSONArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val uid = getCurrentUserId() ?: return@runCatching JSONArray()
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/marketplace_orders?select=id,item_id,buyer_id,seller_id,status,quantity,total_price,created_at&or=(buyer_id.eq.$uid,seller_id.eq.$uid)&order=created_at.desc&limit=60",
+                    true
+                ).get().build()
+            ).use { response ->
+                if (!response.isSuccessful) return@use null
+                JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            }
+        }.getOrNull()
+    }
+
+    suspend fun openMarketDispute(orderId: String, reason: String, details: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(orderId) || reason.trim().length < 8) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_order", orderId)
+                    .put("p_reason", reason.trim()).put("p_details", details.take(2000))
+                executeRequest(newRequestBuilder("/rest/v1/rpc/open_market_dispute", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
+
+    suspend fun confirmMarketAvailability(itemId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(itemId)) return@withContext false
+            runCatching {
+                val body = JSONObject().put("p_item", itemId)
+                executeRequest(newRequestBuilder("/rest/v1/rpc/confirm_market_listing_availability", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()).use { it.isSuccessful }
+            }.getOrDefault(false)
+        }
 
     suspend fun fetchProfileFollowerHistory(
         profileId: String,
