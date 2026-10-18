@@ -87,7 +87,8 @@ class CallEndRetryWorker(
             context: Context,
             callId: String,
             accountId: String,
-            action: CallEndRecoveryPolicy.Action
+            action: CallEndRecoveryPolicy.Action,
+            initialDelaySeconds: Long = 0L
         ) {
             if (!isValidCallId(callId) || accountId.isBlank()) return
             val data = Data.Builder()
@@ -95,13 +96,16 @@ class CallEndRetryWorker(
                 .putString(KEY_ACCOUNT, accountId)
                 .putString(KEY_ACTION, action.wire)
                 .build()
-            val request = OneTimeWorkRequestBuilder<CallEndRetryWorker>()
+            val requestBuilder = OneTimeWorkRequestBuilder<CallEndRetryWorker>()
                 .setInputData(data)
                 .setConstraints(
                     Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
-                .build()
+            if (initialDelaySeconds > 0) {
+                requestBuilder.setInitialDelay(initialDelaySeconds, TimeUnit.SECONDS)
+            }
+            val request = requestBuilder.build()
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
                 WORK_PREFIX + accountId + "_" + callId,
                 ExistingWorkPolicy.KEEP,
