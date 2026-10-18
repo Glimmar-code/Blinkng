@@ -795,7 +795,9 @@ class CallActivity : ComponentActivity() {
             BlinkTelecomManager.clearMediaLifecycle(callId)
             BlinkTelecomManager.disconnect(callId, disconnectCause)
         }
-        stopService(Intent(this, BlinkCallForegroundService::class.java))
+        if (BlinkCallForegroundService.activeCallId == call?.id) {
+            stopService(Intent(this, BlinkCallForegroundService::class.java))
+        }
         delay(delayMillis)
         finish()
     }
