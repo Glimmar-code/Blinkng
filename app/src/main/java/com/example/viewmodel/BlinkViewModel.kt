@@ -7,6 +7,9 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.blinkng.shared.discovery.BlinkCampusRegistrationPolicy
+import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.example.data.models.NigerianUniversitySearch
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
@@ -142,6 +145,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_USERNAME = "username"
         private const val KEY_FACULTY = "faculty"
         private const val KEY_UNIVERSITY = "university"
+    private const val KEY_ACCOUNT_TYPE = "account_type"
         private const val KEY_AVATAR = "avatar_url"
         private const val KEY_COVER = "cover_url"
         private const val KEY_VERIFICATION = "verification_badge"
@@ -541,6 +545,7 @@ private suspend fun restoreSupabaseSession() {
         if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedAccountType = prefs.getString(KEY_ACCOUNT_TYPE, authPrefs.getString(KEY_ACCOUNT_TYPE, "")).orEmpty()
         val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
         val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
         val badge = when (prefs.getString(KEY_VERIFICATION, "")?.uppercase()) {
@@ -558,6 +563,7 @@ private suspend fun restoreSupabaseSession() {
                 email = ContactField(savedEmail, true),
                 faculty = savedFaculty,
                 university = savedUniversity,
+                accountType = savedAccountType,
                 avatarUrl = savedAvatar,
                 coverPhotoUrl = savedCover,
                 verificationBadge = badge,
@@ -579,6 +585,7 @@ private suspend fun restoreSupabaseSession() {
             .putString(KEY_USERNAME, profile.username)
             .putString(KEY_FACULTY, profile.faculty)
             .putString(KEY_UNIVERSITY, profile.university)
+            .putString(KEY_ACCOUNT_TYPE, profile.accountType)
             .putString(KEY_AVATAR, profile.avatarUrl)
             .putString(KEY_COVER, profile.coverPhotoUrl)
             .putString(KEY_VERIFICATION, profile.verificationBadge.name)
@@ -1745,46 +1752,115 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
-        if (fullName.isBlank()) { showToast("Please enter your real name."); return }
-        if (username.isBlank()) { showToast("Please choose a username."); return }
+    fun signUp(
+        fullName: String,
+        username: String,
+        email: String,
+        password: String = "",
+        faculty: String = "",
+        university: String = "",
+        accountType: String = "",
+    ) {
+        if (fullName.trim().length < 2 || username.trim().length < 3) {
+            showToast("Enter a valid full name and username."); return
+        }
         if (password.isBlank()) { showToast("Please create a password before continuing."); return }
-
+        val canonicalUniversity = NigerianUniversitySearch.canonical(university)
+        if (canonicalUniversity == null || BlinkCampusAccountType.fromWire(accountType) == null) {
+            showToast("Select your university and account type."); return
+        }
         val cleanName = fullName.trim()
         val cleanUsername = username.trim().lowercase().removePrefix("@")
         val cleanEmail = email.trim().lowercase()
-
-        if (cleanUsername.isBlank()) { showToast("Please choose a username."); return }
-        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) { showToast("Please enter a valid email address."); return }
-        val initialProfile = _uiState.value.myProfile.copy(fullName = cleanName, username = cleanUsername, email = ContactField(cleanEmail, true), faculty = faculty.trim())
-        _uiState.value = _uiState.value.copy(myProfile = initialProfile)
-        saveLocalProfile(initialProfile)
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            showToast("Please enter a valid email address."); return
+        }
+        val candidate = _uiState.value.myProfile.copy(
+            fullName = cleanName,
+            username = cleanUsername,
+            email = ContactField(cleanEmail, true),
+            university = canonicalUniversity,
+            accountType = accountType,
+            faculty = faculty.trim(),
+        )
         viewModelScope.launch {
             try {
-                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())
+                val result = authRepository.signUpWithEmail(
+                    cleanEmail, password, cleanUsername, cleanName,
+                    faculty.trim(), canonicalUniversity, accountType,
+                )
                 if (result.isSuccess && result.userProfile != null) {
-                    _uiState.value = _uiState.value.copy(myProfile = result.userProfile, destination = AppDestination.PROFILE_SETUP)
-                    saveLocalProfile(result.userProfile); showToast("Account created! Set up your campus profile.")
-                } else showToast(result.errorMessage ?: "Sign up failed.")
-            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
+                    // Auth database triggers may create the profile before metadata
+                    // is visible. Onboarding will persist these explicit choices.
+                    val enrolled = result.userProfile.copy(
+                        university = canonicalUniversity,
+                        accountType = accountType,
+                    )
+                    _uiState.value = _uiState.value.copy(
+                        myProfile = enrolled,
+                        destination = AppDestination.PROFILE_SETUP,
+                    )
+                    saveLocalProfile(enrolled)
+                    showToast("Account created! Complete your campus profile.")
+                } else {
+                    showToast(result.errorMessage ?: "Sign up failed.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "signUp failed", e)
+                showToast(e.message ?: "Sign up failed.")
+            }
         }
     }
 
-    fun completeProfileOnboarding(university: String, department: String, academicLevel: String, bio: String, skills: List<String>, phone: String = "", whatsapp: String = "") {
+    fun completeProfileOnboarding(
+        university: String,
+        faculty: String,
+        department: String,
+        academicLevel: String,
+        accountType: String,
+        bio: String,
+        skills: List<String>,
+        phone: String = "",
+        whatsapp: String = "",
+    ) {
+        val canonicalUniversity = NigerianUniversitySearch.canonical(university)
+        if (canonicalUniversity == null ||
+            !BlinkCampusRegistrationPolicy.canCompleteCampus(
+                canonicalUniversity, accountType, faculty.trim(), department.trim(), academicLevel.trim(),
+            )
+        ) {
+            showToast("Select a real university, account type, and required academic details.")
+            return
+        }
         val current = _uiState.value.myProfile
         val updatedSkills = skills.filter { it.isNotBlank() }.map { SkillEndorsement(it, 1, true) }
         val completed = current.copy(
-            university = university.trim(), department = department.trim(), academicLevel = academicLevel.trim(), bio = bio.trim(),
+            university = canonicalUniversity,
+            accountType = accountType,
+            faculty = faculty.trim(),
+            department = department.trim(),
+            academicLevel = if (accountType == BlinkCampusAccountType.STUDENT.name) academicLevel.trim() else "",
+            bio = bio.trim(),
             skillEndorsements = if (updatedSkills.isNotEmpty()) updatedSkills.toMutableList() else current.skillEndorsements,
             phone = ContactField(if (phone.isNotBlank()) phone.trim() else current.phone.value, true),
-            whatsapp = ContactField(if (whatsapp.isNotBlank()) whatsapp.trim() else current.whatsapp.value, true)
+            whatsapp = ContactField(if (whatsapp.isNotBlank()) whatsapp.trim() else current.whatsapp.value, true),
         )
-        _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
         viewModelScope.launch {
-            val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
-            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally, but Supabase sync failed.") }
+            val uid = supabaseService.getCurrentUserId()
+            if (uid.isNullOrBlank()) {
+                showToast("Sign in to finish campus registration.")
+                return@launch
+            }
+            if (supabaseService.updateProfile(completed)) {
+                _uiState.value = _uiState.value.copy(
+                    myProfile = completed, destination = AppDestination.MAIN,
+                )
+                saveLocalProfile(completed)
+                showToast("Campus profile saved.")
+            } else {
+                // Never claim cloud registration succeeded or advance on failure.
+                showToast("Could not save your university details. Try again.")
+            }
         }
     }
 
