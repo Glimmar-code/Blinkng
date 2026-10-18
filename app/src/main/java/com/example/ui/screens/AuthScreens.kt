@@ -1382,8 +1382,6 @@ fun ProfileSetupOnboardingScreen(
                                             )
                                         }
                                     }
-                                } else {
-                                    selectedLevel = ""
                                 }
                             }
 
