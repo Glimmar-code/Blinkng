@@ -4,6 +4,12 @@
 - Adds `blink_universities` catalog and `profiles.university_id` foreign key in a staged migration. Existing users retain legacy text names until an exact match can be backfilled. Unreviewed university requests never auto-publish.
 - New schema has NOT been deployed to production; cross-account migration, seed integrity and security tests still required. Do not assert current NUC accreditation for all legacy records.
 
+## 2026-10-18 — Verification plan pricing integrated on current Testlab
+
+- Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
+- Cash checkout and automatic renew remain OFF until Paystack server-side signed initialization, verified webhook fulfillment, customer consent and provider mandate cancellation are fully tested. Legacy 3,000-Coin Blue purchase is a separate 30-day option.
+- Migrated Supabase subscription ledger and read-only quote RPC are committed for staged validation but **not deployed**. Do not publish cash-subscription UI claiming checkout works.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
