@@ -600,6 +600,8 @@ class SupabaseService {
                         put("name", cleanFullName)
                         put("faculty", faculty)
                         put("university", university)
+                        com.blinkng.shared.discovery.BlinkUniversitySearch.idOf(university)
+                            ?.let { put("university_id", it) }
                         if (accountType.isNotBlank()) put("account_type", accountType)
                     })
                 }
@@ -1006,7 +1008,11 @@ fun getCurrentUserId(): String? {
             put("id", uid); put("email", email.trim().lowercase(Locale.US));
             put("username", cleanUsername); put("full_name", fullName.trim().ifBlank { cleanUsername })
             faculty?.trim()?.takeIf { it.isNotBlank() }?.let { put("faculty", it) }
-            university?.trim()?.takeIf { it.isNotBlank() }?.let { put("university", it) }
+            university?.trim()?.takeIf { it.isNotBlank() }?.let { name ->
+                put("university", name)
+                com.blinkng.shared.discovery.BlinkUniversitySearch.idOf(name)
+                    ?.let { put("university_id", it) }
+            }
             accountType?.trim()?.takeIf { it.isNotBlank() }?.let { put("account_type", it) }
             put("updated_at", nowIso())
         }
@@ -1559,6 +1565,8 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
+                com.blinkng.shared.discovery.BlinkUniversitySearch.idOf(profile.university)
+                    ?.let { put("university_id", it) }
                 // Legacy users remain unclassified until they choose a role.
                 if (profile.accountType.isNotBlank()) put("account_type", profile.accountType)
                 put("faculty", profile.faculty)
@@ -3409,6 +3417,7 @@ suspend fun uploadPostMedia(
             professionalHeadline = obj.cleanString("professional_headline"),
             currentJobTitle = obj.cleanString("current_job_title"),
             university = obj.cleanString("university"),
+            universityId = obj.cleanString("university_id"),
             accountType = obj.cleanString("account_type"),
             faculty = obj.cleanString("faculty"),
             department = obj.cleanString("department"),
