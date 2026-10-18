@@ -229,7 +229,7 @@ end; $$;
 -- paths leaking visitor identity when either participant has opted out.
 create or replace function public.guard_unconsented_legacy_profile_visit()
 returns trigger language plpgsql security definer
-set search_path = public, pg_temp as $
+set search_path = public, pg_temp as $$
 declare v_owner uuid; v_viewer uuid;
 begin
   if tg_table_name = 'profile_views' then
@@ -255,7 +255,7 @@ begin
        or (b.blocker_id = v_owner and b.blocked_id = v_viewer)
   ) then return null; end if;
   return new;
-end; $;
+end; $$;
 
 revoke all on function public.guard_unconsented_legacy_profile_visit() from public, anon, authenticated;
 
