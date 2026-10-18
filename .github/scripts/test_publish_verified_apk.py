@@ -68,7 +68,8 @@ class ReleaseIntegrityTests(unittest.TestCase):
 
     def run_publish(self):
         with patch.object(publisher, "gh", self.fake_gh), \
-             patch.object(publisher, "require_current_main", self.fake_current_main):
+             patch.object(publisher, "require_current_main", self.fake_current_main), \
+             patch.object(publisher, "require_newer_than_public"):
             publisher.publish(self.root, "owner/repo", self.commit)
 
     def test_valid_release_is_promoted_only_after_download(self):
@@ -97,7 +98,8 @@ class ReleaseIntegrityTests(unittest.TestCase):
             if checks == 2:
                 raise ValueError("Stale Android release")
         with patch.object(publisher, "gh", self.fake_gh), \
-             patch.object(publisher, "require_current_main", move_main):
+             patch.object(publisher, "require_current_main", move_main), \
+             patch.object(publisher, "require_newer_than_public"):
             with self.assertRaisesRegex(ValueError, "Stale"):
                 publisher.publish(self.root, "owner/repo", self.commit)
         self.assertNotIn("edit", [call[0] for call in self.calls])
@@ -113,6 +115,41 @@ class ReleaseIntegrityTests(unittest.TestCase):
                 publisher.require_current_main("Glimmar-code/Blinkng", "a" * 40)
         with self.assertRaisesRegex(ValueError, "complete"):
             publisher.require_current_main("Glimmar-code/Blinkng", "invalid")
+
+    def test_old_or_equal_published_version_is_rejected(self):
+        candidate = publisher.metadata(self.info, self.commit)
+
+        def last_public(release_code, cert=None):
+            def fake(repo, *args, check=True):
+                if args[0] == "view":
+                    return subprocess.CompletedProcess(args, 0, '{"tagName":"v1.0.120"}', "")
+                if args[0] == "download":
+                    dest = Path(args[args.index("--dir") + 1])
+                    text = self.info.read_text().replace(
+                        "versionCode=123", "versionCode=" + str(release_code)
+                    ).replace("versionName=1.0.123", "versionName=1.0.120")
+                    if cert:
+                        text = text.replace("a" * 64, cert)
+                    (dest / "release-info.txt").write_text(text)
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return fake
+
+        with patch.object(publisher, "gh", last_public(120)):
+            publisher.require_newer_than_public("owner/repo", candidate)
+        for previous in (123, 125):
+            with patch.object(publisher, "gh", last_public(previous)):
+                with self.assertRaisesRegex(ValueError, "equal or higher"):
+                    publisher.require_newer_than_public("owner/repo", candidate)
+        with patch.object(publisher, "gh", last_public(120, "b" * 64)):
+            with self.assertRaisesRegex(ValueError, "signing certificate"):
+                publisher.require_newer_than_public("owner/repo", candidate)
+
+    def test_latest_lookup_failure_must_not_be_assumed_safe(self):
+        candidate = publisher.metadata(self.info, self.commit)
+        failed = subprocess.CompletedProcess([], 1, "", "network timeout")
+        with patch.object(publisher, "gh", return_value=failed):
+            with self.assertRaisesRegex(ValueError, "Cannot inspect"):
+                publisher.require_newer_than_public("owner/repo", candidate)
 
     def test_damaged_download_is_never_published(self):
         self.corrupt = True
