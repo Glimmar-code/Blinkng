@@ -17,6 +17,11 @@ data class BlinkGuideStep(
 object BlinkDiscoveryPolicy {
     val steps: List<BlinkGuideStep> = listOf(
         BlinkGuideStep("welcome", "WELCOME TO BLINK", "Explore your campus, connect with students and discover everything BLINK offers.", "Explore BLINK", earliestSessionMs = 2_000),
+        BlinkGuideStep(
+            "friends", "FIND YOUR FRIENDS",
+            "Discover students from your campus or invite a friend using a contact you choose. Your address book stays private.",
+            "Find My Friends", "friends", 8_000,
+        ),
         BlinkGuideStep("reels", "DISCOVER REELS", "Explore short videos from your community.", "Explore Reels", "reels", 15_000),
         BlinkGuideStep("shake_report", "DID YOU KNOW?", "Shake your phone to report a bug. You can also open Report Bug from the menu.", "Got it", earliestSessionMs = 30_000),
         BlinkGuideStep("ranking", "YOUR BLINK RANK", "See how you rank in your university and beyond.", "View ranking", "leaderboard", 60_000),
