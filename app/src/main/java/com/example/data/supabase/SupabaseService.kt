@@ -4120,6 +4120,32 @@ suspend fun uploadPostMedia(
     }
     suspend fun recordSkillEndorsement(targetUsername:String,skillName:String,endorserUsername:String):Boolean=withContext(Dispatchers.IO){try{val actor=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val profile=fetchProfileByUsername(targetUsername.removePrefix("@"))?:return@withContext false;val skillsRaw=executeRequest(newRequestBuilder("/rest/v1/skills?normalized_name=eq.${encodeValue(skillName.trim().lowercase(Locale.US))}&select=id&limit=1",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill lookup failed."));b};val skillId=JSONArray(if(skillsRaw.isBlank())"[]" else skillsRaw).optJSONObject(0)?.optString("id")?:return@withContext false;val body=JSONObject().apply{put("skill_id",skillId);put("profile_user_id",profile.id);put("endorser_user_id",actor)};executeRequest(newRequestBuilder("/rest/v1/skill_endorsements",true).addHeader("Prefer","resolution=merge-duplicates").post(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill endorsement failed."));true}}catch(e:Exception){Log.e(TAG,"recordSkillEndorsement failed",e);false}}
 
+    /** User requests are held for human/NUC review; never auto-add a campus. */
+    suspend fun requestMissingUniversity(name: String, state: String = ""): String =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId()
+            if (uid.isNullOrBlank()) return@withContext "Sign in before requesting a university."
+            val body = JSONObject().apply {
+                put("p_name", name.trim())
+                put("p_state", state.trim())
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/request_missing_blink_university", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    parseSupabaseError(raw, "Couldn't send university request.")
+                )
+                when (raw.trim().trim('"')) {
+                    "pending_review" -> "Request submitted for review. The school is not available yet."
+                    "already_requested" -> "You've already requested this university."
+                    "already_listed" -> "This university is already in the directory."
+                    else -> "University request received."
+                }
+            }
+        }
+
     suspend fun submitVerificationRequest(
         tier: String,
         paymentReference: String,
