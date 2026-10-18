@@ -90,6 +90,8 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.verification.BlinkVerificationPlans
+import com.blinkng.shared.verification.BlinkVerificationTier
 import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import com.blinkng.shared.notification.BlinkNotificationKind
 import com.blinkng.shared.notification.BlinkNotificationQuickAction
@@ -895,6 +897,8 @@ fun ProfileScreen(state: DesktopAppState) {
     var missionsPayload by remember { mutableStateOf<JSONObject?>(null) }
     var economyMessage by remember { mutableStateOf<String?>(null) }
     var economyBusy by remember { mutableStateOf(false) }
+    var selectedBillingTier by remember { mutableStateOf(BlinkVerificationTier.BLUE) }
+    var billingMonths by remember { mutableStateOf(1) }
     var missionBusyKey by remember { mutableStateOf<String?>(null) }
     var premiumCatalogIds by remember(profile?.username) { mutableStateOf<List<String>>(emptyList()) }
     var premiumIsVip by remember(profile?.username) { mutableStateOf(profile?.isBlinkVip == true) }
@@ -1120,6 +1124,69 @@ fun ProfileScreen(state: DesktopAppState) {
                             fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+
+            item {
+                Surface(shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Free · Blue · Gold", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Compare all plans. Free messaging, posts and reels stay free.")
+                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            BlinkVerificationTier.entries.forEach { tier ->
+                                OutlinedButton(
+                                    onClick = { selectedBillingTier = tier },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(
+                                        "${tier.displayName}\n" +
+                                            (if (tier == BlinkVerificationTier.FREE) "₦0" else "₦${tier.monthlyNgn}/mo"),
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                        }
+                        listOf(
+                            "Posts, messages, reels" to "✓     ✓     ✓",
+                            "Blue profile badge" to "—     ✓     ✓",
+                            "Gold profile badge" to "—     —     ✓",
+                            "Seller application eligibility" to "—     ✓     ✓",
+                        ).forEach { (benefit, availability) ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Text(benefit, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                Text(availability, fontSize = 12.sp)
+                            }
+                        }
+                        if (selectedBillingTier != BlinkVerificationTier.FREE) {
+                            Text("Duration", fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                BlinkVerificationPlans.durations.forEach { duration ->
+                                    OutlinedButton(
+                                        onClick = { billingMonths = duration.months },
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("${duration.months}m", fontSize = 12.sp) }
+                                }
+                            }
+                            val quote = BlinkVerificationPlans.quote(selectedBillingTier, billingMonths)
+                            Text(
+                                "Total ₦${quote.totalNgn} for ${quote.description} · Save ₦${quote.savingsNgn}",
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Automatic renewal: OFF", modifier = Modifier.weight(1f))
+                                Switch(checked = false, enabled = false, onCheckedChange = {})
+                            }
+                            Text(
+                                "Prices are previews only. Recurring billing and cash checkout are not active; no payment will be taken.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Text("Free: no payment or subscription required.")
+                        }
                     }
                 }
             }
