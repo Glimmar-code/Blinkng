@@ -259,6 +259,12 @@ begin
     where (b.blocker_id = v_viewer and b.blocked_id = v_owner)
        or (b.blocker_id = v_owner and b.blocked_id = v_viewer)
   ) then return null; end if;
+  -- A visit may be visible in owner-only history without generating alerts.
+  -- Old clients must respect the owner's separate notify_visits toggle too.
+  if tg_table_name = 'activities' and not exists (
+    select 1 from public.profile_visit_settings s
+    where s.user_id = v_owner and s.participate and s.notify_visits
+  ) then return null; end if;
   return new;
 end; $$;
 
