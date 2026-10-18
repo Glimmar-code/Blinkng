@@ -408,9 +408,10 @@ class WebRtcCallClient(
     private fun createPeerObserver(): PeerConnection.Observer = object : PeerConnection.Observer {
         override fun onSignalingChange(newState: PeerConnection.SignalingState) = Unit
 
-        override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
-            if (newState == PeerConnection.IceConnectionState.FAILED) restartIce()
-        }
+        // Only the call coordinator may restart ICE and negotiate a new offer.
+        // Restarting here as well caused duplicate restarts on both peers and
+        // could race with an in-flight SDP exchange.
+        override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) = Unit
 
         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
             listener.onConnectionStateChanged(newState)
