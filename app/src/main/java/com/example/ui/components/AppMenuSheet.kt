@@ -134,6 +134,7 @@ fun AppMenuSheet(
     onOpenBecomeSeller: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenActivity: () -> Unit,
+    onFindFriends: () -> Unit,
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onShowToast: (String) -> Unit,
@@ -155,6 +156,7 @@ fun AppMenuSheet(
         addAll(listOf(
             "Profile view profile",
             "Activity mentions and notifications",
+            "Find Friends campus student discovery and contact invitation",
             "Leaderboard campus ranking and points",
             "Marketplace browse campus listings",
             "List an item create a marketplace listing",
@@ -264,6 +266,9 @@ fun AppMenuSheet(
 
             SearchableMenuItemRow(menuQuery, Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
                 onDismiss(); onOpenActivity()
+            }
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.Groups, "Find Friends", "Campus suggestions and private contact invitations") {
+                onDismiss(); onFindFriends()
             }
             SearchableMenuItemRow(menuQuery, Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
                 onDismiss(); onOpenLeaderboard()
