@@ -200,6 +200,15 @@ class CallActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val requestedCallId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        // CallActivity is singleTask. Another notification must never cause
+        // Answer to be applied to whichever call happened to be open first.
+        val activeCallId = call?.id
+        if (activeCallId != null && requestedCallId.isNotBlank() &&
+            requestedCallId != activeCallId) {
+            Toast.makeText(this, "End your current call before opening another.", Toast.LENGTH_LONG).show()
+            return
+        }
         setIntent(intent)
         if (intent.action == ACTION_ANSWER) {
             // The notification Answer action can arrive before loadCall() has populated
