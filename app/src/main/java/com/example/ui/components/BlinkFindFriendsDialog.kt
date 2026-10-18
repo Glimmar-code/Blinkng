@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,8 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -122,12 +122,12 @@ fun BlinkFindFriendsDialog(
         properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 570.dp),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("FIND YOUR FRIENDS", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -140,7 +140,7 @@ fun BlinkFindFriendsDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
                             val pick = Intent(
@@ -149,9 +149,9 @@ fun BlinkFindFriendsDialog(
                             runCatching { contactPicker.launch(pick) }
                                 .onFailure { feedback = "Your phone's contact picker is unavailable." }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     ) { Text("Choose Contact") }
-                    OutlinedButton(onClick = ::shareInvite, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = ::shareInvite, modifier = Modifier.fillMaxWidth()) {
                         Text("Share Link")
                     }
                 }
@@ -162,11 +162,8 @@ fun BlinkFindFriendsDialog(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 290.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(candidates, key = { it.id }) { profile ->
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        candidates.forEach { profile ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
