@@ -66,6 +66,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.webrtc.IceCandidate
@@ -372,8 +373,16 @@ class CallActivity : ComponentActivity() {
         statusText = if (isCaller && call?.status == CallStatus.RINGING) "Calling…" else "Connecting…"
         connectingSinceMillis = if (connectingSinceMillis == 0L) System.currentTimeMillis() else connectingSinceMillis
 
+        // Never wait indefinitely for relay configuration. Development builds
+        // retain their legacy ICE fallback until the Edge Function is deployed.
+        val relays = withTimeoutOrNull(2_500L) {
+            repository.fetchIceServers(active.id).getOrNull()
+        }.orEmpty()
+        if (relays.isEmpty()) {
+            Log.w("BlinkCalls", "Ephemeral TURN unavailable; using legacy ICE configuration")
+        }
         rtcClient = try {
-            WebRtcCallClient(this, callType, rtcListener)
+            WebRtcCallClient(this, callType, rtcListener, relays)
         } catch (error: Exception) {
             mediaStarted = false
             errorText = "Unable to initialize call media."
@@ -597,6 +606,10 @@ class CallActivity : ComponentActivity() {
                 delay(CallConnectionRecoveryPolicy.iceRetryDelayMillis(attempt))
                 if (ending.get() || rtcConnected || rtcClient == null) return@launch
                 if (isCaller) {
+                    val active = call ?: return@launch
+                    withTimeoutOrNull(2_500L) {
+                        repository.fetchIceServers(active.id).getOrNull()
+                    }?.takeIf { it.isNotEmpty() }?.let { rtcClient?.updateIceServers(it) }
                     rtcClient?.restartIce()
                     rtcClient?.createOffer()
                 }
