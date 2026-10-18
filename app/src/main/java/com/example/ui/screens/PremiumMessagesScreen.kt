@@ -679,6 +679,12 @@ private fun PremiumMessagesHome(
                 )
             }
 
+            Text(
+                "Stories", color = palette.textPrimary, fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 18.dp, top = 10.dp),
+            )
+
             AnimatedVisibility(
                 visible = entered,
                 enter = fadeIn(tween(durationMillis = 380, delayMillis = 45)) + slideInVertically(
@@ -1216,7 +1222,8 @@ private fun ConversationCard(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    conversation.lastMessage.ifBlank { "Start the conversation" },
+                    BlinkStoryPresentation.parseReply(conversation.lastMessage)?.let { "Story reply: ${it.text}" }
+                        ?: conversation.lastMessage.ifBlank { "Start the conversation" },
                     color = if (conversation.unreadCount > 0) palette.textSecondary else palette.textMuted,
                     fontSize = 11.sp,
                     fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
@@ -2722,7 +2729,7 @@ private fun RingAvatar(
     size: Dp,
     modifier: Modifier = Modifier,
     online: Boolean? = null,
-    emphasizeRing: Boolean = true
+    emphasizeRing: Boolean = false
 ) {
     Box(modifier = modifier.size(size)) {
         Box(
