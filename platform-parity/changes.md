@@ -1,3 +1,10 @@
+## 2026-10-18 — Staged Stories and Blue/Gold subscription plan previews
+
+- Integrated Story viewer insights, reply DM reference, opt-in reposts and Media3 video playback with Free/Blue/Gold subscription quote interface on current Testlab.
+- Story insights and billing ledger migrations are in GitHub only, **not in production Supabase**. Identity privacy/consent and real-payment safeguards must be validated in isolated staging before release. Cash checkout stays unavailable and auto-renew is OFF.
+- Source PR checks previously passed, but fresh combined integration Android/Windows/Supabase tests are required. Do not publish to main based solely on code compilation.
+- Feature 8 NUC directory remains an outstanding separate integration; no claim of complete directory verification.
+
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
 - Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
