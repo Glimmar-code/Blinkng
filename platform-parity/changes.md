@@ -1,3 +1,9 @@
+## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
+
+- Reapplies mandatory university selection and self-selected Student/Aspirant/Graduate/Staff role against current Testlab, keeping Earning Hub, Find Friends, notification actions and Profile Visitor code.
+- All cash payments remain unaffected. Server migration adding `profiles.account_type` is included for staging only; it is not applied to production. Existing users are not assigned a fabricated student role.
+- Android/Windows build and migration staging checks required. Do not merge to main or publish until login, signup, account switching and real-device verification pass. Feature 8 directory should merge after this branch is safe.
+
 ## 2026-10-18 — Feature 4 profile visitor integration (CI candidate only)
 
 - Updated Feature 4 against current Testlab while preserving the merged Feature 2 notification quick actions, Feature 3 Find Friends, and Feature 9 Earning.
