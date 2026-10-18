@@ -260,6 +260,15 @@ class CallActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // singleTask can receive another person's call notification while this
+        // Activity already owns active media. Never answer the wrong call.
+        val requestedCallId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        if (call?.id != null && requestedCallId.isNotBlank() && requestedCallId != call?.id) {
+            Toast.makeText(
+                this, "End your current call before answering another.", Toast.LENGTH_LONG
+            ).show()
+            return
+        }
         setIntent(intent)
         if (intent.action == ACTION_ANSWER) {
             // The notification Answer action can arrive before loadCall() has populated
@@ -282,15 +291,23 @@ class CallActivity : ComponentActivity() {
 
         val active = call
         if (isFinishing && active != null && !active.status.isTerminal && !ending.get()) {
+            val context = applicationContext
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                runCatching {
-                    val ended = repository.endCall(active.id, "ended").getOrNull()
-                    ended?.status?.wireValue?.let { repository.dispatchPush(active.id, it) }
-                    BlinkTelecomManager.disconnect(active.id, android.telecom.DisconnectCause.LOCAL)
+                val ended = repository.endCall(active.id, "ended").getOrNull()
+                if (ended != null) {
+                    repository.dispatchPush(active.id, ended.status.wireValue)
+                } else {
+                    CallEndRetryWorker.schedule(
+                        context, active.id, repository.currentUserId(),
+                        CallEndRecoveryPolicy.Action.END
+                    )
                 }
+                BlinkTelecomManager.disconnect(active.id, android.telecom.DisconnectCause.LOCAL)
             }
         }
-        stopService(Intent(this, BlinkCallForegroundService::class.java))
+        if (active != null && BlinkCallForegroundService.activeCallId == active.id) {
+            stopService(Intent(this, BlinkCallForegroundService::class.java))
+        }
         super.onDestroy()
     }
 
@@ -690,10 +707,17 @@ class CallActivity : ComponentActivity() {
         val active = call ?: return
         if (!ending.compareAndSet(false, true)) return
         lifecycleScope.launch {
-            repository.declineCall(active.id)
-            repository.dispatchPush(active.id, "declined")
+            val declined = repository.declineCall(active.id).getOrNull()
+            if (declined != null) {
+                repository.dispatchPush(active.id, declined.status.wireValue)
+            } else {
+                CallEndRetryWorker.schedule(
+                    this@CallActivity, active.id, repository.currentUserId(),
+                    CallEndRecoveryPolicy.Action.DECLINE
+                )
+            }
             finishCallUi(
-                CallStatus.DECLINED,
+                declined?.status ?: CallStatus.DECLINED,
                 disconnectCause = android.telecom.DisconnectCause.REJECTED
             )
         }
@@ -704,8 +728,14 @@ class CallActivity : ComponentActivity() {
         if (!ending.compareAndSet(false, true)) return
         lifecycleScope.launch {
             val ended = repository.endCall(active.id, "ended").getOrNull()
-            val event = ended?.status?.wireValue ?: "ended"
-            repository.dispatchPush(active.id, event)
+            if (ended != null) {
+                repository.dispatchPush(active.id, ended.status.wireValue)
+            } else {
+                CallEndRetryWorker.schedule(
+                    this@CallActivity, active.id, repository.currentUserId(),
+                    CallEndRecoveryPolicy.Action.END
+                )
+            }
             finishCallUi(
                 ended?.status ?: CallStatus.ENDED,
                 disconnectCause = android.telecom.DisconnectCause.LOCAL
@@ -717,7 +747,14 @@ class CallActivity : ComponentActivity() {
         val active = call ?: run { finish(); return }
         if (!ending.compareAndSet(false, true)) return
         val ended = repository.endCall(active.id, "failed").getOrNull()
-        repository.dispatchPush(active.id, "failed")
+        if (ended != null) {
+            repository.dispatchPush(active.id, ended.status.wireValue)
+        } else {
+            CallEndRetryWorker.schedule(
+                this, active.id, repository.currentUserId(),
+                CallEndRecoveryPolicy.Action.FAIL
+            )
+        }
         errorText = when (reason) {
             "connection_timeout" -> "The call could not connect."
             "telecom_conflict" -> errorText ?: "Another call is using the device audio."
