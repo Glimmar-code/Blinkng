@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { merchantKeyMatchesMode, transactionMatchesOrder } from "../supabase/functions/_shared/paystack_integrity.mjs";
+import { createHmac } from "node:crypto";
+import { merchantKeyMatchesMode, paystackWebhookSignatureMatches, transactionMatchesOrder } from "../supabase/functions/_shared/paystack_integrity.mjs";
 
 const order={reference:"blink-ps-0123456789abcdef0123456789abcdef",amount_ngn:800,currency:"NGN"};
 const successful={id:58223011,amount:80000,currency:"NGN",status:"success",reference:order.reference};
@@ -33,4 +34,17 @@ test("test/live merchant key mismatch blocks charges", () => {
   assert.equal(merchantKeyMatchesMode("pk_test_123456789000", "test"), false);
   assert.equal(merchantKeyMatchesMode("", "test"), false);
   assert.equal(merchantKeyMatchesMode("sk_live_123456789000", "production"), false);
+});
+
+test("Paystack signed webhook requires genuine HMAC of unmodified raw payload", async () => {
+  const secret = "sk_test_only_a_fake_signing_key_for_unit_tests";
+  const payload = JSON.stringify({ event: "charge.success", data: { reference: order.reference, amount: 80000 } });
+  const signature = createHmac("sha512", secret).update(payload).digest("hex");
+  assert.equal(await paystackWebhookSignatureMatches(payload, signature, secret), true);
+  assert.equal(await paystackWebhookSignatureMatches(payload, signature.toUpperCase(), secret), true);
+  assert.equal(await paystackWebhookSignatureMatches(payload + " ", signature, secret), false);
+  assert.equal(await paystackWebhookSignatureMatches(payload.replace("80000", "1"), signature, secret), false);
+  assert.equal(await paystackWebhookSignatureMatches(payload, "x".repeat(128), secret), false);
+  assert.equal(await paystackWebhookSignatureMatches(payload, "", secret), false);
+  assert.equal(await paystackWebhookSignatureMatches(payload, signature, "sk_test_wrong_key"), false);
 });
