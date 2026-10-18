@@ -14,7 +14,7 @@ const OPT_IN = 'auto-promote';
 const STAGING = 'staging-verified';
 const APPROVE = 'BLINK APPROVE ';
 const REVOKE = 'BLINK REVOKE ';
-const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build'];
+const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build', 'integrity'];
 
 function filePathsRequireStaging(files) {
   return files.some(path =>
