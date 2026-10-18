@@ -116,6 +116,7 @@ data class Story(
     val displayName: String = "",
     val createdAt: String = "",
     val isVideo: Boolean = false,
+    val authorId: String = "",
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
