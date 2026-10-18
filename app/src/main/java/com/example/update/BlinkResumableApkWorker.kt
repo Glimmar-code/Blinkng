@@ -2,6 +2,8 @@ package com.example.update
 
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.PendingIntent
+import android.content.Intent
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -12,6 +14,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.example.MainActivity
+import com.example.R
 import com.blinkng.shared.update.BlinkApkResumePolicy
 import com.blinkng.shared.update.BlinkApkUpdatePolicy
 import com.blinkng.shared.update.BlinkReleaseInfo
@@ -197,8 +201,17 @@ class BlinkResumableApkWorker(
             ))
         }
         val percent = if (total > 0) ((bytes * 100) / total).toInt().coerceIn(0, 100) else 0
+        val openApp = PendingIntent.getActivity(
+            applicationContext,
+            NOTIFICATION_ID,
+            Intent(applicationContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification: Notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(applicationContext.applicationInfo.icon)
+            .setSmallIcon(R.drawable.ic_stat_blink)
+            .setContentIntent(openApp)
             .setContentTitle("BLINK update")
             .setContentText(if (total > 0) "Downloading update • ${percent}%" else "Downloading update")
             .setOngoing(true)
