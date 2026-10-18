@@ -24,6 +24,9 @@ jobs:
       - name: Test fail-closed Testlab auto-promotion policy
         run: node --test .github/scripts/testlab_auto_promotion.test.cjs
 
+      - name: Test safe production release incident monitor
+        run: node --test .github/scripts/test_release_failure_watch.cjs
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
