@@ -1,3 +1,11 @@
+## 2026-10-18 — Feature 2: verified notification quick actions (Testlab candidate)
+
+- **Shared:** `BlinkNotificationQuickActionPolicy` determines eligible Reply, Mark Read, Follow Back, Like Post/Comment, View Profile and View Post actions by notification kind, valid targets and recipient-binding status.
+- **Android:** adds a non-exported receiver and network-bound WorkManager executor for explicit notification action presses, rechecking the signed-in account and using existing authenticated Supabase/RLS APIs. Follower pushes display Follow Back + View Profile, mentions offer Like, comment notifications offer Like for valid comment IDs and Reply (opens the referenced post); chat keeps inline Reply and adds Mark Read. Legacy pushes without recipient proof do **not** offer account-mutating actions. All PendingIntents are uniquely scoped to prevent stale extras being mixed across notifications.
+- **Windows:** the notification list exposes actionable Follow Back, Like and Mark Read buttons backed by the same existing Supabase endpoints with success/error feedback; idempotent Like avoids unlike-by-accident.
+- **Known limits:** reply to post opens the relevant post rather than silently publishing a comment; direct message inline Reply was already present. Recovered social rows without a verified actor/comment ID remain view-only, not guessed. Actual FCM payloads, UI navigation and backend RLS must be checked with a staging/test account before production.
+- **Release gate:** Android unit/lint/debug build/release smoke, Windows build/parity, account-switch safety, duplicate taps, denied notification permissions, and device action verification. Do not merge to main until validation and deployment gates pass. No production database/provider changes.
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.
