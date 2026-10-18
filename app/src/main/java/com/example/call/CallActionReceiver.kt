@@ -29,6 +29,32 @@ class CallActionReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
         IncomingCallNotification.cancel(appContext, callId)
         IncomingCallBannerActivity.dismiss(callId)
+
+        // An Android BroadcastReceiver is only given a short execution window.
+        // Persist a delayed WorkManager fallback BEFORE launching the best-effort
+        // fast RPC; the OS may terminate goAsync() before OkHttp times out.
+        runCatching {
+            SupabaseService.initialize(appContext)
+            val userId = CallRepository().currentUserId()
+            CallEndRetryWorker.schedule(
+                appContext, callId, userId, action, initialDelaySeconds = 15L
+            )
+        }.onFailure {
+            Log.w("BlinkCalls", "Could not queue durable call action", it)
+        }
+
+        // Stop local ringing / Telecom promptly, even when the network call
+        // finishes after the receiver's OS background execution window.
+        BlinkTelecomManager.disconnect(
+            callId,
+            if (action == CallEndRecoveryPolicy.Action.DECLINE)
+                android.telecom.DisconnectCause.REJECTED
+            else android.telecom.DisconnectCause.LOCAL
+        )
+        if (BlinkCallForegroundService.activeCallId == callId) {
+            appContext.stopService(Intent(appContext, BlinkCallForegroundService::class.java))
+        }
+
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
@@ -45,15 +71,6 @@ class CallActionReceiver : BroadcastReceiver() {
                         .onFailure { Log.w("BlinkCalls", "Call status push failed") }
                 } else {
                     CallEndRetryWorker.schedule(appContext, callId, userId, action)
-                }
-                BlinkTelecomManager.disconnect(
-                    callId,
-                    if (action == CallEndRecoveryPolicy.Action.DECLINE)
-                        android.telecom.DisconnectCause.REJECTED
-                    else android.telecom.DisconnectCause.LOCAL
-                )
-                if (BlinkCallForegroundService.activeCallId == callId) {
-                    appContext.stopService(Intent(appContext, BlinkCallForegroundService::class.java))
                 }
             } catch (error: Exception) {
                 Log.w("BlinkCalls", "Could not complete call notification action", error)
