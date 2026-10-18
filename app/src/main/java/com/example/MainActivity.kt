@@ -1487,7 +1487,7 @@ fun MainAppContent(
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
-                    onStartPaystack(if (tier == VerificationBadge.GOLD) "GOLD_VERIFICATION" else "BLUE_VERIFICATION")
+                    onStartPaystack(if (tier == VerificationBadge.GOLD) "GOLD_VERIFICATION" else "BLUE_VERIFICATION", null)
                 },
                 pendingCashPayment = pendingCashPayment,
                 cashCheckoutBusy = paystackCheckoutBusy,
