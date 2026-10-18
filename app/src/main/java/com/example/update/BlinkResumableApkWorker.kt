@@ -12,6 +12,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.blinkng.shared.update.BlinkApkResumePolicy
 import com.blinkng.shared.update.BlinkApkUpdatePolicy
 import com.blinkng.shared.update.BlinkReleaseInfo
 import kotlinx.coroutines.CancellationException
@@ -103,6 +104,8 @@ class BlinkResumableApkWorker(
             partial.delete()
             existing = 0L
         }
+        // A completed partial transfer may have been cancelled before final validation.
+        if (existing > 0 && sha256(partial) == release.apkSha256) return
         val builder = Request.Builder()
             .url(BlinkApkWorkContract.APK_URL)
             .header("Accept", "application/octet-stream")
@@ -114,30 +117,21 @@ class BlinkResumableApkWorker(
             require(BlinkApkUpdatePolicy.isOfficialAssetOrigin(effective.scheme, effective.host)) {
                 "APK must come from official GitHub delivery"
             }
-            // 200 after Range means the server ignored Range; restart safely.
-            // 206 MUST begin exactly where our saved bytes end.
+            // 200 after a Range request means restart, never append mismatched content.
             val isPartial = response.code == 206 && existing > 0L
-            if (response.code == 200) {
+            val body = response.body ?: throw IOException("Missing APK bytes")
+            val length = body.contentLength()
+            val range = if (isPartial) BlinkApkResumePolicy.acceptedRange(
+                response.header("Content-Range"), existing, length,
+            ) else null
+            if (BlinkApkResumePolicy.restartFromZero(response.code)) {
                 existing = 0L
             } else if (isPartial) {
-                val range = response.header("Content-Range") ?: ""
-                val parsed = RANGE.matchEntire(range)
-                    ?: throw IllegalArgumentException("Malformed resume content range")
-                val start = parsed.groupValues[1].toLongOrNull()
-                val end = parsed.groupValues[2].toLongOrNull()
-                val total = parsed.groupValues[3].toLongOrNull()
-                require(start == existing && end != null && end >= start &&
-                    total != null && total <= BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES &&
-                    end < total) { "Invalid resume segment" }
+                requireNotNull(range) { "Invalid or mismatched HTTP Content-Range" }
             } else {
                 throw IOException("Official server did not accept download/resume request")
             }
-            val body = response.body ?: throw IOException("Missing APK bytes")
-            val length = body.contentLength()
-            val total = if (isPartial) {
-                RANGE.matchEntire(response.header("Content-Range").orEmpty())!!
-                    .groupValues[3].toLong()
-            } else length
+            val total = range?.total ?: length
             require(total in -1L..BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES &&
                 length in -1L..BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES &&
                 (total == -1L || total >= existing)) { "APK exceeds maximum allowed size" }
@@ -208,8 +202,6 @@ class BlinkResumableApkWorker(
     companion object {
         private const val CHANNEL_ID = "blink_apk_updates"
         private const val NOTIFICATION_ID = 6277
-        private val RANGE = Regex("bytes ([0-9]+)-([0-9]+)/([0-9]+)")
-
         private fun sha256(file: File): String {
             val digest = MessageDigest.getInstance("SHA-256")
             file.inputStream().buffered().use { input ->
