@@ -106,3 +106,14 @@ content_path = "./supabase/templates/password_changed_notification.html"
 enabled = true
 subject = "BLINK security: your email was changed"
 content_path = "./supabase/templates/email_changed_notification.html"
+
+# Paystack hosted checkout and authenticated order confirmation.
+[functions.paystack-initialize]
+verify_jwt = true
+
+[functions.paystack-verify]
+verify_jwt = true
+
+# Public endpoint signed with Paystack HMAC SHA-512 (x-paystack-signature).
+[functions.paystack-webhook]
+verify_jwt = false
