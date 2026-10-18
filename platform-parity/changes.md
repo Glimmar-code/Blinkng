@@ -322,3 +322,11 @@ Server behavior: Verified-account welcome events and server-owned social digest 
 Platform-specific exception: None needed. Both clients have equivalent social email preference controls; native push-notification channels are independent of email.
 Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, no message bodies, idempotent digests, unsubscribe on signed POST, deterministic sender source, email-sending daily cap, HTML safety regression tests. Production changes blocked until staging migrations, signup-policy checks, Brevo keys/sender verification, end-to-end Gmail/Outlook and Android/Windows CI validation.
 
+
+
+## Paystack checkout parity — October 2026 (Testlab candidate)
+
+- **Android:** authenticated Supabase `paystack-checkout` and `paystack-confirm` for paid Blue/Gold badges and the five current Blink Coin bundles; pending reference saved for recovery.
+- **Windows:** `DesktopPaystackCheckoutPanel` and `DesktopSupabaseClient` expose the same products and backend functions, open the provider-hosted payment URL in the browser, preserve pending references per signed-in BLINK account, and require server-side confirmation before refreshing the user profile.
+- **Shared/backend rule:** price and products are verified server-side; clients never credit funds or activate benefits. No merchant secret keys are embedded in either client. Both surfaces remain behind the checkout kill switches.
+- **Production gate:** do not merge/enable cash checkout until staging migration and real Paystack **test** webhook + replay/failure checks, merchant approval, and Windows/Android build checks pass. Subscription renewal, refund/dispute reversal, paid boosts and seller payouts remain separate unimplemented features.
