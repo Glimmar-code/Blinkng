@@ -1559,7 +1559,8 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
-                put("account_type", profile.accountType)
+                // Legacy users remain unclassified until they choose a role.
+                if (profile.accountType.isNotBlank()) put("account_type", profile.accountType)
                 put("faculty", profile.faculty)
                 put("department", profile.department)
                 put("course_of_study", profile.courseOfStudy)
