@@ -28,10 +28,17 @@ export async function currentUser(req: Request) {
   return error ? null : data.user;
 }
 export async function paystackApi(path: string, method = "GET", payload?: unknown) {
+  const mode = Deno.env.get("PAYSTACK_EXPECTED_DOMAIN") || "test";
+  const secret = requiredSecret("PAYSTACK_SECRET_KEY");
+  // Fail closed before *any* Paystack API call: staging must never charge live money
+  // when an operator accidentally configures a live secret in the test environment.
+  if ((mode !== "test" && mode !== "live") || !secret.startsWith(`sk_${mode}_`)) {
+    throw new Error("PAYSTACK_MERCHANT_MODE_MISMATCH");
+  }
   const res = await fetch(`https://api.paystack.co/${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${requiredSecret("PAYSTACK_SECRET_KEY")}`,
+      Authorization: `Bearer ${secret}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
