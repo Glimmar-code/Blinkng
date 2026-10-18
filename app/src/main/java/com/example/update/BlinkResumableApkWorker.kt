@@ -52,6 +52,11 @@ class BlinkResumableApkWorker(
         try {
             // Before using any old partial data, ensure this SHA is still current.
             val latest = WebsiteApkUpdateCoordinator.checkForUpdate(installedCode)
+            if (latest == null) {
+                // An offline/temporarily unreachable GitHub metadata endpoint is
+                // not proof of a revoked update: wait and retry, keeping bytes.
+                return if (runAttemptCount < 5) Result.retry() else Result.failure()
+            }
             if (latest != release) {
                 partial.delete()
                 return Result.failure()
@@ -76,7 +81,9 @@ class BlinkResumableApkWorker(
             }
             BlinkApkPackageVerifier.verify(applicationContext, partial, release, installedCode)
             // Never deliver an old version if the official latest moved meanwhile.
-            if (WebsiteApkUpdateCoordinator.checkForUpdate(installedCode) != release) {
+            val latestAfterDownload = WebsiteApkUpdateCoordinator.checkForUpdate(installedCode)
+            if (latestAfterDownload == null) throw IOException("Release endpoint temporarily unreachable")
+            if (latestAfterDownload != release) {
                 partial.delete()
                 return Result.failure()
             }
