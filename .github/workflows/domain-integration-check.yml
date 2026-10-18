@@ -21,6 +21,7 @@ on:
       - 'scripts/test_web_production_phase3.mjs'
       - 'scripts/test_web_production_phase3_authseo.mjs'
       - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_local_analytics.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -82,6 +83,9 @@ jobs:
       # The temporary Pages project host is a separate web-only URL until Android is updated.
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
+
+      - name: Check no-tracking opt-in analytics and anonymous funnel counts
+        run: node scripts/test_web_local_analytics.mjs
 
       - name: Check mobile asset budgets and locally opt-in Core Web Vitals
         run: node scripts/test_mobile_web_performance.mjs

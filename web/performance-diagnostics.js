@@ -7,6 +7,22 @@
   const params = new URLSearchParams(location.search);
   if(params.get('blink_perf')!=='1')return;
   const numbers = {fcp:null,lcp:null,cls:0,inp:null,ttfb:null,domContentLoaded:null,assetsKB:null};
+  // QA-only local funnel counters. Neither values entered in search boxes
+  // nor usernames, campuses, IPs or URLs are collected or transmitted.
+  const interactions={apkDownloads:0,featureTabs:0,campusSelections:0,profileSearches:0};
+  const onClick=event=>{
+    const node=event.target;
+    if(!(node instanceof Element))return;
+    if(node.closest('a[href*="releases/latest/download/Blink-latest.apk"]'))interactions.apkDownloads++;
+    else if(node.closest('button[data-tour-tab]'))interactions.featureTabs++;
+    else if(node.closest('button.campus-option'))interactions.campusSelections++;
+  };
+  const onSubmit=event=>{
+    const form=event.target;
+    if(form instanceof Element && form.id==='public-search')interactions.profileSearches++;
+  };
+  document.addEventListener('click',onClick,{capture:true,passive:true});
+  document.addEventListener('submit',onSubmit,{capture:true});
   const round = v => Number.isFinite(v) ? Math.round(v*100)/100 : null;
   const observedInteractions = new Map();
   const observers = [];
@@ -53,7 +69,7 @@
     const resources=performance.getEntriesByType('resource');
     const transferred=resources.reduce((sum,r)=>sum+(Number.isFinite(r.transferSize)?Math.max(0,r.transferSize):0),0);
     numbers.assetsKB=round(transferred/1024);
-    return Object.freeze({...numbers});
+    return Object.freeze({...numbers,interactions:{...interactions}});
   };
   let reportTimer;
   const report = () => {
@@ -69,5 +85,7 @@
     clearTimeout(reportTimer);
     for(const observer of observers)observer.disconnect();
     observedInteractions.clear();
+    document.removeEventListener('click',onClick,true);
+    document.removeEventListener('submit',onSubmit,true);
   },{once:true});
 })();
