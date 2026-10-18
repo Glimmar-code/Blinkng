@@ -756,6 +756,34 @@ fun LeaderboardScreen(state: DesktopAppState) {
 fun ProfileScreen(state: DesktopAppState) {
     val profile = state.profile
     val scope = rememberCoroutineScope()
+    var showVisitors by remember(profile?.id) { mutableStateOf(false) }
+    var visitorCount by remember(profile?.id) { mutableStateOf<Int?>(null) }
+    var visitorSettings by remember(profile?.id) { mutableStateOf<JSONObject?>(null) }
+    var visitorHistory by remember(profile?.id) { mutableStateOf<JSONObject?>(null) }
+    var visitorError by remember(profile?.id) { mutableStateOf<String?>(null) }
+    var visitorBusy by remember(profile?.id) { mutableStateOf(false) }
+
+    suspend fun loadVisitorStats() {
+        runCatching {
+            visitorSettings = state.client.getMyVisitorSettings()
+            visitorCount = state.client.getMyNewVisitorCount()
+        }.onFailure { visitorError = it.message ?: "Profile visitors are temporarily unavailable." }
+    }
+    LaunchedEffect(profile?.id) {
+        if (!profile?.id.isNullOrBlank()) loadVisitorStats()
+    }
+
+    LaunchedEffect(showVisitors, visitorHistory?.optString("seen_through")) {
+        val history = visitorHistory
+        if (showVisitors && history?.optBoolean("enabled") == true) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching {
+                val marked = state.client.markMyVisitorHistorySeen(history.optString("seen_through"))
+                if (marked) state.client.getMyNewVisitorCount() else null
+            }.onSuccess { fresh -> if (fresh != null) visitorCount = fresh }
+                .onFailure { visitorError = "Visits loaded, but the unread count could not be updated." }
+        }
+    }
     val actions = remember(state.client) { DesktopRpcActions(state.client) }
     var economyPayload by remember { mutableStateOf<JSONObject?>(null) }
     var missionsPayload by remember { mutableStateOf<JSONObject?>(null) }
@@ -796,7 +824,117 @@ fun ProfileScreen(state: DesktopAppState) {
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { ScreenHeader("Profile", "Your Blink identity") }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ScreenHeader("Profile", "Your Blink identity")
+                OutlinedButton(onClick = {
+                    showVisitors = !showVisitors
+                    if (showVisitors) {
+                        visitorBusy = true
+                        visitorError = null
+                        scope.launch {
+                            runCatching {
+                                visitorSettings = state.client.getMyVisitorSettings()
+                                visitorHistory = state.client.getMyVisitorHistory()
+                            }.onFailure { visitorError = it.message ?: "Could not load profile visitors." }
+                            visitorBusy = false
+                        }
+                    }
+                }) {
+                    Icon(Icons.Rounded.Visibility, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("Visitors ${visitorCount?.toString() ?: "—"}")
+                }
+            }
+        }
+        if (showVisitors) {
+            item {
+                Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Profile Visitors", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(
+                            "You must opt in to appear in other visitor lists before seeing identifiable visitors yourself. Turning this off erases the visit trail.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (visitorBusy) CircularProgressIndicator()
+                        val enabled = visitorSettings?.optBoolean("participate") == true
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Share my visits and see visitors", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = enabled,
+                                enabled = !visitorBusy && visitorSettings != null,
+                                onCheckedChange = { selected ->
+                                    visitorBusy = true
+                                    visitorError = null
+                                    scope.launch {
+                                        runCatching {
+                                            visitorSettings = state.client.setMyVisitorSettings(selected, false)
+                                            visitorHistory = state.client.getMyVisitorHistory()
+                                            visitorCount = state.client.getMyNewVisitorCount()
+                                        }.onFailure { visitorError = it.message ?: "Could not change visitor privacy." }
+                                        visitorBusy = false
+                                    }
+                                },
+                            )
+                        }
+                        if (enabled) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Notify me of profile visits", modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = visitorSettings?.optBoolean("notify_visits") == true,
+                                    enabled = !visitorBusy,
+                                    onCheckedChange = { selected ->
+                                        visitorBusy = true
+                                        scope.launch {
+                                            runCatching {
+                                                visitorSettings = state.client.setMyVisitorSettings(true, selected)
+                                            }.onFailure { visitorError = it.message ?: "Could not update alerts." }
+                                            visitorBusy = false
+                                        }
+                                    },
+                                )
+                            }
+                            val rows = visitorHistory?.optJSONArray("visitors")
+                            if (rows == null || rows.length() == 0) {
+                                Text("No identifiable visits yet.")
+                            } else {
+                                for (i in 0 until minOf(rows.length(), 100)) {
+                                    val visitor = rows.optJSONObject(i) ?: continue
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                visitor.optString("full_name").takeIf { it.isNotBlank() }
+                                                    ?: visitor.optString("username"),
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            Text("@${visitor.optString("username")}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Text(
+                                            visitor.optString("last_visited_at").replace('T', ' ').take(16) + " UTC",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                    HorizontalDivider()
+                                }
+                            }
+                        } else if (!visitorBusy && visitorSettings != null) {
+                            Text("Private browsing is on. No identifiable visits are recorded.")
+                        }
+                        visitorError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
+        }
         if (profile == null) {
             item { LoadingRow() }
         } else {

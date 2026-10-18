@@ -1,3 +1,11 @@
+## 2026-10-18 — Feature 4: owner-only reciprocal profile visitors (Testlab candidate)
+
+- **Backend migration:** new consent and alert preferences, single most recent visit per unique visitor, account-bound and non-readable raw visitor tables, owner-only count/history/receipt RPCs, 6h repeat deduplication, optional at-most-daily actor notifications, mutual participation and blocks enforcement. Legacy profile-view and activity insertions are consent-gated; withdrawing participation erases the associated identifiable trail. Private browsing is the default.
+- **Android:** own profile displays an eye + new unique visitor count beside overflow menu; tapping opens history with names, avatars, latest visit time, Follow, opt-in and notification toggles. The counter is acknowledged **only after a successful snapshot is displayed**, using a server timestamp watermark so visits received afterward are not mistakenly marked seen.
+- **Windows:** the own profile has matching visitor count, opt-in toggles and a visit history view. History uses the exact same owner-only RPCs and snapshot receipt.
+- **Important:** this is **not** equivalent to the existing public weekly profile-view impression count. Identifiable history is limited to viewers who explicitly opt in and only when the owner has also opted in. No retroactive naming of older views. Visits from private or blocked accounts are not shown. Existing clients should be upgraded before enabling alerts broadly.
+- **Staging gate:** validate new SQL with PostgreSQL parser, apply migration to disposable/test Supabase (production unchanged), test RLS/SECDEF roles and account switching, two-account consent/blocks/deduplication, compare UTC timestamps/receipts across Android and Windows, verify actual mobile push delivery when explicitly enabled, run Android and Windows builds. **Hold main merge/APK publication until those checks pass.**
+
 ## 2026-10-17 — Feature 1: notification copy and Android status icon (Testlab candidate)
 
 - **Shared:** `BlinkNotificationPresentation` provides category-aware fallbacks, sanitizes literal `null`/`undefined` placeholders and missing sender usernames without changing source rows or real user message content.

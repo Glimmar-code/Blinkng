@@ -437,6 +437,34 @@ class DesktopSupabaseClient(
         )
     }
 
+    /** Identifiable visitor history: owner-only RPC. Never query raw visit rows. */
+    suspend fun getMyVisitorSettings(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/get_my_profile_visit_settings", JSONObject()) as JSONObject
+    }
+
+    suspend fun setMyVisitorSettings(participate: Boolean, notifyVisits: Boolean): JSONObject =
+        withContext(Dispatchers.IO) {
+            postObject("/rest/v1/rpc/set_my_profile_visit_settings", JSONObject()
+                .put("p_participate", participate)
+                .put("p_notify_visits", participate && notifyVisits)) as JSONObject
+        }
+
+    suspend fun getMyNewVisitorCount(): Int = withContext(Dispatchers.IO) {
+        val response = postObject("/rest/v1/rpc/count_my_new_profile_visitors", JSONObject()) as JSONObject
+        response.optString("value").toIntOrNull() ?: 0
+    }
+
+    suspend fun getMyVisitorHistory(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/list_my_profile_visitors", JSONObject()) as JSONObject
+    }
+
+    suspend fun markMyVisitorHistorySeen(through: String): Boolean = withContext(Dispatchers.IO) {
+        if (through.isBlank()) return@withContext false
+        val response = postObject("/rest/v1/rpc/ack_my_profile_visitors_seen",
+            JSONObject().put("p_seen_through", through)) as JSONObject
+        response.optString("value").equals("true", ignoreCase = true)
+    }
+
     suspend fun fetchConversations(): List<DesktopConversation> = withContext(Dispatchers.IO) {
         val summaryResponse = runCatching {
             postObject(
