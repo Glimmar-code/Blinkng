@@ -39,7 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WebRtcCallClient(
     context: Context,
     private val type: CallType,
-    private val listener: Listener
+    private val listener: Listener,
+    private val suppliedIceServers: List<PeerConnection.IceServer> = emptyList()
 ) {
     interface Listener {
         fun onLocalDescription(kind: String, description: SessionDescription)
@@ -99,11 +100,8 @@ class WebRtcCallClient(
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
 
-        val rtcConfiguration = PeerConnection.RTCConfiguration(buildIceServers()).apply {
-            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
-        }
+        val initialServers = suppliedIceServers.ifEmpty { buildIceServers() }
+        val rtcConfiguration = configurationFor(initialServers)
 
         peerConnection = factory.createPeerConnection(rtcConfiguration, createPeerObserver())
             ?: throw IllegalStateException("Unable to create WebRTC peer connection")
@@ -198,6 +196,16 @@ class WebRtcCallClient(
         if (released) return
         val accepted = peerConnection.addIceCandidate(candidate)
         if (!accepted) Log.w(TAG, "Remote ICE candidate was rejected")
+    }
+
+    /** Refresh TURN credentials before renegotiation when the backend is reachable. */
+    fun updateIceServers(servers: List<PeerConnection.IceServer>): Boolean {
+        if (released || servers.isEmpty()) return false
+        return runCatching { peerConnection.setConfiguration(configurationFor(servers)) }
+            .getOrElse {
+                Log.w(TAG, "Unable to refresh ICE relay configuration", it)
+                false
+            }
     }
 
     fun restartIce() {
@@ -331,6 +339,14 @@ class WebRtcCallClient(
         }
     }
 
+    private fun configurationFor(servers: List<PeerConnection.IceServer>) =
+        PeerConnection.RTCConfiguration(servers).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+        }
+
+    /** Temporary legacy fallback until every environment deploys the TURN endpoint. */
     private fun buildIceServers(): List<PeerConnection.IceServer> = buildList {
         add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
         add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer())
