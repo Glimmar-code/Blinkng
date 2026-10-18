@@ -246,6 +246,8 @@ class WebRtcCallClient(
 
     fun toggleCamera(): Boolean = setCameraEnabled(!cameraEnabled)
 
+    fun isCameraEnabled(): Boolean = cameraEnabled && cameraOperational && videoTrack != null
+
     fun switchCamera() {
         if (released || type != CallType.VIDEO || !cameraOperational) return
         runCatching {
@@ -427,12 +429,20 @@ class WebRtcCallClient(
         textureHelper = SurfaceTextureHelper.create("BlinkCameraThread", eglBase.eglBaseContext)
         capturer.initialize(textureHelper, appContext, videoSource?.capturerObserver)
         val profile = captureProfile
-        runCatching {
+        // Prefer the device/network preset but attempt the lightweight profile
+        // if a phone's camera driver refuses the first capture format.
+        val captureStarted = runCatching {
             capturer.startCapture(profile.width, profile.height, profile.framesPerSecond)
-        }.onSuccess {
-            cameraOperational = true
-        }.onFailure {
-            cameraOperational = false
+        }.recoverCatching {
+            if (profile == CallMediaQualityPolicy.LOW) throw it
+            Log.w(TAG, "Preferred camera capture unavailable; retrying low resolution")
+            val fallback = CallMediaQualityPolicy.LOW
+            capturer.startCapture(
+                fallback.width, fallback.height, fallback.framesPerSecond
+            )
+        }
+        cameraOperational = captureStarted.isSuccess
+        if (!cameraOperational) {
             cameraEnabled = false
             listener.onError("Unable to start the camera.")
         }
