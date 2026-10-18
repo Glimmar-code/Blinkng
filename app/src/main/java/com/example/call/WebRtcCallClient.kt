@@ -247,10 +247,21 @@ class WebRtcCallClient(
     fun toggleCamera(): Boolean = setCameraEnabled(!cameraEnabled)
 
     fun switchCamera() {
-        if (type == CallType.VIDEO) {
-            runCatching { videoCapturer?.switchCamera(null) }
-                .onFailure { listener.onError("Unable to switch camera.") }
-        }
+        if (released || type != CallType.VIDEO || !cameraOperational) return
+        runCatching {
+            videoCapturer?.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
+                override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                    // Self-view mirrors the front camera only, not the rear
+                    // camera. This avoids flipped text and landmarks.
+                    localRenderer?.setMirror(isFrontCamera)
+                }
+
+                override fun onCameraSwitchError(errorDescription: String) {
+                    Log.w(TAG, "Call camera switch failed")
+                    listener.onError("Unable to switch camera.")
+                }
+            })
+        }.onFailure { listener.onError("Unable to switch camera.") }
     }
 
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
