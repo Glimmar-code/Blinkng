@@ -155,6 +155,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.blinkng.shared.notification.BlinkStoryPresentation
+import android.widget.Toast
 import com.example.data.repository.FollowStateStore
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -341,6 +342,16 @@ fun PremiumMessagesScreen(
                         isLoadingMessages = isLoadingMessages,
                         interactionActions = interactionActions,
                         onProfileClick = onProfileClick,
+                        onStoryReferenceClick = { storyId ->
+                            val original = stories.firstOrNull {
+                                it.id == storyId && BlinkStoryPresentation.active(it.createdAt, true)
+                            }
+                            if (original == null) {
+                                Toast.makeText(context, "Story expired or unavailable.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                onStoryClick(original)
+                            }
+                        },
                         onStartCall = { conversation, kind ->
                             launchSecureCall(context, conversation, kind)
                         },
@@ -440,6 +451,7 @@ private fun PremiumMessagesMasterDetail(
     isLoadingMessages: (String) -> Boolean,
     interactionActions: ChatInteractionActions,
     onProfileClick: (String) -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
     isConnected: Boolean
 ) {
@@ -498,6 +510,7 @@ private fun PremiumMessagesMasterDetail(
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
                 onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                onStoryReferenceClick = onStoryReferenceClick,
                 onAudioCall = {
                     onStartCall(displayedConversation, MessageCallKind.AUDIO)
                 },
@@ -1247,6 +1260,7 @@ private fun PremiumChatDetail(
     onSendVideo: (Uri) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
     isConnected: Boolean,
@@ -1429,7 +1443,8 @@ private fun PremiumChatDetail(
                                 editingMessage = null
                             },
                             onActions = { selectedMessage = message },
-                            onRetry = { onRetry(message) }
+                            onRetry = { onRetry(message) },
+                            onStoryReferenceClick = onStoryReferenceClick,
                         )
                     }
                 }
@@ -1750,7 +1765,8 @@ private fun MessageBubble(
     palette: MessagePalette,
     onReply: () -> Unit,
     onActions: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -1838,7 +1854,10 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    MessageContent(message = message, isMine = isMine, palette = palette)
+                    MessageContent(
+                        message = message, isMine = isMine, palette = palette,
+                        onStoryReferenceClick = onStoryReferenceClick,
+                    )
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -1894,7 +1913,12 @@ private fun MessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: MessagePalette) {
+private fun MessageContent(
+    message: ChatMessage,
+    isMine: Boolean,
+    palette: MessagePalette,
+    onStoryReferenceClick: (String) -> Unit,
+) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
@@ -1941,12 +1965,40 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
                 }
             }
+            val storyReply = BlinkStoryPresentation.parseReply(message.text)
+            if (storyReply != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = contentColor.copy(alpha = .09f),
+                    border = BorderStroke(1.dp, contentColor.copy(alpha = .25f)),
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                        .clickable { onStoryReferenceClick(storyReply.storyId) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.AutoStories, contentDescription = null,
+                            tint = contentColor, modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Column {
+                            Text("Story reply", color = contentColor, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "View original · available for 24 hours",
+                                color = contentColor.copy(alpha = .8f), fontSize = 10.sp,
+                            )
+                        }
+                    }
+                }
+            }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
                     (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
-                    message.text,
+                    storyReply?.text ?: message.text,
                     color = contentColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
