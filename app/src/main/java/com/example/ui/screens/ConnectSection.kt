@@ -129,7 +129,7 @@ fun ConnectSection(
                     val myCampus = current?.university.orEmpty()
                     myCampus.isNotBlank() &&
                         !myCampus.equals("null", ignoreCase = true) &&
-                        profile.university.equals(myCampus, ignoreCase = true)
+                        com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(profile.university, myCampus)
                 }
             }
 
