@@ -1,4 +1,4 @@
-// BLINK anonymous public website analytics — opt-in at deployment, OFF by default.
+// BLINK anonymous public website analytics — activated by site owner 2026-10-18.
 // No cookies, identifying event fields, IP logs, user agents, or raw event storage.
 const OFFICIAL_ORIGIN = "https://blink.com.ng";
 const ALLOWED_PAGES = new Set(["home", "about", "features", "download", "faq", "privacy"]);
@@ -30,7 +30,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if(request.headers.get("origin")!==OFFICIAL_ORIGIN)return reply(403);
   if(request.method==="OPTIONS")return reply(204);
   if(request.method!=="POST")return reply(405);
-  if(Deno.env.get("BLINK_SITE_ANALYTICS_ENABLED")!=="true")return reply(204);
+  // Owner-authorized production activation: collection is ON unless explicitly
+  // disabled using BLINK_SITE_ANALYTICS_ENABLED=false. Legacy (unset) config
+  // requires no new environment secrets; reverting this code also stops it.
+  if(Deno.env.get("BLINK_SITE_ANALYTICS_ENABLED")==="false")return reply(204);
   if(!(request.headers.get("content-type")||"").toLowerCase().startsWith("application/json"))return reply(415);
   const declared=Number(request.headers.get("content-length")||"0");
   if(declared>160)return reply(413);
