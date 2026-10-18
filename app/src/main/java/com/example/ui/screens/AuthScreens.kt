@@ -1178,20 +1178,20 @@ fun ProfileSetupOnboardingScreen(
         "Tech"
     )
 
-    var selectedUniversity by remember(initialUniversity) {
+    var selectedUniversity by remember(initialUniversity, studentUsername) {
         mutableStateOf(NigerianUniversitySearch.canonical(initialUniversity).orEmpty())
     }
-    var accountType by remember(initialAccountType) {
+    var accountType by remember(initialAccountType, studentUsername) {
         mutableStateOf(BlinkCampusAccountType.fromWire(initialAccountType)?.name.orEmpty())
     }
     var universityDialog by remember { mutableStateOf(false) }
-    var faculty by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:faculty:7")
+    var faculty by rememberSaveable(studentUsername) { mutableStateOf("") }
 
-    var department by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:department:5")
+    var department by rememberSaveable(studentUsername) { mutableStateOf("") }
 
     var selectedLevel by remember { mutableStateOf("") }
 
-    var bio by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:bio:6")
+    var bio by rememberSaveable(studentUsername) { mutableStateOf("") }
 
     var currentStep by remember {
         mutableIntStateOf(0)
