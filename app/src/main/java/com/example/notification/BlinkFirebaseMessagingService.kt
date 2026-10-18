@@ -253,6 +253,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             SupabaseService.initialize(applicationContext)
             SupabaseService().getCurrentUserId().orEmpty()
         }.getOrDefault("")
+        // Legacy pushes may omit recipient_id. They may be displayed, but they
+        // must never authorize quick mutations for a potentially different account.
+        val trustedAccount = currentUid.takeIf { it.isNotBlank() && it == data["recipient_id"] }.orEmpty()
 
         // Only persist official previews with an explicit matching recipient.
         // Historical FCM packets without recipient IDs retain their old display
@@ -408,7 +411,8 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                         messageText = body,
                         senderAvatar = senderAvatar,
                         conversationId = conversationId,
-                        messageId = messageId
+                        messageId = messageId,
+                        expectedAccount = trustedAccount,
                     )
                 }
             }
@@ -440,7 +444,15 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.REPLY -> {
                 val postId = data["post_id"].orEmpty()
                 if (sender.isNotBlank() && postId.isNotBlank()) {
-                    BlinkNotificationHelper.showCommentNotification(this, sender, body, postId)
+                    val commentId = data["comment_id"].orEmpty().ifBlank {
+                        data["target_id"].orEmpty().takeIf {
+                            data["target_type"].equals("comment", ignoreCase = true)
+                        }.orEmpty()
+                    }
+                    BlinkNotificationHelper.showCommentNotification(
+                        this, sender, body, postId,
+                        commentId = commentId, expectedAccount = trustedAccount,
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
                 }
@@ -449,7 +461,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.MENTION -> {
                 val postId = data["post_id"].orEmpty()
                 if (sender.isNotBlank() && postId.isNotBlank()) {
-                    BlinkNotificationHelper.showMentionNotification(this, sender, postId, body)
+                    BlinkNotificationHelper.showMentionNotification(
+                        this, sender, postId, body, expectedAccount = trustedAccount,
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
                 }
@@ -457,7 +471,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
 
             BlinkNotificationType.FOLLOW -> {
                 if (sender.isNotBlank()) {
-                    BlinkNotificationHelper.showFollowNotification(this, sender)
+                    BlinkNotificationHelper.showFollowNotification(
+                        this, sender, actorId = senderId, expectedAccount = trustedAccount,
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, null)
                 }
