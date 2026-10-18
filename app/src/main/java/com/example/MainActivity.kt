@@ -572,6 +572,15 @@ class MainActivity : ComponentActivity() {
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
                                         onFindFriends = { showFindFriends = true },
+                                        showCoinPackChooser = showCoinPackChooser,
+                                        pendingPaymentReference = pendingPaymentReference,
+                                        paymentInProgress = paymentInProgress,
+                                        showPendingPaymentPrompt = showPendingPaymentPrompt,
+                                        onOpenCoinPackChooser = { showCoinPackChooser = true },
+                                        onCloseCoinPackChooser = { showCoinPackChooser = false },
+                                        onStartPaystackCheckout = ::startPaystackCheckout,
+                                        onConfirmPaystackPayment = ::confirmPendingPaystackPayment,
+                                        onDismissPendingPaystack = { showPendingPaymentPrompt = false },
                                     )
                                 }
                             }
@@ -675,6 +684,15 @@ fun MainAppContent(
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
     onFindFriends: () -> Unit,
+    showCoinPackChooser: Boolean = false,
+    pendingPaymentReference: String? = null,
+    paymentInProgress: Boolean = false,
+    showPendingPaymentPrompt: Boolean = false,
+    onOpenCoinPackChooser: () -> Unit = {},
+    onCloseCoinPackChooser: () -> Unit = {},
+    onStartPaystackCheckout: (String, String) -> Unit = { _, _ -> },
+    onConfirmPaystackPayment: () -> Unit = {},
+    onDismissPendingPaystack: () -> Unit = {},
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1279,7 +1297,7 @@ fun MainAppContent(
                     economyPolicy = uiState.economyPolicy,
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
-                    onBuyBlinkCoins = { showCoinPackChooser = true },
+                    onBuyBlinkCoins = onOpenCoinPackChooser,
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1447,7 +1465,7 @@ fun MainAppContent(
 
         if (showCoinPackChooser) {
             AlertDialog(
-                onDismissRequest = { showCoinPackChooser = false },
+                onDismissRequest = onCloseCoinPackChooser,
                 title = { Text("Buy BLINK Coins") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1457,7 +1475,7 @@ fun MainAppContent(
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 enabled = uiState.economyPolicy.cashCheckoutEnabled && !paymentInProgress,
-                                onClick = { startPaystackCheckout("coin_pack", pack.id) },
+                                onClick = { onStartPaystackCheckout("coin_pack", pack.id) },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("₦${pack.priceNgn}  •  ${pack.coins} coins")
@@ -1466,7 +1484,7 @@ fun MainAppContent(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showCoinPackChooser = false }) { Text("Close") }
+                    TextButton(onClick = onCloseCoinPackChooser) { Text("Close") }
                 }
             )
         }
@@ -1479,14 +1497,14 @@ fun MainAppContent(
                 text = { Text("Finished paying? BLINK will verify your transaction before adding coins or a badge.") },
                 confirmButton = {
                     TextButton(
-                        onClick = { confirmPendingPaystackPayment() },
+                        onClick = onConfirmPaystackPayment,
                         enabled = !paymentInProgress
                     ) { Text("I've paid • Check") }
                 },
                 dismissButton = {
                     TextButton(onClick = {
                         // Hide only the prompt. Persist the reference for later confirmation.
-                        showPendingPaymentPrompt = false
+                        onDismissPendingPaystack()
                     }) { Text("Later") }
                 }
             )
@@ -1504,16 +1522,16 @@ fun MainAppContent(
                 isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
                 onWatchAdForCoins = onWatchAdForCoins,
-                onBuyBlinkCoins = { showCoinPackChooser = true },
+                onBuyBlinkCoins = onOpenCoinPackChooser,
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
-                    if (tier != VerificationBadge.NONE) startPaystackCheckout("verification", tier.name)
+                    if (tier != VerificationBadge.NONE) onStartPaystackCheckout("verification", tier.name)
                 },
                 pendingCashPayment = pendingPaymentReference != null,
                 cashCheckoutBusy = paymentInProgress,
-                onCheckCashPayment = { confirmPendingPaystackPayment() }
+                onCheckCashPayment = onConfirmPaystackPayment
             )
         }
 
