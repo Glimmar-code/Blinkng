@@ -19,6 +19,7 @@ internal object BlinkApkWorkContract {
     private const val PREFS = "blink_apk_update_v1"
     private const val PREF_META = "release_metadata"
     private const val PREF_PAUSED = "paused"
+    private const val PREF_WORK_ID = "work_id"
 
     private fun metadata(release: BlinkReleaseInfo): String = """
         applicationId=${release.applicationId}
@@ -57,6 +58,17 @@ internal object BlinkApkWorkContract {
     fun isPaused(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(PREF_PAUSED, false)
+
+    fun saveWorkId(context: Context, id: java.util.UUID) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(PREF_WORK_ID, id.toString()).apply()
+    }
+
+    fun workId(context: Context): java.util.UUID? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(PREF_WORK_ID, null)?.let {
+                runCatching { java.util.UUID.fromString(it) }.getOrNull()
+            }
 
     fun partialFile(context: Context, release: BlinkReleaseInfo): File =
         File(context.filesDir, "blink-updates/partial/${release.apkSha256}.apk")
