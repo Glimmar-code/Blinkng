@@ -1,3 +1,9 @@
+## 2026-10-19 — Final combined Testlab integration: Feature 6 Stories + Feature 8 universities
+
+- Based on the latest Testlab with Features 2,3,4,5,7,9 already merged; combines real 24-hour Messages stories, media, owner insights, opt-in reposts and DM previews with normalized campus IDs, FUTA alias directory, moderated school additions and campus leaderboard matching.
+- Both Story and university database migrations are source-only until tested in a disposable Supabase staging branch. Supabase branching requires explicit user approval for billed compute; no live schema changes or merchant charges were made.
+- Complete fresh Android+Windows builds, CI, real-device playback, RLS, anti-spam and campus backfill testing before any production main merge or published signed APK.
+
 ## 2026-10-18 — Verification plan pricing integrated on current Testlab
 
 - Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
