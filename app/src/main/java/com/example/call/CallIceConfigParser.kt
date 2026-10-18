@@ -20,9 +20,7 @@ internal object CallIceConfigParser {
      */
     fun allowLegacyFallback(statusCode: Int, responseBody: String): Boolean {
         if (statusCode == 404) {
-            return responseBody.contains("Requested function was not found", ignoreCase = true) ||
-                (responseBody.contains("\\"code\\":\\"NOT_FOUND\\"") &&
-                    responseBody.contains("function", ignoreCase = true))
+            return responseBody.contains("Requested function was not found", ignoreCase = true)
         }
         return statusCode == 503 &&
             responseBody.contains("TURN relay is not configured", ignoreCase = true)
