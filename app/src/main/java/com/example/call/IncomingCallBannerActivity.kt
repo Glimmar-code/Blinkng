@@ -262,10 +262,20 @@ class IncomingCallBannerActivity : ComponentActivity() {
         IncomingCallNotification.cancel(this, callId)
         lifecycleScope.launch {
             val repository = CallRepository()
-            repository.declineCall(callId).onSuccess {
-                val userId = repository.currentUserId()
-                CallNotificationLedger.markUpdated(this@IncomingCallBannerActivity, userId, callId, "declined")
-                repository.dispatchPush(callId, "declined")
+            val declined = repository.declineCall(callId).getOrNull()
+            if (declined != null) {
+                CallNotificationLedger.markUpdated(
+                    this@IncomingCallBannerActivity,
+                    repository.currentUserId(), callId, declined.status.wireValue
+                )
+                repository.dispatchPush(callId, declined.status.wireValue)
+            } else {
+                CallEndRetryWorker.schedule(
+                    this@IncomingCallBannerActivity,
+                    callId,
+                    repository.currentUserId(),
+                    CallEndRecoveryPolicy.Action.DECLINE
+                )
             }
             finish()
         }
