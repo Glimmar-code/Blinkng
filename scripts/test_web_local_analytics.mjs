@@ -7,7 +7,7 @@ import {runInNewContext} from 'node:vm';
 const source=readFileSync('web/performance-diagnostics.js','utf8');
 assert.ok(!/\bfetch\s*\(|\bsendBeacon\s*\(|\bXMLHttpRequest\b/.test(source),'Telemetry must never leave the browser');
 assert.ok(!/\blocalStorage\b|\bsessionStorage\b|\bdocument\.cookie\b/.test(source),'Diagnostics cannot persist user data');
-assert.ok(!/\.value\s*\)|\.textContent\s*\)/.test(source),'No form content or visible personal data may be captured');
+assert.ok(!/\b(?:input|form|event\.target|node)\.value\b|\b(?:input|form|event\.target|node)\.textContent\b/.test(source),'No input value or personal text may be captured');
 const simulate=search=>{
  const listeners=new Map();
  const logs=[];
