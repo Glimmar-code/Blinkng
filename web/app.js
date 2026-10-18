@@ -364,6 +364,7 @@
               <input class="field" id="landing-username" name="username" type="text" maxlength="32" placeholder="Search @username" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Public BLINK username">
               <button type="submit" class="landing-search-submit">View profile <span aria-hidden="true">→</span></button>
             </div>
+            <p id="public-search-status" role="status" aria-live="polite" class="discovery-status">Only publicly available profiles can be opened.</p>
           </form>
         </div>
         <aside class="landing-preview" aria-label="Explore BLINK highlights">
@@ -376,6 +377,40 @@
           </div>
           <div class="landing-preview-bottom"><span>Explore BLINK features</span><strong>One community <span aria-hidden="true">↗</span></strong></div>
         </aside>
+      </section>
+
+
+      <section class="landing-container discovery-section" aria-labelledby="discovery-tour-title">
+        <div class="landing-section-head"><div><span class="landing-kicker">Explore before you sign in</span><h2 id="discovery-tour-title">Discover what BLINK can do.</h2></div></div>
+        <div class="discovery-tour">
+          <div class="discovery-tabs" role="tablist" aria-label="Explore BLINK feature areas">
+            <button type="button" role="tab" id="tour-tab-feed" data-tour-tab="feed" aria-selected="true" aria-controls="tour-panel">Feed</button>
+            <button type="button" role="tab" id="tour-tab-reels" data-tour-tab="reels" aria-selected="false" aria-controls="tour-panel">Reels</button>
+            <button type="button" role="tab" id="tour-tab-market" data-tour-tab="market" aria-selected="false" aria-controls="tour-panel">Market</button>
+            <button type="button" role="tab" id="tour-tab-connect" data-tour-tab="connect" aria-selected="false" aria-controls="tour-panel">Connect</button>
+          </div>
+          <div class="discovery-tour-body" id="tour-panel" role="tabpanel" aria-labelledby="tour-tab-feed" tabindex="0">
+            <span class="landing-kicker">Feature guide · Not a live feed</span>
+            <h3 id="tour-heading">A space for real conversations</h3>
+            <p id="tour-body">Discover what BLINK has to offer.</p>
+            <a id="tour-action" href="${routeHref('/features/')}" class="landing-action landing-action--secondary">Browse BLINK features</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-container discovery-section" id="campuses" aria-labelledby="campuses-title">
+        <div class="landing-section-head"><div><span class="landing-kicker">Discover Nigerian universities</span><h2 id="campuses-title">Find your campus on BLINK.</h2></div></div>
+        <p class="discovery-support">Find schools in BLINK’s searchable university catalogue. The list is not a live count of members or communities.</p>
+        <div class="discovery-campuses">
+          <label for="campus-search">Search by university name or abbreviation (e.g. FUTA)</label>
+          <input id="campus-search" class="field" name="campus" placeholder="Search FUTA, UNILAG, University of Lagos…" type="search" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="90">
+          <p role="status" id="campus-status" aria-live="polite" class="discovery-status">Search the same Nigerian university catalogue used by BLINK Android.</p>
+          <ul id="campus-results" class="campus-results" aria-label="Matching universities"></ul>
+          <div id="campus-selection" class="campus-selection" hidden>
+            <span>Your selected campus: <strong data-selected-campus></strong></span>
+            <button class="landing-action landing-action--primary" type="button" data-landing-nav="${isAuthed()?'/connect':'/login'}">${isAuthed()?'Open BLINK Connect':'Sign in to connect'} <span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
       </section>
 
       <section class="landing-container landing-features" id="landing-features" aria-labelledby="landing-features-title">
@@ -418,13 +453,31 @@
       });
     });
     const searchForm=ROOT.querySelector('#public-search');
-    searchForm?.addEventListener('submit',event=>{
+    searchForm?.addEventListener('submit',async event=>{
       event.preventDefault();
       const field=searchForm.elements.namedItem('username');
+      const button=searchForm.querySelector('button[type="submit"]');
+      const status=ROOT.querySelector('#public-search-status');
       const username=String(field?.value||'').trim().replace(/^@/,'');
-      if(!username){field?.focus();return;}
-      navigate('/@'+encodeURIComponent(username));
+      if(!/^[A-Za-z0-9._-]{2,32}$/.test(username)){
+        if(status)status.textContent='Enter a valid BLINK username (2–32 letters, numbers, dots, underscores or hyphens).';
+        field?.focus();return;
+      }
+      if(button?.disabled)return;
+      if(button)button.disabled=true;
+      if(status)status.textContent='Checking this public profile…';
+      try{
+        const info=await anonRpc('get_public_web_profile',{p_username:username});
+        if(!info?.available||!info.profile){
+          if(status)status.textContent='No public BLINK profile found for that username.';
+          return;
+        }
+        navigate('/@'+encodeURIComponent(username));
+      }catch{
+        if(status)status.textContent='Profile lookup is temporarily unavailable. Please try again.';
+      }finally{if(button)button.disabled=false;}
     });
+    window.BLINK_DISCOVERY?.initLanding(ROOT);
   }
 
   function renderLogin(){
