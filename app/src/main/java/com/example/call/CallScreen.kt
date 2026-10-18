@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -84,6 +85,7 @@ internal fun CallScreen(
     val controlsEnabled = CallPresentation.controlsEnabled(
         mediaReady, incomingRinging, endingAction
     )
+    val panelInk = if (videoActive) Color.White else MaterialTheme.colorScheme.onSurface
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -102,7 +104,7 @@ internal fun CallScreen(
                                 listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                             )
                         )
-                        .size(width = 1.dp, height = 230.dp)
+                        .height(230.dp)
                 )
                 Box(
                     modifier = Modifier
@@ -113,7 +115,7 @@ internal fun CallScreen(
                                 listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
                             )
                         )
-                        .size(width = 1.dp, height = 300.dp)
+                        .height(300.dp)
                 )
                 Box(
                     modifier = Modifier
@@ -256,6 +258,7 @@ internal fun CallScreen(
                                     label = "Decline",
                                     color = Color(0xFFCE3232),
                                     enabled = !endingAction,
+                                    labelColor = panelInk,
                                     onClick = onDecline
                                 )
                                 CallPrimaryButton(
@@ -263,6 +266,7 @@ internal fun CallScreen(
                                     label = "Answer",
                                     color = Color(0xFF15803D),
                                     enabled = !endingAction,
+                                    labelColor = panelInk,
                                     onClick = onAnswer
                                 )
                             }
@@ -275,6 +279,7 @@ internal fun CallScreen(
                                         accessibilityLabel = CallPresentation.iconActionLabel("microphone", microphoneOn),
                                         active = !microphoneOn,
                                         enabled = controlsEnabled,
+                                        labelColor = panelInk,
                                         onClick = onToggleMic
                                     )
                                     CallToggleButton(
@@ -283,6 +288,7 @@ internal fun CallScreen(
                                         accessibilityLabel = CallPresentation.iconActionLabel("speaker", speakerOn),
                                         active = speakerOn,
                                         enabled = controlsEnabled,
+                                        labelColor = panelInk,
                                         onClick = onToggleSpeaker
                                     )
                                 }
@@ -299,6 +305,7 @@ internal fun CallScreen(
                                             accessibilityLabel = CallPresentation.iconActionLabel("camera", cameraOn),
                                             active = !cameraOn,
                                             enabled = controlsEnabled,
+                                            labelColor = panelInk,
                                             onClick = onToggleCamera
                                         )
                                         CallToggleButton(
@@ -307,6 +314,7 @@ internal fun CallScreen(
                                             accessibilityLabel = "Switch front or rear camera",
                                             active = false,
                                             enabled = controlsEnabled && cameraOn,
+                                            labelColor = panelInk,
                                             onClick = onSwitchCamera
                                         )
                                     }
@@ -337,6 +345,7 @@ internal fun CallScreen(
                                 label = if (endingAction) "Ending…" else "End call",
                                 color = Color(0xFFCE3232),
                                 enabled = !endingAction,
+                                labelColor = panelInk,
                                 onClick = onEnd
                             )
                         }
@@ -378,6 +387,7 @@ private fun CallToggleButton(
     accessibilityLabel: String,
     active: Boolean,
     enabled: Boolean,
+    labelColor: Color,
     onClick: () -> Unit
 ) {
     val foreground = if (enabled) Color.White else Color.White.copy(alpha = 0.46f)
@@ -393,8 +403,7 @@ private fun CallToggleButton(
         Spacer(modifier = Modifier.size(6.dp))
         Text(
             label,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+            color = if (enabled) labelColor else labelColor.copy(alpha = 0.56f),
             fontSize = 13.sp,
             maxLines = 1,
             textAlign = TextAlign.Center
@@ -408,6 +417,7 @@ private fun CallPrimaryButton(
     label: String,
     color: Color,
     enabled: Boolean,
+    labelColor: Color,
     onClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -424,7 +434,7 @@ private fun CallPrimaryButton(
         Spacer(modifier = Modifier.size(6.dp))
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = labelColor,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center
