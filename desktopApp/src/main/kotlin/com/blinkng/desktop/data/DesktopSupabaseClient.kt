@@ -104,6 +104,7 @@ class DesktopSupabaseClient(
                     .put("full_name", fullName.trim().ifBlank { cleanUsername })
                     .put("name", fullName.trim().ifBlank { cleanUsername })
                     .put("university", canonicalUniversity)
+                    .put("university_id", BlinkUniversitySearch.idOf(canonicalUniversity))
                     .put("account_type", accountType),
             )
         val response = authPost("/auth/v1/signup", body)
@@ -115,7 +116,9 @@ class DesktopSupabaseClient(
         // Save the canonical institution explicitly under the current user's RLS.
         patch(
             "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}",
-            JSONObject().put("university", canonicalUniversity).put("account_type", accountType),
+            JSONObject().put("university", canonicalUniversity)
+                .put("university_id", BlinkUniversitySearch.idOf(canonicalUniversity))
+                .put("account_type", accountType),
         )
         val verified = getArray(
             "/rest/v1/profiles?id=eq.${encode(enrolled.userId)}&select=id,university,account_type&limit=1"
