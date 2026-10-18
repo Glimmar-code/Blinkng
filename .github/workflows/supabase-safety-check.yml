@@ -41,6 +41,14 @@ jobs:
       - name: Validate migration SQL syntax
         run: python3 scripts/check_supabase_sql_syntax.py
 
+      - name: Set up Node for payment integrity tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test Flutterwave transaction integrity
+        run: node --test scripts/test_flutterwave_integrity.mjs
+
       - name: Detect complete local schema baseline
         id: baseline
         shell: bash
