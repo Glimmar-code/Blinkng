@@ -423,3 +423,5 @@ object BlinkNigerianUniversities {
     }
 
     val all: List<String> by lazy { records.map { it.name } }
+    val byId: Map<String, University> by lazy { records.associateBy { it.id } }
+}
