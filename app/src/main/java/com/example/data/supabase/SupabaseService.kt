@@ -2575,6 +2575,10 @@ suspend fun uploadPostMedia(
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("id")
+                val timestamp = o.optString("created_at")
+                if (!com.blinkng.shared.notification.BlinkStoryPresentation.active(timestamp, o.optBoolean("active", true))) {
+                    continue
+                }
                 val u = o.optString("user_id")
                 val prof = if (u.isNotBlank()) fetchProfileById(u)?.also { cache[u] = it } else null
                 add(
@@ -2592,6 +2596,14 @@ suspend fun uploadPostMedia(
                         university = prof?.university.orEmpty(),
                         likesCount = o.optInt("likes_count", 0),
                         isLiked = liked.contains(sid),
+                        createdAt = timestamp,
+                        authorId = u,
+                        allowReposts = o.optBoolean("allow_reposts", false),
+                        repostedFromId = o.optString("reposted_from_id").takeIf {
+                            it.isNotBlank() && it != "null"
+                        },
+                        isVideo = o.optString("media_type").equals("video", ignoreCase = true) ||
+                            o.optString("video_url").isNotBlank(),
                         verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
                     )
                 )
@@ -2654,6 +2666,42 @@ suspend fun uploadPostMedia(
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
         val body=JSONObject().apply{put("story_id",storyId);put("user_id",uid);put("content",replyText)}
         executeRequest(newRequestBuilder("/rest/v1/story_replies",true).post(body.toString().toRequestBody(jsonMediaType)).build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Story reply failed."));true}
+    }
+
+    /** Owner-only RPC: Supabase validates authenticated story ownership. */
+    suspend fun myStoryInsights(storyId: String): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/get_my_story_insights", true)
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) error(parseSupabaseError(raw, "Story insights unavailable."))
+            JSONObject(raw)
+        }
+    }
+
+    suspend fun setStoryRepostsAllowed(storyId: String, allow: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("p_story_id", storyId).put("p_allow", allow)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/set_my_story_reposts_allowed", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) error(parseSupabaseError(raw, "Couldn't save sharing preference."))
+                raw.trim() == "true"
+            }
+        }
+
+    suspend fun repostStory(storyId: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(newRequestBuilder("/rest/v1/rpc/repost_blink_story", true)
+            .post(body.toString().toRequestBody(jsonMediaType)).build()).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) error(parseSupabaseError(raw, "This story is not available for reposting."))
+            raw.trim().trim('"').isNotBlank()
+        }
     }
 
     suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
