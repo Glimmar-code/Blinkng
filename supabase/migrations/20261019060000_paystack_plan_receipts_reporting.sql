@@ -153,3 +153,55 @@ FOR EACH ROW EXECUTE FUNCTION private.queue_blink_paystack_success();
 
 -- Legal or provider-required reversals cannot be switched off by a
 -- merchant preference. This work does not offer voluntary refunds.
+
+-- Merchant cannot suppress bank disputes or provider-required reversals.
+-- Keep a separate idempotent event audit; no voluntary customer refund API.
+CREATE TABLE IF NOT EXISTS private.blink_paystack_provider_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_id uuid NOT NULL REFERENCES public.blink_paystack_payments(id),
+  event_key text NOT NULL UNIQUE,
+  event_type text NOT NULL,
+  amount_kobo bigint NOT NULL CHECK(amount_kobo>0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE private.blink_paystack_provider_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON private.blink_paystack_provider_events FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT ON private.blink_paystack_provider_events TO service_role;
+
+CREATE OR REPLACE FUNCTION public.record_blink_paystack_provider_event(
+  p_reference text,p_event_type text,p_event_key text,
+  p_amount_kobo bigint,p_currency text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=''
+AS $payment_event$
+DECLARE v_payment public.blink_paystack_payments%rowtype;
+BEGIN
+  IF p_event_type NOT IN
+    ('refund.pending','refund.processing','refund.failed','refund.processed',
+     'charge.dispute.create','charge.dispute.remind','charge.dispute.resolve')
+    OR nullif(p_event_key,'') IS NULL OR length(p_event_key)>240
+  THEN RAISE EXCEPTION 'INVALID_PAYMENT_EVENT'; END IF;
+  SELECT * INTO v_payment FROM public.blink_paystack_payments
+    WHERE reference=p_reference FOR UPDATE;
+  IF NOT FOUND OR p_currency <> v_payment.currency OR
+     p_amount_kobo <> v_payment.amount_ngn::bigint*100
+  THEN RAISE EXCEPTION 'PAYMENT_EVENT_MISMATCH'; END IF;
+
+  INSERT INTO private.blink_paystack_provider_events(
+    payment_id,event_key,event_type,amount_kobo)
+    VALUES(v_payment.id,p_event_key,p_event_type,p_amount_kobo)
+    ON CONFLICT(event_key) DO NOTHING;
+
+  -- Reflect a provider-confirmed completed refund for audit and reporting.
+  -- Entitlement reconciliation remains a separate reviewed action; never
+  -- silently subtract coins already spent or falsify membership history.
+  IF p_event_type='refund.processed' AND v_payment.status='fulfilled' THEN
+    UPDATE public.blink_paystack_payments
+    SET status='refunded',updated_at=now() WHERE id=v_payment.id;
+  END IF;
+  RETURN jsonb_build_object('recorded',true,'reference',p_reference);
+END
+$payment_event$;
+REVOKE ALL ON FUNCTION public.record_blink_paystack_provider_event(
+  text,text,text,bigint,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.record_blink_paystack_provider_event(
+  text,text,text,bigint,text) TO service_role;
