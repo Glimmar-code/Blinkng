@@ -39,6 +39,22 @@ final class BLINKAuthPhase2Tests: XCTestCase {
         ])!, urlSession: session)
     }
 
+    private static func bodyData(_ request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let size = stream.read(&buffer, maxLength: buffer.count)
+            if size < 0 { return nil }
+            if size == 0 { break }
+            data.append(contentsOf: buffer.prefix(size))
+        }
+        return data
+    }
+
     override func tearDown() {
         StubURLProtocol.handler = nil
         super.tearDown()
@@ -53,7 +69,7 @@ final class BLINKAuthPhase2Tests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "apikey"), self.publicKey)
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"),
                          "A publishable key must not be treated as a JWT")
-            let data = try XCTUnwrap(request.httpBody)
+            let data = try XCTUnwrap(Self.bodyData(request))
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
             XCTAssertEqual(body["email"], "student@example.com")
             XCTAssertEqual(body["password"], "test-password")
@@ -92,7 +108,7 @@ final class BLINKAuthPhase2Tests: XCTestCase {
                 XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
                     .queryItems?.first?.value, "refresh_token")
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(
-                    with: XCTUnwrap(request.httpBody)) as? [String: String])
+                    with: XCTUnwrap(Self.bodyData(request))) as? [String: String])
                 XCTAssertEqual(body["refresh_token"], "oldRefresh")
                 return (200, Data("""
                     {"access_token":"newJWT","refresh_token":"rotatedRefresh",
