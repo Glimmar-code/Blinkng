@@ -380,7 +380,7 @@ BEGIN
    RAISE EXCEPTION 'MARKET_DELIVERY_NOT_CONFIRMABLE'; END IF;
  IF EXISTS(SELECT 1 FROM public.market_disputes d
     WHERE d.order_id=v_order.marketplace_order_id
-      AND d.status NOT IN('resolved','rejected','closed'))
+      AND d.status NOT IN('resolved','dismissed'))
  THEN RAISE EXCEPTION 'UNRESOLVED_BUYER_DISPUTE'; END IF;
  UPDATE public.blink_paystack_market_orders
   SET fulfilment_status='delivered',delivered_at=now()
