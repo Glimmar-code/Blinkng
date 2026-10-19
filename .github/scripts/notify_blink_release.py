@@ -67,7 +67,8 @@ def main():
     manual_mode = os.environ.get("BLINK_RELEASE_MANUAL_MODE", "")
     if manual_mode not in ("", "validate_only", "send_published_release"):
         raise ValueError("Unsupported manual release notification mode")
-    if manual_mode and os.environ.get("GITHUB_ACTOR", "").lower() != "glimmar-code":
+    if (os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+            and os.environ.get("GITHUB_ACTOR", "").lower() != "glimmar-code"):
         raise ValueError("Only the BLINK repository owner may manually verify or send an alert")
     account_json = os.environ.get("FIREBASE_RELEASE_SERVICE_ACCOUNT_JSON", "")
     if not account_json:
