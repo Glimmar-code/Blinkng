@@ -51,6 +51,12 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018225000_paystack_checkout.sql
       - name: Apply discounted one-time plans, receipts and reporting migration
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019060000_paystack_plan_receipts_reporting.sql
+      - name: Apply consent-only renewals and provider reconciliation
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019074500_paystack_opt_in_renewals.sql
+      - name: Apply safe cash boost integration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019090000_paystack_cash_boosts.sql
+      - name: Apply transactional payment email worker queue
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
