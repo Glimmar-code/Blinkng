@@ -549,6 +549,11 @@ private fun AdminSectionScreen(
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (section.key == "transactions") {
+                item(key = "paystack_owner_finance") {
+                    PaystackFinancePanel(owner = capability.isOwner)
+                }
+            }
             if (section.key in setOf("marketplace", "orders_sellers")) {
                 item(key = "professional_market_review") {
                     MarketAdminReviewPanel(
@@ -595,6 +600,69 @@ private fun AdminSectionScreen(
                 status("${feature.title}: completed.")
             }
         )
+    }
+}
+
+
+@Composable
+private fun PaystackFinancePanel(owner: Boolean) {
+    val service = remember { BlinkPaystackFinanceService() }
+    var report by remember { mutableStateOf<JSONObject?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(owner, reload) {
+        if (!owner) return@LaunchedEffect
+        loading = true
+        loadError = null
+        service.loadReport().onSuccess { report = it }
+            .onFailure { loadError = it.message ?: "Could not load financial report." }
+        loading = false
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Paystack Finance · 30 days", fontSize = 19.sp, fontWeight = FontWeight.Black)
+            if (!owner) {
+                Text("Revenue reporting is restricted to the BLINK owner.",
+                    color = MaterialTheme.colorScheme.error)
+            } else {
+                when {
+                    loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    loadError != null -> Text(loadError.orEmpty(),
+                        color = MaterialTheme.colorScheme.error)
+                    report == null -> Text("No verified Paystack financial report yet.")
+                    else -> {
+                        val data = report?.optJSONObject("summary") ?: JSONObject()
+                        Text("Collected: ₦${data.optLong("revenue_ngn", 0)}",
+                            fontWeight = FontWeight.Bold, fontSize = 23.sp)
+                        Text("Paid ${data.optInt("paid_orders", 0)} · " +
+                            "Pending ${data.optInt("pending_orders", 0)} · " +
+                            "Failed ${data.optInt("failed_orders", 0)} · " +
+                            "Refund-flagged ${data.optInt("refund_flagged_orders", 0)}",
+                            fontSize = 14.sp)
+                        Text("Figures are based on server-recorded orders, not a settlement or bank-statement reconciliation.",
+                            fontSize = 12.sp, color = Color.Gray)
+                        val rows = report?.optJSONArray("recent") ?: JSONArray()
+                        if (rows.length() > 0) {
+                            Text("Recent transactions", fontWeight = FontWeight.Bold)
+                            for (i in 0 until minOf(rows.length(), 12)) {
+                                val item = rows.optJSONObject(i) ?: continue
+                                Text(
+                                    "${item.optString("created_at").take(10)} · " +
+                                    "${item.optString("purchase_kind")} · " +
+                                    "₦${item.optInt("amount_ngn")} · ${item.optString("status")}",
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { reload++ }, enabled = !loading,
+                    modifier = Modifier.fillMaxWidth()) { Text("Refresh Finance") }
+            }
+        }
     }
 }
 
