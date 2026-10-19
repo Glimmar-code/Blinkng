@@ -55,6 +55,12 @@ struct BLINKFeedEntry: Decodable {
     let nextOffset: Int?
     let asOf: String?
 
+    init(post: BLINKFeedPost) {
+        self.post = post
+        self.nextOffset = nil
+        self.asOf = nil
+    }
+
     enum CodingKeys: String, CodingKey { case item, nextOffset, asOf }
 
     init(from decoder: Decoder) throws {
