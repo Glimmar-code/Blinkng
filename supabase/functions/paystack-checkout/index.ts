@@ -14,15 +14,18 @@ Deno.serve(async req => {
     const payload=await req.json();
     const kind=String(payload.kind||"").toLowerCase();
     const itemCode=String(payload.itemCode||"").trim();
-    if(!["verification","coin_pack"].includes(kind) || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode))
+    const months=payload.months === undefined ? 1 : payload.months;
+    if(!["verification","coin_pack"].includes(kind) || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
+      || !Number.isInteger(months) || ![1,3,6,12].includes(months)
+      || (kind==="coin_pack" && months!==1))
       return json({error:"INVALID_CHECKOUT_SELECTION"},400);
     const auth=req.headers.get("authorization") || "";
     const caller=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_ANON_KEY")!,{
       global:{headers:{Authorization:auth}},
       auth:{persistSession:false,autoRefreshToken:false},
     });
-    const {data:order,error:orderError}=await caller.rpc("create_blink_paystack_order",{
-      p_kind:kind,p_item_code:itemCode,
+    const {data:order,error:orderError}=await caller.rpc("create_blink_paystack_order_v2",{
+      p_kind:kind,p_item_code:itemCode,p_months:months,
     });
     if(orderError || !order) return json({error:orderError?.message || "CHECKOUT_UNAVAILABLE"},400);
     const charge=await paystackApi("transaction/initialize","POST",{
@@ -31,13 +34,14 @@ Deno.serve(async req => {
       currency:"NGN",
       reference:order.reference,
       callback_url:"https://blink.com.ng/?blink_payment_return=1",
-      metadata:{app:"BLINK",purchase_kind:kind,item_code:order.item_code},
+      metadata:{app:"BLINK",purchase_kind:kind,item_code:order.item_code,months},
     });
     const url=String(charge?.authorization_url || "");
     if(!url.startsWith("https://checkout.paystack.com/") || charge.reference!==order.reference)
       throw new Error("INVALID_PAYSTACK_CHECKOUT_URL");
     return json({ checkoutUrl:url, reference:order.reference, amountNgn:order.amount_ngn,
-      currency:"NGN",kind,itemCode:order.item_code });
+      currency:"NGN",kind,itemCode:order.item_code,months,
+      discountPercent:order.discount_percent||0,autoRenew:false });
   } catch(error) {
     console.error("paystack-checkout:",String(error).slice(0,160));
     return json({error:"PAYMENT_UNAVAILABLE"},503);
