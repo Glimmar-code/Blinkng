@@ -89,7 +89,7 @@ set verification_badge='GOLD',
     verification_expires_at=now()+interval '60 days'
 where id='11111111-1111-4111-8111-111111111111';
 set role service_role;
-do $
+do $paystack_guard$
 declare v_order public.blink_paystack_payments%rowtype;
         v_expiry timestamptz;
 begin
@@ -103,7 +103,7 @@ begin
       is distinct from v_expiry then
    raise exception 'BLUE_EXTENDED_OR_DOWNGRADED_ACTIVE_GOLD';
  end if;
-end $;
+end $paystack_guard$;
 reset role;
 
 -- Regression: a pending BLUE receipt must not make permanent GOLD expire.
@@ -116,7 +116,7 @@ update public.profiles set verification_badge='GOLD',
     verification_tier='Gold', verification_expires_at=null
 where id='11111111-1111-4111-8111-111111111111';
 set role service_role;
-do $
+do $paystack_guard$
 declare v_order public.blink_paystack_payments%rowtype;
 begin
  select * into v_order from public.blink_paystack_payments
@@ -127,7 +127,7 @@ begin
       is not null then
    raise exception 'BLUE_EXPIRED_OR_DOWNGRADED_PERMANENT_GOLD';
  end if;
-end $;
+end $paystack_guard$;
 reset role;
 -- Final assertion: webhook replay/confirmation cannot credit twice.
 select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
