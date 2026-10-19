@@ -71,10 +71,22 @@ fun BlinkLiveCampaignCards(
                     Surface(
                         modifier=Modifier.fillMaxWidth(),
                         shape=MaterialTheme.shapes.medium,
-                        color=if(campaign.kind=="emergency") MaterialTheme.colorScheme.errorContainer
-                            else MaterialTheme.colorScheme.surface,
-                        contentColor=if(campaign.kind=="emergency") MaterialTheme.colorScheme.onErrorContainer
-                            else MaterialTheme.colorScheme.onSurface,
+                        color=when {
+                            campaign.kind=="emergency" || campaign.style=="urgent" ->
+                                MaterialTheme.colorScheme.errorContainer
+                            campaign.accent=="blue" -> MaterialTheme.colorScheme.secondaryContainer
+                            campaign.accent=="gold" -> MaterialTheme.colorScheme.tertiaryContainer
+                            campaign.style=="highlight" -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.surface
+                        },
+                        contentColor=when {
+                            campaign.kind=="emergency" || campaign.style=="urgent" ->
+                                MaterialTheme.colorScheme.onErrorContainer
+                            campaign.accent=="blue" -> MaterialTheme.colorScheme.onSecondaryContainer
+                            campaign.accent=="gold" -> MaterialTheme.colorScheme.onTertiaryContainer
+                            campaign.style=="highlight" -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
+                        },
                         shadowElevation=3.dp,tonalElevation=3.dp
                     ) {
                         Column(Modifier.padding(horizontal=12.dp,vertical=8.dp),
