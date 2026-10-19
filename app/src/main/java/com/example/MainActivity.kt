@@ -1602,10 +1602,7 @@ fun MainAppContent(
                                     viewModel.openProductDetail(listing)
                                 }
                             },
-                            onGetCoins = {
-                                if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
-                                else feedUtilitySheet = "store"
-                            },
+                            onGetCoins = { viewModel.buyBlinkCoins() },
                             onCreateContent = {
                                 dismissUtility { viewModel.openCreatePost(true) }
                             },
@@ -1617,10 +1614,7 @@ fun MainAppContent(
                         )
 
                         "drops" -> BlinkDropsRoute(
-                            onGetCoins = {
-                                if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
-                                else feedUtilitySheet = "store"
-                            },
+                            onGetCoins = { viewModel.buyBlinkCoins() },
                             onClose = { dismissUtility() }
                         )
 
