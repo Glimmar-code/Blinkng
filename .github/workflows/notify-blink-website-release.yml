@@ -7,6 +7,16 @@ on:
   workflow_run:
     workflows: [Publish latest APK]
     types: [completed]
+  # Manually verify existing published release against FCM WITHOUT publishing
+  # a new APK. Default is validate_only and does not send any user notification.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate FCM only, or explicitly re-send the current published release
+        required: true
+        type: choice
+        default: validate_only
+        options: [validate_only, send_published_release]
 
 permissions:
   contents: read
@@ -15,9 +25,19 @@ jobs:
   push:
     if: >-
       github.repository == 'Glimmar-code/Blinkng' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main' &&
+          github.actor == 'Glimmar-code'
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,4 +59,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          BLINK_RELEASE_MANUAL_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || '' }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: python3 .github/scripts/notify_blink_release.py

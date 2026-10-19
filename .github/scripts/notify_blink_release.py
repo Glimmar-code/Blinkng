@@ -42,7 +42,13 @@ def release_alert_payload(release, metadata, expected_commit):
     }}
 
 
-def read_url(url, *, token=None, limit=8192):
+# GitHub's /releases/latest JSON is commonly larger than 8 KiB when the
+# release includes multiple assets. Keep a strict 1 MiB bound rather than
+# accepting unlimited or truncated API responses.
+MAX_RELEASE_JSON_BYTES = 1024 * 1024
+
+
+def read_url(url, *, token=None, limit=MAX_RELEASE_JSON_BYTES):
     headers = {"User-Agent": "BLINK-release-notifier/1.0"}
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -56,16 +62,24 @@ def read_url(url, *, token=None, limit=8192):
 
 
 def main():
-    commit = os.environ.get("RELEASE_COMMIT", "")
-    if not re.fullmatch(r"[0-9a-f]{40}", commit):
-        raise ValueError("Expected the exact published main SHA")
     if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY:
         raise ValueError("Not the expected production repository")
+    manual_mode = os.environ.get("BLINK_RELEASE_MANUAL_MODE", "")
+    if manual_mode not in ("", "validate_only", "send_published_release"):
+        raise ValueError("Unsupported manual release notification mode")
+    if manual_mode and os.environ.get("GITHUB_ACTOR", "").lower() != "glimmar-code":
+        raise ValueError("Only the BLINK repository owner may manually verify or send an alert")
     account_json = os.environ.get("FIREBASE_RELEASE_SERVICE_ACCOUNT_JSON", "")
     if not account_json:
         raise RuntimeError("Configure FIREBASE_RELEASE_SERVICE_ACCOUNT_JSON in GitHub Actions secrets before production release push alerts can run")
     github_token = os.environ.get("GITHUB_TOKEN", "")
     release = json.loads(read_url(API + "/releases/latest", token=github_token))
+    # Workflow_run must match the exact publishing SHA. Manual validation/replay
+    # is limited to the current public release, not arbitrary uploaded content.
+    commit = (release.get("target_commitish", "") if manual_mode
+              else os.environ.get("RELEASE_COMMIT", ""))
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("Expected the exact published main SHA")
     # Only the approved publisher's immutable attached release-info is trusted.
     asset = next((a for a in release.get("assets", [])
                   if a.get("name") == "release-info.txt"), None)
@@ -82,6 +96,10 @@ def main():
             raise ValueError("Malformed release metadata")
         metadata[k] = v
     payload = release_alert_payload(release, metadata, commit)
+    if manual_mode == "validate_only":
+        # FCM validates authentication, project, topic and message structure but
+        # does not actually deliver a notification to user devices.
+        payload = {"validate_only": True, **payload}
 
     # Credentials never become a build artifact, source file or log value.
     from google.oauth2 import service_account
@@ -101,7 +119,12 @@ def main():
     with urllib.request.urlopen(req, timeout=20) as resp:
         if resp.status != 200:
             raise RuntimeError("FCM rejected the published release notification")
-    print("Sent BLINK website release topic alert for", release["tag_name"])
+    if manual_mode == "validate_only":
+        print("FCM HTTP v1 accepted validation-only request for", release["tag_name"],
+              "(no message delivered)")
+    else:
+        print("FCM HTTP v1 accepted BLINK website release topic alert for",
+              release["tag_name"], "(individual device delivery is not guaranteed)")
 
 
 if __name__ == "__main__":
