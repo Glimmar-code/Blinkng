@@ -30,7 +30,7 @@ create policy blink_live_banner_owner_insert
 on storage.objects for insert to authenticated
 with check (
   bucket_id = 'blink-live-banners'
-  and name ~ '^banners/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(jpg|png)$'
+  and name ~ '^banners/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png)$'
   and (select public.blink_live_can_upload_banner())
 );
 
