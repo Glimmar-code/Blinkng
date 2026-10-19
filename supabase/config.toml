@@ -106,3 +106,25 @@ content_path = "./supabase/templates/password_changed_notification.html"
 enabled = true
 subject = "BLINK security: your email was changed"
 content_path = "./supabase/templates/email_changed_notification.html"
+
+# User-initiated Paystack checkout and post-checkout confirmation require BLINK JWTs.
+[functions.paystack-checkout]
+verify_jwt = true
+
+[functions.paystack-confirm]
+verify_jwt = true
+
+[functions.paystack-history]
+verify_jwt = true
+
+# Opt-in subscriptions require a signed-in owner. No default opt-ins.
+[functions.paystack-autorenew]
+verify_jwt = true
+
+# An isolated secret header authorizes internal Brevo payment email deliveries.
+[functions.paystack-payment-email]
+verify_jwt = false
+
+# Paystack webhooks are authenticated by HMAC-SHA512 of their raw payload.
+[functions.paystack-webhook]
+verify_jwt = false

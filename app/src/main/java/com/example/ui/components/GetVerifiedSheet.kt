@@ -36,6 +36,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.verification.BlinkVerificationTier
+import com.blinkng.shared.verification.BlinkVerificationPlans
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +54,16 @@ fun GetVerifiedSheet(
     onRefreshDailyMissions: () -> Unit = {},
     onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
-    onUpgrade: (VerificationBadge) -> Unit
+    pendingCashPayment: Boolean = false,
+    cashCheckoutBusy: Boolean = false,
+    onCheckCashPayment: () -> Unit = {},
+    onPaymentHistory: () -> Unit = {},
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onLoadRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
+    onUpgrade: (VerificationBadge, Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedBadge by remember {
@@ -67,9 +77,11 @@ fun GetVerifiedSheet(
     // and webhook reconcile exactly the selected tier and duration.
     val recurringCheckoutVerified = false
     var showDailyMissions by remember { mutableStateOf(false) }
+    var confirmedRenewalTerms by remember(profile.id) { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         onRefreshDailyMissions()
+        onLoadRenewal()
     }
 
     val sheetBg = if (isDark) DarkSurface else LightSurface
@@ -853,16 +865,16 @@ fun GetVerifiedSheet(
                             }
 
                             OutlinedButton(
-                                onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !isGoldActive && recurringCheckoutVerified && selectedMonths == 1,
+                                onClick = { onUpgrade(VerificationBadge.BLUE, selectedMonths) },
+                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Secure subscription checkout (coming soon)", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.BLUE, selectedMonths).totalNgn} for ${selectedMonths}m (one-time)", fontWeight = FontWeight.Bold)
                             }
                             if (!recurringCheckoutVerified && !isGoldActive) {
                                 Text(
-                                    "No cash subscription checkout or recurring charge can begin until secure provider verification is available. BLINK Coin verification is a separate 30-day purchase.",
+                                    "These are one-time payments for 1, 3, 6 or 12 months. Automatic renewal is not enabled.",
                                     fontSize = 10.5.sp,
                                     color = textSecondary,
                                     textAlign = TextAlign.Center,
@@ -892,19 +904,18 @@ fun GetVerifiedSheet(
                     }
                 } else if (selectedBadge == VerificationBadge.GOLD) {
                     val isCurrentBadge = profile.verificationBadge == selectedBadge
-                    val eligible = isGoldEligible && !isCurrentBadge
+                    val eligible = isGoldEligible
                     Button(
-                        onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && recurringCheckoutVerified && selectedMonths == 1,
+                        onClick = { onUpgrade(VerificationBadge.GOLD, selectedMonths) },
+                        enabled = eligible && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
                         Text(
                             when {
-                                isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                recurringCheckoutVerified -> "Continue to secure Gold checkout"
+                                economyPolicy.cashCheckoutEnabled -> "Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.GOLD, selectedMonths).totalNgn} for ${selectedMonths}m (one-time)"
                                 else -> "Secure Gold checkout not connected"
                             },
                             fontWeight = FontWeight.Bold,
@@ -917,6 +928,78 @@ fun GetVerifiedSheet(
                         color = textSecondary,
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                     )
+                }
+                if (pendingCashPayment) {
+                    OutlinedButton(
+                        onClick = onCheckCashPayment,
+                        enabled = !cashCheckoutBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(100.dp)
+                    ) { Text("I've paid • Verify with Paystack", fontWeight = FontWeight.Bold) }
+                    Text(
+                        "BLINK only grants a badge after Paystack confirms your payment.",
+                        fontSize = 11.sp,
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            item {
+                if (profile.verificationBadge != VerificationBadge.NONE) {
+                    HorizontalDivider()
+                    Text("Automatic renewal (optional)",
+                        fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text(
+                        "Your latest paid verification plan can renew at the same price and " +
+                            "duration when its paid period ends. Recurring charges are OFF unless you " +
+                            "explicitly agree below. You can cancel future charges at any time.",
+                        color = textSecondary, fontSize = 13.sp
+                    )
+                    Text("Status: ${renewalStatus.replace('_', ' ')}",
+                        color = textPrimary, fontSize = 14.sp)
+                    if (renewalStatus == "active") {
+                        OutlinedButton(
+                            onClick = onCancelRenewal,
+                            enabled = !renewalWorking,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Stop future automatic charges")
+                        }
+                    } else if (renewalStatus == "none" || renewalStatus == "cancelled" ||
+                               renewalStatus == "error") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = confirmedRenewalTerms,
+                                onCheckedChange = { confirmedRenewalTerms = it }
+                            )
+                            Text("I agree to automatic charges for the latest paid plan.",
+                                color = textPrimary, fontSize = 13.sp,
+                                modifier = Modifier.weight(1f))
+                        }
+                        Button(
+                            onClick = {
+                                confirmedRenewalTerms = false
+                                onEnableRenewal()
+                            },
+                            enabled = confirmedRenewalTerms && economyPolicy.cashCheckoutEnabled &&
+                                !renewalWorking,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Confirm recurring billing")
+                        }
+                    } else {
+                        Text("Recurring billing is not ready; no new charges will start here.",
+                            color = textSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onPaymentHistory,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("View Paystack receipts and payment history")
                 }
             }
         }
