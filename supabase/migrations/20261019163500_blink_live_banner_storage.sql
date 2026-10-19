@@ -15,9 +15,9 @@ language plpgsql stable security definer
 set search_path = ''
 as $$
 begin
-  return private.require_blink_owner() is not null;
-exception when insufficient_privilege then
-  return false;
+  if auth.uid() is null then return false; end if;
+  -- Only the database-protected active owner role can publish/upload artwork.
+  return coalesce(private.active_blink_admin_role(auth.uid()) = 'owner', false);
 end;
 $$;
 
