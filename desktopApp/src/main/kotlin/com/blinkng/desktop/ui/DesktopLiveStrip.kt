@@ -77,7 +77,8 @@ fun DesktopLiveStrip(state: DesktopAppState) {
         snapshot.visibleAnnouncement?.let { "Announcement" to it },
         snapshot.visiblePromotion?.let { "BLINK" to it }
     ) else emptyList()
-    val campaigns=if(campaignResponse.first==placement)
+    val campaigns=if(snapshot.campaignsEnabledOn(placement) &&
+        campaignResponse.first==placement)
         BlinkLiveCampaignPolicy.displayFor(placement,campaignResponse.second)
         else emptyList()
 
