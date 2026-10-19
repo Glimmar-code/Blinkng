@@ -728,7 +728,7 @@
       const profiles=await fetchProfiles((rows||[]).map(x=>x.user_id));
       state.feedMode='following';
       state.feed=(rows||[]).map(x=>normalizeFeedItem(x,profiles));
-      document.getElementById('feed-list').innerHTML=state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>Your Following feed is quiet</h2><p>Follow more people to see their posts here.</p></div>';
+      const followingList=document.getElementById('feed-list');if(!followingList)return;followingList.innerHTML=state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>Your Following feed is quiet</h2><p>Follow more people to see their posts here.</p></div>';
       document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
       document.querySelector('[data-following]')?.classList.add('active');
       const loadMore=document.getElementById('load-more-feed');
