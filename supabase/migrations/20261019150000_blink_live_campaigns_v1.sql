@@ -136,12 +136,12 @@ begin
     'action_route',q.action_route,'style',q.style,'accent',q.accent,
     'pinned',q.pinned,'frequency_hours',q.frequency_hours,
     'priority',q.priority,'ends_at',q.ends_at
-  ) order by q.pinned desc,q.priority desc,q.created_at desc)
+  ) order by (q.kind='emergency') desc,q.pinned desc,q.priority desc,q.created_at desc)
   from (
     select c.*
     from public.blink_live_campaigns c
     where private.blink_live_visible(c.id,p_placement,p_app_version,v_uid)
-    order by c.pinned desc,c.priority desc,c.created_at desc
+    order by (c.kind='emergency') desc,c.pinned desc,c.priority desc,c.created_at desc
     limit 4
   ) q
  ),'[]'::jsonb);
