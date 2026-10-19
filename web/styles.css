@@ -66,3 +66,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .feed .post-actions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;min-width:0}
 .feed .post-actions button{min-width:0;min-height:44px;padding:8px 2px;white-space:nowrap;font-size:clamp(10px,2.6vw,13px)}
 @media(max-width:600px){.feed{gap:10px}.feed .post-card{border-radius:12px}.feed .post-actions{gap:0}.feed .post-actions button{letter-spacing:-.2px}}
+
+
+/* Feed loading placeholders and keyboard-visible actions */
+.feed-skeleton{display:grid;gap:14px;padding:4px 0}
+.feed-skeleton-card{border:1px solid var(--border,rgba(127,127,127,.24));border-radius:16px;padding:16px;display:grid;gap:12px;background:var(--card,transparent)}
+.feed-skeleton-line{height:13px;border-radius:999px;background:rgba(127,127,127,.18);animation:blink-feed-pulse 1.3s ease-in-out infinite}
+.feed-skeleton-line.short{width:38%}.feed-skeleton-line.medium{width:72%}
+.feed-skeleton-media{height:180px;border-radius:12px;background:rgba(127,127,127,.12);animation:blink-feed-pulse 1.3s ease-in-out infinite}
+@keyframes blink-feed-pulse{50%{opacity:.4}}
+.feed .post-actions button:focus-visible,.feed .post-head button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.feed-skeleton-line,.feed-skeleton-media{animation:none}}
