@@ -41,15 +41,16 @@ fun DesktopPaystackCheckoutPanel(
     var status by remember(userId) { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
     var showCoinPacks by remember { mutableStateOf(false) }
+    var selectedMonths by remember { mutableStateOf(1) }
     val scope = rememberCoroutineScope()
 
-    fun begin(kind: String, itemCode: String) {
+    fun begin(kind: String, itemCode: String, months: Int = 1) {
         if (working) return
         working = true
         status = "Preparing secure checkout…"
         scope.launch {
             try {
-                val (url, reference) = client.initializePaystackCheckout(kind, itemCode)
+                val (url, reference) = client.initializePaystackCheckout(kind, itemCode, months)
                 prefs.put(key, reference)
                 pending = reference
                 status = "Complete payment in your browser, then confirm here."
@@ -66,13 +67,24 @@ fun DesktopPaystackCheckoutPanel(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Text("Paystack purchases")
+        Text("Paystack purchases — one-time checkout only")
+        Text("Select duration (renewal is OFF until you explicitly agree to it).")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = !working, onClick = { begin("verification", "BLUE") }) {
-                Text("Blue · ₦800")
+            listOf(1, 3, 6, 12).forEach { duration ->
+                OutlinedButton(enabled = !working, onClick = { selectedMonths = duration }) {
+                    Text(if (duration == selectedMonths) "✓ ${duration}m" else "${duration}m")
+                }
             }
-            OutlinedButton(enabled = !working, onClick = { begin("verification", "GOLD") }) {
-                Text("Gold · ₦2,000")
+        }
+        val discount = when (selectedMonths) { 3 -> 10; 6 -> 20; 12 -> 30; else -> 0 }
+        val bluePrice = 800 * selectedMonths * (100 - discount) / 100
+        val goldPrice = 2000 * selectedMonths * (100 - discount) / 100
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = !working, onClick = { begin("verification", "BLUE", selectedMonths) }) {
+                Text("Blue · ₦$bluePrice")
+            }
+            OutlinedButton(enabled = !working, onClick = { begin("verification", "GOLD", selectedMonths) }) {
+                Text("Gold · ₦$goldPrice")
             }
         }
         OutlinedButton(enabled = !working, onClick = { showCoinPacks = !showCoinPacks }) {
