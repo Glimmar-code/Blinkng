@@ -168,6 +168,9 @@ fun BlinkBoostGrowthRoute(
     onListingClick: (MarketItem) -> Unit,
     onGetCoins: () -> Unit = {},
     onCreateContent: () -> Unit = {},
+    paystackCheckoutAvailable: Boolean = false,
+    onPaystackBoost: (String, String, Int, String, String, Int, String?) -> Unit =
+        { _, _, _, _, _, _, _ -> },
     onClose: () -> Unit,
 ) {
     var selectedColumn by remember { mutableStateOf(BoostGrowthColumn.BOOST) }
@@ -228,6 +231,8 @@ fun BlinkBoostGrowthRoute(
                 isDark = isDark,
                 onGetCoins = onGetCoins,
                 onCreateContent = onCreateContent,
+                paystackCheckoutAvailable = paystackCheckoutAvailable,
+                onPaystackBoost = onPaystackBoost,
             )
             BoostGrowthColumn.EARN -> EarnRankPointsColumn(
                 isDark = isDark,
@@ -284,6 +289,8 @@ private fun BoostCampaignColumn(
     isDark: Boolean,
     onGetCoins: () -> Unit,
     onCreateContent: () -> Unit,
+    paystackCheckoutAvailable: Boolean,
+    onPaystackBoost: (String, String, Int, String, String, Int, String?) -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
@@ -752,6 +759,21 @@ private fun BoostCampaignColumn(
                                     OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
                                         Text("Get Blink Coins")
                                     }
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        onPaystackBoost(
+                                            targetType.name, targetId, boostPower,
+                                            objective.name, audience.name,
+                                            durationDays, targetUniversity
+                                        )
+                                    },
+                                    enabled = paystackCheckoutAvailable && isOnline &&
+                                        !working && !quoteLoading && quote != null &&
+                                        quoteCost > 0 && targetReady,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Pay with Paystack • Final price shown at checkout")
                                 }
                                 Button(
                                     onClick = { confirmStart = true },
