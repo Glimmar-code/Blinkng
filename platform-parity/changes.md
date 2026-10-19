@@ -1,3 +1,11 @@
+## 2026-10-19 — Android Paystack v2 payment interface, gated until merchant QA
+
+- **PARITY-EXCEPTION: android-paystack-v2-mobile-checkout-20261019** — New UI hooks are Android-native Compose sheets, browser-intent return handling, activity resume reconciliation, checkout dialogs and a mobile boost workflow. Windows does not share Android's Activity lifecycle, intents or these Jetpack Compose surfaces.
+- **Existing Windows equivalent:** Windows currently supports Blue verification/coin-pack cash checkout through the existing `DesktopSupabaseClient.initializePaystackVerificationCheckout()` and `initializePaystackCoinCheckout()` routes, and supports Blink Coin-funded Boost from `DesktopBoostGrowthScreen`. Both platforms retain secure, server-verified payments and a coin-based boost option.
+- **Known parity gap, not represented as completed:** The new v2 backend includes Gold verification, multi-month discounts, subscription enable/cancel, receipt history and direct naira boosts; Windows **does not yet expose equivalent new v2 controls**. Those must be integrated in a separate desktop payment parity PR before claiming full feature parity or publishing those services to desktop customers.
+- **Safety:** Client payment actions stay disabled under the existing `cash_checkout_enabled=false` flag. No new client ever receives Paystack secrets, and the Supabase v2 migrations/functions are not deployed. Recurring payment selection is unchecked by default and requires a separate affirmative consent.
+- **Blocking tests:** Real Paystack TEST-mode merchant success/decline, signed webhook/replay, subscription enable/cancel, emails, Android device return tests, Windows v2 interface parity and backend production deployment are all pending. No live activation or release is authorized by these mobile-only changes.
+
 ## 2026-10-18 — Android native call action delivery and offline hangup recovery (PR #371)
 
 - **PARITY-EXCEPTION: android-telecom-workmanager-call-ending-20261018** — This change specifically repairs Android OS `NotificationCompat.CallStyle` actions, Android Telecom lifecycle, Android `singleTask` call-intent isolation and Android WorkManager's persisted network-constrained background retry. Those OS facilities have no Windows equivalent; porting Android code into Windows would be incorrect.
