@@ -3,6 +3,7 @@ import SwiftUI
 struct BLINKRootView: View {
     @StateObject private var auth = BLINKAuthStore()
     @State private var selectedSection: BLINKSection = .home
+    @State private var sellerMessageRecipient: String?
 
     var body: some View {
         Group {
@@ -31,9 +32,17 @@ struct BLINKRootView: View {
                             case .reels:
                                 BLINKFeedView(mode: .reels, auth: auth)
                             case .market:
-                                BLINKMarketView(auth: auth)
+                                BLINKMarketView(auth: auth) { username in
+                                    sellerMessageRecipient = username
+                                    selectedSection = .message
+                                }
                             case .connect:
                                 BLINKConnectView(auth: auth, currentUserID: user.id)
+                            case .message:
+                                BLINKMessagesView(
+                                    auth: auth, userID: user.id,
+                                    draftRecipient: $sellerMessageRecipient
+                                )
                             default:
                                 BLINKSectionView(
                                     section: section,
