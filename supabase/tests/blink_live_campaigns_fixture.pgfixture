@@ -67,3 +67,21 @@ end; $$;
 
 grant usage on schema public to anon,authenticated;
 grant usage on schema auth to anon,authenticated;
+
+-- Minimal fake Storage metadata: only within disposable CI, never a production insert.
+create schema storage;
+create table storage.buckets (
+ id text primary key,
+ name text not null,
+ public boolean not null,
+ file_size_limit bigint,
+ allowed_mime_types text[]
+);
+create table storage.objects (
+ id uuid primary key default gen_random_uuid(),
+ bucket_id text not null references storage.buckets(id),
+ name text not null
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated;
+grant insert on storage.objects to authenticated;
