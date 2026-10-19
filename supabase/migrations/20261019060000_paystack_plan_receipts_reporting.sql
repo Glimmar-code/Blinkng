@@ -63,8 +63,9 @@ BEGIN
   IF v_total<=0 THEN RAISE EXCEPTION 'INVALID_PAYMENT_AMOUNT'; END IF;
   v_reference:='blink-ps-'||replace(gen_random_uuid()::text,'-','');
   INSERT INTO public.blink_paystack_payments
-    (user_id,reference,purchase_kind,item_code,amount_ngn,duration_days)
-    VALUES (v_user,v_reference,'verification',v_item,v_total,p_months*30);
+    (user_id,reference,purchase_kind,item_code,amount_ngn,duration_days,duration_months)
+    VALUES (v_user,v_reference,'verification',v_item,v_total,
+      CASE WHEN p_months=12 THEN 365 ELSE p_months*30 END,p_months);
   RETURN jsonb_build_object('reference',v_reference,'kind','verification',
     'item_code',v_item,'amount_ngn',v_total,'currency','NGN',
     'months',p_months,'discount_percent',v_discount,
@@ -83,7 +84,7 @@ AS $receipts$
   SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC),'[]'::jsonb)
   FROM (
     SELECT id,reference,purchase_kind,item_code,amount_ngn,currency,
-      duration_days,status,created_at,paid_at
+      duration_days,duration_months,status,created_at,paid_at
     FROM public.blink_paystack_payments
     WHERE user_id=auth.uid()
     ORDER BY created_at DESC
