@@ -45,6 +45,8 @@ import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
+import com.example.data.supabase.BlinkPaystackCheckoutService
+import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkInAppNotification
@@ -822,6 +824,108 @@ fun MainAppContent(
         if (boostOpenSignal > 0) feedUtilitySheet = "boost"
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // This controller is additive to main's legacy Paystack seller-activation flow.
+    // The new v2 payment endpoints and database remain disabled until independently verified.
+    val paystackV2 = remember { BlinkPaystackCheckoutService() }
+    val paymentScope = rememberCoroutineScope()
+    val paystackPrefs = remember(uiState.myProfile.id) {
+        context.getSharedPreferences("blink_paystack_v2_" + uiState.myProfile.id,
+            android.content.Context.MODE_PRIVATE)
+    }
+    var v2PendingReference by remember(uiState.myProfile.id) {
+        mutableStateOf(paystackPrefs.getString("reference", null))
+    }
+    var v2PendingPrompt by remember(uiState.myProfile.id) { mutableStateOf(true) }
+    var v2PaymentBusy by remember { mutableStateOf(false) }
+    var v2RenewalStatus by remember(uiState.myProfile.id) { mutableStateOf("unavailable") }
+    var v2RenewalBusy by remember { mutableStateOf(false) }
+    var showV2Receipts by remember { mutableStateOf(false) }
+    var v2Receipts by remember { mutableStateOf<List<BlinkPaystackReceipt>>(emptyList()) }
+    var receiptsLoading by remember { mutableStateOf(false) }
+    var receiptsError by remember { mutableStateOf<String?>(null) }
+
+    fun startV2Checkout(kind: String, item: String, months: Int = 1) {
+        if (v2PaymentBusy) return
+        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Paystack cash checkout is not available yet.")
+            return
+        }
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                val checkout = paystackV2.createCheckout(kind, item, months)
+                v2PendingReference = checkout.reference
+                v2PendingPrompt = true
+                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                )
+                viewModel.showToast("Complete your Paystack payment and return to BLINK.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Secure checkout unavailable.")
+            } finally {
+                v2PaymentBusy = false
+            }
+        }
+    }
+
+    fun confirmV2Payment() {
+        val reference = v2PendingReference ?: return
+        if (v2PaymentBusy) return
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                if (paystackV2.confirmPayment(reference)) {
+                    v2PendingReference = null
+                    v2PendingPrompt = false
+                    paystackPrefs.edit().remove("reference").apply()
+                    viewModel.fetchSupabaseData()
+                    viewModel.showToast("Paystack payment confirmed. Purchase delivered.")
+                } else viewModel.showToast("Payment is still pending. Check again later.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Could not verify this payment.")
+            } finally {
+                v2PaymentBusy = false
+            }
+        }
+    }
+
+    fun refreshV2RenewalStatus() {
+        paymentScope.launch {
+            v2RenewalStatus = try {
+                paystackV2.renewalStatus().optString("status", "none")
+            } catch (_: Exception) { "unavailable" }
+        }
+    }
+
+    fun updateV2Renewal(enabled: Boolean) {
+        if (v2RenewalBusy) return
+        v2RenewalBusy = true
+        paymentScope.launch {
+            try {
+                val response = if (enabled) paystackV2.enableRenewal() else paystackV2.stopRenewal()
+                v2RenewalStatus = response.optString("status", "none")
+                viewModel.showToast(if (enabled) "Automatic renewal enabled."
+                    else "Future automatic charges cancelled.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to update renewal.")
+            } finally { v2RenewalBusy = false }
+        }
+    }
+
+    fun openV2Receipts() {
+        showV2Receipts = true
+        receiptsLoading = true
+        receiptsError = null
+        paymentScope.launch {
+            try { v2Receipts = paystackV2.listReceipts() }
+            catch (_: Exception) { receiptsError = "Couldn't load payment history." }
+            finally { receiptsLoading = false }
+        }
+    }
+
     val connectHubActions = remember(viewModel) {
         ConnectHubActions(
             refresh = { viewModel.refreshConnectHub() },
@@ -2006,12 +2110,55 @@ fun MainAppContent(
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
-                onUpgrade = { tier ->
-                    if (tier == com.example.data.models.VerificationBadge.BLUE) {
-                        viewModel.startPaystackVerificationCheckout()
-                    } else {
-                        viewModel.applyVerification(tier)
+                onUpgrade = { tier, months ->
+                    if (tier != com.example.data.models.VerificationBadge.NONE)
+                        startV2Checkout("verification", tier.name, months)
+                },
+                pendingCashPayment = v2PendingReference != null,
+                cashCheckoutBusy = v2PaymentBusy,
+                onCheckCashPayment = { confirmV2Payment() },
+                onPaymentHistory = { openV2Receipts() },
+                renewalStatus = v2RenewalStatus,
+                renewalWorking = v2RenewalBusy,
+                onLoadRenewal = { refreshV2RenewalStatus() },
+                onEnableRenewal = { updateV2Renewal(true) },
+                onCancelRenewal = { updateV2Renewal(false) }
+            )
+        }
+
+        if (v2PendingReference != null && v2PendingPrompt && !uiState.isGetVerifiedOpen) {
+            AlertDialog(
+                onDismissRequest = { v2PendingPrompt = false },
+                title = { Text("Confirm your Paystack payment") },
+                text = { Text("After checkout, BLINK verifies your payment with Paystack before granting benefits.") },
+                confirmButton = {
+                    TextButton(enabled = !v2PaymentBusy, onClick = { confirmV2Payment() }) {
+                        Text("I've paid · Verify")
                     }
+                },
+                dismissButton = {
+                    TextButton(onClick = { v2PendingPrompt = false }) { Text("Later") }
+                }
+            )
+        }
+        if (showV2Receipts) {
+            AlertDialog(
+                onDismissRequest = { showV2Receipts = false },
+                title = { Text("Paystack payment history") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        when {
+                            receiptsLoading -> CircularProgressIndicator()
+                            receiptsError != null -> Text(receiptsError.orEmpty())
+                            v2Receipts.isEmpty() -> Text("No Paystack purchases yet.")
+                            else -> v2Receipts.take(8).forEach { receipt ->
+                                Text("${receipt.createdAt} · ${receipt.itemCode} · ₦${receipt.amountNgn} · ${receipt.status}")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showV2Receipts = false }) { Text("Close") }
                 }
             )
         }
@@ -2029,7 +2176,7 @@ fun MainAppContent(
                         )
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
-                                onClick = { viewModel.startPaystackCoinCheckout(pack.id) },
+                                onClick = { startV2Checkout("coin_pack", pack.id, 1); viewModel.closeCoinPackPicker() },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
