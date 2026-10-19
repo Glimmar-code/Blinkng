@@ -54,7 +54,7 @@ struct BLINKMessagesAPI {
         // Backend sends newest first. UI needs oldest first.
         let oldest = rows.last
         return BLINKMessagesPage(
-            messages: rows.reversed(),
+            messages: Array(rows.reversed()),
             beforeTime: oldest?.createdAt,
             beforeId: oldest?.id,
             hasMore: rows.count >= limit
