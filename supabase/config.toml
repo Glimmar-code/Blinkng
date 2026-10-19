@@ -119,3 +119,7 @@ verify_jwt = false
 # Internal worker, requires long service-only x-blink-email-worker-secret.
 [functions.paystack-payment-email]
 verify_jwt = false
+
+# Owner-only read-only BLINK Paystack finance dashboard.
+[functions.paystack-finance]
+verify_jwt = true
