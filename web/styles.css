@@ -51,3 +51,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+
+/* BLINK Android-inspired feed polish: consistent cards and touch targets. */
+.feed{display:grid;gap:14px;min-width:0}
+.feed .post-card{width:100%;min-width:0;overflow:hidden;border:1px solid var(--border,rgba(127,127,127,.24));border-radius:16px}
+.feed .post-head{display:flex;align-items:center;gap:10px;min-width:0}
+.feed .post-head .profile-mini{display:flex;align-items:center;gap:10px;min-width:0;flex:1;text-align:left}
+.feed .post-head .profile-mini .grow{min-width:0;overflow:hidden}
+.feed .post-head .profile-mini strong,.feed .post-head .profile-mini .handle{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed .post-media img,.feed .post-media video{display:block;max-width:100%;height:auto}
+.feed .post-text{overflow-wrap:anywhere;white-space:pre-wrap}
+.feed .post-stats{display:flex;gap:8px 14px;flex-wrap:wrap;font-size:12px}
+.feed .post-actions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;min-width:0}
+.feed .post-actions button{min-width:0;min-height:44px;padding:8px 2px;white-space:nowrap;font-size:clamp(10px,2.6vw,13px)}
+@media(max-width:600px){.feed{gap:10px}.feed .post-card{border-radius:12px}.feed .post-actions{gap:0}.feed .post-actions button{letter-spacing:-.2px}}
