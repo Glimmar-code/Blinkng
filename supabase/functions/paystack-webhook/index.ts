@@ -21,6 +21,25 @@ Deno.serve(async req=>{
       const result=await reconcile(reference);
       return json({received:true,status:result.status});
     }
+    // Signed invoice notices never grant benefits or initiate charges.
+    if(["invoice.create","invoice.payment_failed","subscription.not_renew"].includes(event.event)){
+      const invoice=event.data||{};
+      const subCode=invoice.subscription?.subscription_code ||
+        (typeof invoice.subscription==="string" ? invoice.subscription :
+        typeof invoice.subscription_code==="string" ? invoice.subscription_code : "");
+      if(!/^SUB_[a-zA-Z0-9]+$/.test(String(subCode))) return json({received:true});
+      const invoiceId=String(invoice.id||invoice.invoice_code||invoice.reference||"");
+      if(!invoiceId || invoiceId.length>90) return json({received:true});
+      const kind=event.event==="invoice.create" ? "renewal_reminder" :
+        event.event==="invoice.payment_failed" ? "renewal_failed" : "renewal_cancelled";
+      const {error:noticeError}=await serviceClient().rpc(
+        "queue_blink_paystack_renewal_notice",{
+         p_subscription_code:subCode,p_kind:kind,
+         p_event_key:`${event.event}:${subCode}:${invoiceId}`,
+      });
+      if(noticeError) throw new Error("RENEWAL_NOTICE_FAILED");
+      return json({received:true});
+    }
     // Paystack bills subscriptions itself. Never treat an unsigned invoice as payment.
     // Subsequent references are provider-generated, not BLINK checkout references.
     if(event.event==="invoice.update"){
