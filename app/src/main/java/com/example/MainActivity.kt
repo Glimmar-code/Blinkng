@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
     private var showCoinPackChooser by mutableStateOf(false)
     private var showPendingPaymentPrompt by mutableStateOf(true)
 
-    private fun startPaystackCheckout(kind: String, itemCode: String) {
+    private fun startPaystackCheckout(kind: String, itemCode: String, months: Int) {
         if (paymentInProgress) return
         if (!viewModel.uiState.value.economyPolicy.cashCheckoutEnabled) {
             viewModel.showToast("Secure cash payments are not available yet.")
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
         paymentInProgress = true
         lifecycleScope.launch {
             try {
-                val checkout = paystack.createCheckout(kind, itemCode)
+                val checkout = paystack.createCheckout(kind, itemCode, months)
                 pendingPaymentReference = checkout.reference
                 showPendingPaymentPrompt = true
                 paystackPrefs.edit().putString("reference", checkout.reference).apply()
@@ -692,7 +692,7 @@ fun MainAppContent(
     showPendingPaymentPrompt: Boolean = false,
     onOpenCoinPackChooser: () -> Unit = {},
     onCloseCoinPackChooser: () -> Unit = {},
-    onStartPaystackCheckout: (String, String) -> Unit = { _, _ -> },
+    onStartPaystackCheckout: (String, String, Int) -> Unit = { _, _, _ -> },
     onConfirmPaystackPayment: () -> Unit = {},
     onDismissPendingPaystack: () -> Unit = {},
 ) {
@@ -1477,7 +1477,7 @@ fun MainAppContent(
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 enabled = uiState.economyPolicy.cashCheckoutEnabled && !paymentInProgress,
-                                onClick = { onStartPaystackCheckout("coin_pack", pack.id) },
+                                onClick = { onStartPaystackCheckout("coin_pack", pack.id, 1) },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("₦${pack.priceNgn}  •  ${pack.coins} coins")
@@ -1528,8 +1528,8 @@ fun MainAppContent(
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
-                onUpgrade = { tier ->
-                    if (tier != VerificationBadge.NONE) onStartPaystackCheckout("verification", tier.name)
+                onUpgrade = { tier, months ->
+                    if (tier != VerificationBadge.NONE) onStartPaystackCheckout("verification", tier.name, months)
                 },
                 pendingCashPayment = pendingPaymentReference != null,
                 cashCheckoutBusy = paymentInProgress,
