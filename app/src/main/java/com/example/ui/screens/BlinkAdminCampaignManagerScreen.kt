@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.supabase.BlinkLiveBannerUploadService
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -145,6 +150,18 @@ fun BlinkAdminCampaignManagerScreen(
     onBack: ()->Unit,
 ) {
     val scope=rememberCoroutineScope()
+    val context=LocalContext.current
+    var selectedBannerUri by remember { mutableStateOf<Uri?>(null) }
+    var uploadingBanner by remember { mutableStateOf(false) }
+    var uploadedNotice by remember { mutableStateOf<String?>(null) }
+    val galleryPicker=rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri!=null) {
+            selectedBannerUri=uri
+            uploadedNotice=null
+        }
+    }
     var rows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var history by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -158,6 +175,8 @@ fun BlinkAdminCampaignManagerScreen(
     val selected=rows.firstOrNull { it.optString("id")==selectedId }
 
     fun openRecord(id:String?) {
+        selectedBannerUri=null
+        uploadedNotice=null
         selectedId=id
         draft=rows.firstOrNull { it.optString("id")==id }
             ?.let(LiveCampaignDraft::fromRow) ?: LiveCampaignDraft()
@@ -285,10 +304,42 @@ fun BlinkAdminCampaignManagerScreen(
         CampaignSelectChips("Accent",listOf("neutral","blue","gold"),draft.accent){
             draft=draft.copy(accent=it)
         }
+        Text("Banner image",fontWeight=FontWeight.SemiBold)
+        Text("Choose a JPG/PNG photo (up to 2 MB). Uploading creates an image draft only; publish the campaign separately.",
+            style=MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick={galleryPicker.launch("image/*")},
+                enabled=isOwner&&!uploadingBanner&&!busy
+            ) { Text("Choose from gallery") }
+            Button(
+                onClick={
+                    val uri=selectedBannerUri ?: return@Button
+                    uploadingBanner=true
+                    error=null
+                    scope.launch {
+                        BlinkLiveBannerUploadService.upload(context,uri)
+                            .onSuccess { url ->
+                                draft=draft.copy(image=url)
+                                selectedBannerUri=null
+                                uploadedNotice="Image uploaded! Save your campaign draft to keep it."
+                            }
+                            .onFailure { error=it.message ?: "Image upload failed. Try again." }
+                        uploadingBanner=false
+                    }
+                },
+                enabled=isOwner&&selectedBannerUri!=null&&!uploadingBanner&&!busy
+            ) { Text(if(uploadingBanner) "Uploading…" else "Upload photo") }
+        }
+        if(selectedBannerUri!=null) AsyncImage(
+            model=selectedBannerUri,contentDescription="Selected photo before upload",
+            modifier=Modifier.fillMaxWidth().heightIn(max=160.dp))
+        uploadedNotice?.let { Text(it,color=MaterialTheme.colorScheme.primary) }
         OutlinedTextField(draft.image,{draft=draft.copy(image=it.take(500))},
-            label={Text("Banner image URL (HTTPS; optional)")},modifier=Modifier.fillMaxWidth())
+            label={Text("Or paste an HTTPS banner URL")},modifier=Modifier.fillMaxWidth(),
+            enabled=!uploadingBanner)
         if(draft.image.startsWith("https://")) AsyncImage(
-            model=draft.image,contentDescription="Banner preview",
+            model=draft.image,contentDescription="Uploaded banner preview",
             modifier=Modifier.fillMaxWidth().heightIn(max=160.dp))
         CampaignSelectChips("Button destination",
             listOf("","home","reels","marketplace","connect","messages",
@@ -340,7 +391,7 @@ fun BlinkAdminCampaignManagerScreen(
         draft.validate()?.let { Text(it,color=MaterialTheme.colorScheme.error) }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Button(enabled=!busy&&draft.validate()==null,onClick={pendingAction="save"}) {
+            Button(enabled=!busy&&!uploadingBanner&&draft.validate()==null,onClick={pendingAction="save"}) {
                 Text("Save Draft")
             }
             if(selected!=null) {
