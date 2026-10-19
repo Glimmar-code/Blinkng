@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
     private var paystackV2ReceiptError by mutableStateOf<String?>(null)
     private var paystackV2ReceiptOpen by mutableStateOf(false)
     private var paystackV2Receipts by mutableStateOf<List<BlinkPaystackReceipt>>(emptyList())
+    private var paystackV2ReceiptUserId by mutableStateOf<String?>(null)
     private var showBugReportSheet by mutableStateOf(false)
     private var shakeSensorListener: android.hardware.SensorEventListener? = null
     private var lastShakeTriggerAt: Long = 0L
@@ -191,11 +192,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openPaystackV2Receipts() {
+        val ownerId = viewModel.uiState.value.myProfile.id
+        paystackV2ReceiptUserId = ownerId
+        paystackV2Receipts = emptyList()
         paystackV2ReceiptOpen = true
         paystackV2ReceiptLoading = true
         paystackV2ReceiptError = null
         lifecycleScope.launch {
-            try { paystackV2Receipts = paystackV2.listReceipts() }
+            try {
+                val receipts = paystackV2.listReceipts()
+                if (viewModel.uiState.value.myProfile.id == ownerId) paystackV2Receipts = receipts
+            }
             catch (_: Exception) {
                 paystackV2ReceiptError = "Unable to load your payment history."
             } finally { paystackV2ReceiptLoading = false }
@@ -835,7 +842,8 @@ class MainActivity : ComponentActivity() {
                                         paystackV2Busy = paystackV2Busy,
                                         onOpenPaystackV2Receipts = ::openPaystackV2Receipts,
                                         onClosePaystackV2Receipts = { paystackV2ReceiptOpen = false },
-                                        paystackV2ReceiptOpen = paystackV2ReceiptOpen,
+                                        paystackV2ReceiptOpen = paystackV2ReceiptOpen &&
+                                            paystackV2ReceiptUserId == uiState.myProfile.id,
                                         paystackV2ReceiptLoading = paystackV2ReceiptLoading,
                                         paystackV2ReceiptError = paystackV2ReceiptError,
                                         paystackV2Receipts = paystackV2Receipts
