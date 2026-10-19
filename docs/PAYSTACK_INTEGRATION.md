@@ -60,12 +60,46 @@ Before live activation:
 - Verify refunds, chargebacks, receipts and transaction reconciliation before
   claiming full financial operations coverage.
 
+## Phase 2 on Testlab (not live)
+
+The conflict-free PR now stages these extra pieces:
+
+- **One-time multi-month verification**: 1, 3, 6, or 12 months; discounts of
+  0%, 10%, 20%, and 30% respectively. Prices and terms come from a server
+  generated order, not from Android or Windows.
+- **Account-only payment receipts**: Android verification screen and an
+  authenticated `paystack-history` endpoint; service-only finance summary.
+- **Payment notifications**: an idempotent internal outbox entry on successful
+  fulfillment. Push/email delivery still needs a sender worker and final tests.
+- **Provider reversals/disputes**: signed webhook events create service-only
+  audit entries; a confirmed full refund marks a payment refunded. Partial
+  refunds are recorded for separate financial reconciliation. No customer-facing
+  discretionary refund flow is implemented. Legally/provider-mandated refunds,
+  fraud claims and chargebacks cannot be disabled.
+- **Boosting**: existing paid visibility for posts, reels and marketplace
+  listings is purchased with BLINK Coins. Direct naira billing of individual
+  campaigns is separate, still unimplemented.
+
+**Recurring card/direct-debit charges are not implemented or authorized.**
+One-time multi-month checkout never enrolls users in automatic renewals.
+An explicit, clearly explained renewal opt-in and a tested provider-side
+cancellation endpoint are required before subscriptions can go live.
+
+### No paid staging branch
+
+Disposable PostgreSQL on GitHub Actions validates migrations and transaction
+idempotency at no new Supabase branch cost. These tests do not use production.
+A genuine Paystack TEST-mode end-to-end payment, webhook, and refund/dispute
+scenario must still run in an isolated environment before LIVE activation.
+Never repurpose another live app's database or turn on production just to test.
+
 ## Pending separate feature work
 
-**Not implemented in this PR:** recurring subscription plans, subscription
-cancellations, multi-month discounts, direct marketplace checkout, seller split
-payments, payouts, refunds, boost billing, finance analytics/exports, and
-automatic recurring-payment email notifications. They require distinct
+**Not implemented in this PR:** actual provider recurring subscriptions and
+cancellations, merchant auto-renew mandates, direct marketplace checkout,
+seller split payments, payouts, voluntary refunds, direct cash boost billing,
+automated finance exports, completed reversal/chargeback settlement and
+automatic recurring-payment email delivery. They require distinct
 business-rule design and verified merchant capabilities, and should not be
 claimed to work until their dedicated integration tests pass.
 
