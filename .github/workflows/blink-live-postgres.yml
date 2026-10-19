@@ -7,6 +7,7 @@ on:
       - 'supabase/migrations/20261019100000_blink_live_configuration.sql'
       - 'supabase/migrations/20261019113000_admin_blink_live_config_manager.sql'
       - 'supabase/migrations/20261019150000_blink_live_campaigns_v1.sql'
+      - 'supabase/migrations/20261019163500_blink_live_banner_storage.sql'
       - 'supabase/tests/blink_live_campaigns_*'
       - '.github/workflows/blink-live-postgres.yml'
   push:
@@ -15,6 +16,7 @@ on:
       - 'supabase/migrations/20261019100000_blink_live_configuration.sql'
       - 'supabase/migrations/20261019113000_admin_blink_live_config_manager.sql'
       - 'supabase/migrations/20261019150000_blink_live_campaigns_v1.sql'
+      - 'supabase/migrations/20261019163500_blink_live_banner_storage.sql'
       - 'supabase/tests/blink_live_campaigns_*'
   workflow_dispatch:
 
@@ -56,7 +58,9 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019113000_admin_blink_live_config_manager.sql
       - name: Apply scheduled campaign and engagement schema
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019150000_blink_live_campaigns_v1.sql
-      - name: Prove roles, targeting, approval, audit, and safe analytics
+      - name: Apply owner-only banner storage policy and MIME limits
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019163500_blink_live_banner_storage.sql
+      - name: Prove roles, targeting, approval, audit, banner upload controls and safe analytics
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_live_campaigns_assertions.pgfixture
       - name: Confirm no production secrets or databases used
         run: echo 'All tests ran against disposable fake PostgreSQL data. Production Supabase was untouched.'
