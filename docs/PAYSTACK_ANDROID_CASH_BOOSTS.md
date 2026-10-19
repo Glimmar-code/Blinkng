@@ -1,0 +1,1 @@
+BLINK Paystack Cash Boost integration: Paystack purchases of posts, reels, profiles and market listing campaigns are server-priced and disabled until cash checkout and cash-boost configuration are explicitly enabled after merchant approval. The client reuses the verified payment return and never invents the price. Existing coin-funded campaigns remain unchanged.

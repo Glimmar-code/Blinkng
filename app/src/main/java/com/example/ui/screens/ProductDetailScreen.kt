@@ -77,6 +77,8 @@ fun ProductDetailScreen(
     onSellerProfileClick: (String) -> Unit,
     onToggleSave: (MarketItem) -> Unit = {},
     onRequestOrder: (MarketItem, Int) -> Unit = { _, _ -> },
+    paystackCheckoutAvailable: Boolean = false,
+    onPaystackBuy: (MarketItem) -> Unit = {},
     onReport: (MarketItem, String, String) -> Unit = { _, _, _ -> },
     onMakeOffer: (MarketItem, Long, String) -> Unit = { _, _, _ -> },
     onConfirmAvailability: (MarketItem) -> Unit = {},
@@ -574,11 +576,15 @@ fun ProductDetailScreen(
                     .fillMaxWidth()
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Row(
+                Column(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
+                  Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
                     OutlinedButton(
                         onClick = { onDirectMessage(item.sellerUsername, item.sellerName, item.sellerAvatar) },
                         enabled = item.sellerUsername.isNotBlank(),
@@ -625,6 +631,16 @@ fun ProductDetailScreen(
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(if (isSubmittingOrder) "Sending" else "Request", fontWeight = FontWeight.Bold)
                     }
+                  }
+                  OutlinedButton(
+                      onClick = { onPaystackBuy(item) },
+                      enabled = available && paystackCheckoutAvailable && !isSubmittingOrder,
+                      modifier = Modifier.fillMaxWidth(),
+                      shape = RoundedCornerShape(100.dp),
+                  ) {
+                      Text(if (paystackCheckoutAvailable) "Pay with Paystack · 1 item"
+                           else "Secure Paystack checkout coming soon")
+                  }
                 }
             }
         }

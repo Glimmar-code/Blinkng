@@ -1698,6 +1698,37 @@ class DesktopSupabaseClient(
         ) as JSONObject
     }
 
+    suspend fun initializePaystackMarketCheckout(listingId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(listingId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "Choose a valid Market listing." }
+        postObject(
+            "/functions/v1/paystack-checkout",
+            JSONObject().put("kind","marketplace").put("itemCode","MARKET_ITEM")
+                .put("listingId",listingId).put("months",1),
+        ) as JSONObject
+    }
+
+    suspend fun initializePaystackGiftCheckout(
+        recipientUsername: String, packId: String, note: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(recipientUsername.matches(Regex("^[a-zA-Z0-9_.]{2,40}$")))
+        require(packId.matches(Regex("^coins_[0-9]+$")))
+        require(note.length<=160)
+        postObject(
+            "/functions/v1/paystack-checkout",
+            JSONObject().put("kind","gift").put("itemCode","GIFT_COINS")
+                .put("recipientUsername",recipientUsername).put("packId",packId)
+                .put("message",note).put("months",1),
+        ) as JSONObject
+    }
+
+    suspend fun verifyPaystackV2Checkout(reference: String): JSONObject = withContext(Dispatchers.IO) {
+        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        postObject(
+            "/functions/v1/paystack-confirm",
+            JSONObject().put("reference",reference),
+        ) as JSONObject
+    }
+
     suspend fun verifyPaystackCashOrder(orderId: String): JSONObject = withContext(Dispatchers.IO) {
         require(orderId.isNotBlank()) { "Payment order is missing." }
         postObject(
