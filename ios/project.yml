@@ -1,0 +1,48 @@
+name: BLINKiOS
+
+options:
+  bundleIdPrefix: ng.com.blink
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+targets:
+  BLINKiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: BLINKiOS/Sources
+    info:
+      path: BLINKiOS/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: BLINK
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        BLINK_SUPABASE_URL: "$(BLINK_SUPABASE_URL)"
+        BLINK_SUPABASE_ANON_KEY: "$(BLINK_SUPABASE_ANON_KEY)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        BLINK_SUPABASE_URL: ""
+        BLINK_SUPABASE_ANON_KEY: ""
+  BLINKiOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BLINKiOS/Tests
+    dependencies:
+      - target: BLINKiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
