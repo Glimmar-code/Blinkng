@@ -53,6 +53,15 @@ fun BlinkAdminLiveContentManagerScreen(
     isOwner: Boolean,
     onBack: () -> Unit,
 ) {
+    var showCampaignManager by remember { mutableStateOf(false) }
+    if (showCampaignManager) {
+        BlinkAdminCampaignManagerScreen(
+            service = service,
+            isOwner = isOwner,
+            onBack = { showCampaignManager = false }
+        )
+        return
+    }
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf<List<AdminLiveContentRow>>(emptyList()) }
     var selectedKey by remember { mutableStateOf("announcement") }
@@ -105,6 +114,7 @@ fun BlinkAdminLiveContentManagerScreen(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Live Content", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { showCampaignManager = true }) { Text("Campaigns") }
             TextButton(onClick = onBack, enabled = !working) { Text("Back") }
         }
         Text(
