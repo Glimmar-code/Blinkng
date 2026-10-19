@@ -686,13 +686,16 @@ class DesktopSupabaseClient(
     }
 
     /** Same server-authoritative Paystack functions used on Android. No merchant keys or client prices. */
-    suspend fun initializePaystackCheckout(kind: String, itemCode: String): Pair<String, String> =
+    suspend fun initializePaystackCheckout(kind: String, itemCode: String, months: Int = 1): Pair<String, String> =
         withContext(Dispatchers.IO) {
             require(kind in setOf("verification", "coin_pack")) { "Invalid purchase category." }
             require(itemCode.matches(Regex("^[a-zA-Z0-9_]{1,30}$"))) { "Invalid purchase selection." }
+            require(months in setOf(1, 3, 6, 12) && (kind == "verification" || months == 1)) {
+                "Invalid one-time purchase duration."
+            }
             val result = postObject(
                 "/functions/v1/paystack-checkout",
-                JSONObject().put("kind", kind).put("itemCode", itemCode),
+                JSONObject().put("kind", kind).put("itemCode", itemCode).put("months", months),
             ) as JSONObject
             val url = result.optString("checkoutUrl")
             val reference = result.optString("reference")
