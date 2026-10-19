@@ -1,26 +1,54 @@
 import SwiftUI
 
 struct BLINKRootView: View {
+    @StateObject private var auth = BLINKAuthStore()
     @State private var selectedSection: BLINKSection = .home
 
     var body: some View {
-        TabView(selection: $selectedSection) {
-            ForEach(BLINKSection.allCases) { section in
-                NavigationStack {
-                    BLINKSectionView(section: section)
+        Group {
+            switch auth.state {
+            case .starting:
+                ProgressView("Checking your BLINK account…")
+                    .padding()
+            case .unavailable:
+                ContentUnavailableView {
+                    Label("Connection unavailable", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text("BLINK could not load a valid public Supabase configuration.")
+                } actions: {
+                    Link("Open BLINK website", destination: URL(string: "https://www.blink.com.ng/")!)
+                        .buttonStyle(.borderedProminent)
                 }
-                .tabItem {
-                    Label(section.title, systemImage: section.symbol)
+            case .signedOut:
+                BLINKAuthView(auth: auth)
+            case .signedIn(let user):
+                TabView(selection: $selectedSection) {
+                    ForEach(BLINKSection.allCases) { section in
+                        NavigationStack {
+                            BLINKSectionView(
+                                section: section,
+                                email: user.email,
+                                signOut: { Task { await auth.signOut() } }
+                            )
+                        }
+                        .tabItem { Label(section.title, systemImage: section.symbol) }
+                        .tag(section)
+                    }
                 }
-                .tag(section)
+                .tint(.primary)
             }
         }
-        .tint(.primary)
+        .task { await auth.restore() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await auth.revalidate() }
+        }
     }
 }
 
 private struct BLINKSectionView: View {
     let section: BLINKSection
+    let email: String?
+    let signOut: () -> Void
     private let website = URL(string: "https://www.blink.com.ng/")!
 
     var body: some View {
@@ -30,6 +58,14 @@ private struct BLINKSectionView: View {
                     .font(.system(size: 27, weight: .black))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
+                Menu {
+                    if let email { Text(email) }
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", action: signOut)
+                } label: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 24))
+                        .accessibilityLabel("BLINK account menu")
+                }
                 Link(destination: website) {
                     Image(systemName: "globe")
                         .font(.system(size: 20))
@@ -52,7 +88,7 @@ private struct BLINKSectionView: View {
 
             Spacer()
 
-            Text("iOS foundation • Phase 1")
+            Text("Your BLINK account is connected • iOS Phase 2")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
