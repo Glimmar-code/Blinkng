@@ -56,7 +56,13 @@ fun GetVerifiedSheet(
     onRefreshDailyMissions: () -> Unit = {},
     onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
-    onUpgrade: (VerificationBadge) -> Unit
+    onPaymentHistory: () -> Unit = {},
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onRefreshRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
+    onUpgrade: (VerificationBadge, Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedBadge by remember {
@@ -66,9 +72,14 @@ fun GetVerifiedSheet(
     }
     val isGoldEligible = profile.followerCount >= 1000
     var showDailyMissions by remember { mutableStateOf(false) }
+    var selectedMonths by remember { mutableIntStateOf(1) }
+    var recurringConsentChecked by remember { mutableStateOf(false) }
+    val monthDiscount = when (selectedMonths) { 3 -> 10; 6 -> 20; 12 -> 30; else -> 0 }
+    fun discountedNgn(monthly: Int) = monthly * selectedMonths * (100 - monthDiscount) / 100
 
     LaunchedEffect(Unit) {
         onRefreshDailyMissions()
+        onRefreshRenewal()
     }
 
     val sheetBg = if (isDark) DarkSurface else LightSurface
@@ -136,6 +147,29 @@ fun GetVerifiedSheet(
                         lineHeight = 18.sp,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose payment duration", fontWeight = FontWeight.Bold, color = textPrimary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1, 3, 6, 12).forEach { months ->
+                            FilterChip(
+                                selected = selectedMonths == months,
+                                onClick = { selectedMonths = months },
+                                label = { Text(if (months == 1) "1m" else "${months}m") },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Text(
+                        if (monthDiscount > 0) "Save ${monthDiscount}% by paying for ${selectedMonths} months."
+                        else "One month at the standard price.",
+                        fontSize = 12.sp, color = textSecondary
+                    )
+                    Text("One-time payment. Automatic renewal requires separate permission.",
+                        fontSize = 12.sp, color = textSecondary)
                 }
             }
 
@@ -825,12 +859,12 @@ fun GetVerifiedSheet(
                             }
 
                             OutlinedButton(
-                                onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !alreadyBlueOrGold && economyPolicy.cashCheckoutEnabled,
+                                onClick = { onUpgrade(VerificationBadge.BLUE, selectedMonths) },
+                                enabled = economyPolicy.cashCheckoutEnabled && profile.verificationBadge != VerificationBadge.GOLD,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} • ${economyPolicy.blueVerificationValidDays} days", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${discountedNgn(economyPolicy.blueVerificationCashNgn)} • ${selectedMonths} month(s)", fontWeight = FontWeight.Bold)
                             }
                             if (!economyPolicy.cashCheckoutEnabled && !alreadyBlueOrGold) {
                                 Text(
@@ -866,8 +900,8 @@ fun GetVerifiedSheet(
                     val isCurrentBadge = profile.verificationBadge == selectedBadge
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
-                        onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = false,
+                        onClick = { onUpgrade(VerificationBadge.GOLD, selectedMonths) },
+                        enabled = isGoldEligible && economyPolicy.cashCheckoutEnabled,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -876,12 +910,56 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                else -> "Gold verification is not sold through Paystack"
+                                else -> "Pay ₦${discountedNgn(2000)} • ${selectedMonths} month(s)"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
                     }
+                }
+            }
+            item {
+                HorizontalDivider()
+                Text("Automatic renewal", fontWeight = FontWeight.Bold, color = textPrimary)
+                Text(
+                    "Off unless you opt in. If activated after buying a plan, Paystack would charge the " +
+                        "same amount at the chosen interval. Cancel future charges whenever you want.",
+                    fontSize = 12.sp, color = textSecondary
+                )
+                Text("Status: ${renewalStatus.replace('_', ' ')}", color = textPrimary, fontSize = 13.sp)
+                when (renewalStatus) {
+                    "active" -> OutlinedButton(
+                        enabled = !renewalWorking,
+                        onClick = onCancelRenewal,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Cancel future automatic payments") }
+                    "none", "cancelled" -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = recurringConsentChecked,
+                                onCheckedChange = { recurringConsentChecked = it })
+                            Text(
+                                "I explicitly agree to future recurring charges for my last paid plan.",
+                                color = textPrimary, fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        OutlinedButton(
+                            enabled = recurringConsentChecked && !renewalWorking &&
+                                economyPolicy.cashCheckoutEnabled,
+                            onClick = {
+                                recurringConsentChecked = false
+                                onEnableRenewal()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Enable recurring renewal") }
+                    }
+                    else -> Text("Recurring charges are unavailable at present.",
+                        color = textSecondary, fontSize = 12.sp)
+                }
+            }
+            item {
+                OutlinedButton(onClick = onPaymentHistory, modifier = Modifier.fillMaxWidth()) {
+                    Text("Paystack receipts & transaction history")
                 }
             }
         }
