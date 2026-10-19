@@ -10,6 +10,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+data class AdminLiveContentRow(
+    val key: String,
+    val value: JSONObject,
+    val enabled: Boolean,
+    val revision: Long,
+)
+
 data class AdminCapability(
     val isAdmin: Boolean = false,
     val isOwner: Boolean = false,
@@ -173,6 +180,46 @@ class AdminSupabaseService {
             isOwner = json.optBoolean("is_owner", false),
             role = json.optString("role", "none"),
             expiresAt = json.nullableString("expires_at")
+        )
+    }
+
+    /** Read disabled drafts too. Server rechecks active admin role. */
+    suspend fun fetchLiveContent(): Result<List<AdminLiveContentRow>> = runCatching {
+        val items = JSONObject(rpc("admin_read_blink_live_config")).getJSONArray("items")
+        buildList {
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                add(AdminLiveContentRow(
+                    key = item.getString("key"),
+                    value = item.getJSONObject("value"),
+                    enabled = item.getBoolean("enabled"),
+                    revision = item.getLong("revision"),
+                ))
+            }
+        }
+    }
+
+    /** Security authority and revision checks always run inside Supabase RPC. */
+    suspend fun publishLiveContent(
+        key: String,
+        value: JSONObject,
+        enabled: Boolean,
+        expectedRevision: Long,
+    ): Result<AdminLiveContentRow> = runCatching {
+        require(key in setOf("announcement", "promotion", "display", "feature_visibility"))
+        val item = JSONObject(rpc(
+            "admin_publish_blink_live_config",
+            JSONObject()
+                .put("p_key", key)
+                .put("p_value", value)
+                .put("p_enabled", enabled)
+                .put("p_expected_revision", expectedRevision)
+        ))
+        AdminLiveContentRow(
+            key = item.getString("key"),
+            value = item.getJSONObject("value"),
+            enabled = item.getBoolean("enabled"),
+            revision = item.getLong("revision"),
         )
     }
 
