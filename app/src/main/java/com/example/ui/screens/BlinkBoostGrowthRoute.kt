@@ -168,6 +168,9 @@ fun BlinkBoostGrowthRoute(
     onListingClick: (MarketItem) -> Unit,
     onGetCoins: () -> Unit = {},
     onCreateContent: () -> Unit = {},
+    cashCheckoutEnabled: Boolean = false,
+    onPayWithPaystack: (String, String, Int, String, String, Int, String?) -> Unit =
+        { _, _, _, _, _, _, _ -> },
     onClose: () -> Unit,
 ) {
     var selectedColumn by remember { mutableStateOf(BoostGrowthColumn.BOOST) }
@@ -228,6 +231,8 @@ fun BlinkBoostGrowthRoute(
                 isDark = isDark,
                 onGetCoins = onGetCoins,
                 onCreateContent = onCreateContent,
+                cashCheckoutEnabled = cashCheckoutEnabled,
+                onPayWithPaystack = onPayWithPaystack,
             )
             BoostGrowthColumn.EARN -> EarnRankPointsColumn(
                 isDark = isDark,
@@ -284,6 +289,8 @@ private fun BoostCampaignColumn(
     isDark: Boolean,
     onGetCoins: () -> Unit,
     onCreateContent: () -> Unit,
+    cashCheckoutEnabled: Boolean,
+    onPayWithPaystack: (String, String, Int, String, String, Int, String?) -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
@@ -752,6 +759,27 @@ private fun BoostCampaignColumn(
                                     OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
                                         Text("Get Blink Coins")
                                     }
+                                }
+                                if (cashCheckoutEnabled && quote != null && quoteCost > 0) {
+                                    OutlinedButton(
+                                        enabled = !working && !quoteLoading && isOnline && targetReady,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        onClick = {
+                                            onPayWithPaystack(
+                                                targetType.name, targetId, boostPower, objective.name,
+                                                audience.name, durationDays, targetUniversity
+                                            )
+                                        }
+                                    ) {
+                                        Text("Pay with Paystack")
+                                    }
+                                    Text(
+                                        "Your final naira price is calculated securely and shown " +
+                                            "on Paystack before you approve payment. " +
+                                            "Your ad starts only after server confirmation.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                                 Button(
                                     onClick = { confirmStart = true },
