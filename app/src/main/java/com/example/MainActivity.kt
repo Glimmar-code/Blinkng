@@ -525,9 +525,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
-                uiState.selectedTab == MainTab.HOME &&
-                uiState.feedSubTab == 0 &&
+            // Update notifications should also be visible while browsing Reels,
+            // Market, Connect or Messages, but must not interrupt other overlays.
+            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
                 !uiState.isFeedLoading &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
@@ -545,6 +545,8 @@ class MainActivity : ComponentActivity() {
                 uiState.deepLinkedPost == null &&
                 uiState.viewingProduct == null &&
                 uiState.viewingProfile == null
+            val idleHomeForPrompts = idleAppForUpdate &&
+                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -800,7 +802,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         val newRelease = websiteRelease
-                        if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
+                        if (idleAppForUpdate && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
                                 release = newRelease,
                                 downloadState = when (val downloaded = websiteDownloadState) {
