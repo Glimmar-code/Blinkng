@@ -15,18 +15,29 @@ Deno.serve(async req => {
     const kind=String(payload.kind||"").toLowerCase();
     const itemCode=String(payload.itemCode||"").trim();
     const months=payload.months === undefined ? 1 : payload.months;
-    if(!["verification","coin_pack"].includes(kind) || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
+    if(!["verification","coin_pack","boost"].includes(kind) || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
       || !Number.isInteger(months) || ![1,3,6,12].includes(months)
-      || (kind==="coin_pack" && months!==1))
+      || ((kind==="coin_pack" || kind==="boost") && months!==1))
       return json({error:"INVALID_CHECKOUT_SELECTION"},400);
     const auth=req.headers.get("authorization") || "";
     const caller=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_ANON_KEY")!,{
       global:{headers:{Authorization:auth}},
       auth:{persistSession:false,autoRefreshToken:false},
     });
-    const {data:order,error:orderError}=await caller.rpc("create_blink_paystack_order_v2",{
-      p_kind:kind,p_item_code:itemCode,p_months:months,
-    });
+    const orderCall=kind==="boost"
+      ? {name:"create_blink_paystack_boost_order",args:{
+          p_target_type:payload.targetType,p_target_id:payload.targetId,
+          p_boost_power:payload.boostPower,p_objective:payload.objective,
+          p_audience_scope:payload.audienceScope,
+          p_duration_days:payload.durationDays,
+          p_target_university:payload.targetUniversity||null,
+        }}
+      : {name:"create_blink_paystack_order_v2",args:{
+          p_kind:kind,p_item_code:itemCode,p_months:months,
+        }};
+    if(kind==="boost" && itemCode!=="BOOST")
+      return json({error:"INVALID_BOOST_SELECTION"},400);
+    const {data:order,error:orderError}=await caller.rpc(orderCall.name,orderCall.args);
     if(orderError || !order) return json({error:orderError?.message || "CHECKOUT_UNAVAILABLE"},400);
     const charge=await paystackApi("transaction/initialize","POST",{
       email:user.email,
