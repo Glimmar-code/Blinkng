@@ -13,11 +13,15 @@ data class BlinkLiveSnapshot(
     val showAnnouncements: Boolean = true,
     val showPromotions: Boolean = true,
     val homePromoEnabled: Boolean = true,
+    val campaignPlacementFlags: Map<String, Boolean> = emptyMap(),
 ) {
     val visibleAnnouncement: BlinkLiveMessage?
         get() = announcement.takeIf { showAnnouncements }
     val visiblePromotion: BlinkLiveMessage?
         get() = promotion.takeIf { showPromotions && homePromoEnabled }
+
+    /** Only optional presentation is affected; navigation, account and payment rules stay compiled. */
+    fun campaignsEnabledOn(placement: String): Boolean = campaignPlacementFlags[placement] != false
 }
 
 /** Strict allowlist + bounded text. New client code is required for new capabilities. */
@@ -50,6 +54,9 @@ object BlinkLiveConfigPolicy {
             showAnnouncements = flag(display["show_announcements"]),
             showPromotions = flag(display["show_promotions"]),
             homePromoEnabled = flag(features["home_promo_enabled"]),
+            campaignPlacementFlags = BlinkLiveCampaignPolicy.placements.associateWith {
+                page -> flag(features[page + "_campaign_enabled"])
+            },
         )
     }
 }
