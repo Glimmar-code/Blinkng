@@ -164,7 +164,7 @@ BEGIN
  WHERE user_id=v_user AND item_code='BLUE' AND duration_days=180 AND amount_ngn=3840)
  THEN RAISE EXCEPTION 'SIX_MONTH_DISCOUNT_INVALID'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.blink_paystack_payments
- WHERE user_id=v_user AND item_code='BLUE' AND duration_days=360 AND amount_ngn=6720)
+ WHERE user_id=v_user AND item_code='BLUE' AND duration_days=365 AND duration_months=12 AND amount_ngn=6720)
  THEN RAISE EXCEPTION 'TWELVE_MONTH_DISCOUNT_INVALID'; END IF;
  IF has_function_privilege('authenticated',
   'public.blink_paystack_financial_report(timestamptz,timestamptz)','EXECUTE')
