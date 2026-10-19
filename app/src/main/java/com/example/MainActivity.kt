@@ -871,6 +871,35 @@ fun MainAppContent(
         }
     }
 
+    fun startV2CashBoost(
+        targetType: String, targetId: String, power: Int,
+        objective: String, audience: String, days: Int, university: String?
+    ) {
+        if (v2PaymentBusy) return
+        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Cash-funded Boost is not enabled yet.")
+            return
+        }
+        v2PaymentBusy = true
+        paymentScope.launch {
+            try {
+                val checkout = paystackV2.createBoostCheckout(
+                    targetType, targetId, power, objective, audience, days, university
+                )
+                v2PendingReference = checkout.reference
+                v2PendingPrompt = true
+                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                )
+                viewModel.showToast("Complete your secure Paystack campaign payment.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Cash Boost is not available.")
+            } finally { v2PaymentBusy = false }
+        }
+    }
+
     fun confirmV2Payment() {
         val reference = v2PendingReference ?: return
         if (v2PaymentBusy) return
@@ -1579,6 +1608,10 @@ fun MainAppContent(
                             },
                             onCreateContent = {
                                 dismissUtility { viewModel.openCreatePost(true) }
+                            },
+                            paystackCheckoutAvailable = uiState.economyPolicy.cashCheckoutEnabled,
+                            onPaystackBoost = { targetType, targetId, power, objective, audience, days, university ->
+                                startV2CashBoost(targetType, targetId, power, objective, audience, days, university)
                             },
                             onClose = { dismissUtility() },
                         )
