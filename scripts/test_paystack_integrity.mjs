@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { merchantKeyMatchesMode, paystackWebhookSignatureMatches, transactionMatchesOrder } from "../supabase/functions/_shared/paystack_integrity.mjs";
@@ -47,4 +48,13 @@ test("Paystack signed webhook requires genuine HMAC of unmodified raw payload", 
   assert.equal(await paystackWebhookSignatureMatches(payload, "x".repeat(128), secret), false);
   assert.equal(await paystackWebhookSignatureMatches(payload, "", secret), false);
   assert.equal(await paystackWebhookSignatureMatches(payload, signature, "sk_test_wrong_key"), false);
+});
+
+// The prepaid boost rate alone must not unlock cash ad purchases when checkout is enabled.
+test("cash boosts require a separate server-side feature flag", () => {
+  const checkoutSource = readFileSync(new URL("../supabase/functions/paystack-checkout/index.ts", import.meta.url), "utf8");
+  const gatingIndex = checkoutSource.indexOf('kind==="boost" && Deno.env.get("BLINK_PAYSTACK_BOOST_ENABLED")!=="true"');
+  const providerIndex = checkoutSource.indexOf('await paystackApi("transaction/initialize"');
+  assert.ok(gatingIndex >= 0 && providerIndex > gatingIndex, "boost gate must precede provider checkout");
+  assert.match(checkoutSource.slice(gatingIndex, providerIndex), /CASH_BOOST_DISABLED/);
 });
