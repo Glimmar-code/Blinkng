@@ -36,6 +36,8 @@ import com.blinkng.shared.live.BlinkLiveCampaignPolicy
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 
 private fun blankLiveCampaign(): JSONObject=JSONObject()
     .put("kind","announcement").put("title","").put("message","")
@@ -85,6 +87,8 @@ fun DesktopAdminCampaignManager(
     var confirm by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var success by remember { mutableStateOf<String?>(null) }
+    var chosenImage by remember { mutableStateOf<java.io.File?>(null) }
+    var uploadingImage by remember { mutableStateOf(false) }
 
     fun entries():List<JSONObject>=(0 until campaigns.length())
         .mapNotNull { campaigns.optJSONObject(it) }
@@ -102,6 +106,7 @@ fun DesktopAdminCampaignManager(
         }
     }
     fun open(row:JSONObject?) {
+        chosenImage=null
         selectedId=row?.optString("id")
         draft=row?.let(::desktopCampaignFromRow) ?: blankLiveCampaign()
         error=null
@@ -212,8 +217,47 @@ fun DesktopAdminCampaignManager(
                         FilterChip(selected=draft.optString("accent")==v,
                             onClick={update("accent",v)},label={Text(v)})
                 }
-                OutlinedTextField(desktopField(draft,"image_url"),{update("image_url",it.take(500))},
-                    label={Text("Banner HTTPS image (optional)")},modifier=Modifier.fillMaxWidth())
+                Text("Banner image (JPG or PNG, up to 2 MB)",fontWeight=FontWeight.SemiBold)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled=isOwner&&!uploadingImage&&!busy,
+                        onClick={
+                            val chooser=JFileChooser().apply {
+                                dialogTitle="Select a BLINK banner image"
+                                isAcceptAllFileFilterUsed=false
+                                fileFilter=FileNameExtensionFilter("JPEG or PNG images", "jpg","jpeg","png")
+                            }
+                            if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
+                                chosenImage=chooser.selectedFile
+                                success=null
+                            }
+                        }
+                    ) { Text("Choose image") }
+                    Button(
+                        enabled=isOwner&&chosenImage!=null&&!uploadingImage&&!busy,
+                        onClick={
+                            val file=chosenImage ?: return@Button
+                            uploadingImage=true
+                            error=null
+                            scope.launch {
+                                runCatching { actions.uploadLiveBanner(file) }
+                                    .onSuccess { url ->
+                                        update("image_url",url)
+                                        chosenImage=null
+                                        success="Banner uploaded. Save your draft to retain this image."
+                                    }
+                                    .onFailure { error=it.message ?: "Could not upload banner." }
+                                uploadingImage=false
+                            }
+                        }
+                    ) { Text(if(uploadingImage) "Uploading…" else "Upload image") }
+                }
+                chosenImage?.let { Text("Selected: "+it.name.take(100),
+                    style=MaterialTheme.typography.bodySmall) }
+                OutlinedTextField(desktopField(draft,"image_url"),{
+                    update("image_url",it.take(500))
+                }, label={Text("Or paste an HTTPS image URL")},
+                    enabled=!uploadingImage,modifier=Modifier.fillMaxWidth())
                 if(desktopField(draft,"image_url").startsWith("https://")) AsyncImage(
                     model=desktopField(draft,"image_url"),contentDescription="Banner preview",
                     modifier=Modifier.fillMaxWidth().heightIn(max=150.dp))
@@ -272,7 +316,7 @@ fun DesktopAdminCampaignManager(
                     Text("Analytics: $v views • $clicks clicks • ${current.optInt("dismissals")} dismissals")
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Button(onClick={confirm="save"},enabled=!busy){Text("Save draft")}
+                    Button(onClick={confirm="save"},enabled=!busy&&!uploadingImage){Text("Save draft")}
                     selected()?.let { row ->
                         val status=row.optString("status")
                         if(status=="draft") OutlinedButton(onClick={confirm="submit"},enabled=!busy) {Text("Submit")}
