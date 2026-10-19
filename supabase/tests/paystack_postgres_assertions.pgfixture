@@ -79,13 +79,15 @@ begin
 end $$;
 reset role;
 
--- Regression: a delayed cheaper BLUE purchase must not extend paid GOLD.
+-- Regression: BLUE order created first, then user earns active GOLD.
+-- Gold users are normally blocked from NEW Blue orders, but an older
+-- pending Blue receipt can settle after the upgrade.
+select public.create_blink_paystack_order('verification','BLUE');
 update public.profiles
 set verification_badge='GOLD',
     verification_tier='Gold',
     verification_expires_at=now()+interval '60 days'
 where id='11111111-1111-4111-8111-111111111111';
-select public.create_blink_paystack_order('verification','BLUE');
 set role service_role;
 do $
 declare v_order public.blink_paystack_payments%rowtype;
@@ -104,10 +106,15 @@ begin
 end $;
 reset role;
 
--- Regression: cheaper BLUE must not make permanent GOLD expire.
-update public.profiles set verification_expires_at=null
+-- Regression: a pending BLUE receipt must not make permanent GOLD expire.
+-- Create while BLUE, then grant GOLD before settling the older order.
+update public.profiles set verification_badge='BLUE',
+    verification_tier='Standard', verification_expires_at=now()+interval '30 days'
 where id='11111111-1111-4111-8111-111111111111';
 select public.create_blink_paystack_order('verification','BLUE');
+update public.profiles set verification_badge='GOLD',
+    verification_tier='Gold', verification_expires_at=null
+where id='11111111-1111-4111-8111-111111111111';
 set role service_role;
 do $
 declare v_order public.blink_paystack_payments%rowtype;
