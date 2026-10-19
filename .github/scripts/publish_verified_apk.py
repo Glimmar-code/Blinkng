@@ -87,7 +87,66 @@ def gh(repository, *args, check=True):
                           check=check, capture_output=True, text=True)
 
 
+def require_current_main(repository, commit):
+    """Block an old successful build from overwriting a newer production release.
+
+    Always ask GitHub for the *current* main ref. A checked-out Git ref or
+    workflow_run completion status can become stale while a build is running.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("Release commit must be a complete lowercase Git SHA")
+    response = subprocess.run(
+        ["gh", "api", f"repos/{repository}/git/ref/heads/main"],
+        check=True, capture_output=True, text=True, timeout=25,
+    )
+    result = json.loads(response.stdout)
+    current = (result.get("object") or {}).get("sha", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", current):
+        raise ValueError("Unable to verify current production main SHA")
+    if current != commit:
+        raise ValueError(
+            f"Stale Android release: candidate {commit} does not match main {current}; "
+            "keep the previous latest APK intact"
+        )
+
+
+def require_newer_than_public(repository, candidate):
+    """Prevent an older same-main build from becoming the new latest download.
+
+    The signed build already verifies production key continuity, but builds of
+    the same commit can finish out of order. Re-read the newest *public*
+    release immediately before flipping the draft to latest.
+    """
+    latest = gh(repository, "view", "--json", "tagName", check=False)
+    if latest.returncode:
+        if any(marker in latest.stderr.lower()
+               for marker in ("release not found", "no releases found", "404")):
+            return
+        raise ValueError("Cannot inspect latest public release; refusing publication")
+    latest_tag = json.loads(latest.stdout).get("tagName", "")
+    if not re.fullmatch(r"v[A-Za-z0-9][A-Za-z0-9._-]{0,79}", latest_tag):
+        raise ValueError("Invalid current latest production release tag")
+    with tempfile.TemporaryDirectory() as temp:
+        gh(repository, "download", latest_tag,
+           "--pattern", "release-info.txt", "--dir", temp)
+        previous = Path(temp) / "release-info.txt"
+        if not previous.is_file():
+            raise ValueError("Latest release metadata was not downloaded")
+        old_commit = ""
+        for line in previous.read_text().splitlines():
+            if line.startswith("commit="):
+                old_commit = line.removeprefix("commit=")
+        verified = metadata(previous, old_commit)
+        if int(candidate["versionCode"]) <= int(verified["versionCode"]):
+            raise ValueError("Current public APK has equal or higher version code; refusing downgrade")
+        if candidate["signingCertificateSha256"] != verified["signingCertificateSha256"]:
+            raise ValueError("Candidate signing certificate differs from published BLINK APK")
+
+
 def publish(source, repository, commit):
+    # Verify that the signed source is still the current production main, not
+    # merely a historic main ancestor. Recheck again just before publication.
+    require_current_main(repository, commit)
     apks = list(source.rglob("*.apk"))
     infos = list(source.rglob("release-info.txt"))
     packs = list(source.rglob("blink-life-web.zip"))
@@ -101,6 +160,7 @@ def publish(source, repository, commit):
         raise ValueError("Game pack size differs from release metadata")
     verify_web_pack(packs[0], pack_sha)
     tag = "v" + info["versionName"]
+    require_newer_than_public(repository, info)
     existing = gh(repository, "view", tag, "--json", "isDraft,targetCommitish", check=False)
     if existing.returncode == 0:
         state = json.loads(existing.stdout)
@@ -141,6 +201,10 @@ def publish(source, repository, commit):
         for original in (saved_info, checksum, pack_checksum):
             if (downloaded / original.name).read_bytes() != original.read_bytes():
                 raise ValueError("Uploaded release metadata changed; draft remains unpublished")
+        # A newer commit might land while draft assets are being uploaded.
+        # In that case leave this artifact unpublished, preserving latest.
+        require_current_main(repository, commit)
+        require_newer_than_public(repository, info)
         # A failed download or validation leaves the previous latest release intact.
         gh(repository, "edit", tag, "--draft=false", "--latest")
         print(f"Published verified release {tag}: {expected}")

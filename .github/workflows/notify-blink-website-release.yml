@@ -1,0 +1,42 @@
+name: Notify BLINK website release
+
+# A GitHub Actions publish job creates releases with GITHUB_TOKEN; that
+# publication does not fire normal release:published workflows. Depend on
+# the verified Publish latest APK workflow finishing successfully instead.
+on:
+  workflow_run:
+    workflows: [Publish latest APK]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    if: >-
+      github.repository == 'Glimmar-code/Blinkng' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted production notifier (never workflow_run head code)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check release announcement policy
+        run: python3 -m unittest discover -s .github/scripts -p 'test_notify_blink_release.py'
+      - name: Install Google service-account OAuth client
+        run: python3 -m pip install --disable-pip-version-check google-auth==2.37.0 requests==2.32.3
+      - name: Notify website APK users only after publication
+        env:
+          FIREBASE_RELEASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_RELEASE_SERVICE_ACCOUNT_JSON }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: python3 .github/scripts/notify_blink_release.py

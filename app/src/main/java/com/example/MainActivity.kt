@@ -39,6 +39,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.components.*
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
@@ -57,6 +59,8 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkDownloadCoordinator
+import com.example.update.BlinkWebsiteReleaseAlerts
 import com.example.update.WebsiteApkUpdateCoordinator
 import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.util.startActivitySafely
@@ -134,6 +138,10 @@ class MainActivity : ComponentActivity() {
 
     private val playInAppUpdateCoordinator by lazy {
         PlayInAppUpdateCoordinator(this, inAppUpdateLauncher)
+    }
+
+    private val websiteApkDownloadCoordinator by lazy {
+        WebsiteApkDownloadCoordinator(applicationContext)
     }
 
     private fun showRewardedAdForCoins() {
@@ -240,6 +248,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == BlinkWebsiteReleaseAlerts.ACTION_OPEN_UPDATE) {
+            BlinkWebsiteReleaseAlerts.requestRefresh(openPrompt = true)
+            intent.action = Intent.ACTION_MAIN // Consume the notification action once.
+        }
         handleNotificationIntent(intent)
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
@@ -422,6 +434,7 @@ class MainActivity : ComponentActivity() {
         if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
         stopBugShakeListener()
         playInAppUpdateCoordinator.close()
+        websiteApkDownloadCoordinator.close()
         super.onDestroy()
     }
 
@@ -470,24 +483,53 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            val websiteRefreshSignal by BlinkWebsiteReleaseAlerts.refreshSignal.collectAsStateWithLifecycle()
+            val websiteOpenSignal by BlinkWebsiteReleaseAlerts.openPromptSignal.collectAsStateWithLifecycle()
             var adminAnnouncementOpen by remember { mutableStateOf(false) }
 
-            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
-                websiteRelease = null
+            // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
+            // Stopping the Activity suspends checks, resuming it checks straight away.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id, websiteRefreshSignal) {
                 websiteUpdateCheckFinished = false
-                websiteUpdateDismissed = false
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
-                    websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                    BlinkWebsiteReleaseAlerts.configureSubscription(this@MainActivity)
+                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (isActive) {
+                            if (!WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
+                                val latest = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                                if (latest?.versionCode != websiteRelease?.versionCode) {
+                                    websiteRelease = latest
+                                    websiteUpdateDismissed = false
+                                }
+                            } else {
+                                websiteRelease = null
+                            }
+                            websiteUpdateCheckFinished = true
+                            delay(15 * 60 * 1000L)
+                        }
+                    }
+                } else {
+                    websiteRelease = null
+                    websiteUpdateDismissed = false
                     websiteUpdateCheckFinished = true
                 }
             }
+            LaunchedEffect(websiteOpenSignal, uiState.destination) {
+                if (websiteOpenSignal > 0 && uiState.destination == AppDestination.MAIN) {
+                    websiteUpdateDismissed = false
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(0)
+                    BlinkWebsiteReleaseAlerts.consumeOpenPrompt()
+                }
+            }
 
-            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
-                uiState.selectedTab == MainTab.HOME &&
-                uiState.feedSubTab == 0 &&
+            // Update notifications should also be visible while browsing Reels,
+            // Market, Connect or Messages, but must not interrupt other overlays.
+            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
                 !uiState.isFeedLoading &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
@@ -505,6 +547,8 @@ class MainActivity : ComponentActivity() {
                 uiState.deepLinkedPost == null &&
                 uiState.viewingProduct == null &&
                 uiState.viewingProfile == null
+            val idleHomeForPrompts = idleAppForUpdate &&
+                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -760,10 +804,31 @@ class MainActivity : ComponentActivity() {
                         }
 
                         val newRelease = websiteRelease
-                        if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
+                        if (idleAppForUpdate && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
                                 release = newRelease,
-                                onUpdateNow = { websiteUpdateDismissed = true; openWebsiteUpdate() },
+                                downloadState = when (val downloaded = websiteDownloadState) {
+                                    is WebsiteApkDownloadCoordinator.State.Ready ->
+                                        if (downloaded.release == newRelease) downloaded
+                                        else WebsiteApkDownloadCoordinator.State.Idle
+                                    else -> downloaded
+                                },
+                                onUpdateNow = { unmeteredOnly ->
+                                    websiteApkDownloadCoordinator.start(
+                                        newRelease, BuildConfig.VERSION_CODE, unmeteredOnly,
+                                    )
+                                },
+                                onInstall = {
+                                    runCatching { websiteApkDownloadCoordinator.install(this@MainActivity) }
+                                        .onFailure {
+                                            viewModel.showToast("Android could not open the installer. Use the official BLINK website.")
+                                        }
+                                },
+                                onPauseDownload = { websiteApkDownloadCoordinator.pause() },
+                                onOpenWebsite = {
+                                    websiteUpdateDismissed = true
+                                    openWebsiteUpdate()
+                                },
                                 onLater = { websiteUpdateDismissed = true },
                             )
                         }
