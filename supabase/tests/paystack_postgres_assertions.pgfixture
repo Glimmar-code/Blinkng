@@ -347,6 +347,15 @@ BEGIN
  PERFORM public.finish_blink_paystack_renewal(
   v_id,'SUB_testsubscription01','emailtoken123456');
  SELECT verification_expires_at INTO v_expiry FROM public.profiles WHERE id=v_payment.user_id;
+
+ -- A provider assertion with an underpaid amount must never extend membership.
+ BEGIN
+  PERFORM public.fulfill_blink_paystack_renewal(
+   'SUB_testsubscription01','paystack-renewal-underpaid','renewal-tx-underpaid',79900,'NGN');
+  RAISE EXCEPTION 'UNDERPAID_RENEWAL_ACCEPTED';
+ EXCEPTION WHEN others THEN
+  IF sqlerrm <> 'RENEWAL_PAYMENT_MISMATCH' THEN RAISE; END IF;
+ END;
  v_data:=public.fulfill_blink_paystack_renewal(
   'SUB_testsubscription01','paystack-renewal-001','renewal-tx-001',80000,'NGN');
  v_second:=public.fulfill_blink_paystack_renewal(
@@ -365,6 +374,70 @@ BEGIN
  THEN RAISE EXCEPTION 'CUSTOMER_CAN_FORGE_RENEWAL'; END IF;
 END
 $recurring_consent_test$;
+
+-- SIMULATION ONLY: cancellation blocks further grant even if a later invoice is replayed.
+-- Existing paid expiration remains unchanged; no Paystack calls or live users involved.
+DO $cancelled_renewal_regression$
+DECLARE v_sub uuid; v_expiry timestamptz; v_count bigint;
+ v_user uuid:='11111111-1111-4111-8111-111111111111';
+BEGIN
+ SELECT id INTO v_sub FROM private.blink_paystack_renewals
+ WHERE subscription_code='SUB_testsubscription01';
+ IF v_sub IS NULL THEN RAISE EXCEPTION 'MISSING_SIMULATED_SUBSCRIPTION'; END IF;
+ SELECT verification_expires_at INTO v_expiry FROM public.profiles WHERE id=v_user;
+ SELECT count(*) INTO v_count FROM public.blink_paystack_payments
+ WHERE user_id=v_user AND paystack_transaction_id LIKE 'renewal-tx-%';
+ IF public.stop_blink_paystack_renewal(v_sub,v_user) THEN
+   RAISE EXCEPTION 'CANCELLATION_WAS_NOT_IDEMPOTENT';
+ END IF;
+ IF public.stop_blink_paystack_renewal(v_sub,'22222222-2222-4222-8222-222222222222') THEN
+   RAISE EXCEPTION 'OTHER_USER_CANCELLATION_ACCEPTED';
+ END IF;
+ BEGIN
+  PERFORM public.fulfill_blink_paystack_renewal(
+   'SUB_testsubscription01','paystack-renewal-after-cancel',
+   'renewal-tx-after-cancel',80000,'NGN');
+  RAISE EXCEPTION 'CANCELLED_RENEWAL_GRANTED';
+ EXCEPTION WHEN others THEN
+  IF sqlerrm <> 'SUBSCRIPTION_NOT_ACTIVE' THEN RAISE; END IF;
+ END;
+ IF (SELECT verification_expires_at FROM public.profiles WHERE id=v_user)
+    IS DISTINCT FROM v_expiry
+   OR (SELECT count(*) FROM public.blink_paystack_payments
+       WHERE user_id=v_user AND paystack_transaction_id LIKE 'renewal-tx-%') <> v_count
+ THEN RAISE EXCEPTION 'CANCELLED_RENEWAL_CHANGED_BENEFITS'; END IF;
+END
+$cancelled_renewal_regression$;
+
+-- Cancellation notification is queued once and the queue stays service-only.
+DO $cancel_notice_regression$
+DECLARE v_prior bigint; v_notice uuid; v_batch jsonb;
+BEGIN
+ SELECT count(*) INTO v_prior FROM private.blink_paystack_notification_outbox;
+ PERFORM public.queue_blink_paystack_renewal_notice(
+   'SUB_testsubscription01','renewal_cancelled','cancelled:SIMULATED_SUB_001');
+ PERFORM public.queue_blink_paystack_renewal_notice(
+   'SUB_testsubscription01','renewal_cancelled','cancelled:SIMULATED_SUB_001');
+ IF (SELECT count(*) FROM private.blink_paystack_notification_outbox) <> v_prior+1
+ THEN RAISE EXCEPTION 'DUPLICATE_CANCELLATION_NOTICE_QUEUED'; END IF;
+ SELECT id INTO v_notice FROM private.blink_paystack_notification_outbox
+ WHERE event_key='cancelled:SIMULATED_SUB_001';
+ v_batch:=public.claim_blink_paystack_payment_notices(25);
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_batch) x
+   WHERE x->>'id'=v_notice::text)
+ THEN RAISE EXCEPTION 'CANCELLATION_NOTICE_NOT_CLAIMED'; END IF;
+ IF NOT public.complete_blink_paystack_payment_notice(
+    v_notice,'failed','SIMULATED_BREVO_REJECTED')
+ THEN RAISE EXCEPTION 'FAILED_EMAIL_NOT_RECORDED'; END IF;
+ IF (SELECT status FROM private.blink_paystack_notification_outbox
+     WHERE id=v_notice)<>'failed'
+ THEN RAISE EXCEPTION 'FAILED_EMAIL_QUEUE_STATE_INVALID'; END IF;
+ IF has_function_privilege('authenticated',
+   'public.queue_blink_paystack_renewal_notice(text,text,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'CUSTOMER_CAN_FORGE_RENEWAL_NOTICES'; END IF;
+END
+$cancel_notice_regression$;
+
 DO $email_claim_test$
 DECLARE v_claimed jsonb;v_first jsonb;
 BEGIN
