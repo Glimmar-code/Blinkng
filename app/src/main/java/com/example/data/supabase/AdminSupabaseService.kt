@@ -223,6 +223,42 @@ class AdminSupabaseService {
         )
     }
 
+    /** Campaign drafts, approval queue, scheduled calendar and engagement totals. */
+    suspend fun adminLiveCampaigns(): Result<List<JSONObject>> = runCatching {
+        val array = JSONArray(rpc("admin_list_blink_live_campaigns"))
+        buildList { for (i in 0 until array.length()) add(array.getJSONObject(i)) }
+    }
+
+    suspend fun saveLiveCampaign(
+        id: String?, data: JSONObject, revision: Long?,
+    ): Result<JSONObject> = runCatching {
+        JSONObject(rpc("admin_save_blink_live_campaign", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL)
+            .put("p_data", data)
+            .put("p_expected_revision", revision ?: JSONObject.NULL)))
+    }
+
+    suspend fun transitionLiveCampaign(
+        id: String, revision: Long, action: String,
+    ): Result<JSONObject> = runCatching {
+        require(action in setOf("submit", "approve", "pause", "archive"))
+        JSONObject(rpc("admin_transition_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision).put("p_action", action)))
+    }
+
+    suspend fun liveCampaignHistory(id: String): Result<List<JSONObject>> = runCatching {
+        val array = JSONArray(rpc("admin_blink_live_campaign_history", JSONObject().put("p_id", id)))
+        buildList { for (i in 0 until array.length()) add(array.getJSONObject(i)) }
+    }
+
+    suspend fun restoreLiveCampaign(
+        id: String, revision: Long, historicalRevision: Long,
+    ): Result<JSONObject> = runCatching {
+        JSONObject(rpc("admin_restore_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision)
+            .put("p_history_revision", historicalRevision)))
+    }
+
     suspend fun fetchStats(): Result<AdminDashboardStats> = runCatching {
         val json = JSONObject(rpc("admin_dashboard_stats"))
         AdminDashboardStats(
