@@ -1194,7 +1194,9 @@ fun MainAppContent(
                                 "messages" -> viewModel.setTab(MainTab.MESSAGES)
                                 "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
                                 "notifications" -> viewModel.openActivity(true)
-                                "store" -> viewModel.openMenu(true)
+                                "store" -> context.startActivity(
+                                    Intent(context, BlinkStoreActivity::class.java)
+                                )
                                 "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
                                 "profile" -> viewModel.openProfile(uiState.myProfile.username)
                             }
