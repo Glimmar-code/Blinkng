@@ -22,6 +22,8 @@ Deno.serve(async req => {
       return json({error:"INVALID_CHECKOUT_SELECTION"},400);
     // Extra independent product-type kill switches. These must be explicitly
     // enabled by the approved merchant *after* successful staging tests.
+    if(kind==="boost" && Deno.env.get("BLINK_PAYSTACK_BOOST_ENABLED")!=="true")
+      return json({error:"CASH_BOOST_DISABLED"},503);
     if(kind==="marketplace" && Deno.env.get("BLINK_PAYSTACK_MARKET_ENABLED")!=="true")
       return json({error:"MARKET_CHECKOUT_DISABLED"},503);
     if(kind==="gift" && Deno.env.get("BLINK_PAYSTACK_GIFTS_ENABLED")!=="true")
