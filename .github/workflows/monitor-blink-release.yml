@@ -1,0 +1,45 @@
+name: Monitor BLINK production releases
+
+# Alerts on failed signing/publishing/public download integrity, or a scheduled
+# recheck. This never publishes an APK or overrides GitHub status checks.
+on:
+  workflow_run:
+    workflows:
+      - Signed Android release
+      - Publish latest APK
+      - Verify published BLINK APK
+    types: [completed]
+  schedule:
+    - cron: '7 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: blink-production-release-monitor
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.repository == 'Glimmar-code/Blinkng'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout trusted main policy only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate release monitor policy
+        run: node --test .github/scripts/blink_release_monitor.test.cjs
+
+      - name: Diagnose and alert on failed production release jobs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const monitor = require('./.github/scripts/blink_release_monitor.cjs');
+            await monitor({ github, context, core });

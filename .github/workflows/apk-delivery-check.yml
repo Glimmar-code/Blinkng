@@ -24,6 +24,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Test fail-closed production release alerting policy
+        run: node --test .github/scripts/blink_release_monitor.test.cjs
+
       - name: Validate release Python syntax
         run: >-
           python3 -m py_compile
