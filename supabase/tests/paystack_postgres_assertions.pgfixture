@@ -240,5 +240,36 @@ SET ROLE service_role;
 SELECT public.blink_paystack_financial_report(now()-interval '1 day',now()+interval '1 day');
 RESET ROLE;
 
+-- Signed provider events are server-only, idempotent and auditable.
+DO $event_authorization$
+BEGIN
+ IF has_function_privilege('authenticated',
+   'public.record_blink_paystack_provider_event(text,text,text,bigint,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'PROVIDER_EVENT_WRITABLE_BY_CUSTOMER'; END IF;
+END
+$event_authorization$;
+SET ROLE service_role;
+DO $provider_events$
+DECLARE v_payment public.blink_paystack_payments%rowtype;
+BEGIN
+ SELECT * INTO v_payment FROM public.blink_paystack_payments
+ WHERE item_code='BLUE' AND duration_days=90 AND status='fulfilled'
+ LIMIT 1;
+ PERFORM public.record_blink_paystack_provider_event(
+ v_payment.reference,'charge.dispute.create','test-dispute-once',216000,'NGN');
+ PERFORM public.record_blink_paystack_provider_event(
+ v_payment.reference,'charge.dispute.create','test-dispute-once',216000,'NGN');
+ IF (SELECT count(*) FROM private.blink_paystack_provider_events
+ WHERE event_key='test-dispute-once')<>1 THEN
+ RAISE EXCEPTION 'DUPLICATE_DISPUTE_EVENT'; END IF;
+ PERFORM public.record_blink_paystack_provider_event(
+ v_payment.reference,'refund.processed','test-refund-once',216000,'NGN');
+ IF (SELECT status FROM public.blink_paystack_payments
+ WHERE id=v_payment.id)<>'refunded' THEN
+ RAISE EXCEPTION 'PROVIDER_REFUND_NOT_RECORDED'; END IF;
+END
+$provider_events$;
+RESET ROLE;
+
 -- Final assertion: webhook replay/confirmation cannot credit twice.
 select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
