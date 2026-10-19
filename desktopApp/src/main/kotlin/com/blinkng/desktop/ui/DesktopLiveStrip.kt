@@ -122,8 +122,14 @@ fun DesktopLiveStrip(state: DesktopAppState) {
                                 .putLong("live_${campaign.id}",System.currentTimeMillis())
                         }
                     }
-                    Surface(color=if(campaign.kind=="emergency") MaterialTheme.colorScheme.errorContainer
-                        else MaterialTheme.colorScheme.surfaceVariant) {
+                    Surface(color=when {
+                        campaign.kind=="emergency" || campaign.style=="urgent" ->
+                            MaterialTheme.colorScheme.errorContainer
+                        campaign.accent=="blue" -> MaterialTheme.colorScheme.secondaryContainer
+                        campaign.accent=="gold" -> MaterialTheme.colorScheme.tertiaryContainer
+                        campaign.style=="highlight" -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }) {
                         Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp),
                             horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
