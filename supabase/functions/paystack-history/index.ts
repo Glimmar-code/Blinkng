@@ -10,7 +10,7 @@ Deno.serve(async req => {
   try {
     const service=serviceClient();
     const {data,error}=await service.from("blink_paystack_payments")
-      .select("reference,purchase_kind,item_code,amount_ngn,currency,duration_days,status,created_at,paid_at")
+      .select("reference,purchase_kind,item_code,amount_ngn,currency,duration_days,duration_months,status,created_at,paid_at")
       .eq("user_id",user.id).order("created_at",{ascending:false}).limit(50);
     if (error) throw new Error("RECEIPTS_QUERY_FAILED");
     return json({receipts:data||[]});
