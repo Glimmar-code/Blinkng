@@ -10,6 +10,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+data class AdminLiveContentRow(
+    val key: String,
+    val value: JSONObject,
+    val enabled: Boolean,
+    val revision: Long,
+)
+
 data class AdminCapability(
     val isAdmin: Boolean = false,
     val isOwner: Boolean = false,
@@ -174,6 +181,82 @@ class AdminSupabaseService {
             role = json.optString("role", "none"),
             expiresAt = json.nullableString("expires_at")
         )
+    }
+
+    /** Read disabled drafts too. Server rechecks active admin role. */
+    suspend fun fetchLiveContent(): Result<List<AdminLiveContentRow>> = runCatching {
+        val items = JSONObject(rpc("admin_read_blink_live_config")).getJSONArray("items")
+        buildList {
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                add(AdminLiveContentRow(
+                    key = item.getString("key"),
+                    value = item.getJSONObject("value"),
+                    enabled = item.getBoolean("enabled"),
+                    revision = item.getLong("revision"),
+                ))
+            }
+        }
+    }
+
+    /** Security authority and revision checks always run inside Supabase RPC. */
+    suspend fun publishLiveContent(
+        key: String,
+        value: JSONObject,
+        enabled: Boolean,
+        expectedRevision: Long,
+    ): Result<AdminLiveContentRow> = runCatching {
+        require(key in setOf("announcement", "promotion", "display", "feature_visibility"))
+        val item = JSONObject(rpc(
+            "admin_publish_blink_live_config",
+            JSONObject()
+                .put("p_key", key)
+                .put("p_value", value)
+                .put("p_enabled", enabled)
+                .put("p_expected_revision", expectedRevision)
+        ))
+        AdminLiveContentRow(
+            key = item.getString("key"),
+            value = item.getJSONObject("value"),
+            enabled = item.getBoolean("enabled"),
+            revision = item.getLong("revision"),
+        )
+    }
+
+    /** Campaign drafts, approval queue, scheduled calendar and engagement totals. */
+    suspend fun adminLiveCampaigns(): Result<List<JSONObject>> = runCatching {
+        val array = JSONArray(rpc("admin_list_blink_live_campaigns"))
+        buildList { for (i in 0 until array.length()) add(array.getJSONObject(i)) }
+    }
+
+    suspend fun saveLiveCampaign(
+        id: String?, data: JSONObject, revision: Long?,
+    ): Result<JSONObject> = runCatching {
+        JSONObject(rpc("admin_save_blink_live_campaign", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL)
+            .put("p_data", data)
+            .put("p_expected_revision", revision ?: JSONObject.NULL)))
+    }
+
+    suspend fun transitionLiveCampaign(
+        id: String, revision: Long, action: String,
+    ): Result<JSONObject> = runCatching {
+        require(action in setOf("submit", "approve", "pause", "archive"))
+        JSONObject(rpc("admin_transition_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision).put("p_action", action)))
+    }
+
+    suspend fun liveCampaignHistory(id: String): Result<List<JSONObject>> = runCatching {
+        val array = JSONArray(rpc("admin_blink_live_campaign_history", JSONObject().put("p_id", id)))
+        buildList { for (i in 0 until array.length()) add(array.getJSONObject(i)) }
+    }
+
+    suspend fun restoreLiveCampaign(
+        id: String, revision: Long, historicalRevision: Long,
+    ): Result<JSONObject> = runCatching {
+        JSONObject(rpc("admin_restore_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision)
+            .put("p_history_revision", historicalRevision)))
     }
 
     suspend fun fetchStats(): Result<AdminDashboardStats> = runCatching {

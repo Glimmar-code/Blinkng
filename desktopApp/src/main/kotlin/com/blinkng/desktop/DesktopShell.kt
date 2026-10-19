@@ -103,6 +103,7 @@ import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.DesktopPaystackCheckoutPanel
+import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -472,6 +473,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
         }
     }) {
         DesktopTopBar(state)
+        DesktopLiveStrip(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,

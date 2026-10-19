@@ -36,6 +36,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
 import com.example.data.models.VerificationBadge
+import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.example.data.supabase.BlinkLiveCampaignService
+import com.blinkng.shared.live.BlinkLiveCampaign
+import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.ads.BlinkAdConsentManager
@@ -775,6 +779,14 @@ fun MainAppContent(
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
+    // Update only presentation content while BLINK is open. Never download executable code.
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            BlinkLiveRemoteConfig.load()?.let { liveSnapshot = it }
+            delay(120_000L)
+        }
+    }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -890,6 +902,28 @@ fun MainAppContent(
             }
         }
     }
+    val livePlacement = when (selectedPage) {
+        0 -> "home"
+        1 -> "reels"
+        2 -> "marketplace"
+        3 -> "connect"
+        4 -> "messages"
+        7 -> "games"
+        else -> ""
+    }
+    var campaignResponse by remember { mutableStateOf<Pair<String,List<BlinkLiveCampaign>>>("" to emptyList()) }
+    // Schedule visibility is enforced server-side; recheck when switching tabs.
+    LaunchedEffect(livePlacement, uiState.myProfile.id) {
+        if (livePlacement.isNotBlank()) {
+            while (isActive) {
+                BlinkLiveCampaignService.load(livePlacement)?.let {
+                    campaignResponse = livePlacement to it
+                }
+                delay(45_000L)
+            }
+        }
+    }
+
     val allowMainPageSwipe =
         uiState.selectedTab in setOf(MainTab.HOME, MainTab.MARKET, MainTab.MESSAGES) &&
         !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3) &&
@@ -1126,6 +1160,52 @@ fun MainAppContent(
                 }
             }
         }
+        }
+
+        val allowLiveNotices = livePlacement.isNotBlank() && uiState.isOnline &&
+            !uiState.isMenuOpen && !uiState.isCreatePostOpen &&
+            !uiState.isCreateStoryOpen && !uiState.isPostItemOpen &&
+            uiState.activeViewingStory == null && !uiState.isConversationFullScreen &&
+            uiState.activeConversationPartner == null &&
+            uiState.activeCommentsPostId == null &&
+            uiState.viewingProduct == null && uiState.viewingProfile == null
+        if (allowLiveNotices) {
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .zIndex(29f)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, top = 72.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Avoid stacking multiple legacy and campaign banners over the feed.
+                if (livePlacement == "home" && (campaignResponse.first != "home" ||
+                    campaignResponse.second.isEmpty())) {
+                    BlinkLiveBanners(snapshot = liveSnapshot)
+                }
+                if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
+                    campaignResponse.first == livePlacement) {
+                    BlinkLiveCampaignCards(
+                        placement = livePlacement,
+                        campaigns = campaignResponse.second,
+                        onRoute = { route ->
+                            when (route) {
+                                "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                                "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                                "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                                "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                                "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                                "notifications" -> viewModel.openActivity(true)
+                                "store" -> context.startActivity(
+                                    Intent(context, BlinkStoreActivity::class.java)
+                                )
+                                "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                            }
+                        }
+                    )
+                }
+            }
         }
 
         OfflineConnectionBanner(
