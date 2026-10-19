@@ -29,7 +29,7 @@ insert into public.blink_live_config (key, value, enabled) values
     ('announcement', '{"title":"","message":""}'::jsonb, false),
     ('promotion', '{"title":"","message":""}'::jsonb, false),
     ('display', '{"show_announcements":true,"show_promotions":true}'::jsonb, false),
-    ('feature_visibility', '{"home_promo_enabled":true}'::jsonb, false)
+    ('feature_visibility', '{"home_promo_enabled":true,"home_campaign_enabled":true,"reels_campaign_enabled":true,"marketplace_campaign_enabled":true,"connect_campaign_enabled":true,"messages_campaign_enabled":true,"games_campaign_enabled":true}'::jsonb, false)
 on conflict (key) do nothing;
 
 comment on table public.blink_live_config is
