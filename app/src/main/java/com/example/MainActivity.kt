@@ -516,11 +516,12 @@ class MainActivity : ComponentActivity() {
                     websiteUpdateCheckFinished = true
                 }
             }
-            LaunchedEffect(websiteOpenSignal) {
+            LaunchedEffect(websiteOpenSignal, uiState.destination) {
                 if (websiteOpenSignal > 0 && uiState.destination == AppDestination.MAIN) {
                     websiteUpdateDismissed = false
                     viewModel.setTab(MainTab.HOME)
                     viewModel.setFeedSubTab(0)
+                    BlinkWebsiteReleaseAlerts.consumeOpenPrompt()
                 }
             }
 

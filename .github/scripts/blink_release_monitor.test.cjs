@@ -31,6 +31,12 @@ test('successful run clears a prior actionable failure', () => {
   assert.equal(policy.qualify(run({conclusion:'action_required'}))?.failed,true);
 });
 
+test('new app update notification delivery failures are monitored', () => {
+  const alert = policy.qualify(run({name: 'Notify BLINK website release'}));
+  assert.equal(alert?.failed, true);
+  assert.match(policy.details(alert), /Notify BLINK website release/);
+});
+
 test('release issue body preserves exact diagnostics and recovery safety', () => {
   const item = policy.qualify(run());
   const body = policy.details(item);

@@ -44,6 +44,10 @@ object BlinkWebsiteReleaseAlerts {
         if (openPrompt) _openPromptSignal.update { it + 1 }
     }
 
+    fun consumeOpenPrompt() {
+        _openPromptSignal.value = 0L
+    }
+
     /** Only the website-distributed app subscribes. FCM automatically retries transient failures. */
     fun configureSubscription(context: Context) {
         runCatching {

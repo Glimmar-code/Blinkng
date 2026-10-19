@@ -15,6 +15,7 @@ const MONITORED = new Set([
   'Signed Android release',
   'Publish latest APK',
   'Verify published BLINK APK',
+  'Notify BLINK website release',
 ]);
 const FAILURES = new Set(['failure', 'timed_out', 'action_required', 'startup_failure']);
 const SUCCESS = 'success';
