@@ -71,6 +71,7 @@ fun BlinkAdminLiveContentManagerScreen(
     var showAnnouncements by remember { mutableStateOf(true) }
     var showPromotions by remember { mutableStateOf(true) }
     var homePromo by remember { mutableStateOf(true) }
+    var campaignFlags by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var working by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var confirmed by remember { mutableStateOf(false) }
@@ -88,6 +89,9 @@ fun BlinkAdminLiveContentManagerScreen(
         showAnnouncements = value.optBoolean("show_announcements", true)
         showPromotions = value.optBoolean("show_promotions", true)
         homePromo = value.optBoolean("home_promo_enabled", true)
+        campaignFlags = com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.associateWith {
+            value.optBoolean(it + "_campaign_enabled", true)
+        }
         message = null
         error = null
     }
@@ -162,6 +166,15 @@ fun BlinkAdminLiveContentManagerScreen(
                     Text("Home promotion visible")
                     Switch(homePromo, onCheckedChange = { homePromo = it }, enabled = isOwner && !working)
                 }
+                com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.sorted().forEach { placement ->
+                    Row(horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(placement.replaceFirstChar(Char::uppercase) + " campaign visible")
+                        Switch(campaignFlags[placement] != false,
+                            onCheckedChange = { campaignFlags = campaignFlags + (placement to it) },
+                            enabled = isOwner && !working)
+                    }
+                }
             }
 
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -218,7 +231,11 @@ fun BlinkAdminLiveContentManagerScreen(
                         "display" -> JSONObject()
                             .put("show_announcements", showAnnouncements)
                             .put("show_promotions", showPromotions)
-                        else -> JSONObject().put("home_promo_enabled", homePromo)
+                        else -> JSONObject().put("home_promo_enabled", homePromo).apply {
+                            com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.forEach { placement ->
+                                put(placement + "_campaign_enabled", campaignFlags[placement] != false)
+                            }
+                        }
                     }
                     scope.launch {
                         service.publishLiveContent(keyToSave, value, enabled, active.revision)
