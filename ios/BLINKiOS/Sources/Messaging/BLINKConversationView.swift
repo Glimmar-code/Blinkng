@@ -224,6 +224,10 @@ struct BLINKConversationView: View {
             self.error = error.localizedDescription
             return
         }
+        // The sending gate must be released before reloading this thread.
+        // Otherwise a successful send would leave the new message invisible
+        // until the next manual/poll refresh.
+        sending = false
         // Wait for server acknowledgement, then fetch authoritative messages.
         await reload(silent: false)
     }
