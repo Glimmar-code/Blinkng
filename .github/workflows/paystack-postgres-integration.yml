@@ -49,6 +49,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_fixture.pgfixture
       - name: Apply Paystack migration to the disposable database only
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018225000_paystack_checkout.sql
+      - name: Apply discounted one-time plans, receipts and reporting migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019060000_paystack_plan_receipts_reporting.sql
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
