@@ -305,9 +305,14 @@ BEGIN
    IF NOT FOUND THEN RAISE EXCEPTION 'PROFILE_NOT_FOUND'; END IF;
    v_new_badge:=CASE WHEN v_badge='GOLD' AND (v_expires IS NULL OR v_expires>now())
      THEN 'GOLD' ELSE v_order.item_code END;
-   v_new_expires:=CASE WHEN v_badge=v_order.item_code AND v_expires IS NULL THEN NULL
+   v_new_expires:=CASE
+     WHEN v_order.item_code='BLUE' AND v_badge='GOLD'
+       AND (v_expires IS NULL OR v_expires>now()) THEN v_expires
+     WHEN v_badge=v_order.item_code AND v_expires IS NULL THEN NULL
      ELSE greatest(coalesce(v_expires,now()),now()) +
-       make_interval(days=>coalesce(v_order.duration_days,30)) END;
+       (CASE WHEN v_order.duration_months IS NOT NULL
+         THEN make_interval(months=>v_order.duration_months)
+         ELSE make_interval(days=>coalesce(v_order.duration_days,30)) END) END;
    UPDATE public.profiles SET verification_badge=v_new_badge,
      verification_tier=(CASE WHEN v_new_badge='GOLD' THEN 'Gold' ELSE 'Standard' END)::public.verification_tier_enum,
      is_verified=true,verified_at=coalesce(verified_at,now()),
