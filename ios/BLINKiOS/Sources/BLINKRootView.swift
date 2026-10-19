@@ -25,11 +25,18 @@ struct BLINKRootView: View {
                 TabView(selection: $selectedSection) {
                     ForEach(BLINKSection.allCases) { section in
                         NavigationStack {
-                            BLINKSectionView(
-                                section: section,
-                                email: user.email,
-                                signOut: { Task { await auth.signOut() } }
-                            )
+                            switch section {
+                            case .home:
+                                BLINKFeedView(mode: .posts, auth: auth)
+                            case .reels:
+                                BLINKFeedView(mode: .reels, auth: auth)
+                            default:
+                                BLINKSectionView(
+                                    section: section,
+                                    email: user.email,
+                                    signOut: { Task { await auth.signOut() } }
+                                )
+                            }
                         }
                         .tabItem { Label(section.title, systemImage: section.symbol) }
                         .tag(section)
