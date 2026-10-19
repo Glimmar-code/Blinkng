@@ -1,0 +1,92 @@
+-- Integration tests for verified market buyer checkout, gifts and refunds.
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+
+-- Both sensitive new revenue products must remain OFF after migration.
+DO $flags$
+BEGIN
+ IF EXISTS(SELECT 1 FROM private.blink_economy_config WHERE
+ key IN('paystack_market_checkout_enabled','paystack_gifts_enabled','paystack_refunds_enabled','paystack_payouts_enabled')
+ AND bool_value IS DISTINCT FROM false)
+ THEN RAISE EXCEPTION 'UNSAFE_FINANCIAL_FEATURE_ENABLED'; END IF;
+END
+$flags$;
+-- Enable only inside disposable CI PostgreSQL to simulate approved staging.
+UPDATE private.blink_economy_config SET bool_value=true
+WHERE key IN('paystack_market_checkout_enabled','paystack_gifts_enabled');
+-- Original checkout defaults have been explicitly enabled in the disposable fixture.
+
+DO $roles$
+BEGIN
+ IF has_function_privilege('authenticated',
+   'public.fulfill_blink_paystack_market_order(uuid)','EXECUTE')
+ THEN RAISE EXCEPTION 'MARKET_FULFILLMENT_PUBLICLY_WRITABLE'; END IF;
+ IF has_function_privilege('authenticated',
+   'public.set_blink_paystack_seller_destination_for_server(uuid,text,uuid)','EXECUTE')
+ THEN RAISE EXCEPTION 'RECIPIENT_OVERRIDE_PUBLICLY_WRITABLE'; END IF;
+ IF has_table_privilege('authenticated','public.blink_paystack_seller_payouts','UPDATE')
+ THEN RAISE EXCEPTION 'SELLER_CAN_SELF_APPROVE_PAYOUT'; END IF;
+END
+$roles$;
+
+SELECT public.create_blink_paystack_market_order('44444444-4444-4444-8444-444444444444');
+SELECT public.create_blink_paystack_gift_order('seller_test','coins_100','Thank you');
+DO $pending$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.blink_paystack_payments
+    WHERE purchase_kind='marketplace' AND amount_ngn=2500)
+ THEN RAISE EXCEPTION 'MARKET_SERVER_PRICE_NOT_LOCKED'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.blink_paystack_payments p
+    JOIN public.blink_paystack_gifts g ON g.payment_id=p.id
+    WHERE p.purchase_kind='gift' AND p.amount_ngn=100
+    AND g.recipient_id='33333333-3333-4333-8333-333333333333')
+ THEN RAISE EXCEPTION 'GIFT_SERVER_RECIPIENT_NOT_LOCKED'; END IF;
+END
+$pending$;
+
+-- Provider acknowledgement simulation: no client redirect can cause delivery.
+SET ROLE service_role;
+DO $fulfill_market$
+DECLARE market public.blink_paystack_payments%rowtype;
+ gift public.blink_paystack_payments%rowtype;first jsonb;again jsonb;
+BEGIN
+ SELECT * INTO market FROM public.blink_paystack_payments
+ WHERE purchase_kind='marketplace' ORDER BY created_at DESC LIMIT 1;
+ SELECT * INTO gift FROM public.blink_paystack_payments
+ WHERE purchase_kind='gift' ORDER BY created_at DESC LIMIT 1;
+ BEGIN
+   PERFORM public.fulfill_blink_paystack_order(market.reference,'market-provider',249900,'NGN');
+   RAISE EXCEPTION 'UNDERPAID_MARKET_ORDER_ACCEPTED';
+ EXCEPTION WHEN others THEN
+   IF sqlerrm='UNDERPAID_MARKET_ORDER_ACCEPTED' THEN RAISE; END IF;
+ END;
+ first:=public.fulfill_blink_paystack_order(market.reference,'market-provider',250000,'NGN');
+ again:=public.fulfill_blink_paystack_order(market.reference,'market-provider',250000,'NGN');
+ IF first->>'status'<>'fulfilled' OR (again->>'already_fulfilled')::boolean IS NOT TRUE
+ THEN RAISE EXCEPTION 'MARKET_PAYMENT_REPLAY_NOT_SAFE'; END IF;
+ IF (SELECT quantity FROM public.market_items
+   WHERE id='44444444-4444-4444-8444-444444444444')<>0
+ THEN RAISE EXCEPTION 'MARKET_STOCK_NOT_RESERVED'; END IF;
+ IF (SELECT count(*) FROM public.blink_paystack_seller_payouts
+   WHERE payment_id=market.id AND status='blocked')<>1
+ THEN RAISE EXCEPTION 'SELLER_PAYOUT_NOT_PROTECTED'; END IF;
+ PERFORM public.fulfill_blink_paystack_order(gift.reference,'gift-provider',10000,'NGN');
+ PERFORM public.fulfill_blink_paystack_order(gift.reference,'gift-provider',10000,'NGN');
+ IF (SELECT credited FROM public.blink_coin_test_credits
+     WHERE user_id='33333333-3333-4333-8333-333333333333')<>100
+ THEN RAISE EXCEPTION 'GIFT_DOUBLE_CREDIT_OR_MISSING_RECIPIENT'; END IF;
+END $fulfill_market$;
+RESET ROLE;
+
+SELECT public.confirm_blink_paystack_market_delivery(
+ (SELECT reference FROM public.blink_paystack_payments WHERE purchase_kind='marketplace' LIMIT 1));
+SELECT public.request_blink_paystack_refund(
+ (SELECT reference FROM public.blink_paystack_payments WHERE purchase_kind='marketplace' LIMIT 1),
+ 'Item received but not as described');
+DO $refund_assertions$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.blink_paystack_refunds r
+ JOIN public.blink_paystack_payments p ON p.id=r.payment_id
+ WHERE p.purchase_kind='marketplace' AND r.status='requested'
+   AND r.amount_kobo=250000)
+ THEN RAISE EXCEPTION 'BUYER_REFUND_NOT_RECORDED'; END IF;
+END $refund_assertions$;
