@@ -227,6 +227,51 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_history_revision", past))
     }
 
+    /** Only owner-authorized, new-path JPEG/PNG artwork uploads; never overwrites. */
+    suspend fun uploadLiveBanner(file: java.io.File): String = withContext(Dispatchers.IO) {
+        requireAdmin()
+        require(file.isFile && file.length() in 1L..2_097_152L) {
+            "Choose a JPEG or PNG smaller than 2 MB."
+        }
+        val bytes = file.readBytes()
+        require(bytes.size in 1..2_097_152) { "Image exceeds 2 MB." }
+        val mime = when {
+            bytes.size > 4 && bytes[0]==0xFF.toByte() &&
+                bytes[1]==0xD8.toByte() && bytes[2]==0xFF.toByte() -> "image/jpeg"
+            bytes.size > 8 && bytes.copyOfRange(0,8).contentEquals(
+                byteArrayOf(-119,80,78,71,13,10,26,10)
+            ) -> "image/png"
+            else -> error("Only JPEG and PNG images are supported.")
+        }
+        javax.imageio.ImageIO.createImageInputStream(file).use { input ->
+            requireNotNull(input) { "Unable to read image." }
+            val readers = javax.imageio.ImageIO.getImageReaders(input)
+            require(readers.hasNext()) { "Image is damaged or unsupported." }
+            val reader = readers.next()
+            try {
+                reader.setInput(input, true, true)
+                val width = reader.getWidth(0)
+                val height = reader.getHeight(0)
+                require(width in 64..6000 && height in 64..6000 &&
+                    width.toLong()*height.toLong()<=20_000_000L) {
+                    "Image must be between 64 and 6000 pixels per side, maximum 20 megapixels."
+                }
+            } finally {
+                reader.dispose()
+            }
+        }
+        // Requires a signed-in session; RLS additionally restricts uploads to the owner.
+        requireSessionUserId()
+        val extension=if(mime=="image/png") "png" else "jpg"
+        val path="banners/${java.util.UUID.randomUUID()}.$extension"
+        val bucket="blink-live-banners"
+        execute(requestBuilder("/storage/v1/object/$bucket/$path")
+            .header("x-upsert","false")
+            .post(bytes.toRequestBody(mime.toMediaType()))
+            .build())
+        "$baseUrl/storage/v1/object/public/$bucket/$path"
+    }
+
     suspend fun adminGlobalSearch(query: String): JSONObject {
         requireAdmin()
         return rpc("admin_global_search_v2", JSONObject().put("p_query", query.trim()))
