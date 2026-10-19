@@ -409,6 +409,24 @@ BEGIN
 END
 $cancelled_renewal_regression$;
 
+DO $email_claim_test$
+DECLARE v_claimed jsonb;v_first jsonb;
+BEGIN
+ v_claimed:=public.claim_blink_paystack_payment_notices(25);
+ IF jsonb_array_length(v_claimed)<2 THEN
+  RAISE EXCEPTION 'MISSING_TRANSACTION_EMAILS'; END IF;
+ PERFORM public.complete_blink_paystack_payment_notice(
+   (v_claimed->0->>'id')::uuid,'sent',null);
+ v_first:=public.claim_blink_paystack_payment_notices(25);
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_first) x
+     WHERE x->>'id'=v_claimed->0->>'id')
+ THEN RAISE EXCEPTION 'DUPLICATE_PAYMENT_EMAIL_SEND'; END IF;
+ IF has_function_privilege('authenticated',
+    'public.claim_blink_paystack_payment_notices(integer)','EXECUTE')
+ THEN RAISE EXCEPTION 'CUSTOMER_CAN_SEND_EMAIL'; END IF;
+END
+$email_claim_test$;
+
 -- Cancellation notification is queued once and the queue stays service-only.
 DO $cancel_notice_regression$
 DECLARE v_prior bigint; v_notice uuid; v_batch jsonb;
@@ -438,23 +456,6 @@ BEGIN
 END
 $cancel_notice_regression$;
 
-DO $email_claim_test$
-DECLARE v_claimed jsonb;v_first jsonb;
-BEGIN
- v_claimed:=public.claim_blink_paystack_payment_notices(25);
- IF jsonb_array_length(v_claimed)<2 THEN
-  RAISE EXCEPTION 'MISSING_TRANSACTION_EMAILS'; END IF;
- PERFORM public.complete_blink_paystack_payment_notice(
-   (v_claimed->0->>'id')::uuid,'sent',null);
- v_first:=public.claim_blink_paystack_payment_notices(25);
- IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_first) x
-     WHERE x->>'id'=v_claimed->0->>'id')
- THEN RAISE EXCEPTION 'DUPLICATE_PAYMENT_EMAIL_SEND'; END IF;
- IF has_function_privilege('authenticated',
-    'public.claim_blink_paystack_payment_notices(integer)','EXECUTE')
- THEN RAISE EXCEPTION 'CUSTOMER_CAN_SEND_EMAIL'; END IF;
-END
-$email_claim_test$;
 RESET ROLE;
 -- Final assertion: webhook replay/confirmation cannot credit twice.
 select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
