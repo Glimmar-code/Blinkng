@@ -994,6 +994,7 @@ fun AdminProScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var showAnnouncementManager by remember { mutableStateOf(false) }
+    var showCampaignStudio by remember { mutableStateOf(false) }
     var showLiveContentManager by remember { mutableStateOf(false) }
     var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -1076,6 +1077,22 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Campaign Studio", fontWeight = FontWeight.Bold)
+                        Text("Target campuses, schedule content, approve drafts, review analytics and restore revisions.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Button(onClick = { showCampaignStudio = true }) { Text("Open") }
+                }
+            }
+        }
         announcementStatus?.let { note -> item { Text(note, color = MaterialTheme.colorScheme.primary) } }
 
         error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
@@ -1146,6 +1163,14 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+
+    if (showCampaignStudio && capability.allowed) {
+        DesktopAdminCampaignManager(
+            actions = actions,
+            isOwner = capability.isOwner,
+            onDismiss = { showCampaignStudio = false },
+        )
     }
 
     if (showLiveContentManager && capability.allowed) {
