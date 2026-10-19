@@ -183,7 +183,7 @@ BEGIN
   SELECT * INTO v_payment FROM public.blink_paystack_payments
     WHERE reference=p_reference FOR UPDATE;
   IF NOT FOUND OR p_currency <> v_payment.currency OR
-     p_amount_kobo <> v_payment.amount_ngn::bigint*100
+     p_amount_kobo<=0 OR p_amount_kobo>v_payment.amount_ngn::bigint*100
   THEN RAISE EXCEPTION 'PAYMENT_EVENT_MISMATCH'; END IF;
 
   INSERT INTO private.blink_paystack_provider_events(
@@ -194,7 +194,8 @@ BEGIN
   -- Reflect a provider-confirmed completed refund for audit and reporting.
   -- Entitlement reconciliation remains a separate reviewed action; never
   -- silently subtract coins already spent or falsify membership history.
-  IF p_event_type='refund.processed' AND v_payment.status='fulfilled' THEN
+  IF p_event_type='refund.processed' AND v_payment.status='fulfilled'
+     AND p_amount_kobo=v_payment.amount_ngn::bigint*100 THEN
     UPDATE public.blink_paystack_payments
     SET status='refunded',updated_at=now() WHERE id=v_payment.id;
   END IF;
