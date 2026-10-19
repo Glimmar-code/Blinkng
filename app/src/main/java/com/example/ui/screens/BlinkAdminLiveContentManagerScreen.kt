@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -112,7 +113,7 @@ fun BlinkAdminLiveContentManagerScreen(
         )
         if (!isOwner) Text("View only — BLINK owner approval required to publish or pause.", color = MaterialTheme.colorScheme.error)
         if (loading) CircularProgressIndicator()
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             liveKeys.forEach { key ->
                 FilterChip(
                     selected = selectedKey == key,
