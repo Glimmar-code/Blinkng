@@ -16,6 +16,8 @@ import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,6 +37,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
 import com.example.data.models.VerificationBadge
 import com.example.data.supabase.BlinkPaystackCheckoutService
+import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -71,6 +74,10 @@ class MainActivity : ComponentActivity() {
     private var pendingPaymentReference by mutableStateOf<String?>(null)
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
+    private var showPaystackReceipts by mutableStateOf(false)
+    private var loadingPaystackReceipts by mutableStateOf(false)
+    private var paystackReceiptError by mutableStateOf<String?>(null)
+    private var paystackReceipts by mutableStateOf<List<BlinkPaystackReceipt>>(emptyList())
     private var showPendingPaymentPrompt by mutableStateOf(true)
 
     private fun startPaystackCheckout(kind: String, itemCode: String, months: Int) {
@@ -94,6 +101,21 @@ class MainActivity : ComponentActivity() {
                 viewModel.showToast(error.message ?: "Unable to open secure checkout.")
             } finally {
                 paymentInProgress = false
+            }
+        }
+    }
+
+    private fun openPaystackReceipts() {
+        showPaystackReceipts = true
+        loadingPaystackReceipts = true
+        paystackReceiptError = null
+        lifecycleScope.launch {
+            try {
+                paystackReceipts = paystack.listReceipts()
+            } catch (error: Exception) {
+                paystackReceiptError = "Unable to load payment history. Try again later."
+            } finally {
+                loadingPaystackReceipts = false
             }
         }
     }
@@ -581,6 +603,12 @@ class MainActivity : ComponentActivity() {
                                         onOpenCoinPackChooser = { showCoinPackChooser = true },
                                         onCloseCoinPackChooser = { showCoinPackChooser = false },
                                         onStartPaystackCheckout = ::startPaystackCheckout,
+                                        showPaystackReceipts = showPaystackReceipts,
+                                        loadingPaystackReceipts = loadingPaystackReceipts,
+                                        paystackReceiptError = paystackReceiptError,
+                                        paystackReceipts = paystackReceipts,
+                                        onOpenPaystackReceipts = ::openPaystackReceipts,
+                                        onClosePaystackReceipts = { showPaystackReceipts = false },
                                         onConfirmPaystackPayment = ::confirmPendingPaystackPayment,
                                         onDismissPendingPaystack = { showPendingPaymentPrompt = false },
                                     )
@@ -694,6 +722,12 @@ fun MainAppContent(
     onCloseCoinPackChooser: () -> Unit = {},
     onStartPaystackCheckout: (String, String, Int) -> Unit = { _, _, _ -> },
     onConfirmPaystackPayment: () -> Unit = {},
+    showPaystackReceipts: Boolean = false,
+    loadingPaystackReceipts: Boolean = false,
+    paystackReceiptError: String? = null,
+    paystackReceipts: List<BlinkPaystackReceipt> = emptyList(),
+    onOpenPaystackReceipts: () -> Unit = {},
+    onClosePaystackReceipts: () -> Unit = {},
     onDismissPendingPaystack: () -> Unit = {},
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
@@ -1512,6 +1546,42 @@ fun MainAppContent(
             )
         }
 
+        if (showPaystackReceipts) {
+            AlertDialog(
+                onDismissRequest = onClosePaystackReceipts,
+                title = { Text("Paystack payment receipts") },
+                text = {
+                    Column(
+                        modifier = Modifier.heightIn(max = 380.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        when {
+                            loadingPaystackReceipts -> CircularProgressIndicator()
+                            paystackReceiptError != null -> Text(paystackReceiptError)
+                            paystackReceipts.isEmpty() -> Text("No Paystack purchases yet.")
+                            else -> paystackReceipts.forEach { receipt ->
+                                Text(
+                                    "${receipt.createdAt} • ${receipt.itemCode}" +
+                                        (if (receipt.months > 0) " • ${receipt.months}m" else "") +
+                                        "\n₦${receipt.amountNgn} • ${receipt.status}" +
+                                        "\nRef: ${receipt.reference}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onClosePaystackReceipts) { Text("Close") }
+                },
+                dismissButton = {
+                    TextButton(onClick = onOpenPaystackReceipts) { Text("Refresh") }
+                }
+            )
+        }
+
         // Modals: Get Verified Sheet (Blue ₦800, Gold 1k followers + ₦2,000)
         if (uiState.isGetVerifiedOpen) {
             GetVerifiedSheet(
@@ -1533,7 +1603,8 @@ fun MainAppContent(
                 },
                 pendingCashPayment = pendingPaymentReference != null,
                 cashCheckoutBusy = paymentInProgress,
-                onCheckCashPayment = onConfirmPaystackPayment
+                onCheckCashPayment = onConfirmPaystackPayment,
+                onPaymentHistory = onOpenPaystackReceipts
             )
         }
 
