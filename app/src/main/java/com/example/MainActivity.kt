@@ -1180,7 +1180,8 @@ fun MainAppContent(
                 if (livePlacement == "home") {
                     BlinkLiveBanners(snapshot = liveSnapshot)
                 }
-                if (campaignResponse.first == livePlacement) {
+                if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
+                    campaignResponse.first == livePlacement) {
                     BlinkLiveCampaignCards(
                         placement = livePlacement,
                         campaigns = campaignResponse.second,
