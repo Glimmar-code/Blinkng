@@ -23,6 +23,39 @@ create table public.profiles (
  updated_at timestamptz not null default now()
 );
 create table public.follows (follower_id uuid not null, following_id uuid not null);
+-- Minimal disposable boost model matching only columns used in the payment flow.
+create table public.blink_boost_campaigns_v2 (
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid not null,
+ target_type text not null,
+ target_id uuid not null,
+ objective text not null,
+ boost_power integer not null,
+ audience_scope text not null,
+ target_university text,
+ duration_days smallint not null,
+ coin_budget bigint not null,
+ estimated_reach_low bigint not null,
+ estimated_reach_high bigint not null,
+ status text not null default 'ACTIVE',
+ starts_at timestamptz not null,
+ ends_at timestamptz not null
+);
+create or replace function public.quote_blink_boost_campaign_v2(
+ p_target_type text,p_target_id uuid,p_boost_power integer,
+ p_objective text,p_audience_scope text,p_duration_days integer,
+ p_target_university text default null
+) returns jsonb language plpgsql security definer set search_path=''
+as $fixture_quote$
+begin
+ if auth.uid() <> '11111111-1111-4111-8111-111111111111'::uuid
+   or p_target_type not in ('POST','REEL','PROFILE','LISTING')
+   or p_target_id is null then raise exception 'BOOST_NOT_OWNED'; end if;
+ return jsonb_build_object('coin_cost',100,'estimated_reach_low',30,
+  'estimated_reach_high',60,'target_university',p_target_university);
+end
+$fixture_quote$;
+
 create table public.blink_coin_purchase_orders (
  id uuid primary key default gen_random_uuid(),
  user_id uuid not null references public.profiles(id),
