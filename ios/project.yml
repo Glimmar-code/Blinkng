@@ -32,8 +32,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
-        BLINK_SUPABASE_URL: ""
-        BLINK_SUPABASE_ANON_KEY: ""
+        BLINK_SUPABASE_URL: "https://jhwgifrlxwspoedxjaly.supabase.co"
+        BLINK_SUPABASE_ANON_KEY: "sb_publishable_2lfIyTW9SwiTOvafGXp10Q_I7DwUs-J"
   BLINKiOSTests:
     type: bundle.unit-test
     platform: iOS
