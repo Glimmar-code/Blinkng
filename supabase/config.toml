@@ -114,6 +114,9 @@ verify_jwt = true
 [functions.paystack-confirm]
 verify_jwt = true
 
+[functions.paystack-history]
+verify_jwt = true
+
 # Paystack webhooks are authenticated by HMAC-SHA512 of their raw payload.
 [functions.paystack-webhook]
 verify_jwt = false
