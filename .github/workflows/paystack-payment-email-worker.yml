@@ -1,0 +1,38 @@
+name: BLINK Paystack transactional email worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  deliver-payment-notices:
+    if: vars.BLINK_PAYMENT_EMAIL_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate secret configuration
+        env:
+          WORKER_SECRET: ${{ secrets.BLINK_EMAIL_WORKER_SECRET }}
+          WORKER_URL: ${{ secrets.BLINK_PAYMENT_EMAIL_WORKER_URL }}
+        shell: bash
+        run: |
+          test -n "$WORKER_SECRET" || { echo "Internal email secret not configured"; exit 1; }
+          test -n "$WORKER_URL" || { echo "Internal email endpoint not configured"; exit 1; }
+          case "$WORKER_URL" in
+            https://*.supabase.co/functions/v1/paystack-payment-email) ;;
+            *) echo "Unexpected internal email worker endpoint"; exit 1 ;;
+          esac
+      - name: Deliver queued transactional notices with private server secret
+        env:
+          WORKER_SECRET: ${{ secrets.BLINK_EMAIL_WORKER_SECRET }}
+          WORKER_URL: ${{ secrets.BLINK_PAYMENT_EMAIL_WORKER_URL }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --max-time 60 \
+            -H "Content-Type: application/json" \
+            -H "x-blink-email-worker-secret: $WORKER_SECRET" \
+            -X POST --data '{}' "$WORKER_URL" >/dev/null
