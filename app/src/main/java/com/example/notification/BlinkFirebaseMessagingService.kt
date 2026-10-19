@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.BuildConfig
+import com.example.update.BlinkWebsiteReleaseAlerts
 import com.example.call.CallTimeoutWorker
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
@@ -247,6 +248,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
 
         val data = message.data
+        // Public website-release alerts are device/topic scoped, not private account messages.
+        // Handle before recipient_id enforcement; all other messages keep that protection.
+        if (BlinkWebsiteReleaseAlerts.handleReleasePush(this, data)) return
         val type = BlinkNotificationType.fromWire(data["type"])
         Log.d(
             TAG,

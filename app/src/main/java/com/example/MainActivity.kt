@@ -39,6 +39,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.components.*
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
@@ -56,6 +58,7 @@ import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.update.WebsiteApkDownloadCoordinator
+import com.example.update.BlinkWebsiteReleaseAlerts
 import com.example.update.WebsiteApkUpdateCoordinator
 import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.util.startActivitySafely
@@ -243,6 +246,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == BlinkWebsiteReleaseAlerts.ACTION_OPEN_UPDATE) {
+            BlinkWebsiteReleaseAlerts.requestRefresh(openPrompt = true)
+            intent.action = Intent.ACTION_MAIN // Consume the notification action once.
+        }
         handleNotificationIntent(intent)
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
@@ -478,17 +485,43 @@ class MainActivity : ComponentActivity() {
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            val websiteRefreshSignal by BlinkWebsiteReleaseAlerts.refreshSignal.collectAsStateWithLifecycle()
+            val websiteOpenSignal by BlinkWebsiteReleaseAlerts.openPromptSignal.collectAsStateWithLifecycle()
             var adminAnnouncementOpen by remember { mutableStateOf(false) }
 
-            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
-                websiteRelease = null
+            // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
+            // Stopping the Activity suspends checks, resuming it checks straight away.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id, websiteRefreshSignal) {
                 websiteUpdateCheckFinished = false
-                websiteUpdateDismissed = false
-                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank() &&
-                    !WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
-                    websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    BlinkWebsiteReleaseAlerts.configureSubscription(this@MainActivity)
+                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (isActive) {
+                            if (!WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
+                                val latest = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                                if (latest?.versionCode != websiteRelease?.versionCode) {
+                                    websiteRelease = latest
+                                    websiteUpdateDismissed = false
+                                }
+                            } else {
+                                websiteRelease = null
+                            }
+                            websiteUpdateCheckFinished = true
+                            delay(15 * 60 * 1000L)
+                        }
+                    }
+                } else {
+                    websiteRelease = null
+                    websiteUpdateDismissed = false
+                    websiteUpdateCheckFinished = true
                 }
-                websiteUpdateCheckFinished = true
+            }
+            LaunchedEffect(websiteOpenSignal) {
+                if (websiteOpenSignal > 0 && uiState.destination == AppDestination.MAIN) {
+                    websiteUpdateDismissed = false
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(0)
+                }
             }
 
             val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
