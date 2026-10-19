@@ -473,7 +473,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
         }
     }) {
         DesktopTopBar(state)
-        DesktopLiveStrip()
+        DesktopLiveStrip(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
