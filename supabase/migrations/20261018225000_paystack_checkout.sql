@@ -16,6 +16,7 @@ create table if not exists public.blink_paystack_payments (
   amount_ngn integer not null check(amount_ngn > 0),
   coin_amount integer check(coin_amount > 0),
   duration_days integer check(duration_days between 1 and 366),
+  duration_months integer check(duration_months in (1,3,6,12)),
   currency text not null default 'NGN' check(currency = 'NGN'),
   paystack_transaction_id text unique,
   status text not null default 'pending'
@@ -174,7 +175,9 @@ begin
       when v_prior_badge=v_order.item_code and v_prior_expiration is null
       then null -- preserve an existing permanent badge of the same tier
       else greatest(coalesce(v_prior_expiration,now()),now()) +
-        make_interval(days=>v_order.duration_days)
+        (case when v_order.duration_months is not null
+          then make_interval(months=>v_order.duration_months)
+          else make_interval(days=>v_order.duration_days) end)
       end;
     update public.profiles set
       verification_badge=v_new_badge,
