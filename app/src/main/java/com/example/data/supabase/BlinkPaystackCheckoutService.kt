@@ -103,7 +103,7 @@ class BlinkPaystackCheckoutService {
                 status = item.optString("status"),
                 createdAt = item.optString("created_at").take(10),
                 months = if (item.optString("purchase_kind") == "verification") {
-                    item.optInt("duration_days", 30) / 30
+                    item.optInt("duration_months", item.optInt("duration_days", 30) / 30)
                 } else 0,
             )
         }
