@@ -30,6 +30,10 @@ struct BLINKRootView: View {
                                 BLINKFeedView(mode: .posts, auth: auth)
                             case .reels:
                                 BLINKFeedView(mode: .reels, auth: auth)
+                            case .market:
+                                BLINKMarketView(auth: auth)
+                            case .connect:
+                                BLINKConnectView(auth: auth, currentUserID: user.id)
                             default:
                                 BLINKSectionView(
                                     section: section,
