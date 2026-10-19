@@ -1,4 +1,4 @@
-import { json, preflight, reconcile, serviceClient, validSignature } from "../_shared/blink_paystack.ts";
+import { json, paystackApi, preflight, reconcile, serviceClient, validSignature } from "../_shared/blink_paystack.ts";
 
 const reviewedEvents = new Set([
   "refund.pending","refund.processing","refund.failed","refund.processed",
@@ -20,6 +20,42 @@ Deno.serve(async req=>{
         return json({received:true});
       const result=await reconcile(reference);
       return json({received:true,status:result.status});
+    }
+    // Paystack bills subscriptions itself. Never treat an unsigned invoice as payment.
+    // Subsequent references are provider-generated, not BLINK checkout references.
+    if(event.event==="invoice.update"){
+      const invoice=event.data||{};
+      if(invoice.paid!==true && invoice.status!=="success")
+        return json({received:true});
+      const code=invoice.subscription?.subscription_code ||
+        (typeof invoice.subscription==="string" ? invoice.subscription : "");
+      const txReference=invoice.transaction?.reference || invoice.reference;
+      if(!/^SUB_[a-zA-Z0-9]+$/.test(String(code)) ||
+         typeof txReference!=="string" || txReference.length>140)
+        return json({received:true});
+      const svc=serviceClient();
+      const {data:sub,error:subErr}=await svc.rpc(
+        "get_blink_paystack_renewal_by_code_for_server",{p_code:code});
+      if(subErr) throw new Error("SUBSCRIPTION_LOOKUP_FAILED");
+      if(!sub || !["active","cancel_pending"].includes(sub.status))
+        return json({received:true});
+      const payment=await paystackApi(
+        `transaction/verify/${encodeURIComponent(txReference)}`);
+      const expectedMode=Deno.env.get("PAYSTACK_EXPECTED_DOMAIN")||"test";
+      if(payment?.status!=="success" || payment.domain!==expectedMode ||
+         payment.reference!==txReference || payment.currency!=="NGN" ||
+         Number(payment.amount)!==sub.amount_ngn*100 ||
+         String(payment.customer?.customer_code)!==sub.customer_code)
+        throw new Error("SUBSCRIPTION_INVOICE_MISMATCH");
+      const invoicePlan=invoice.plan?.plan_code||invoice.subscription?.plan?.plan_code;
+      if(invoicePlan && invoicePlan!==sub.plan_code)
+        throw new Error("SUBSCRIPTION_PLAN_MISMATCH");
+      const {error:fulfillError}=await svc.rpc("fulfill_blink_paystack_renewal",{
+        p_code:code,p_reference:txReference,p_transaction_id:String(payment.id),
+        p_amount_kobo:payment.amount,p_currency:"NGN",
+      });
+      if(fulfillError) throw new Error("SUBSCRIPTION_FULFILLMENT_FAILED");
+      return json({received:true,status:"fulfilled"});
     }
     if(!reviewedEvents.has(event.event)) return json({received:true});
     const data=event.data||{};
