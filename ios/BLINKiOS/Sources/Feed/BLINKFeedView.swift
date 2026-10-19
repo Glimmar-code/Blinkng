@@ -311,7 +311,7 @@ private struct BLINKCommentsView: View {
                 try await api.comments(postId: post.id, accessToken: token)
             }
             error = nil
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
 
     private func send() async {
@@ -325,6 +325,6 @@ private struct BLINKCommentsView: View {
             }
             draft = ""
             await reload()
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
 }
