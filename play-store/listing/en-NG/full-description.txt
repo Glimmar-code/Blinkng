@@ -15,4 +15,3 @@ Some features require an account, network access or optional payments. Feature a
 
 Our goal is to help students discover, share and stay connected.
 
-This is draft listing copy. It must be checked against the shipping Android build before publishing.
