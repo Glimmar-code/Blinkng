@@ -55,8 +55,8 @@ object BlinkLiveCampaignPolicy {
     fun displayFor(placement: String, campaigns: List<BlinkLiveCampaign>): List<BlinkLiveCampaign> {
         if (placement !in placements) return emptyList()
         return campaigns.mapNotNull(::sanitize)
-            .sortedWith(compareByDescending<BlinkLiveCampaign> { it.pinned || it.kind == "emergency" }
-                .thenByDescending { it.priority })
+            .sortedWith(compareByDescending<BlinkLiveCampaign> { it.kind == "emergency" }
+                .thenByDescending { it.pinned }.thenByDescending { it.priority })
             .distinctBy { it.id }
             .take(2)
     }
