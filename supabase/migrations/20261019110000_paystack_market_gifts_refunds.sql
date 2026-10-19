@@ -360,3 +360,75 @@ $refund_request$;
 REVOKE ALL ON FUNCTION public.request_blink_paystack_refund(text,text)
  FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.request_blink_paystack_refund(text,text) TO authenticated;
+
+-- Buyer-confirmed delivery is required; sellers cannot self-certify receipt.
+CREATE OR REPLACE FUNCTION public.confirm_blink_paystack_market_delivery(p_reference text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
+AS $buyer_delivery$
+DECLARE v_user uuid:=auth.uid();v_order public.blink_paystack_market_orders%rowtype;
+BEGIN
+ IF v_user IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED'; END IF;
+ SELECT m.* INTO v_order
+ FROM public.blink_paystack_market_orders m
+ JOIN public.blink_paystack_payments p ON p.id=m.payment_id
+ WHERE p.reference=p_reference AND m.buyer_id=v_user
+ FOR UPDATE OF m;
+ IF NOT FOUND THEN RAISE EXCEPTION 'MARKET_PURCHASE_NOT_FOUND'; END IF;
+ IF v_order.fulfilment_status='delivered' THEN
+   RETURN jsonb_build_object('status','delivered','already_confirmed',true); END IF;
+ IF v_order.fulfilment_status<>'paid_hold' THEN
+   RAISE EXCEPTION 'MARKET_DELIVERY_NOT_CONFIRMABLE'; END IF;
+ IF EXISTS(SELECT 1 FROM public.market_disputes d
+    WHERE d.order_id=v_order.marketplace_order_id
+      AND d.status NOT IN('resolved','rejected','closed'))
+ THEN RAISE EXCEPTION 'UNRESOLVED_BUYER_DISPUTE'; END IF;
+ UPDATE public.blink_paystack_market_orders
+  SET fulfilment_status='delivered',delivered_at=now()
+  WHERE payment_id=v_order.payment_id;
+ UPDATE public.marketplace_orders SET status='delivered',updated_at=now()
+  WHERE id=v_order.marketplace_order_id;
+ RETURN jsonb_build_object('status','delivered','already_confirmed',false);
+END;
+$buyer_delivery$;
+REVOKE ALL ON FUNCTION public.confirm_blink_paystack_market_delivery(text)
+ FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.confirm_blink_paystack_market_delivery(text)
+ TO authenticated;
+
+-- Separate owner-operated service endpoints use these service-role-only RPCs.
+-- They prevent a browser/client from directly modifying settlement destinations.
+CREATE OR REPLACE FUNCTION public.set_blink_paystack_seller_destination_for_server(
+ p_seller uuid,p_recipient_code text,p_owner uuid
+) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=''
+AS $destination$
+BEGIN
+ IF current_user<>'service_role' THEN RAISE EXCEPTION 'SERVICE_ONLY'; END IF;
+ IF p_seller IS NULL OR p_owner IS NULL OR p_recipient_code !~ '^RCP_[A-Za-z0-9]+$'
+ THEN RAISE EXCEPTION 'INVALID_DESTINATION'; END IF;
+ IF NOT public.market_seller_has_approval(p_seller)
+ THEN RAISE EXCEPTION 'MARKET_SELLER_APPROVAL_REQUIRED'; END IF;
+ INSERT INTO private.blink_paystack_seller_destinations
+  (seller_id,provider_recipient_code,verified_by)
+ VALUES(p_seller,p_recipient_code,p_owner)
+ ON CONFLICT(seller_id) DO UPDATE
+  SET provider_recipient_code=excluded.provider_recipient_code,
+      verified_by=excluded.verified_by,verified_at=now();
+ RETURN jsonb_build_object('success',true);
+END;
+$destination$;
+REVOKE ALL ON FUNCTION public.set_blink_paystack_seller_destination_for_server(uuid,text,uuid)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.set_blink_paystack_seller_destination_for_server(uuid,text,uuid)
+ TO service_role;
+
+CREATE OR REPLACE FUNCTION public.get_blink_paystack_seller_destination_for_server(
+ p_seller uuid
+) RETURNS text LANGUAGE sql STABLE SECURITY INVOKER SET search_path=''
+AS $dest_read$
+ SELECT d.provider_recipient_code FROM private.blink_paystack_seller_destinations d
+ WHERE d.seller_id=p_seller
+$dest_read$;
+REVOKE ALL ON FUNCTION public.get_blink_paystack_seller_destination_for_server(uuid)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.get_blink_paystack_seller_destination_for_server(uuid)
+ TO service_role;
