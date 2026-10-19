@@ -305,7 +305,7 @@ fun BlinkAdminCampaignManagerScreen(
             draft=draft.copy(accent=it)
         }
         Text("Banner image",fontWeight=FontWeight.SemiBold)
-        Text("Choose a JPG/PNG photo (up to 2 MB). Uploading creates an image draft only; publish the campaign separately.",
+        Text("Choose a JPEG/PNG photo up to 20 MB. BLINK automatically compresses large images below 2 MB before uploading. Oversized transparent PNGs may get a white background. Save the draft, then publish separately.",
             style=MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
