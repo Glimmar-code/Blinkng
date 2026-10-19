@@ -58,6 +58,11 @@ fun GetVerifiedSheet(
     cashCheckoutBusy: Boolean = false,
     onCheckCashPayment: () -> Unit = {},
     onPaymentHistory: () -> Unit = {},
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onLoadRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
     onUpgrade: (VerificationBadge, Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -72,9 +77,11 @@ fun GetVerifiedSheet(
     // and webhook reconcile exactly the selected tier and duration.
     val recurringCheckoutVerified = false
     var showDailyMissions by remember { mutableStateOf(false) }
+    var confirmedRenewalTerms by remember(profile.id) { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         onRefreshDailyMissions()
+        onLoadRenewal()
     }
 
     val sheetBg = if (isDark) DarkSurface else LightSurface
@@ -936,6 +943,55 @@ fun GetVerifiedSheet(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+            }
+            item {
+                if (profile.verificationBadge != VerificationBadge.NONE) {
+                    HorizontalDivider()
+                    Text("Automatic renewal (optional)",
+                        fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text(
+                        "Your latest paid verification plan can renew at the same price and " +
+                            "duration when its paid period ends. Recurring charges are OFF unless you " +
+                            "explicitly agree below. You can cancel future charges at any time.",
+                        color = textSecondary, fontSize = 13.sp
+                    )
+                    Text("Status: ${renewalStatus.replace('_', ' ')}",
+                        color = textPrimary, fontSize = 14.sp)
+                    if (renewalStatus == "active") {
+                        OutlinedButton(
+                            onClick = onCancelRenewal,
+                            enabled = !renewalWorking,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Stop future automatic charges")
+                        }
+                    } else if (renewalStatus == "none" || renewalStatus == "cancelled" ||
+                               renewalStatus == "error") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = confirmedRenewalTerms,
+                                onCheckedChange = { confirmedRenewalTerms = it }
+                            )
+                            Text("I agree to automatic charges for the latest paid plan.",
+                                color = textPrimary, fontSize = 13.sp,
+                                modifier = Modifier.weight(1f))
+                        }
+                        Button(
+                            onClick = {
+                                confirmedRenewalTerms = false
+                                onEnableRenewal()
+                            },
+                            enabled = confirmedRenewalTerms && economyPolicy.cashCheckoutEnabled &&
+                                !renewalWorking,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Confirm recurring billing")
+                        }
+                    } else {
+                        Text("Recurring billing is not ready; no new charges will start here.",
+                            color = textSecondary, fontSize = 12.sp)
+                    }
                 }
             }
             item {
