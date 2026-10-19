@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
     private var paystackReceiptError by mutableStateOf<String?>(null)
     private var paystackReceipts by mutableStateOf<List<BlinkPaystackReceipt>>(emptyList())
     private var showPendingPaymentPrompt by mutableStateOf(true)
+    private var paystackRenewalStatus by mutableStateOf("none")
+    private var paystackRenewalBusy by mutableStateOf(false)
 
     private fun startPaystackCheckout(kind: String, itemCode: String, months: Int) {
         if (paymentInProgress) return
@@ -101,6 +103,34 @@ class MainActivity : ComponentActivity() {
                 viewModel.showToast(error.message ?: "Unable to open secure checkout.")
             } finally {
                 paymentInProgress = false
+            }
+        }
+    }
+
+    private fun refreshPaystackRenewal() {
+        lifecycleScope.launch {
+            try {
+                paystackRenewalStatus = paystack.renewalStatus().optString("status", "none")
+            } catch (_: Exception) {
+                paystackRenewalStatus = "unavailable"
+            }
+        }
+    }
+
+    private fun setPaystackRenewal(enabled: Boolean) {
+        if (paystackRenewalBusy) return
+        paystackRenewalBusy = true
+        lifecycleScope.launch {
+            try {
+                val result = if (enabled) paystack.enableRenewal() else paystack.stopRenewal()
+                paystackRenewalStatus = result.optString("status", "none")
+                viewModel.showToast(if (enabled) "Automatic renewal enabled after your current plan expires."
+                  else "Future automatic charges cancelled.")
+            } catch (error: Exception) {
+                viewModel.showToast(error.message ?: "Unable to update automatic renewal.")
+            } finally {
+                paystackRenewalBusy = false
+                refreshPaystackRenewal()
             }
         }
     }
@@ -603,6 +633,11 @@ class MainActivity : ComponentActivity() {
                                         onOpenCoinPackChooser = { showCoinPackChooser = true },
                                         onCloseCoinPackChooser = { showCoinPackChooser = false },
                                         onStartPaystackCheckout = ::startPaystackCheckout,
+                                        renewalStatus = paystackRenewalStatus,
+                                        renewalWorking = paystackRenewalBusy,
+                                        onLoadRenewal = ::refreshPaystackRenewal,
+                                        onEnableRenewal = { setPaystackRenewal(true) },
+                                        onCancelRenewal = { setPaystackRenewal(false) },
                                         showPaystackReceipts = showPaystackReceipts,
                                         loadingPaystackReceipts = loadingPaystackReceipts,
                                         paystackReceiptError = paystackReceiptError,
@@ -721,6 +756,11 @@ fun MainAppContent(
     onOpenCoinPackChooser: () -> Unit = {},
     onCloseCoinPackChooser: () -> Unit = {},
     onStartPaystackCheckout: (String, String, Int) -> Unit = { _, _, _ -> },
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onLoadRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
     onConfirmPaystackPayment: () -> Unit = {},
     showPaystackReceipts: Boolean = false,
     loadingPaystackReceipts: Boolean = false,
@@ -1604,7 +1644,12 @@ fun MainAppContent(
                 pendingCashPayment = pendingPaymentReference != null,
                 cashCheckoutBusy = paymentInProgress,
                 onCheckCashPayment = onConfirmPaystackPayment,
-                onPaymentHistory = onOpenPaystackReceipts
+                onPaymentHistory = onOpenPaystackReceipts,
+                renewalStatus = renewalStatus,
+                renewalWorking = renewalWorking,
+                onLoadRenewal = onLoadRenewal,
+                onEnableRenewal = onEnableRenewal,
+                onCancelRenewal = onCancelRenewal
             )
         }
 
