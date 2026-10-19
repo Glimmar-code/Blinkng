@@ -146,6 +146,40 @@ final class BLINKAuthStore: ObservableObject {
         }
     }
 
+    /// Server-backed feed actions use an authenticated user token, never the
+    /// public API key as a JWT. Rotate before expiry and retry once on 401.
+    func withValidToken<T>(_ operation: (String) async throws -> T) async throws -> T {
+        guard let api, var active = session else { throw BLINKFeedError.notSignedIn }
+        do {
+            if active.shouldRefresh {
+                active = try await api.refresh(refreshToken: active.refreshToken)
+                try vault.save(active)
+                session = active
+            }
+        } catch {
+            if let e = error as? BLINKAuthError, e.invalidSession {
+                clearLocalSession()
+            }
+            throw error
+        }
+
+        do {
+            return try await operation(active.accessToken)
+        } catch BLINKFeedError.unauthorized {
+            do {
+                let rotated = try await api.refresh(refreshToken: active.refreshToken)
+                try vault.save(rotated)
+                session = rotated
+                return try await operation(rotated.accessToken)
+            } catch {
+                if let e = error as? BLINKAuthError, e.invalidSession {
+                    clearLocalSession()
+                }
+                throw error
+            }
+        }
+    }
+
     func signOut() async {
         guard !isBusy else { return }
         isBusy = true
