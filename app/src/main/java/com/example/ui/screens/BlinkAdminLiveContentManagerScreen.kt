@@ -54,6 +54,7 @@ fun BlinkAdminLiveContentManagerScreen(
     onBack: () -> Unit,
 ) {
     var showCampaignManager by remember { mutableStateOf(false) }
+    BackHandler(enabled = showCampaignManager) { showCampaignManager = false }
     if (showCampaignManager) {
         BlinkAdminCampaignManagerScreen(
             service = service,
