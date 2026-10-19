@@ -26,8 +26,9 @@ not integrate newer Android UI, and does not deploy Supabase.
    secrets only after rollback plan and transaction reconciliation tested.
 4. Integrate the main Android/Windows UI with backend independently; fully test
    purchase actions and cancellation on actual devices.
-5. Set paid boost cash conversion price after explicit approval; the default
-   price 0 disables this feature.
+5. Set paid boost cash conversion price after explicit approval; default 0 disables cash boosts.
+   Independently require `BLINK_PAYSTACK_BOOST_ENABLED=true` for cash boost checkout,
+   even if general checkout becomes active. Default missing/false must deny boost purchases.
 6. Keep `cash_checkout_enabled=false`, `BLINK_PAYSTACK_CHECKOUT_ENABLED`,
    `BLINK_PAYSTACK_RECURRING_ENABLED`, and `BLINK_PAYMENT_EMAIL_ENABLED`
    OFF until every appropriate gate has passed.
