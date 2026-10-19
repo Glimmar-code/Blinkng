@@ -139,3 +139,50 @@ begin
 end;
 $$;
 reset role;
+
+
+-- Storage API tests use synthetic object metadata in disposable CI only.
+-- Production uploads MUST go through the Storage HTTP API.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+set role authenticated;
+do $$
+begin
+ if public.blink_live_can_upload_banner() then
+   raise exception 'NONOWNER_WAS_GRANTED_BANNER_UPLOAD';
+ end if;
+ begin
+   insert into storage.objects(bucket_id,name)
+   values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.jpg');
+   raise exception 'NONOWNER_INSERTED_BANNER_OBJECT';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$$;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+do $$
+begin
+ if not public.blink_live_can_upload_banner() then
+   raise exception 'OWNER_BANNER_UPLOAD_DENIED';
+ end if;
+ begin
+   insert into storage.objects(bucket_id,name)
+   values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.svg');
+   raise exception 'DISALLOWED_BANNER_EXTENSION';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$$;
+insert into storage.objects(bucket_id,name)
+values('blink-live-banners','banners/11111111-1111-4111-8111-111111111111.jpg');
+reset role;
+do $$
+begin
+ if not exists(
+   select 1 from storage.buckets b
+   where b.id='blink-live-banners' and b.public=true and b.file_size_limit=2097152
+   and b.allowed_mime_types @> array['image/jpeg','image/png']::text[]
+ ) then
+   raise exception 'BANNER_BUCKET_MIME_SIZE_LIMITS_NOT_ENFORCED';
+ end if;
+end;
+$$;
