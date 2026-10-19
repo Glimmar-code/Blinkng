@@ -1177,7 +1177,9 @@ fun MainAppContent(
                     .padding(start = 12.dp, end = 12.dp, top = 72.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (livePlacement == "home") {
+                // Avoid stacking multiple legacy and campaign banners over the feed.
+                if (livePlacement == "home" && (campaignResponse.first != "home" ||
+                    campaignResponse.second.isEmpty())) {
                     BlinkLiveBanners(snapshot = liveSnapshot)
                 }
                 if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
