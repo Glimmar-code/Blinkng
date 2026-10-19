@@ -51,6 +51,7 @@ fun DesktopAdminLiveContentManager(
     var showAnnouncements by remember { mutableStateOf(true) }
     var showPromotions by remember { mutableStateOf(true) }
     var homePromo by remember { mutableStateOf(true) }
+    var campaignFlags by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -74,6 +75,9 @@ fun DesktopAdminLiveContentManager(
         showAnnouncements = value.optBoolean("show_announcements", true)
         showPromotions = value.optBoolean("show_promotions", true)
         homePromo = value.optBoolean("home_promo_enabled", true)
+        campaignFlags = com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.associateWith {
+            value.optBoolean(it + "_campaign_enabled", true)
+        }
         info = null
         error = null
     }
@@ -134,6 +138,15 @@ fun DesktopAdminLiveContentManager(
                             Text("Home promotion enabled")
                             Switch(homePromo, onCheckedChange = { homePromo = it }, enabled = isOwner && !saving)
                         }
+                        com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.sorted().forEach { page ->
+                            Row(horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text(page.replaceFirstChar(Char::uppercase) + " campaign visible")
+                                Switch(campaignFlags[page] != false,
+                                    onCheckedChange = { campaignFlags = campaignFlags + (page to it) },
+                                    enabled = isOwner && !saving)
+                            }
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                         Text(if (enabled) "Published" else "Paused")
@@ -181,7 +194,11 @@ fun DesktopAdminLiveContentManager(
                     val value = when (selected) {
                         "announcement", "promotion" -> JSONObject().put("title", title.trim()).put("message", message.trim())
                         "display" -> JSONObject().put("show_announcements", showAnnouncements).put("show_promotions", showPromotions)
-                        else -> JSONObject().put("home_promo_enabled", homePromo)
+                        else -> JSONObject().put("home_promo_enabled", homePromo).apply {
+                            com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements.forEach { page ->
+                                put(page + "_campaign_enabled", campaignFlags[page] != false)
+                            }
+                        }
                     }
                     scope.launch {
                         runCatching { actions.adminPublishLiveConfig(
