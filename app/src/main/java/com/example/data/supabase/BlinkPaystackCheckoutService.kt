@@ -62,12 +62,15 @@ class BlinkPaystackCheckoutService {
             }
         }
 
-    suspend fun createCheckout(kind: String, itemCode: String): BlinkPaystackCheckout {
+    suspend fun createCheckout(kind: String, itemCode: String, months: Int = 1): BlinkPaystackCheckout {
         require(kind in setOf("verification", "coin_pack")) { "Invalid purchase." }
         require(itemCode.matches(Regex("^[a-zA-Z0-9_]{1,30}$"))) { "Invalid selection." }
+        require(months in setOf(1, 3, 6, 12) && (kind == "verification" || months == 1)) {
+            "Select an available one-time purchase duration."
+        }
         val response = invoke("paystack-checkout", JSONObject()
             .put("kind", kind)
-            .put("itemCode", itemCode))
+            .put("itemCode", itemCode).put("months", months))
         val url = response.optString("checkoutUrl")
         val reference = response.optString("reference")
         check(url.startsWith("https://checkout.paystack.com/") &&
