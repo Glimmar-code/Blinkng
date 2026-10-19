@@ -1,0 +1,61 @@
+name: Stories and universities disposable PostgreSQL security gate
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/stories_universities_*'
+      - '.github/workflows/stories-universities-postgres.yml'
+  push:
+    branches: [Testlab]
+    paths:
+      - 'supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/stories_universities_*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-privacy-and-directory-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: blink_feature_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_feature_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: disposable_ci_only
+      PGDATABASE: blink_feature_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create fake accounts, stories, profiles and roles
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stories_universities_fixture.pgfixture
+      - name: Apply Stories migration on temporary Postgres
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql
+      - name: Apply university migration on temporary Postgres
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018073500_nigerian_university_directory.sql
+      - name: Assert security, ownership, expiry, idempotency and university data
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stories_universities_assertions.pgfixture
+      - name: Confirm tests use no live database
+        run: |
+          echo "Only disposable Postgres service and fake users exercised."
+          echo "No production Supabase data or secrets were used."

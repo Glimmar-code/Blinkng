@@ -1,0 +1,105 @@
+-- Behavioral checks for Story insights/reposts and university directory on disposable PG.
+do $test$
+declare
+  v jsonb;
+  v_repost uuid;
+  v_repeat uuid;
+  v_futa text;
+  v_error text;
+begin
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  v := public.get_my_story_insights('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+  if jsonb_array_length(v->'viewers') <> 1 or
+     v->'viewers'->0->>'username' <> 'bob' or
+     jsonb_array_length(v->'likers') <> 1 then
+    raise exception 'Owner insights exposed blocked visitors or lost legitimate viewers';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  begin
+    perform public.get_my_story_insights('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    raise exception 'SECURITY_TEST_FAILED: visitor accessed private story insights';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'STORY_ACCESS_DENIED' then raise; end if;
+  end;
+  begin
+    perform public.set_my_story_reposts_allowed('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',true);
+    if (select allow_reposts from public.stories where id='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa') then
+      raise exception 'Visitor was able to toggle owner permission';
+    end if;
+  end;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  if not public.set_my_story_reposts_allowed('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',true) then
+    raise exception 'Owner cannot enable story reposts';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  v_repost := public.repost_blink_story('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+  v_repeat := public.repost_blink_story('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+  if v_repost <> v_repeat or (select count(*) from public.stories
+       where reposted_from_id='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' and user_id='00000000-0000-4000-8000-000000000002') <> 1 then
+    raise exception 'Double-tapping repost created duplicate story';
+  end if;
+  if (select allow_reposts from public.stories where id=v_repost) then
+    raise exception 'A repost accidentally inherited share permission';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',true);
+  begin
+    perform public.repost_blink_story('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    raise exception 'SECURITY_TEST_FAILED: blocked user reposted story';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'STORY_NOT_AVAILABLE_FOR_REPOST' then raise; end if;
+  end;
+  update public.stories set created_at=now()-interval '25 hours'
+    where id='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  begin
+    perform public.repost_blink_story('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    raise exception 'SECURITY_TEST_FAILED: expired original story was reposted';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'STORY_NOT_AVAILABLE_FOR_REPOST' then raise; end if;
+  end;
+  if (select count(*) from public.blink_universities) < 250 then
+    raise exception 'University catalog unexpectedly incomplete';
+  end if;
+  select id into v_futa from public.blink_universities
+    where official_name='Federal University of Technology, Akure' and active;
+  if v_futa is null then raise exception 'FUTA is not in directory'; end if;
+  if (select university_id from public.profiles where username='alice') <> v_futa then
+    raise exception 'Matching legacy institution was not backfilled';
+  end if;
+  if not has_table_privilege('anon','public.blink_universities','SELECT')
+     or has_table_privilege('anon','public.blink_universities','INSERT') then
+    raise exception 'Directory anon read/write grants are incorrect';
+  end if;
+  if not (select relrowsecurity from pg_class
+            where oid='public.blink_universities'::regclass) then
+    raise exception 'Directory RLS is not enabled';
+  end if;
+  if has_table_privilege('authenticated','public.blink_missing_university_requests','SELECT')
+     or has_table_privilege('anon','public.blink_missing_university_requests','INSERT') then
+    raise exception 'Pending university requests are publicly accessible';
+  end if;
+  begin
+    update public.profiles set university_id=v_futa where username='bob';
+    raise exception 'SECURITY_TEST_FAILED: mismatched university ID accepted';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'UNIVERSITY_SELECTION_MISMATCH' then raise; end if;
+  end;
+  update public.profiles set university='Federal University of Technology, Akure',
+    university_id=v_futa where username='bob';
+  if (select university_id from public.profiles where username='bob') <> v_futa then
+    raise exception 'Consistent university selection could not be saved';
+  end if;
+  if public.request_missing_blink_university('Example New University Nigeria','Lagos') <> 'pending_review'
+     or public.request_missing_blink_university('Example New University Nigeria','Lagos') <> 'already_requested' then
+     raise exception 'Missing university requests are not idempotent';
+  end if;
+  if has_function_privilege('anon','public.request_missing_blink_university(text,text)','EXECUTE') then
+    raise exception 'Anonymous access to missing-school request RPC';
+  end if;
+  raise notice 'Passed: Story owner-only access, blocked users, expiry, replay, FUTA alias/data, university RLS, legacy backfill, mismatch protection and request privacy.';
+end;
+$test$;

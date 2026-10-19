@@ -1770,7 +1770,11 @@ fun MainAppContent(
                 onStoryViewed = { storyId -> viewModel.markStoryViewed(storyId) },
                 onLikeStory = { storyId -> viewModel.toggleStoryLike(storyId) },
                 onReactStory = { storyId, emoji -> viewModel.reactToStory(storyId, emoji) },
-                onReplyStory = { username, text -> viewModel.replyToStory(username, text) },
+                onReplyStory = { story, text -> viewModel.replyToStory(story, text) },
+                onRepostStory = { story -> viewModel.repostStory(story) },
+                onSetStoryRepostsAllowed = { storyId, allowed ->
+                    viewModel.setStoryRepostsAllowed(storyId, allowed)
+                },
                 onProfileClick = { username -> viewModel.openProfile(username) }
             )
         }

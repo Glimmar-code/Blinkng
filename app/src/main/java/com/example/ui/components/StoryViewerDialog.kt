@@ -10,6 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -58,24 +63,16 @@ fun StoryViewerDialog(
     onStoryViewed: (String) -> Unit = {},
     onLikeStory: (String) -> Unit = {},
     onReactStory: (storyId: String, emoji: String) -> Unit = { _, _ -> },
-    onReplyStory: (storyUsername: String, replyText: String) -> Unit = { _, _ -> },
+    onReplyStory: (story: Story, replyText: String) -> Unit = { _, _ -> },
+    onRepostStory: (Story) -> Unit = {},
+    onSetStoryRepostsAllowed: (storyId: String, allow: Boolean) -> Unit = { _, _ -> },
     onProfileClick: (String) -> Unit = {}
 ) {
-    if (stories.isEmpty()) {
-        onDismiss()
-        return
-    }
+    if (stories.isEmpty()) return
+    // Owners can view their own story and open its private engagement history.
+    val storyList = remember(stories) { stories }
 
-    val storyList = remember(stories) {
-        stories.filter { !it.isUser }
-    }
-
-    if (storyList.isEmpty()) {
-        onDismiss()
-        return
-    }
-
-    var currentIndex by rememberSaveable {
+    var currentIndex by rememberSaveable(initialStory.id) {
         val idx = storyList.indexOfFirst { it.id == initialStory.id || it.username == initialStory.username }
         mutableIntStateOf(if (idx >= 0) idx else 0)
     }
@@ -92,6 +89,8 @@ fun StoryViewerDialog(
     var isPaused by remember { mutableStateOf(false) }
     var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
+    var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
 
     // Floating reaction animation effect
@@ -103,17 +102,19 @@ fun StoryViewerDialog(
     }
 
     // 5-second automatic progression
-    LaunchedEffect(currentIndex, isPaused) {
+    LaunchedEffect(currentStory.id) {
         progress = 0f
         val stepMs = 50L
-        val totalMs = 5000L
-        val increment = stepMs.toFloat() / totalMs.toFloat()
+        var elapsedMs = 0L
 
-        while (progress < 1f) {
+        while (true) {
             delay(stepMs)
-            if (!isPaused) {
-                progress = (progress + increment).coerceAtMost(1f)
-            }
+            if (!isPaused && !showInsights) elapsedMs += stepMs
+            // The media duration becomes known asynchronously after video loads.
+            // Read it on every tick so video stories aren't cut to the image timer.
+            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
+            progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
+            if (progress >= 1f) break
         }
 
         if (!isPaused && progress >= 1f) {
@@ -132,7 +133,13 @@ fun StoryViewerDialog(
             .testTag("story_viewer_dialog")
     ) {
         // Story Background Image / Media
-        if (currentStory.storyImage.isNotBlank()) {
+        if (currentStory.isVideo && currentStory.storyImage.isNotBlank()) {
+            StoryVideoPlayer(
+                story = currentStory,
+                paused = isPaused || showInsights,
+                onDuration = { duration -> videoDurationMs = duration },
+            )
+        } else if (currentStory.storyImage.isNotBlank()) {
             AsyncImage(
                 model = currentStory.storyImage,
                 contentDescription = "Story by ${currentStory.displayLabel}",
@@ -453,8 +460,40 @@ fun StoryViewerDialog(
                 }
             }
 
+            if (currentStory.isUser) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { showInsights = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    ) { Text("Viewers & Likes") }
+                    Text(
+                        "Allow reposts",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = currentStory.allowReposts,
+                        onCheckedChange = { onSetStoryRepostsAllowed(currentStory.id, it) },
+                    )
+                }
+            } else if (currentStory.allowReposts && currentStory.repostedFromId == null) {
+                OutlinedButton(
+                    onClick = { onRepostStory(currentStory) },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                ) {
+                    Icon(Icons.Default.Repeat, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Repost to your Story")
+                }
+            }
+
             // Input Row: Reply to Story + Heart Like Button + Share
-            Row(
+            if (!currentStory.isUser) Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -495,7 +534,7 @@ fun StoryViewerDialog(
                         if (replyText.isNotBlank()) {
                             IconButton(
                                 onClick = {
-                                    onReplyStory(currentStory.username, replyText.trim())
+                                    onReplyStory(currentStory, replyText.trim())
                                     replyText = ""
                                 },
                                 modifier = Modifier.size(32.dp)
@@ -531,4 +570,51 @@ fun StoryViewerDialog(
             }
         }
     }
+    if (showInsights && currentStory.isUser) {
+        BlinkStoryInsightsDialog(
+            storyId = currentStory.id,
+            onDismiss = { showInsights = false },
+            onProfileClick = onProfileClick,
+        )
+    }
+
+}
+
+@Composable
+private fun StoryVideoPlayer(
+    story: Story,
+    paused: Boolean,
+    onDuration: (Long) -> Unit,
+) {
+    val context = LocalContext.current
+    val player = remember(story.id) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(story.storyImage))
+            prepare()
+            playWhenReady = true
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+        }
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    LaunchedEffect(player, paused) { player.playWhenReady = !paused }
+    LaunchedEffect(player) {
+        while (true) {
+            val duration = player.duration
+            if (duration > 0L && duration != androidx.media3.common.C.TIME_UNSET) {
+                onDuration(duration)
+                break
+            }
+            kotlinx.coroutines.delay(200)
+        }
+    }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                this.player = player
+                useController = false
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        update = { it.player = player },
+    )
 }
