@@ -12,6 +12,27 @@ on:
       - main
     tags:
       - 'v*'
+    # An ordinary main merge only needs a NEW APK when packaged Android/shared
+    # code or its build inputs change. Web, docs, Supabase and desktop-only
+    # changes must not publish another Android version.
+    # Manual workflow_dispatch and v* tag releases remain available.
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'blinkLifeFeature/**'
+      - 'game3d/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'scripts/sync_android_launcher_assets.py'
+      - '.github/scripts/restore_google_services.sh'
+      - '.github/scripts/build_full_website_apk.sh'
+      - '.github/workflows/signed-release.yml'
 
 permissions:
   contents: read
