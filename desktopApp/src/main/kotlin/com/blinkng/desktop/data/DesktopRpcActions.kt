@@ -161,6 +161,23 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return result.optInt("delivered", 0)
     }
 
+    /** Read-only unpublished content for the existing Admin dashboard. */
+    suspend fun adminReadLiveConfig(): JSONArray {
+        requireAdmin()
+        return rpc("admin_read_blink_live_config", JSONObject()).optJSONArray("items") ?: JSONArray()
+    }
+
+    /** Only owner authorization in the RPC can publish, regardless of UI state. */
+    suspend fun adminPublishLiveConfig(
+        key: String, value: JSONObject, enabled: Boolean, revision: Long,
+    ): JSONObject {
+        requireAdmin()
+        require(key in setOf("announcement", "promotion", "display", "feature_visibility"))
+        return rpc("admin_publish_blink_live_config", JSONObject()
+            .put("p_key", key).put("p_value", value)
+            .put("p_enabled", enabled).put("p_expected_revision", revision))
+    }
+
     suspend fun adminGlobalSearch(query: String): JSONObject {
         requireAdmin()
         return rpc("admin_global_search_v2", JSONObject().put("p_query", query.trim()))
