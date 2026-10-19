@@ -52,6 +52,8 @@ def audit():
     check("PR builds an Android bundle", "bundleDebug" in debug, "Quality checks should exercise bundle generation.")
     check("Privacy policy page", bool(read("web/privacy/index.html")),
           "Public policy draft must describe actual data practices and be checked against the live deployment.")
+    check("Privacy links to deletion", "delete-account/" in read("web/privacy/index.html"),
+          "Privacy page should make the external request route discoverable.")
     check("External deletion request page", bool(read("web/delete-account/index.html")),
           "User must be able to initiate account deletion outside the app; manual end-to-end test remains required.")
     listing = {
