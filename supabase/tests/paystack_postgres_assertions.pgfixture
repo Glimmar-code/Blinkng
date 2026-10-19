@@ -271,5 +271,112 @@ END
 $provider_events$;
 RESET ROLE;
 
+-- Regression: no unapproved paid boost rate can create a charge.
+DO $rate_guard$
+BEGIN
+ BEGIN
+  PERFORM public.create_blink_paystack_boost_order(
+   'POST','33333333-3333-4333-8333-333333333333',25,
+   'VIEWS','MY_UNIVERSITY',3,null);
+  RAISE EXCEPTION 'CASH_BOOST_ACCEPTED_WITHOUT_PRICE_APPROVAL';
+ EXCEPTION WHEN others THEN
+  IF sqlerrm='CASH_BOOST_ACCEPTED_WITHOUT_PRICE_APPROVAL' THEN RAISE; END IF;
+ END;
+END
+$rate_guard$;
+
+UPDATE private.blink_economy_config SET int_value=1
+ WHERE key='paystack_boost_naira_per_coin';
+SELECT public.create_blink_paystack_boost_order(
+ 'POST','33333333-3333-4333-8333-333333333333',25,
+ 'VIEWS','MY_UNIVERSITY',3,null);
+SET ROLE service_role;
+DO $boost_paid_once$
+DECLARE v_payment public.blink_paystack_payments%rowtype;
+ v_first jsonb; v_second jsonb;
+BEGIN
+ SELECT * INTO v_payment FROM public.blink_paystack_payments
+  WHERE purchase_kind='boost' LIMIT 1;
+ IF v_payment.amount_ngn<>100 THEN RAISE EXCEPTION 'BOOST_QUOTE_MISMATCH'; END IF;
+ BEGIN
+  PERFORM public.fulfill_blink_paystack_order(
+   v_payment.reference,'tx-cash-boost',9900,'NGN');
+  RAISE EXCEPTION 'UNDERPAID_BOOST_GRANTED';
+ EXCEPTION WHEN others THEN
+  IF sqlerrm='UNDERPAID_BOOST_GRANTED' THEN RAISE; END IF;
+ END;
+ v_first:=public.fulfill_blink_paystack_order(
+   v_payment.reference,'tx-cash-boost',10000,'NGN');
+ v_second:=public.fulfill_blink_paystack_order(
+   v_payment.reference,'tx-cash-boost',10000,'NGN');
+ IF v_first->>'status'<>'fulfilled'
+ OR coalesce((v_second->>'already_fulfilled')::boolean,false)=false
+ OR (SELECT count(*) FROM public.blink_boost_campaigns_v2
+     WHERE user_id=v_payment.user_id)<>1
+ THEN RAISE EXCEPTION 'DUPLICATE_OR_MISSING_CASH_CAMPAIGN'; END IF;
+END
+$boost_paid_once$;
+
+-- Re-enrollment cannot silently bind someone else's paid verification.
+UPDATE public.profiles SET verification_badge='BLUE',verification_tier='Standard',
+ verification_expires_at=now()+interval '40 days'
+WHERE id='11111111-1111-4111-8111-111111111111';
+DO $recurring_consent_test$
+DECLARE v_id uuid; v_expiry timestamptz;
+ v_payment public.blink_paystack_payments%rowtype;v_data jsonb;v_second jsonb;
+BEGIN
+ SELECT * INTO v_payment FROM public.blink_paystack_payments
+ WHERE user_id='11111111-1111-4111-8111-111111111111'
+  AND item_code='BLUE' AND status='fulfilled'
+ ORDER BY created_at LIMIT 1;
+ BEGIN
+  PERFORM public.prepare_blink_paystack_renewal(v_payment.user_id,
+   v_payment.reference,'PLN_test001','CUS_test001','wrong-consent');
+  RAISE EXCEPTION 'SILENT_RENEWAL_CONSENT_ACCEPTED';
+ EXCEPTION WHEN others THEN
+  IF sqlerrm='SILENT_RENEWAL_CONSENT_ACCEPTED' THEN RAISE; END IF;
+ END;
+ v_data:=public.prepare_blink_paystack_renewal(v_payment.user_id,
+   v_payment.reference,'PLN_test001','CUS_test001','v1.2026-10');
+ v_id:=(v_data->>'id')::uuid;
+ PERFORM public.finish_blink_paystack_renewal(
+  v_id,'SUB_testsubscription01','emailtoken123456');
+ SELECT verification_expires_at INTO v_expiry FROM public.profiles WHERE id=v_payment.user_id;
+ v_data:=public.fulfill_blink_paystack_renewal(
+  'SUB_testsubscription01','paystack-renewal-001','renewal-tx-001',80000,'NGN');
+ v_second:=public.fulfill_blink_paystack_renewal(
+  'SUB_testsubscription01','paystack-renewal-001','renewal-tx-001',80000,'NGN');
+ IF v_data->>'status'<>'fulfilled'
+ OR (v_second->>'already_fulfilled')::boolean IS DISTINCT FROM true
+ OR (SELECT verification_expires_at FROM public.profiles WHERE id=v_payment.user_id)
+    < v_expiry+interval '28 days'
+ THEN RAISE EXCEPTION 'RENEWAL_NOT_FULFILLED_ONCE'; END IF;
+ IF NOT public.stop_blink_paystack_renewal(v_id,v_payment.user_id) THEN
+  RAISE EXCEPTION 'CANCELLATION_FAILED'; END IF;
+ IF (SELECT status FROM private.blink_paystack_renewals WHERE id=v_id)<>'cancelled'
+ THEN RAISE EXCEPTION 'SUBSCRIPTION_STILL_ACTIVE'; END IF;
+ IF has_function_privilege('authenticated',
+  'public.fulfill_blink_paystack_renewal(text,text,text,bigint,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'CUSTOMER_CAN_FORGE_RENEWAL'; END IF;
+END
+$recurring_consent_test$;
+DO $email_claim_test$
+DECLARE v_claimed jsonb;v_first jsonb;
+BEGIN
+ v_claimed:=public.claim_blink_paystack_payment_notices(25);
+ IF jsonb_array_length(v_claimed)<2 THEN
+  RAISE EXCEPTION 'MISSING_TRANSACTION_EMAILS'; END IF;
+ PERFORM public.complete_blink_paystack_payment_notice(
+   (v_claimed->0->>'id')::uuid,'sent',null);
+ v_first:=public.claim_blink_paystack_payment_notices(25);
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(v_first) x
+     WHERE x->>'id'=v_claimed->0->>'id')
+ THEN RAISE EXCEPTION 'DUPLICATE_PAYMENT_EMAIL_SEND'; END IF;
+ IF has_function_privilege('authenticated',
+    'public.claim_blink_paystack_payment_notices(integer)','EXECUTE')
+ THEN RAISE EXCEPTION 'CUSTOMER_CAN_SEND_EMAIL'; END IF;
+END
+$email_claim_test$;
+RESET ROLE;
 -- Final assertion: webhook replay/confirmation cannot credit twice.
 select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
