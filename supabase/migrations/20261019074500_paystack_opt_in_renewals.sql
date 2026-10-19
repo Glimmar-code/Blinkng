@@ -197,3 +197,18 @@ REVOKE ALL ON FUNCTION public.get_blink_paystack_renewal_for_server(uuid)
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.get_blink_paystack_renewal_for_server(uuid)
  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.get_blink_paystack_renewal_by_code_for_server(p_code text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path=''
+AS $renewal_by_code$
+ SELECT to_jsonb(r) FROM (
+  SELECT id,user_id,tier,months,amount_ngn,plan_code,customer_code,status
+  FROM private.blink_paystack_renewals
+  WHERE subscription_code=p_code
+  LIMIT 1
+ ) r
+$renewal_by_code$;
+REVOKE ALL ON FUNCTION public.get_blink_paystack_renewal_by_code_for_server(text)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.get_blink_paystack_renewal_by_code_for_server(text)
+ TO service_role;
