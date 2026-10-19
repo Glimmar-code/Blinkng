@@ -161,14 +161,18 @@ begin
       from public.profiles where id=v_order.user_id for update;
     if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
 
-    -- An outstanding Blue order must never downgrade an active Gold badge.
+    -- A delayed BLUE payment must not downgrade an active GOLD badge,
+    -- extend GOLD at the cheaper BLUE price, or expire a permanent GOLD badge.
     v_new_badge := case
-      when v_prior_badge='GOLD' and
+      when v_order.item_code='BLUE' and v_prior_badge='GOLD' and
         (v_prior_expiration is null or v_prior_expiration>now()) then 'GOLD'
       else v_order.item_code end;
     v_new_expiration := case
+      when v_order.item_code='BLUE' and v_prior_badge='GOLD' and
+        (v_prior_expiration is null or v_prior_expiration>now())
+      then v_prior_expiration
       when v_prior_badge=v_order.item_code and v_prior_expiration is null
-      then null -- preserve only an existing permanent badge of the same tier
+      then null -- preserve an existing permanent badge of the same tier
       else greatest(coalesce(v_prior_expiration,now()),now()) +
         make_interval(days=>v_order.duration_days)
       end;
