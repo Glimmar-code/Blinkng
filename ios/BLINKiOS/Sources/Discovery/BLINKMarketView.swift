@@ -5,6 +5,7 @@ import SwiftUI
 /// verified server-enforced seller and payment flows are ready.
 struct BLINKMarketView: View {
     @ObservedObject var auth: BLINKAuthStore
+    let onMessageSeller: (String) -> Void
     @State private var query = ""
     @State private var listings: [BLINKMarketplaceListing] = []
     @State private var loading = false
@@ -65,7 +66,7 @@ struct BLINKMarketView: View {
                     }
                 } else {
                     ForEach(listings) { item in
-                        BLINKMarketCard(item: item)
+                        BLINKMarketCard(item: item, onMessageSeller: onMessageSeller)
                     }
                     Text("Seller registration and paid checkout are not available in this iOS preview.")
                         .font(.footnote)
@@ -108,15 +109,7 @@ struct BLINKMarketView: View {
 
 private struct BLINKMarketCard: View {
     let item: BLINKMarketplaceListing
-
-    private var sellerMessageURL: URL? {
-        guard let username = item.sellerHandle,
-              var parts = URLComponents(string: "https://www.blink.com.ng/messages/new") else {
-            return nil
-        }
-        parts.queryItems = [URLQueryItem(name: "user", value: username)]
-        return parts.url
-    }
+    let onMessageSeller: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -155,8 +148,8 @@ private struct BLINKMarketCard: View {
                     .lineLimit(4)
             }
 
-            if let link = sellerMessageURL {
-                Link("Message seller on BLINK web", destination: link)
+            if let username = item.sellerHandle {
+                Button("Message seller") { onMessageSeller(username) }
                     .font(.subheadline.weight(.semibold))
                     .buttonStyle(.bordered)
             } else {
