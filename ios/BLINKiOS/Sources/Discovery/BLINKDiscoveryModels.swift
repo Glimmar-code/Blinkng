@@ -23,7 +23,7 @@ struct BLINKMarketplaceListing: Decodable, Identifiable {
 
     var sellerHandle: String? {
         guard let value = sellerUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "@", with: ""),
+            .replacingOccurrences(of: #"^@"#, with: "", options: .regularExpression),
               !value.isEmpty, value.count <= 40,
               value.range(of: #"^[A-Za-z0-9_.]+$"#, options: .regularExpression) != nil else {
             return nil
