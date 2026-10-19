@@ -18,7 +18,7 @@ final class BLINKFeedPhase3Tests: XCTestCase {
                     HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: [:])!,
                     cacheStoragePolicy: .notAllowed)
                 client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading()
+                client?.urlProtocolDidFinishLoading(self)
             } catch {
                 client?.urlProtocol(self, didFailWithError: error)
             }
