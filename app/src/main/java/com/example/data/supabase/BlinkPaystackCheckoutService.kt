@@ -109,6 +109,45 @@ class BlinkPaystackCheckoutService {
         }
     }
 
+    suspend fun renewalStatus(): JSONObject =
+        invoke("paystack-autorenew", JSONObject().put("action", "status"))
+
+    suspend fun enableRenewal(): JSONObject {
+        val paidReference = listReceipts()
+            .firstOrNull { it.kind == "verification" && it.status == "fulfilled" }
+            ?.reference ?: error("Complete a Paystack verification payment first.")
+        return invoke("paystack-autorenew", JSONObject()
+            .put("action", "enable")
+            .put("reference", paidReference)
+            .put("agreeToRecurring", true)
+            .put("consentVersion", "v1.2026-10"))
+    }
+
+    suspend fun stopRenewal(): JSONObject =
+        invoke("paystack-autorenew", JSONObject().put("action", "cancel"))
+
+    suspend fun createBoostCheckout(
+        targetType: String, targetId: String, boostPower: Int,
+        objective: String, audienceScope: String, durationDays: Int,
+        targetUniversity: String?,
+    ): BlinkPaystackCheckout {
+        require(targetType in setOf("POST", "REEL", "PROFILE", "LISTING"))
+        require(targetId.matches(Regex("^[0-9a-fA-F-]{36}$")))
+        require(boostPower in 1..100 && durationDays in setOf(1, 3, 7, 14, 30))
+        val result = invoke("paystack-checkout", JSONObject()
+            .put("kind", "boost").put("itemCode", "BOOST").put("months", 1)
+            .put("targetType", targetType).put("targetId", targetId)
+            .put("boostPower", boostPower).put("objective", objective)
+            .put("audienceScope", audienceScope)
+            .put("durationDays", durationDays)
+            .put("targetUniversity", targetUniversity))
+        val url = result.optString("checkoutUrl")
+        val reference = result.optString("reference")
+        check(url.startsWith("https://checkout.paystack.com/") &&
+            reference.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        return BlinkPaystackCheckout(url, reference, "boost")
+    }
+
     suspend fun confirmPayment(reference: String): Boolean {
         require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
             "Invalid payment reference."
