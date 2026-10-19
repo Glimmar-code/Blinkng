@@ -36,6 +36,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.verification.BlinkVerificationTier
+import com.blinkng.shared.verification.BlinkVerificationPlans
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +57,7 @@ fun GetVerifiedSheet(
     pendingCashPayment: Boolean = false,
     cashCheckoutBusy: Boolean = false,
     onCheckCashPayment: () -> Unit = {},
-    onUpgrade: (VerificationBadge) -> Unit
+    onUpgrade: (VerificationBadge, Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedBadge by remember {
@@ -856,16 +857,16 @@ fun GetVerifiedSheet(
                             }
 
                             OutlinedButton(
-                                onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled && selectedMonths == 1 && !cashCheckoutBusy,
+                                onClick = { onUpgrade(VerificationBadge.BLUE, selectedMonths) },
+                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} securely (one-time)", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.BLUE, selectedMonths).totalNgn} for ${selectedMonths}m (one-time)", fontWeight = FontWeight.Bold)
                             }
                             if (!recurringCheckoutVerified && !isGoldActive) {
                                 Text(
-                                    "One-time Paystack checkout is available only after activation; multi-month subscriptions require separate verification.",
+                                    "These are one-time payments for 1, 3, 6 or 12 months. Automatic renewal is not enabled.",
                                     fontSize = 10.5.sp,
                                     color = textSecondary,
                                     textAlign = TextAlign.Center,
@@ -895,19 +896,18 @@ fun GetVerifiedSheet(
                     }
                 } else if (selectedBadge == VerificationBadge.GOLD) {
                     val isCurrentBadge = profile.verificationBadge == selectedBadge
-                    val eligible = isGoldEligible && !isCurrentBadge
+                    val eligible = isGoldEligible
                     Button(
-                        onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && economyPolicy.cashCheckoutEnabled && selectedMonths == 1 && !cashCheckoutBusy,
+                        onClick = { onUpgrade(VerificationBadge.GOLD, selectedMonths) },
+                        enabled = eligible && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
                         Text(
                             when {
-                                isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                economyPolicy.cashCheckoutEnabled -> "Continue to secure one-time Gold checkout"
+                                economyPolicy.cashCheckoutEnabled -> "Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.GOLD, selectedMonths).totalNgn} for ${selectedMonths}m (one-time)"
                                 else -> "Secure Gold checkout not connected"
                             },
                             fontWeight = FontWeight.Bold,
