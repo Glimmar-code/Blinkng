@@ -78,5 +78,49 @@ begin
  end if;
 end $$;
 reset role;
+
+-- Regression: a delayed cheaper BLUE purchase must not extend paid GOLD.
+update public.profiles
+set verification_badge='GOLD',
+    verification_tier='Gold',
+    verification_expires_at=now()+interval '60 days'
+where id='11111111-1111-4111-8111-111111111111';
+select public.create_blink_paystack_order('verification','BLUE');
+set role service_role;
+do $
+declare v_order public.blink_paystack_payments%rowtype;
+        v_expiry timestamptz;
+begin
+ select verification_expires_at into v_expiry from public.profiles
+ where id='11111111-1111-4111-8111-111111111111';
+ select * into v_order from public.blink_paystack_payments
+ where item_code='BLUE' and status='pending' order by created_at desc limit 1;
+ perform public.fulfill_blink_paystack_order(v_order.reference,'test-paystack-tx-3',80000,'NGN');
+ if (select verification_badge from public.profiles where id=v_order.user_id) <> 'GOLD'
+   or (select verification_expires_at from public.profiles where id=v_order.user_id)
+      is distinct from v_expiry then
+   raise exception 'BLUE_EXTENDED_OR_DOWNGRADED_ACTIVE_GOLD';
+ end if;
+end $;
+reset role;
+
+-- Regression: cheaper BLUE must not make permanent GOLD expire.
+update public.profiles set verification_expires_at=null
+where id='11111111-1111-4111-8111-111111111111';
+select public.create_blink_paystack_order('verification','BLUE');
+set role service_role;
+do $
+declare v_order public.blink_paystack_payments%rowtype;
+begin
+ select * into v_order from public.blink_paystack_payments
+ where item_code='BLUE' and status='pending' order by created_at desc limit 1;
+ perform public.fulfill_blink_paystack_order(v_order.reference,'test-paystack-tx-4',80000,'NGN');
+ if (select verification_badge from public.profiles where id=v_order.user_id) <> 'GOLD'
+   or (select verification_expires_at from public.profiles where id=v_order.user_id)
+      is not null then
+   raise exception 'BLUE_EXPIRED_OR_DOWNGRADED_PERMANENT_GOLD';
+ end if;
+end $;
+reset role;
 -- Final assertion: webhook replay/confirmation cannot credit twice.
 select 'BLINK Paystack disposable PostgreSQL integration passed' as result;
