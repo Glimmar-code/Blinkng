@@ -37,6 +37,8 @@ import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
 import com.example.data.models.VerificationBadge
 import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.example.data.supabase.BlinkLiveCampaignService
+import com.blinkng.shared.live.BlinkLiveCampaign
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
@@ -900,6 +902,28 @@ fun MainAppContent(
             }
         }
     }
+    val livePlacement = when (selectedPage) {
+        0 -> "home"
+        1 -> "reels"
+        2 -> "marketplace"
+        3 -> "connect"
+        4 -> "messages"
+        7 -> "games"
+        else -> ""
+    }
+    var campaignResponse by remember { mutableStateOf<Pair<String,List<BlinkLiveCampaign>>>("" to emptyList()) }
+    // Schedule visibility is enforced server-side; recheck when switching tabs.
+    LaunchedEffect(livePlacement, uiState.myProfile.id) {
+        if (livePlacement.isNotBlank()) {
+            while (isActive) {
+                BlinkLiveCampaignService.load(livePlacement)?.let {
+                    campaignResponse = livePlacement to it
+                }
+                delay(45_000L)
+            }
+        }
+    }
+
     val allowMainPageSwipe =
         uiState.selectedTab in setOf(MainTab.HOME, MainTab.MARKET, MainTab.MESSAGES) &&
         !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3) &&
@@ -1138,18 +1162,45 @@ fun MainAppContent(
         }
         }
 
-        if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0 &&
-            uiState.isOnline && !uiState.isMenuOpen && !uiState.isCreatePostOpen &&
+        val allowLiveNotices = livePlacement.isNotBlank() && uiState.isOnline &&
+            !uiState.isMenuOpen && !uiState.isCreatePostOpen &&
             !uiState.isCreateStoryOpen && !uiState.isPostItemOpen &&
-            uiState.activeViewingStory == null && !uiState.isConversationFullScreen
-        ) {
-            BlinkLiveBanners(
-                snapshot = liveSnapshot,
+            uiState.activeViewingStory == null && !uiState.isConversationFullScreen &&
+            uiState.activeConversationPartner == null &&
+            uiState.activeCommentsPostId == null &&
+            uiState.viewingProduct == null && uiState.viewingProfile == null
+        if (allowLiveNotices) {
+            Column(
                 modifier = Modifier.align(Alignment.TopCenter)
                     .zIndex(29f)
                     .statusBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, top = 72.dp)
-            )
+                    .padding(start = 12.dp, end = 12.dp, top = 72.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (livePlacement == "home") {
+                    BlinkLiveBanners(snapshot = liveSnapshot)
+                }
+                if (campaignResponse.first == livePlacement) {
+                    BlinkLiveCampaignCards(
+                        placement = livePlacement,
+                        campaigns = campaignResponse.second,
+                        onRoute = { route ->
+                            when (route) {
+                                "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                                "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                                "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                                "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                                "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                                "notifications" -> viewModel.openActivity(true)
+                                "store" -> viewModel.openMenu(true)
+                                "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                            }
+                        }
+                    )
+                }
+            }
         }
 
         OfflineConnectionBanner(
