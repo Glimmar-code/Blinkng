@@ -30,6 +30,8 @@ import com.blinkng.shared.live.BlinkLiveCampaignPolicy
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import org.json.JSONArray
 import java.util.prefs.Preferences
 
@@ -38,6 +40,7 @@ import java.util.prefs.Preferences
 fun DesktopLiveStrip(state: DesktopAppState) {
     var snapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
     val actions=remember(state.client) { DesktopRpcActions(state.client) }
+    val scope=rememberCoroutineScope()
     var campaignResponse by remember { mutableStateOf<Pair<String,List<BlinkLiveCampaign>>>("" to emptyList()) }
     val placement=state.selectedRoute.takeIf { it in BlinkLiveCampaignPolicy.placements } ?: ""
     LaunchedEffect(Unit) {
@@ -101,7 +104,7 @@ fun DesktopLiveStrip(state: DesktopAppState) {
                     runCatching {
                         if(campaign.frequencyHours==0 || campaign.kind=="emergency") false
                         else {
-                            val prefs=Preferences.userNodeForPackage(DesktopLiveStrip::class.java)
+                            val prefs=Preferences.userNodeForPackage(DesktopAppState::class.java)
                             val stamp=prefs.getLong("live_${campaign.id}",0L)
                             val elapsed=System.currentTimeMillis()-stamp
                             stamp>0L && elapsed>=0 && elapsed<campaign.frequencyHours*3_600_000L
@@ -114,7 +117,7 @@ fun DesktopLiveStrip(state: DesktopAppState) {
                         delay(600L)
                         runCatching { actions.recordLiveCampaignEvent(placement,campaign.id,"impression") }
                         runCatching {
-                            Preferences.userNodeForPackage(DesktopLiveStrip::class.java)
+                            Preferences.userNodeForPackage(DesktopAppState::class.java)
                                 .putLong("live_${campaign.id}",System.currentTimeMillis())
                         }
                     }
@@ -133,13 +136,13 @@ fun DesktopLiveStrip(state: DesktopAppState) {
                             }
                             if(campaign.actionRoute!=null && campaign.actionLabel!=null) Button(onClick={
                                 state.selectedRoute=campaign.actionRoute
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                                scope.launch {
                                     runCatching { actions.recordLiveCampaignEvent(placement,campaign.id,"click") }
                                 }
                             }) { Text(campaign.actionLabel) }
                             TextButton(onClick={
                                 dismissed=true
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                                scope.launch {
                                     runCatching { actions.recordLiveCampaignEvent(placement,campaign.id,"dismiss") }
                                 }
                             }) { Text("Dismiss") }
