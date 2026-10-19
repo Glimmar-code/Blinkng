@@ -33,7 +33,10 @@ main = source("app/src/main/java/com/example/MainActivity.kt")
 assert 'onStoreClick = {' in main and "showStoreComingSoon = true" in main
 assert "BlinkStoreComingSoonDialog(" in main
 assert 'feedUtilitySheet == "store"' in main  # legacy/restored state
-assert main.count('if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true') == 3
+# The Store stays frozen. Boost/Drops 'Get Coins' is a separate, protected
+# Paystack checkout action and must not route through the paused Store.
+assert main.count('if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true') == 1
+assert main.count('onGetCoins = { viewModel.buyBlinkCoins() },') == 2
 
 store = source("app/src/main/java/com/example/BlinkStoreActivity.kt")
 gate = store.index("if (BlinkStoreAvailability.isPaused)")
