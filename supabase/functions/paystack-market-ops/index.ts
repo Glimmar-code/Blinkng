@@ -88,6 +88,12 @@ Deno.serve(async(req:Request)=>{
      const payment=await checkMarketPayment(record.payment_id);
      if(payment.purchase_kind!=="marketplace" && payment.purchase_kind!=="gift")
        return json({error:"REFUND_MANUAL_REVIEW_REQUIRED"},403);
+     if(payment.purchase_kind==="marketplace") {
+       const {data:payout,error:payoutError}=await svc.from("blink_paystack_seller_payouts")
+         .select("status").eq("payment_id",payment.id).maybeSingle();
+       if(payoutError||!payout||payout.status!=="blocked")
+         return json({error:"PAYOUT_RELEASE_BLOCKS_REFUND"},409);
+     }
      const {data:locked,error:lockErr}=await svc.from("blink_paystack_refunds")
        .update({status:"submitted",updated_at:new Date().toISOString()})
        .eq("id",record.id).eq("status","approved")
@@ -138,6 +144,11 @@ Deno.serve(async(req:Request)=>{
        .select("id").eq("order_id",market.marketplace_order_id)
        .in("status",["open","reviewing"]).limit(1);
      if(dErr||disputes?.length)return json({error:"OPEN_DISPUTE_BLOCKS_PAYOUT"},409);
+     const {data:openRefunds,error:refundError}=await svc.from("blink_paystack_refunds")
+       .select("id").eq("payment_id",payout.payment_id)
+       .in("status",["requested","approved","submitted","processing","completed"]).limit(1);
+     if(refundError||openRefunds?.length)
+       return json({error:"REFUND_BLOCKS_PAYOUT"},409);
      const {data:recipient,error:recErr}=await svc.rpc(
        "get_blink_paystack_seller_destination_for_server",{p_seller:payout.seller_id});
      if(recErr||!recipient)return json({error:"SELLER_RECIPIENT_NOT_VERIFIED"},409);
@@ -162,6 +173,11 @@ Deno.serve(async(req:Request)=>{
      const {data:openDisputes}=await svc.from("market_disputes").select("id")
        .eq("order_id",market.marketplace_order_id).in("status",["open","reviewing"]).limit(1);
      if(openDisputes?.length)return json({error:"OPEN_DISPUTE_BLOCKS_PAYOUT"},409);
+     const {data:openRefunds,error:refundError}=await svc.from("blink_paystack_refunds")
+       .select("id").eq("payment_id",payout.payment_id)
+       .in("status",["requested","approved","submitted","processing","completed"]).limit(1);
+     if(refundError||openRefunds?.length)
+       return json({error:"REFUND_BLOCKS_PAYOUT"},409);
      const {data:recipient,error:recErr}=await svc.rpc(
        "get_blink_paystack_seller_destination_for_server",{p_seller:payout.seller_id});
      if(recErr||typeof recipient!=="string"||!recipient.startsWith("RCP_"))
