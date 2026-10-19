@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Phase 1: an independently buildable native iOS application.
-/// Account, feed and message services will be connected to the existing BLINK
-/// Supabase backend in the following phases; no demo user data is fabricated.
+/// The iOS client uses the same BLINK account and Supabase backend as the web
+/// and Android builds; production feature data is intentionally not mocked.
 @main
 struct BLINKiOSApp: App {
     var body: some Scene {
