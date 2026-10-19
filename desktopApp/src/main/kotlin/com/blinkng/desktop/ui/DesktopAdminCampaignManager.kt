@@ -90,7 +90,7 @@ fun DesktopAdminCampaignManager(
     var chosenImage by remember { mutableStateOf<java.io.File?>(null) }
     var uploadingImage by remember { mutableStateOf(false) }
 
-    fun entries():List<JSONObject>=(0 until campaigns.length())
+    fun entries(): List<JSONObject> = (0 until campaigns.length())
         .mapNotNull { campaigns.optJSONObject(it) }
     fun selected():JSONObject?=entries().firstOrNull { it.optString("id")==selectedId }
     fun update(key:String,value:Any) {
