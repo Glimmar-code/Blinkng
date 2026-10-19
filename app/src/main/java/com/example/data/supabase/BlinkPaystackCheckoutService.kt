@@ -7,9 +7,19 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 
 data class BlinkPaystackCheckout(val url: String, val reference: String, val kind: String)
+data class BlinkPaystackReceipt(
+    val reference: String,
+    val kind: String,
+    val itemCode: String,
+    val amountNgn: Int,
+    val status: String,
+    val createdAt: String,
+    val months: Int,
+)
 
 /**
  * BLINK Paystack bridge. Never carries secret keys or client-controlled prices.
@@ -78,6 +88,25 @@ class BlinkPaystackCheckoutService {
             "Secure checkout could not be opened."
         }
         return BlinkPaystackCheckout(url, reference, kind)
+    }
+
+    suspend fun listReceipts(): List<BlinkPaystackReceipt> {
+        val data = invoke("paystack-history", JSONObject())
+        val entries = data.optJSONArray("receipts") ?: JSONArray()
+        return (0 until entries.length()).mapNotNull { index ->
+            val item = entries.optJSONObject(index) ?: return@mapNotNull null
+            BlinkPaystackReceipt(
+                reference = item.optString("reference"),
+                kind = item.optString("purchase_kind"),
+                itemCode = item.optString("item_code"),
+                amountNgn = item.optInt("amount_ngn"),
+                status = item.optString("status"),
+                createdAt = item.optString("created_at").take(10),
+                months = if (item.optString("purchase_kind") == "verification") {
+                    item.optInt("duration_days", 30) / 30
+                } else 0,
+            )
+        }
     }
 
     suspend fun confirmPayment(reference: String): Boolean {
