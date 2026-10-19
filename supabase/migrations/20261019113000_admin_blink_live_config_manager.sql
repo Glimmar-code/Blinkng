@@ -84,8 +84,11 @@ begin
     end if;
   elsif p_key = 'feature_visibility' then
     if exists (select 1 from jsonb_object_keys(p_value) k
-               where k <> 'home_promo_enabled')
-       or coalesce(jsonb_typeof(p_value->'home_promo_enabled'), '') <> 'boolean' then
+               where k not in ('home_promo_enabled','home_campaign_enabled',
+                   'reels_campaign_enabled','marketplace_campaign_enabled',
+                   'connect_campaign_enabled','messages_campaign_enabled','games_campaign_enabled'))
+       or coalesce(jsonb_typeof(p_value->'home_promo_enabled'), '') <> 'boolean'
+       or exists (select 1 from jsonb_each(p_value) f where jsonb_typeof(f.value)<>'boolean') then
       raise exception 'INVALID_PRESENTATION_FLAGS' using errcode='22023';
     end if;
   end if;
