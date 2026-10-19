@@ -33,6 +33,7 @@ import com.example.ui.components.BlinkAdminBugInbox
 import com.example.ui.components.MarketAdminReviewPanel
 import com.example.ui.components.BlinkMark
 import com.example.ui.screens.BlinkAdminAnnouncementManagerScreen
+import com.example.ui.screens.BlinkAdminLiveContentManagerScreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -126,10 +127,17 @@ private fun AdminDashboardV3(
     var showGlobalSearch by remember { mutableStateOf(false) }
     var showBugReports by remember { mutableStateOf(false) }
     var showAnnouncementManager by remember { mutableStateOf(false) }
+    var showLiveContent by remember { mutableStateOf(false) }
     var showMoreActions by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
-    BackHandler { if (showAnnouncementManager) showAnnouncementManager = false else onExit() }
+    BackHandler {
+        when {
+            showLiveContent -> showLiveContent = false
+            showAnnouncementManager -> showAnnouncementManager = false
+            else -> onExit()
+        }
+    }
 
     LaunchedEffect(Unit) {
         loading = true
@@ -169,6 +177,10 @@ private fun AdminDashboardV3(
                             expanded = showMoreActions,
                             onDismissRequest = { showMoreActions = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Live Content") },
+                                onClick = { showMoreActions = false; showAnnouncementManager = false; showLiveContent = true }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Announcements") },
                                 onClick = { showMoreActions = false; showAnnouncementManager = true }
@@ -213,7 +225,12 @@ private fun AdminDashboardV3(
                 }
             }
 
-            if (showAnnouncementManager) {
+            if (showLiveContent) {
+                BlinkAdminLiveContentManagerScreen(
+                    service = service, isOwner = capability.isOwner,
+                    onBack = { showLiveContent = false }
+                )
+            } else if (showAnnouncementManager) {
                 BlinkAdminAnnouncementManagerScreen(
                     service = service,
                     onBack = { showAnnouncementManager = false },

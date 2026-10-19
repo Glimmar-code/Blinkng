@@ -47,6 +47,10 @@ import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
+import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.example.data.supabase.BlinkLiveCampaignService
+import com.blinkng.shared.live.BlinkLiveSnapshot
+import com.blinkng.shared.live.BlinkLiveCampaign
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.notification.BlinkNotificationHelper
@@ -889,6 +893,13 @@ fun MainAppContent(
         if (boostOpenSignal > 0) feedUtilitySheet = "boost"
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            BlinkLiveRemoteConfig.load()?.let { liveSnapshot = it }
+            delay(120_000L)
+        }
+    }
 
     // This controller is additive to main's legacy Paystack seller-activation flow.
     // The new v2 payment endpoints and database remain disabled until independently verified.
@@ -1217,6 +1228,27 @@ fun MainAppContent(
                 2 -> viewModel.navigateToPrimaryTab(MainTab.MARKET)
                 3 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
                 4 -> viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
+            }
+        }
+    }
+
+    val livePlacement = when (selectedPage) {
+        0 -> "home"
+        1 -> "reels"
+        2 -> "marketplace"
+        3 -> "connect"
+        4 -> "messages"
+        7 -> "games"
+        else -> ""
+    }
+    var campaignResponse by remember {
+        mutableStateOf<Pair<String, List<BlinkLiveCampaign>>>("" to emptyList())
+    }
+    LaunchedEffect(livePlacement, uiState.myProfile.id) {
+        if (livePlacement.isNotBlank()) {
+            while (isActive) {
+                BlinkLiveCampaignService.load(livePlacement)?.let { campaignResponse = livePlacement to it }
+                delay(45_000L)
             }
         }
     }
@@ -1747,6 +1779,47 @@ fun MainAppContent(
 
         if (showStoreComingSoon && BlinkStoreAvailability.isPaused) {
             BlinkStoreComingSoonDialog(onDismiss = { showStoreComingSoon = false })
+        }
+
+        val showLiveCampaigns = livePlacement.isNotBlank() && uiState.isOnline &&
+            feedUtilitySheet == null && !uiState.isMenuOpen &&
+            !uiState.isCreatePostOpen && !uiState.isCreateStoryOpen &&
+            !uiState.isPostItemOpen && !uiState.isConversationFullScreen &&
+            uiState.activeViewingStory == null && uiState.activeConversationPartner == null &&
+            uiState.activeCommentsPostId == null && uiState.viewingProduct == null &&
+            uiState.viewingProfile == null && !uiState.isGetVerifiedOpen
+        if (showLiveCampaigns) {
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .zIndex(29f).statusBarsPadding()
+                    .padding(horizontal = 12.dp).padding(top = 72.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (livePlacement == "home" &&
+                    (campaignResponse.first != "home" || campaignResponse.second.isEmpty())) {
+                    BlinkLiveBanners(snapshot = liveSnapshot)
+                }
+                if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
+                    campaignResponse.first == livePlacement) {
+                    BlinkLiveCampaignCards(
+                        placement = livePlacement, campaigns = campaignResponse.second,
+                        onRoute = { route ->
+                            when (route) {
+                                "home" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                                "reels" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                                "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                "connect" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                                "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                                "games" -> feedUtilitySheet = "game"
+                                "notifications" -> viewModel.openActivity(true)
+                                "store" -> showStoreComingSoon = true
+                                "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                            }
+                        }
+                    )
+                }
+            }
         }
 
         OfflineConnectionBanner(
