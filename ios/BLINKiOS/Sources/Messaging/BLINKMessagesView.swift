@@ -63,6 +63,16 @@ struct BLINKMessagesView: View {
         }
         .navigationTitle("Messages")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                        Task { await auth.signOut() }
+                    }
+                } label: {
+                    Image(systemName: "person.crop.circle")
+                        .accessibilityLabel("BLINK account menu")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     newRecipient = ""
