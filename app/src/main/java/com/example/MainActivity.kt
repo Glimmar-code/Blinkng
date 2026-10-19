@@ -45,6 +45,9 @@ import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
+import com.example.data.supabase.BlinkPaystackCheckoutService
+import com.example.data.supabase.BlinkPaystackCheckout
+import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkInAppNotification
@@ -78,11 +81,124 @@ class MainActivity : ComponentActivity() {
     private var rewardedAdShowPending = false
     private var itemsOpenSignal by mutableIntStateOf(0)
     private var boostOpenSignal by mutableIntStateOf(0)
+    private val paystackV2 by lazy { BlinkPaystackCheckoutService() }
+    private val paystackV2Prefs by lazy { getSharedPreferences("blink_paystack_v2", MODE_PRIVATE) }
+    private var paystackV2Busy by mutableStateOf(false)
+    private var paystackV2RenewalStatus by mutableStateOf("none")
+    private var paystackV2ReceiptLoading by mutableStateOf(false)
+    private var paystackV2ReceiptError by mutableStateOf<String?>(null)
+    private var paystackV2ReceiptOpen by mutableStateOf(false)
+    private var paystackV2Receipts by mutableStateOf<List<BlinkPaystackReceipt>>(emptyList())
     private var showBugReportSheet by mutableStateOf(false)
     private var shakeSensorListener: android.hardware.SensorEventListener? = null
     private var lastShakeTriggerAt: Long = 0L
     private var lastShakeImpulseAt: Long = 0L
     private var shakeImpulses: Int = 0
+
+    private fun openVerifiedPaystackV2Checkout(checkout: BlinkPaystackCheckout) {
+        // Never store card data, authorization tokens, or merchant secrets.
+        paystackV2Prefs.edit().putString("reference", checkout.reference).apply()
+        val browser = Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+        startActivity(browser)
+        viewModel.showToast("Complete the secure Paystack payment and return to BLINK.")
+    }
+
+    private fun startPaystackV2Checkout(kind: String, itemCode: String, months: Int = 1) {
+        if (paystackV2Busy) return
+        if (!viewModel.uiState.value.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Secure checkout is not available yet.")
+            return
+        }
+        paystackV2Busy = true
+        lifecycleScope.launch {
+            try {
+                openVerifiedPaystackV2Checkout(paystackV2.createCheckout(kind, itemCode, months))
+            } catch (e: Exception) {
+                viewModel.showToast(e.message ?: "Secure checkout unavailable.")
+            } finally { paystackV2Busy = false }
+        }
+    }
+
+    private fun startPaystackV2BoostCheckout(
+        targetType: String, targetId: String, boostPower: Int,
+        objective: String, audienceScope: String, durationDays: Int, targetUniversity: String?,
+    ) {
+        if (paystackV2Busy || !viewModel.uiState.value.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Paystack boosts are not available yet.")
+            return
+        }
+        paystackV2Busy = true
+        lifecycleScope.launch {
+            try {
+                openVerifiedPaystackV2Checkout(
+                    paystackV2.createBoostCheckout(
+                        targetType, targetId, boostPower, objective,
+                        audienceScope, durationDays, targetUniversity
+                    )
+                )
+            } catch (e: Exception) {
+                viewModel.showToast(e.message ?: "This Paystack boost is unavailable.")
+            } finally { paystackV2Busy = false }
+        }
+    }
+
+    private fun verifyPendingPaystackV2() {
+        val reference = paystackV2Prefs.getString("reference", null)
+            ?.takeIf { it.matches(Regex("^blink-ps-[0-9a-f]{32}$")) } ?: return
+        if (paystackV2Busy) return
+        paystackV2Busy = true
+        lifecycleScope.launch {
+            try {
+                if (paystackV2.confirmPayment(reference)) {
+                    paystackV2Prefs.edit().remove("reference").apply()
+                    viewModel.showToast("Paystack confirmed your purchase.")
+                    viewModel.fetchSupabaseData()
+                }
+            } catch (_: Exception) {
+                // Keep reference for a later signed reconciliation. No fake grants.
+            } finally { paystackV2Busy = false }
+        }
+    }
+
+    private fun reloadPaystackV2Renewal() {
+        lifecycleScope.launch {
+            paystackV2RenewalStatus = runCatching {
+                paystackV2.renewalStatus().optString("status", "none")
+            }.getOrDefault("unavailable")
+        }
+    }
+
+    private fun changePaystackV2Renewal(enabled: Boolean) {
+        if (paystackV2Busy) return
+        paystackV2Busy = true
+        lifecycleScope.launch {
+            try {
+                val response = if (enabled) paystackV2.enableRenewal()
+                               else paystackV2.stopRenewal()
+                paystackV2RenewalStatus = response.optString("status", "none")
+                viewModel.showToast(if (enabled) "Automatic renewal enabled."
+                                    else "Future renewals cancelled.")
+            } catch (e: Exception) {
+                viewModel.showToast(e.message ?: "Unable to change subscription.")
+            } finally {
+                paystackV2Busy = false
+                reloadPaystackV2Renewal()
+            }
+        }
+    }
+
+    private fun openPaystackV2Receipts() {
+        paystackV2ReceiptOpen = true
+        paystackV2ReceiptLoading = true
+        paystackV2ReceiptError = null
+        lifecycleScope.launch {
+            try { paystackV2Receipts = paystackV2.listReceipts() }
+            catch (_: Exception) {
+                paystackV2ReceiptError = "Unable to load your payment history."
+            } finally { paystackV2ReceiptLoading = false }
+        }
+    }
 
     private fun startBugShakeListener() {
         if (shakeSensorListener != null) return
@@ -242,6 +358,7 @@ class MainActivity : ComponentActivity() {
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
+            verifyPendingPaystackV2()
             intent.data = null
             return
         }
@@ -403,6 +520,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            verifyPendingPaystackV2()
             viewModel.retryPendingRewardedAdClaim()
             if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
@@ -705,7 +823,20 @@ class MainActivity : ComponentActivity() {
                                         boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
-                                        onReportBug = { showBugReportSheet = true }
+                                        onReportBug = { showBugReportSheet = true },
+                                        onPaystackV2Purchase = ::startPaystackV2Checkout,
+                                        onPaystackV2Boost = ::startPaystackV2BoostCheckout,
+                                        onRefreshPaystackV2Renewal = ::reloadPaystackV2Renewal,
+                                        onEnablePaystackV2Renewal = { changePaystackV2Renewal(true) },
+                                        onCancelPaystackV2Renewal = { changePaystackV2Renewal(false) },
+                                        paystackV2RenewalStatus = paystackV2RenewalStatus,
+                                        paystackV2Busy = paystackV2Busy,
+                                        onOpenPaystackV2Receipts = ::openPaystackV2Receipts,
+                                        onClosePaystackV2Receipts = { paystackV2ReceiptOpen = false },
+                                        paystackV2ReceiptOpen = paystackV2ReceiptOpen,
+                                        paystackV2ReceiptLoading = paystackV2ReceiptLoading,
+                                        paystackV2ReceiptError = paystackV2ReceiptError,
+                                        paystackV2Receipts = paystackV2Receipts
                                     )
                                 }
                             }
@@ -791,7 +922,21 @@ fun MainAppContent(
     boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
-    onReportBug: () -> Unit
+    onReportBug: () -> Unit,
+    onPaystackV2Purchase: (String, String, Int) -> Unit = { _, _, _ -> },
+    onPaystackV2Boost: (String, String, Int, String, String, Int, String?) -> Unit =
+        { _, _, _, _, _, _, _ -> },
+    onRefreshPaystackV2Renewal: () -> Unit = {},
+    onEnablePaystackV2Renewal: () -> Unit = {},
+    onCancelPaystackV2Renewal: () -> Unit = {},
+    paystackV2RenewalStatus: String = "none",
+    paystackV2Busy: Boolean = false,
+    onOpenPaystackV2Receipts: () -> Unit = {},
+    onClosePaystackV2Receipts: () -> Unit = {},
+    paystackV2ReceiptOpen: Boolean = false,
+    paystackV2ReceiptLoading: Boolean = false,
+    paystackV2ReceiptError: String? = null,
+    paystackV2Receipts: List<BlinkPaystackReceipt> = emptyList()
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1476,6 +1621,8 @@ fun MainAppContent(
                             onCreateContent = {
                                 dismissUtility { viewModel.openCreatePost(true) }
                             },
+                            cashCheckoutEnabled = uiState.economyPolicy.cashCheckoutEnabled,
+                            onPayWithPaystack = onPaystackV2Boost,
                             onClose = { dismissUtility() },
                         )
 
@@ -2006,11 +2153,16 @@ fun MainAppContent(
                 onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
-                onUpgrade = { tier ->
-                    if (tier == com.example.data.models.VerificationBadge.BLUE) {
-                        viewModel.startPaystackVerificationCheckout()
-                    } else {
-                        viewModel.applyVerification(tier)
+                onPaymentHistory = onOpenPaystackV2Receipts,
+                renewalStatus = paystackV2RenewalStatus,
+                renewalWorking = paystackV2Busy,
+                onRefreshRenewal = onRefreshPaystackV2Renewal,
+                onEnableRenewal = onEnablePaystackV2Renewal,
+                onCancelRenewal = onCancelPaystackV2Renewal,
+                onUpgrade = { tier, months ->
+                    if (tier == com.example.data.models.VerificationBadge.BLUE ||
+                        tier == com.example.data.models.VerificationBadge.GOLD) {
+                        onPaystackV2Purchase("verification", tier.name, months)
                     }
                 }
             )
@@ -2029,7 +2181,8 @@ fun MainAppContent(
                         )
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
-                                onClick = { viewModel.startPaystackCoinCheckout(pack.id) },
+                                onClick = { onPaystackV2Purchase("coin_pack", pack.id, 1) },
+                                enabled = uiState.economyPolicy.cashCheckoutEnabled && !paystackV2Busy,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
