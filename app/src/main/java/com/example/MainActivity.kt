@@ -14,6 +14,8 @@ import androidx.core.view.WindowCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.graphics.graphicsLayer
@@ -2164,6 +2166,41 @@ fun MainAppContent(
                         tier == com.example.data.models.VerificationBadge.GOLD) {
                         onPaystackV2Purchase("verification", tier.name, months)
                     }
+                }
+            )
+        }
+
+        if (paystackV2ReceiptOpen) {
+            AlertDialog(
+                onDismissRequest = onClosePaystackV2Receipts,
+                title = { Text("Payment history") },
+                text = {
+                    Column(
+                        modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        when {
+                            paystackV2ReceiptLoading -> CircularProgressIndicator()
+                            paystackV2ReceiptError != null -> Text(paystackV2ReceiptError)
+                            paystackV2Receipts.isEmpty() -> Text("No Paystack v2 receipts yet.")
+                            else -> paystackV2Receipts.forEach { receipt ->
+                                Text(
+                                    "${receipt.createdAt} • ${receipt.itemCode}" +
+                                        (if (receipt.months > 0) " • ${receipt.months} months" else "") +
+                                        "\n₦${receipt.amountNgn} • ${receipt.status}" +
+                                        "\nReference: ${receipt.reference}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onClosePaystackV2Receipts) { Text("Close") }
+                },
+                dismissButton = {
+                    TextButton(onClick = onOpenPaystackV2Receipts) { Text("Refresh") }
                 }
             )
         }
