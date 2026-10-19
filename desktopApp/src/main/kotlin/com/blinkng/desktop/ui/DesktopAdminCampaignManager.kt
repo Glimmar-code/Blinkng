@@ -217,7 +217,7 @@ fun DesktopAdminCampaignManager(
                         FilterChip(selected=draft.optString("accent")==v,
                             onClick={update("accent",v)},label={Text(v)})
                 }
-                Text("Banner image (JPG or PNG, up to 2 MB)",fontWeight=FontWeight.SemiBold)
+                Text("Banner image (JPEG/PNG up to 20 MB; auto-compressed to less than 2 MB)",fontWeight=FontWeight.SemiBold)
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         enabled=isOwner&&!uploadingImage&&!busy,
