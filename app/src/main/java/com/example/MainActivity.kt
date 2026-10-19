@@ -36,6 +36,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
 import com.example.data.models.VerificationBadge
+import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.ads.BlinkAdConsentManager
@@ -775,6 +777,14 @@ fun MainAppContent(
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
+    // Update only presentation content while BLINK is open. Never download executable code.
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            BlinkLiveRemoteConfig.load()?.let { liveSnapshot = it }
+            delay(120_000L)
+        }
+    }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -1126,6 +1136,20 @@ fun MainAppContent(
                 }
             }
         }
+        }
+
+        if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0 &&
+            uiState.isOnline && !uiState.isMenuOpen && !uiState.isCreatePostOpen &&
+            !uiState.isCreateStoryOpen && !uiState.isPostItemOpen &&
+            uiState.activeViewingStory == null && !uiState.isConversationFullScreen
+        ) {
+            BlinkLiveBanners(
+                snapshot = liveSnapshot,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .zIndex(29f)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, top = 72.dp)
+            )
         }
 
         OfflineConnectionBanner(
