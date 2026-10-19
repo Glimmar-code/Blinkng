@@ -93,6 +93,84 @@ A genuine Paystack TEST-mode end-to-end payment, webhook, and refund/dispute
 scenario must still run in an isolated environment before LIVE activation.
 Never repurpose another live app's database or turn on production just to test.
 
+## Phase 3 — subscription, cash boosts and payment email (Testlab only)
+
+**All three are source-code implementations, not active production features.**
+Do not charge customers until the full merchant/transaction/device gates pass.
+
+### Paystack recurring subscription
+
+- User first buys a one-time Blue/Gold plan, then explicitly checks a separate
+  consent box. Existing user accounts are never silently enrolled.
+- `paystack-autorenew` retrieves the user's latest verified paid order and
+  merchant authorization, checks Paystack's reusable credential and customer
+  identity, and verifies an operator-configured plan code's billing interval,
+  domain and exact NGN amount against the paid plan.
+- Server creates Paystack subscription starting **after paid entitlement expiry**,
+  not immediately charging again. Recurring billing runs at Paystack, not in
+  Android, and a signed invoice is independently verified before any new grant.
+- Cancellation calls the *provider* disable endpoint first and then updates
+  server consent state. Turning a cosmetic toggle off never silently leaves a
+  recurring mandate active.
+- **Fail-closed environment switches:** `BLINK_PAYSTACK_RECURRING_ENABLED`
+  and `BLINK_PAYSTACK_CHECKOUT_ENABLED` must explicitly equal `true`.
+  `BLINK_PAYSTACK_RECURRING_PLANS` is a private JSON mapping for
+  `BLUE_1`, `GOLD_1`, `BLUE_3`, etc, pointing to verified Paystack plan
+  codes. Configure these only on an approved merchant's server; never in APKs.
+- Missing reusable authorization, missing subscription email token, merchant
+  mismatch, existing enrollment, wrong plan price or ambiguous network outcome
+  all block enrollment. Manual Paystack dashboard reconciliation remains
+  necessary for any ambiguous provider response. No automatic retries of
+  enrollment to avoid unintended duplicate subscriptions.
+
+### Direct cash-funded boosts
+
+- The cash boost order uses the **same server-owned** content ownership
+  validation, audience filters, duration and delivery budget as existing BLINK
+  Boost/Market. No mobile-supplied price is trusted.
+- An admin must explicitly configure `paystack_boost_naira_per_coin` (>0)
+  after approving a price: default `0` disables cash boosts.
+- After a **server-verified** Paystack payment, an atomic DB grant starts the
+  boost campaign. Duplicate webhooks do not create duplicate campaigns.
+- Existing undelivered budget logic returns leftover value as BLINK Coins,
+  not an automatic bank refund. Provider-required reversals and chargebacks
+  must still be handled.
+- The isolated Testlab build lacks the modern Boost UI, so **the cash button
+  must be connected to the latest Boost/Market screens after synchronizing
+  Testlab with current main**. This is not user-ready at this stage.
+
+### Transactional payment email
+
+- Payment success, invoice-created renewal reminders, failed renewals and
+  stop-renewal messages are queued with unique event keys.
+- `paystack-payment-email` sends black-and-white transactional receipts over
+  Brevo, behind the internal `BLINK_EMAIL_WORKER_SECRET`; it never accepts
+  a recipient address supplied by a customer.
+- `BLINK_PAYMENT_EMAIL_ENABLED` is OFF by default. The GitHub Actions worker
+  runs every 30 minutes **only after** the repository variable
+  `BLINK_PAYMENT_EMAIL_SCHEDULE_ENABLED` is `true`, and the
+  `BLINK_EMAIL_WORKER_SECRET` and `BLINK_PAYMENT_EMAIL_WORKER_URL`
+  secrets are installed. The Supabase function must be deployed first.
+- Invalid sender/auth credentials, ambiguous sends and expired sessions fail
+  closed. A provider-accepted receipt is marked sent; server errors have bounded
+  retry. No social-email subscription is required for essential receipts.
+
+### Release rules
+
+1. Run disposable PostgreSQL assertions, Android/Windows builds and unit gates
+   on the **exact PR head**, then independent Paystack TEST-mode payments.
+2. Verify transaction replay, tampering, failed charges, signature validation,
+   direct paid boosts, payment receipts and opt-in subscription cancellation
+   with the actual merchant's test credentials.
+3. Confirm merchant eligibility and approvals, server-only secrets, verified
+   production webhook, notice delivery, monitoring and rollback procedures.
+4. Deploy all migrations in order, then all Edge Functions, keeping flags OFF.
+5. Enable only after explicit product, payment and compliance sign-off.
+
+No paid Supabase staging branch is required; do not test by enabling
+live customer charges. The merchant must meet Paystack's eligibility and KYC
+requirements; do not misrepresent identity, age or business ownership.
+
 ## Pending separate feature work
 
 **Not implemented in this PR:** actual provider recurring subscriptions and
