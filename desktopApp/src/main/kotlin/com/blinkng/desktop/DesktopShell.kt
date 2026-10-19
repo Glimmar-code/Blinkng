@@ -101,6 +101,7 @@ import com.blinkng.desktop.data.DesktopCall
 import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
+import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
@@ -510,6 +511,7 @@ private fun AuthenticatedShell(
         }
     }) {
         DesktopTopBar(state, unreadNotificationCount)
+        DesktopLiveStrip(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
