@@ -57,6 +57,7 @@ fun GetVerifiedSheet(
     pendingCashPayment: Boolean = false,
     cashCheckoutBusy: Boolean = false,
     onCheckCashPayment: () -> Unit = {},
+    onPaymentHistory: () -> Unit = {},
     onUpgrade: (VerificationBadge, Int) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -935,6 +936,14 @@ fun GetVerifiedSheet(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onPaymentHistory,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("View Paystack receipts and payment history")
                 }
             }
         }
