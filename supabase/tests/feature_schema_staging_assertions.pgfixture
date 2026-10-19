@@ -74,14 +74,23 @@ begin
      or public.count_my_new_profile_visitors() <> 1 then
     raise exception 'Owner-only visitor history/count mismatch: %', v;
   end if;
-  if not public.ack_my_profile_visitors_seen((v->>'seen_through')::timestamptz)
-     or public.count_my_new_profile_visitors() <> 0 then
+  if not public.ack_my_profile_visitors_seen((v->>'seen_through')::timestamptz) then
     raise exception 'Visitor seen acknowledgment failed';
   end if;
   perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
   v := public.list_my_profile_visitors();
   if jsonb_array_length(v->'visitors') <> 0 then
     raise exception 'Viewer can read another user''s visitor list';
+  end if;
+  -- The same-SQL-statement MVCC snapshot need not expose an update to a STABLE
+  -- counter function. Confirm the receipt is written here, then check the
+  -- rendered counter in a separate top-level SQL statement below.
+  if not exists (
+     select 1 from public.profile_visit_receipts r
+     where r.user_id='00000000-0000-4000-8000-000000000001'
+       and r.last_seen_at >= (select min(last_visited_at) from public.profile_visit_events)
+  ) then
+    raise exception 'Visitor receipt was not committed correctly';
   end if;
   -- Withdrawal must erase identifiable visit history, not merely hide it.
   perform public.set_my_profile_visit_settings(false,false);
@@ -105,6 +114,16 @@ begin
     raise exception 'Legacy client bypassed profile visitor consent';
   end if;
   raise notice 'Passed: account type, discounted quotes, subscription RLS, mutual visitor opt-in, duplicate prevention, owner-only history, seen counter, opt-out erasure, legacy guard.';
+end
+$test$;
+
+-- Mimic Android's next authenticated RPC after the acknowledge write committed.
+do $test$
+begin
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  if public.count_my_new_profile_visitors() <> 0 then
+    raise exception 'Visitor unread count remained high after acknowledgment';
+  end if;
 end
 $test$;
 
