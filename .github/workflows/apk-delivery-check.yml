@@ -27,6 +27,9 @@ jobs:
       - name: Test fail-closed production release alerting policy
         run: node --test .github/scripts/blink_release_monitor.test.cjs
 
+      - name: Verify published release push authorization and payload
+        run: python3 -m unittest discover -s .github/scripts -p 'test_notify_blink_release.py'
+
       - name: Validate release Python syntax
         run: >-
           python3 -m py_compile
