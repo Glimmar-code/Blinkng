@@ -19,6 +19,7 @@ create table if not exists private.blink_live_config_audit (
   created_at timestamptz not null default now()
 );
 
+alter table private.blink_live_config_audit enable row level security;
 revoke all on private.blink_live_config_audit from public, anon, authenticated;
 
 create or replace function public.admin_read_blink_live_config()
@@ -64,8 +65,8 @@ begin
 
   if p_key in ('announcement','promotion') then
     if exists (select 1 from jsonb_object_keys(p_value) k where k not in ('title','message'))
-       or jsonb_typeof(p_value->'title') <> 'string'
-       or jsonb_typeof(p_value->'message') <> 'string'
+       or coalesce(jsonb_typeof(p_value->'title'), '') <> 'string'
+       or coalesce(jsonb_typeof(p_value->'message'), '') <> 'string'
        or char_length(p_value->>'title') > 80
        or char_length(p_value->>'message') > 300 then
       raise exception 'INVALID_LIVE_MESSAGE' using errcode='22023';
@@ -77,14 +78,14 @@ begin
   elsif p_key = 'display' then
     if exists (select 1 from jsonb_object_keys(p_value) k
                where k not in ('show_announcements','show_promotions'))
-       or jsonb_typeof(p_value->'show_announcements') <> 'boolean'
-       or jsonb_typeof(p_value->'show_promotions') <> 'boolean' then
+       or coalesce(jsonb_typeof(p_value->'show_announcements'), '') <> 'boolean'
+       or coalesce(jsonb_typeof(p_value->'show_promotions'), '') <> 'boolean' then
       raise exception 'INVALID_DISPLAY_FLAGS' using errcode='22023';
     end if;
   elsif p_key = 'feature_visibility' then
     if exists (select 1 from jsonb_object_keys(p_value) k
                where k <> 'home_promo_enabled')
-       or jsonb_typeof(p_value->'home_promo_enabled') <> 'boolean' then
+       or coalesce(jsonb_typeof(p_value->'home_promo_enabled'), '') <> 'boolean' then
       raise exception 'INVALID_PRESENTATION_FLAGS' using errcode='22023';
     end if;
   end if;
