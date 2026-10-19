@@ -69,7 +69,8 @@ struct BLINKConnectView: View {
                         Text("BLINK doesn't have any available \(mode.title.lowercased()) opportunities for you right now.")
                     }
                 } else {
-                    ForEach(Array(opportunities.enumerated()), id: \.offset) { _, item in
+                    ForEach(Array(opportunities.enumerated()), id: \.offset) { pair in
+                        let item = pair.element
                         BLINKConnectCard(
                             opportunity: item,
                             currentUserID: currentUserID,
