@@ -1,0 +1,68 @@
+name: Paystack disposable PostgreSQL integration
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/paystack_postgres_*'
+      - 'supabase/functions/paystack-*/**'
+      - 'supabase/functions/_shared/*paystack*'
+      - 'scripts/test_paystack_integrity.mjs'
+      - '.github/workflows/paystack-postgres-integration.yml'
+  push:
+    branches: [Testlab, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-payment-and-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: blink_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ci_only_password
+      PGDATABASE: blink_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL client is available
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Apply isolated, disposable BLINK payment schema fixture
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_fixture.pgfixture
+      - name: Apply Paystack migration to the disposable database only
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018225000_paystack_checkout.sql
+      - name: Apply discounted one-time plans, receipts and reporting migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019060000_paystack_plan_receipts_reporting.sql
+      - name: Apply consent-only renewals and provider reconciliation
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019074500_paystack_opt_in_renewals.sql
+      - name: Apply safe cash boost integration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019090000_paystack_cash_boosts.sql
+      - name: Apply transactional payment email worker queue
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
+      - name: Test prices, roles, payment replay and exactly-once coin/verification grants
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
+      - name: Run independent HMAC and transaction forgery tests
+        run: node --test scripts/test_paystack_integrity.mjs
+      - name: Production-safety affirmation
+        run: |
+          echo 'All tests run against a disposable GitHub runner PostgreSQL service.'
+          echo 'No production Supabase or live Paystack credentials are loaded.'
+          echo 'These tests do not substitute for real provider test-mode webhook/reversal integration.'

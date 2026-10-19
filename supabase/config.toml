@@ -95,3 +95,27 @@ verify_jwt = false
 # third-party secret values must be configured through Supabase/secrets
 # management and documented as required configuration in RECOVERY.md.
 # Secret values must never be committed to Git.
+
+
+# NEW Paystack v2 routes: all financial functions remain disabled by server
+# flags until independent TEST-mode merchant and provider checks succeed.
+[functions.paystack-checkout]
+verify_jwt = true
+
+[functions.paystack-confirm]
+verify_jwt = true
+
+[functions.paystack-history]
+verify_jwt = true
+
+[functions.paystack-autorenew]
+verify_jwt = true
+
+# Paystack verifies webhook payload signatures; no BLINK session expected.
+# This v2 endpoint does not replace the legacy live Paystack webhook.
+[functions.paystack-webhook-v2]
+verify_jwt = false
+
+# Internal worker, requires long service-only x-blink-email-worker-secret.
+[functions.paystack-payment-email]
+verify_jwt = false
