@@ -426,6 +426,7 @@ fun PremiumFeedScreen(
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             worldRank = currentUserProfile?.worldRank ?: 0,
+            userIsOnline = currentUserProfile?.onlineNow == true,
             blinkCoinBalance = blinkCoinBalance,
             resumeUserKey = resumeUserKey,
             isDark = isDark,
@@ -601,6 +602,7 @@ private fun PremiumHomeFeed(
     currentUsername: String,
     userAvatar: String,
     worldRank: Int,
+    userIsOnline: Boolean,
     blinkCoinBalance: Long,
     resumeUserKey: String,
     isDark: Boolean,
@@ -1466,6 +1468,7 @@ private fun PremiumHomeFeed(
                     FeedTopBar(
                         reserveStatusBar = false,
                         userAvatar = userAvatar,
+                        userIsOnline = userIsOnline,
                         hasUnreadNotifications = hasUnreadNotifications,
                         unreadNotificationCount = unreadNotificationCount,
                         onSearchClick = onSearchClick,
