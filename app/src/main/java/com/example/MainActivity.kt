@@ -1875,6 +1875,7 @@ fun MainAppContent(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FeedBottomBar(
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 },
                 currentTab = uiState.selectedTab,
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {
