@@ -243,6 +243,13 @@ class AdminSupabaseService {
         buildList { for (i in 0 until array.length()) add(array.getJSONObject(i)) }
     }
 
+    /** Limited, aggregate-only campaign trends for server-authorized administrators. */
+    suspend fun liveCampaignAnalytics(days: Int): Result<JSONObject> = runCatching {
+        require(days in setOf(7, 30, 90)) { "Analytics period must be 7, 30 or 90 days." }
+        JSONObject(rpc("admin_blink_live_campaign_analytics",
+            JSONObject().put("p_days", days)))
+    }
+
     suspend fun saveLiveCampaign(
         id: String?, data: JSONObject, revision: Long?,
     ): Result<JSONObject> = runCatching {

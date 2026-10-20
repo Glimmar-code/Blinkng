@@ -31,6 +31,7 @@ dependencies {
     // Desktop networking uses the same Supabase REST/Auth endpoints as Android.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20250517")
+    testImplementation("junit:junit:4.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
 
     // Cached network media for avatars, posts, marketplace and reel thumbnails.
