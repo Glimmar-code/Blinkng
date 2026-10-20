@@ -1,4 +1,7 @@
 \set ON_ERROR_STOP on
+-- Each CI psql invocation gets a new connection, so restore the fixture ID.
+select set_config('test.campaign',
+  (select id::text from public.blink_live_campaigns limit 1),false);
 -- Disposable CI only. The original fixture has one valid view and click today.
 insert into private.blink_live_campaign_events (campaign_id,user_id,event_day,event_kind)
 values
