@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.SportsEsports
@@ -119,6 +120,7 @@ fun BlinkItemsScreen(
     onOpenGame: () -> Unit = {},
     onOpenBoost: () -> Unit = {},
     onOpenDrops: () -> Unit = {},
+    onOpenStore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by remember { mutableStateOf(BlinkItemsPage.HOME) }
@@ -148,7 +150,8 @@ fun BlinkItemsScreen(
                 onLocation = { page = BlinkItemsPage.LOCATION },
                 onGame = onOpenGame,
                 onBoost = onOpenBoost,
-                onDrops = onOpenDrops
+                onDrops = onOpenDrops,
+                onStore = onOpenStore
             )
             BlinkItemsPage.STEPS -> BlinkStepsItem()
             BlinkItemsPage.WEATHER -> BlinkWeatherItem()
@@ -209,7 +212,8 @@ private fun BlinkItemsHome(
     onLocation: () -> Unit,
     onGame: () -> Unit,
     onBoost: () -> Unit,
-    onDrops: () -> Unit
+    onDrops: () -> Unit,
+    onStore: () -> Unit
 ) {
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
@@ -344,16 +348,31 @@ private fun BlinkItemsHome(
                 )
             }
             Spacer(Modifier.height(10.dp))
-            BlinkCompactItemTile(
-                icon = Icons.Default.CardGiftcard,
-                title = "Drops",
-                subtitle = "Explore BLINK Drops",
-                enabled = true,
-                showSwitch = false,
-                onToggle = {},
-                onClick = onDrops,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.CardGiftcard,
+                    title = "Drops",
+                    subtitle = "Explore BLINK Drops",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onDrops,
+                    modifier = Modifier.weight(1f)
+                )
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Storefront,
+                    title = "Store",
+                    subtitle = "BLINK Store",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onStore,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         item {
