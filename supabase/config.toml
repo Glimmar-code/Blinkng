@@ -119,3 +119,7 @@ verify_jwt = false
 # Internal worker, requires long service-only x-blink-email-worker-secret.
 [functions.paystack-payment-email]
 verify_jwt = false
+
+# Authenticated users may request delivery/refund; owner-only financial actions are checked server-side.
+[functions.paystack-market-ops]
+verify_jwt = true

@@ -39,12 +39,18 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.components.*
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
+import com.example.data.supabase.BlinkLiveRemoteConfig
+import com.example.data.supabase.BlinkLiveCampaignService
+import com.blinkng.shared.live.BlinkLiveSnapshot
+import com.blinkng.shared.live.BlinkLiveCampaign
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.notification.BlinkNotificationHelper
@@ -57,6 +63,8 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.update.WebsiteApkDownloadCoordinator
+import com.example.update.BlinkWebsiteReleaseAlerts
 import com.example.update.WebsiteApkUpdateCoordinator
 import com.blinkng.shared.update.BlinkReleaseInfo
 import com.example.util.startActivitySafely
@@ -134,6 +142,10 @@ class MainActivity : ComponentActivity() {
 
     private val playInAppUpdateCoordinator by lazy {
         PlayInAppUpdateCoordinator(this, inAppUpdateLauncher)
+    }
+
+    private val websiteApkDownloadCoordinator by lazy {
+        WebsiteApkDownloadCoordinator(applicationContext)
     }
 
     private fun showRewardedAdForCoins() {
@@ -240,6 +252,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == BlinkWebsiteReleaseAlerts.ACTION_OPEN_UPDATE) {
+            BlinkWebsiteReleaseAlerts.requestRefresh(openPrompt = true)
+            intent.action = Intent.ACTION_MAIN // Consume the notification action once.
+        }
         handleNotificationIntent(intent)
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
@@ -422,6 +438,7 @@ class MainActivity : ComponentActivity() {
         if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
         stopBugShakeListener()
         playInAppUpdateCoordinator.close()
+        websiteApkDownloadCoordinator.close()
         super.onDestroy()
     }
 
@@ -470,24 +487,53 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateDismissed by remember { mutableStateOf(false) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
+            val websiteRefreshSignal by BlinkWebsiteReleaseAlerts.refreshSignal.collectAsStateWithLifecycle()
+            val websiteOpenSignal by BlinkWebsiteReleaseAlerts.openPromptSignal.collectAsStateWithLifecycle()
             var adminAnnouncementOpen by remember { mutableStateOf(false) }
 
-            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
-                websiteRelease = null
+            // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
+            // Stopping the Activity suspends checks, resuming it checks straight away.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id, websiteRefreshSignal) {
                 websiteUpdateCheckFinished = false
-                websiteUpdateDismissed = false
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
-                    websiteRelease = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                    BlinkWebsiteReleaseAlerts.configureSubscription(this@MainActivity)
+                    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (isActive) {
+                            if (!WebsiteApkDownloadCoordinator.isPlayStoreInstall(this@MainActivity)) {
+                                val latest = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                                if (latest?.versionCode != websiteRelease?.versionCode) {
+                                    websiteRelease = latest
+                                    websiteUpdateDismissed = false
+                                }
+                            } else {
+                                websiteRelease = null
+                            }
+                            websiteUpdateCheckFinished = true
+                            delay(15 * 60 * 1000L)
+                        }
+                    }
+                } else {
+                    websiteRelease = null
+                    websiteUpdateDismissed = false
                     websiteUpdateCheckFinished = true
                 }
             }
+            LaunchedEffect(websiteOpenSignal, uiState.destination) {
+                if (websiteOpenSignal > 0 && uiState.destination == AppDestination.MAIN) {
+                    websiteUpdateDismissed = false
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(0)
+                    BlinkWebsiteReleaseAlerts.consumeOpenPrompt()
+                }
+            }
 
-            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
-                uiState.selectedTab == MainTab.HOME &&
-                uiState.feedSubTab == 0 &&
+            // Update notifications should also be visible while browsing Reels,
+            // Market, Connect or Messages, but must not interrupt other overlays.
+            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
                 !uiState.isFeedLoading &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
@@ -505,6 +551,8 @@ class MainActivity : ComponentActivity() {
                 uiState.deepLinkedPost == null &&
                 uiState.viewingProduct == null &&
                 uiState.viewingProfile == null
+            val idleHomeForPrompts = idleAppForUpdate &&
+                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -760,10 +808,31 @@ class MainActivity : ComponentActivity() {
                         }
 
                         val newRelease = websiteRelease
-                        if (idleHomeForPrompts && newRelease != null && !websiteUpdateDismissed) {
+                        if (idleAppForUpdate && newRelease != null && !websiteUpdateDismissed) {
                             BlinkWebsiteUpdateDialog(
                                 release = newRelease,
-                                onUpdateNow = { websiteUpdateDismissed = true; openWebsiteUpdate() },
+                                downloadState = when (val downloaded = websiteDownloadState) {
+                                    is WebsiteApkDownloadCoordinator.State.Ready ->
+                                        if (downloaded.release == newRelease) downloaded
+                                        else WebsiteApkDownloadCoordinator.State.Idle
+                                    else -> downloaded
+                                },
+                                onUpdateNow = { unmeteredOnly ->
+                                    websiteApkDownloadCoordinator.start(
+                                        newRelease, BuildConfig.VERSION_CODE, unmeteredOnly,
+                                    )
+                                },
+                                onInstall = {
+                                    runCatching { websiteApkDownloadCoordinator.install(this@MainActivity) }
+                                        .onFailure {
+                                            viewModel.showToast("Android could not open the installer. Use the official BLINK website.")
+                                        }
+                                },
+                                onPauseDownload = { websiteApkDownloadCoordinator.pause() },
+                                onOpenWebsite = {
+                                    websiteUpdateDismissed = true
+                                    openWebsiteUpdate()
+                                },
                                 onLater = { websiteUpdateDismissed = true },
                             )
                         }
@@ -824,6 +893,13 @@ fun MainAppContent(
         if (boostOpenSignal > 0) feedUtilitySheet = "boost"
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            BlinkLiveRemoteConfig.load()?.let { liveSnapshot = it }
+            delay(120_000L)
+        }
+    }
 
     // This controller is additive to main's legacy Paystack seller-activation flow.
     // The new v2 payment endpoints and database remain disabled until independently verified.
@@ -844,6 +920,11 @@ fun MainAppContent(
     var v2Receipts by remember { mutableStateOf<List<BlinkPaystackReceipt>>(emptyList()) }
     var receiptsLoading by remember { mutableStateOf(false) }
     var receiptsError by remember { mutableStateOf<String?>(null) }
+    var showGiftPurchase by remember { mutableStateOf(false) }
+    var giftRecipient by remember { mutableStateOf("") }
+    var giftMessage by remember { mutableStateOf("") }
+    var refundReference by remember { mutableStateOf<String?>(null) }
+    var refundReason by remember { mutableStateOf("") }
 
     fun startV2Checkout(kind: String, item: String, months: Int = 1) {
         if (v2PaymentBusy) return
@@ -897,6 +978,51 @@ fun MainAppContent(
             } catch (error: Exception) {
                 viewModel.showToast(error.message ?: "Cash Boost is not available.")
             } finally { v2PaymentBusy = false }
+        }
+    }
+
+    fun startV2MarketCheckout(listingId: String) {
+        if(v2PaymentBusy) return
+        if(!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Secure marketplace checkout is not enabled.")
+            return
+        }
+        v2PaymentBusy=true
+        paymentScope.launch {
+            try {
+                val checkout=paystackV2.createMarketCheckout(listingId)
+                v2PendingReference=checkout.reference
+                v2PendingPrompt=true
+                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                viewModel.showToast("Pay on Paystack, then return to BLINK to verify.")
+            }catch(error:Exception){
+                viewModel.showToast(error.message ?: "Marketplace checkout is not available.")
+            }finally {v2PaymentBusy=false}
+        }
+    }
+
+    fun startV2GiftCheckout(recipient: String, packId: String, note: String) {
+        if(v2PaymentBusy) return
+        if(!uiState.economyPolicy.cashCheckoutEnabled) {
+            viewModel.showToast("Cash gift purchases are not enabled yet.")
+            return
+        }
+        v2PaymentBusy=true
+        paymentScope.launch {
+            try {
+                val checkout=paystackV2.createGiftCheckout(recipient,packId,note)
+                v2PendingReference=checkout.reference
+                v2PendingPrompt=true
+                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                showGiftPurchase=false
+                context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+                viewModel.showToast("Gift coins are delivered only after Paystack verifies payment.")
+            }catch(error:Exception){
+                viewModel.showToast(error.message ?: "Gift checkout unavailable.")
+            }finally {v2PaymentBusy=false}
         }
     }
 
@@ -1102,6 +1228,27 @@ fun MainAppContent(
                 2 -> viewModel.navigateToPrimaryTab(MainTab.MARKET)
                 3 -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
                 4 -> viewModel.navigateToPrimaryTab(MainTab.MESSAGES)
+            }
+        }
+    }
+
+    val livePlacement = when (selectedPage) {
+        0 -> "home"
+        1 -> "reels"
+        2 -> "marketplace"
+        3 -> "connect"
+        4 -> "messages"
+        7 -> "games"
+        else -> ""
+    }
+    var campaignResponse by remember {
+        mutableStateOf<Pair<String, List<BlinkLiveCampaign>>>("" to emptyList())
+    }
+    LaunchedEffect(livePlacement, uiState.myProfile.id) {
+        if (livePlacement.isNotBlank()) {
+            while (isActive) {
+                BlinkLiveCampaignService.load(livePlacement)?.let { campaignResponse = livePlacement to it }
+                delay(45_000L)
             }
         }
     }
@@ -1634,6 +1781,47 @@ fun MainAppContent(
             BlinkStoreComingSoonDialog(onDismiss = { showStoreComingSoon = false })
         }
 
+        val showLiveCampaigns = livePlacement.isNotBlank() && uiState.isOnline &&
+            feedUtilitySheet == null && !uiState.isMenuOpen &&
+            !uiState.isCreatePostOpen && !uiState.isCreateStoryOpen &&
+            !uiState.isPostItemOpen && !uiState.isConversationFullScreen &&
+            uiState.activeViewingStory == null && uiState.activeConversationPartner == null &&
+            uiState.activeCommentsPostId == null && uiState.viewingProduct == null &&
+            uiState.viewingProfile == null && !uiState.isGetVerifiedOpen
+        if (showLiveCampaigns) {
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .zIndex(29f).statusBarsPadding()
+                    .padding(horizontal = 12.dp).padding(top = 72.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (livePlacement == "home" &&
+                    (campaignResponse.first != "home" || campaignResponse.second.isEmpty())) {
+                    BlinkLiveBanners(snapshot = liveSnapshot)
+                }
+                if (liveSnapshot.campaignsEnabledOn(livePlacement) &&
+                    campaignResponse.first == livePlacement) {
+                    BlinkLiveCampaignCards(
+                        placement = livePlacement, campaigns = campaignResponse.second,
+                        onRoute = { route ->
+                            when (route) {
+                                "home" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                                "reels" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                                "marketplace" -> viewModel.setTab(MainTab.MARKET)
+                                "connect" -> viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                                "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                                "games" -> feedUtilitySheet = "game"
+                                "notifications" -> viewModel.openActivity(true)
+                                "store" -> showStoreComingSoon = true
+                                "leaderboard" -> viewModel.setTab(MainTab.LEADERBOARD)
+                                "profile" -> viewModel.openProfile(uiState.myProfile.username)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
         OfflineConnectionBanner(
             visible = !uiState.isOnline,
             modifier = Modifier
@@ -1814,6 +2002,8 @@ fun MainAppContent(
                     onRequestOrder = { listing, quantity ->
                         viewModel.requestMarketplaceOrder(listing, quantity)
                     },
+                    paystackCheckoutAvailable = uiState.economyPolicy.cashCheckoutEnabled,
+                    onPaystackBuy = { listing -> startV2MarketCheckout(listing.id) },
                     onReport = { listing, reason, details ->
                         viewModel.reportMarketItem(listing, reason, details)
                     },
@@ -2168,6 +2358,77 @@ fun MainAppContent(
                 }
             )
         }
+        if (showGiftPurchase) {
+            AlertDialog(
+                onDismissRequest = { showGiftPurchase = false },
+                title = { Text("Gift BLINK Coins") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("Choose a BLINK username and a coin pack. The recipient receives coins after payment confirmation.")
+                        OutlinedTextField(
+                            value = giftRecipient, onValueChange = { giftRecipient = it.take(40) },
+                            label = { Text("Recipient username") },
+                            singleLine = true, modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = giftMessage, onValueChange = { giftMessage = it.take(160) },
+                            label = { Text("Gift message (optional)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            OutlinedButton(
+                                enabled = !v2PaymentBusy &&
+                                    giftRecipient.matches(Regex("^[a-zA-Z0-9_.]{2,40}$")) &&
+                                    uiState.economyPolicy.cashCheckoutEnabled,
+                                onClick = { startV2GiftCheckout(giftRecipient,pack.id,giftMessage) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Gift ${pack.coins} Coins · ₦${pack.priceNgn}") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showGiftPurchase = false }) { Text("Close") }
+                }
+            )
+        }
+        if (refundReference != null) {
+            AlertDialog(
+                onDismissRequest = { refundReference = null },
+                title = { Text("Request payment refund") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Refunds require a review and are not automatically approved.")
+                        OutlinedTextField(
+                            value = refundReason,onValueChange = { refundReason = it.take(1000) },
+                            label = { Text("Reason for refund (at least 10 characters)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = refundReason.trim().length>=10 && !v2PaymentBusy,
+                        onClick = {
+                            val reference=refundReference ?: return@TextButton
+                            v2PaymentBusy=true
+                            paymentScope.launch {
+                                try {
+                                    paystackV2.requestRefund(reference,refundReason)
+                                    refundReference=null
+                                    refundReason=""
+                                    viewModel.showToast("Refund request sent for review.")
+                                }catch(error:Exception){
+                                    viewModel.showToast(error.message ?: "Could not request refund.")
+                                }finally{v2PaymentBusy=false}
+                            }
+                        }
+                    ) { Text("Submit request") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { refundReference = null }) { Text("Cancel") }
+                }
+            )
+        }
         if (showV2Receipts) {
             AlertDialog(
                 onDismissRequest = { showV2Receipts = false },
@@ -2180,6 +2441,26 @@ fun MainAppContent(
                             v2Receipts.isEmpty() -> Text("No Paystack purchases yet.")
                             else -> v2Receipts.take(8).forEach { receipt ->
                                 Text("${receipt.createdAt} · ${receipt.itemCode} · ₦${receipt.amountNgn} · ${receipt.status}")
+                                if (receipt.status == "fulfilled" &&
+                                    receipt.kind in setOf("marketplace","gift")) {
+                                    TextButton(onClick = {
+                                        refundReference = receipt.reference
+                                        showV2Receipts = false
+                                    }) { Text("Request refund") }
+                                }
+                                if (receipt.status == "fulfilled" &&
+                                    receipt.kind == "marketplace") {
+                                    TextButton(onClick = {
+                                        paymentScope.launch {
+                                            try {
+                                                paystackV2.confirmMarketDelivery(receipt.reference)
+                                                viewModel.showToast("Delivery confirmed. Seller settlement enters review.")
+                                            }catch(error:Exception){
+                                                viewModel.showToast(error.message ?: "Unable to confirm delivery.")
+                                            }
+                                        }
+                                    }) { Text("Confirm item received") }
+                                }
                             }
                         }
                     }
@@ -2201,6 +2482,13 @@ fun MainAppContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.closeCoinPackPicker()
+                                showGiftPurchase = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🎁 Gift BLINK Coins to a friend") }
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 onClick = { startV2Checkout("coin_pack", pack.id, 1); viewModel.closeCoinPackPicker() },

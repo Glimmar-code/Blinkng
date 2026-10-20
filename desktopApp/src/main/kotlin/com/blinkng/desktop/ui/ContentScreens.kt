@@ -1177,6 +1177,10 @@ fun MarketplaceScreen(state: DesktopAppState) {
 
     var marketOfferAmounts by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
     var marketOfferError by remember { mutableStateOf<String?>(null) }
+    var marketCheckoutEnabled by remember { mutableStateOf(false) }
+    var marketCheckoutBusy by remember { mutableStateOf(false) }
+    var marketCheckoutNotice by remember { mutableStateOf<String?>(null) }
+    var pendingMarketReference by remember { mutableStateOf<String?>(null) }
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var marketImagePath by remember { mutableStateOf("") }
@@ -1198,6 +1202,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(state.client) {
+        marketCheckoutEnabled = runCatching {
+            DesktopRpcActions(state.client).getEconomyStatus().optBoolean("cash_checkout_enabled", false)
+        }.getOrDefault(false)
         sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
         if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
         marketOffers = runCatching { state.client.fetchMarketOffers() }.getOrDefault(emptyList())
@@ -1299,6 +1306,37 @@ fun MarketplaceScreen(state: DesktopAppState) {
                         FilterChip(selected = marketSort == code, onClick = { marketSort = code }, label = { Text(label) })
                     }
                     OutlinedButton(onClick = { refreshRevision++ }) { Text("Refresh") }
+                }
+            }
+        }
+        if (pendingMarketReference != null) {
+            item {
+                Surface(tonalElevation = 2.dp,shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Paystack Marketplace payment",
+                            fontWeight = FontWeight.Bold)
+                        Text("Return from Paystack to BLINK and verify your payment. " +
+                            "A checkout redirect alone is not confirmation.")
+                        Button(
+                            enabled = !marketCheckoutBusy,
+                            onClick = {
+                                val reference = pendingMarketReference ?: return@Button
+                                scope.launch {
+                                    marketCheckoutBusy = true
+                                    runCatching { state.client.verifyPaystackV2Checkout(reference) }
+                                        .onSuccess { response ->
+                                            marketCheckoutNotice = if (response.optString("status")=="fulfilled") {
+                                                pendingMarketReference = null
+                                                "Payment confirmed by BLINK."
+                                            } else "Payment is still pending. Please try again after checkout."
+                                        }.onFailure { marketCheckoutNotice = "Payment verification is unavailable." }
+                                    marketCheckoutBusy = false
+                                }
+                            }
+                        ) { Text("I've paid · Verify with Paystack") }
+                        marketCheckoutNotice?.let { Text(it) }
+                    }
                 }
             }
         }
@@ -1601,6 +1639,36 @@ fun MarketplaceScreen(state: DesktopAppState) {
                             }
                         },enabled=(marketOfferAmounts[market.id]?.toLongOrNull() ?: 0L)>0L) {
                             Text("Make Private Offer")
+                        }
+                        OutlinedButton(
+                            enabled = !marketCheckoutBusy && marketCheckoutEnabled,
+                            onClick = {
+                                scope.launch {
+                                    marketCheckoutBusy = true
+                                    marketCheckoutNotice = null
+                                    runCatching { state.client.initializePaystackMarketCheckout(market.id) }
+                                        .onSuccess { response ->
+                                            val url = response.optString("checkoutUrl")
+                                            val ref = response.optString("reference")
+                                            if (!com.blinkng.shared.BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url) ||
+                                                !ref.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+                                                marketCheckoutNotice = "Invalid Paystack checkout response."
+                                            } else {
+                                                pendingMarketReference = ref
+                                                runCatching {
+                                                    if (!java.awt.Desktop.isDesktopSupported()) error("No browser")
+                                                    java.awt.Desktop.getDesktop().browse(java.net.URI(url))
+                                                }.onFailure { marketCheckoutNotice = "Open a supported browser to pay." }
+                                            }
+                                        }.onFailure {
+                                            marketCheckoutNotice = "Marketplace checkout is not enabled yet."
+                                        }
+                                    marketCheckoutBusy = false
+                                }
+                            }
+                        ) {
+                            Text(if (marketCheckoutEnabled) "Buy securely with Paystack"
+                                 else "Paystack checkout coming soon")
                         }
                     }
                     if (!market.videoUrl.isNullOrBlank()) {

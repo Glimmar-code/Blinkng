@@ -1051,6 +1051,8 @@ fun AdminProScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var showAnnouncementManager by remember { mutableStateOf(false) }
+    var showLiveContentManager by remember { mutableStateOf(false) }
+    var showCampaignStudio by remember { mutableStateOf(false) }
     var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
@@ -1098,6 +1100,30 @@ fun AdminProScreen(state: DesktopAppState) {
                         Text("Official in-app BLINK announcements", fontSize = 12.sp)
                     }
                     Button(onClick = { showAnnouncementManager = true }) { Text("Create") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Live Content", fontWeight = FontWeight.Bold)
+                        Text("Manage live announcements and presentation visibility", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showLiveContentManager = true }) { Text("Manage") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Campaign Studio", fontWeight = FontWeight.Bold)
+                        Text("Draft, schedule, approve, target and analyze banners", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showCampaignStudio = true }) { Text("Open") }
                 }
             }
         }
@@ -1250,6 +1276,18 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+    if (showLiveContentManager && capability.allowed) {
+        DesktopAdminLiveContentManager(
+            actions = actions, isOwner = capability.isOwner,
+            onDismiss = { showLiveContentManager = false }
+        )
+    }
+    if (showCampaignStudio && capability.allowed) {
+        DesktopAdminCampaignManager(
+            actions = actions, isOwner = capability.isOwner,
+            onDismiss = { showCampaignStudio = false }
+        )
     }
     if (showAnnouncementManager && capability.allowed) {
         DesktopAdminAnnouncementManager(

@@ -15,10 +15,19 @@ Deno.serve(async req => {
     const kind=String(payload.kind||"").toLowerCase();
     const itemCode=String(payload.itemCode||"").trim();
     const months=payload.months === undefined ? 1 : payload.months;
-    if(!["verification","coin_pack","boost"].includes(kind) || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
+    if(!["verification","coin_pack","boost","marketplace","gift"].includes(kind)
+      || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
       || !Number.isInteger(months) || ![1,3,6,12].includes(months)
-      || ((kind==="coin_pack" || kind==="boost") && months!==1))
+      || (kind!=="verification" && months!==1))
       return json({error:"INVALID_CHECKOUT_SELECTION"},400);
+    // Extra independent product-type kill switches. These must be explicitly
+    // enabled by the approved merchant *after* successful staging tests.
+    if(kind==="boost" && Deno.env.get("BLINK_PAYSTACK_BOOST_ENABLED")!=="true")
+      return json({error:"CASH_BOOST_DISABLED"},503);
+    if(kind==="marketplace" && Deno.env.get("BLINK_PAYSTACK_MARKET_ENABLED")!=="true")
+      return json({error:"MARKET_CHECKOUT_DISABLED"},503);
+    if(kind==="gift" && Deno.env.get("BLINK_PAYSTACK_GIFTS_ENABLED")!=="true")
+      return json({error:"GIFT_PURCHASE_DISABLED"},503);
     const auth=req.headers.get("authorization") || "";
     const caller=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_ANON_KEY")!,{
       global:{headers:{Authorization:auth}},
@@ -32,11 +41,30 @@ Deno.serve(async req => {
           p_duration_days:payload.durationDays,
           p_target_university:payload.targetUniversity||null,
         }}
+      : kind==="marketplace"
+      ? {name:"create_blink_paystack_market_order",args:{
+          p_listing:payload.listingId,
+        }}
+      : kind==="gift"
+      ? {name:"create_blink_paystack_gift_order",args:{
+          p_username:payload.recipientUsername,p_pack_id:payload.packId,
+          p_message:payload.message||null,
+        }}
       : {name:"create_blink_paystack_order_v2",args:{
           p_kind:kind,p_item_code:itemCode,p_months:months,
         }};
-    if(kind==="boost" && itemCode!=="BOOST")
-      return json({error:"INVALID_BOOST_SELECTION"},400);
+    if((kind==="boost" && itemCode!=="BOOST") ||
+       (kind==="marketplace" && (itemCode!=="MARKET_ITEM" ||
+         typeof payload.listingId!=="string" ||
+         !/^[0-9a-f-]{36}$/i.test(payload.listingId))) ||
+       (kind==="gift" && (itemCode!=="GIFT_COINS" ||
+         typeof payload.recipientUsername!=="string" ||
+         !/^[a-zA-Z0-9_.]{2,40}$/.test(payload.recipientUsername) ||
+         typeof payload.packId!=="string" ||
+         !/^coins_[0-9]+$/.test(payload.packId) ||
+         (payload.message && (typeof payload.message!=="string" ||
+         payload.message.length>160)))))
+      return json({error:"INVALID_CHECKOUT_SELECTION"},400);
     const {data:order,error:orderError}=await caller.rpc(orderCall.name,orderCall.args);
     if(orderError || !order) return json({error:orderError?.message || "CHECKOUT_UNAVAILABLE"},400);
     const charge=await paystackApi("transaction/initialize","POST",{
