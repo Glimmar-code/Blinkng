@@ -101,6 +101,7 @@ import com.example.ui.theme.feedAccentBrush
 @Composable
 fun FeedTopBar(
     userAvatar: String,
+    userIsOnline: Boolean = false,
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int = 0,
     onSearchClick: () -> Unit,
@@ -120,7 +121,8 @@ fun FeedTopBar(
     ) {
         // Four 44dp actions fit a 360dp handset without pushing BLINK away.
         // The admin-only action wins over branding when space is constrained.
-        val showBrand = maxWidth >= (if (isAdmin) 408.dp else 320.dp)
+        val showBrand = maxWidth >= 315.dp
+        val compactAdmin = isAdmin && maxWidth < 415.dp
         Row(
             modifier = Modifier.fillMaxWidth()
                 .padding(start = 12.dp, end = 8.dp, top = 3.dp, bottom = 6.dp)
@@ -129,11 +131,14 @@ fun FeedTopBar(
         ) {
             FeedBrandBlock(
                 userAvatar = userAvatar,
+                userIsOnline = userIsOnline,
                 onProfileClick = onProfileClick,
                 showTitle = showBrand,
+                compact = compactAdmin,
                 modifier = Modifier.weight(1f)
             )
             FeedHeaderActions(
+                compact = compactAdmin,
                 hasUnreadNotifications = hasUnreadNotifications,
                 unreadNotificationCount = unreadNotificationCount,
                 onSearchClick = onSearchClick,
@@ -150,8 +155,10 @@ fun FeedTopBar(
 @Composable
 private fun FeedBrandBlock(
     userAvatar: String,
+    userIsOnline: Boolean,
     onProfileClick: () -> Unit,
     showTitle: Boolean,
+    compact: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -159,12 +166,12 @@ private fun FeedBrandBlock(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        FeedProfileAvatar(userAvatar = userAvatar, onProfileClick = onProfileClick)
+        FeedProfileAvatar(userAvatar = userAvatar, userIsOnline = userIsOnline, onProfileClick = onProfileClick)
         if (showTitle) {
             Text(
                 text = "BLINK",
-                fontSize = 24.sp,
-                letterSpacing = 3.sp,
+                fontSize = if (compact) 20.sp else 24.sp,
+                letterSpacing = if (compact) 2.sp else 3.sp,
                 lineHeight = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -179,12 +186,13 @@ private fun FeedBrandBlock(
 @Composable
 private fun FeedProfileAvatar(
     userAvatar: String,
+    userIsOnline: Boolean,
     onProfileClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .size(48.dp)
-            .background((if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF3266D5)), CircleShape)
+            .size(40.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
             .padding(2.dp)
             .background(MaterialTheme.colorScheme.surface, CircleShape)
             .padding(2.dp)
@@ -200,15 +208,23 @@ private fun FeedProfileAvatar(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(40.dp)
+                .size(32.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                 .graphicsLayer { clip = true; shape = CircleShape }
         )
+        if (userIsOnline) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(10.dp)
+                    .background(Color(0xFF22C55E), CircleShape)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+            )
+        }
     }
 }
 
 @Composable
 private fun FeedHeaderActions(
+    compact: Boolean,
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int,
     onSearchClick: () -> Unit,
@@ -223,6 +239,7 @@ private fun FeedHeaderActions(
         horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         FeedRadialHeaderAction(
+            compact = compact,
             imageVector = Icons.Outlined.Search,
             contentDescription = "Search people and posts",
             onClick = onSearchClick,
@@ -230,6 +247,7 @@ private fun FeedHeaderActions(
         )
         if (isAdmin) {
             FeedRadialHeaderAction(
+                compact = compact,
                 imageVector = Icons.Outlined.Security,
                 contentDescription = "Open admin dashboard",
                 onClick = onAdminClick,
@@ -237,13 +255,15 @@ private fun FeedHeaderActions(
             )
         }
         FeedRadialHeaderAction(
+            compact = compact,
             imageVector = Icons.Outlined.SportsEsports,
             contentDescription = "Open Items (includes Game)",
             onClick = onItemsClick,
             modifier = Modifier.testTag("feed_items_action")
         )
-        Box(modifier = Modifier.size(44.dp)) {
+        Box(modifier = Modifier.size(if (compact) 38.dp else 44.dp)) {
             FeedRadialHeaderAction(
+                compact = compact,
                 imageVector = Icons.Outlined.NotificationsNone,
                 contentDescription = if (hasUnreadNotifications || unreadNotificationCount > 0)
                     "Notifications, ${maxOf(unreadNotificationCount, 1)} unread" else "Notifications",
@@ -261,6 +281,7 @@ private fun FeedHeaderActions(
             }
         }
         FeedRadialHeaderAction(
+            compact = compact,
             imageVector = Icons.Outlined.Menu,
             contentDescription = "Menu",
             onClick = onMenuClick,
@@ -271,6 +292,7 @@ private fun FeedHeaderActions(
 
 @Composable
 private fun FeedRadialHeaderAction(
+    compact: Boolean = false,
     imageVector: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -285,7 +307,7 @@ private fun FeedRadialHeaderAction(
     )
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(if (compact) 38.dp else 44.dp)
             .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
             .background(
                 color = if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent,
