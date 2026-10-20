@@ -791,10 +791,6 @@ fun PostCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 9.dp),            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
