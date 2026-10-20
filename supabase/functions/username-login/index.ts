@@ -98,6 +98,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // A configured numeric alias must never shadow a real user's username.
+    // Fail closed if another profile now owns that identifier.
+    if (mappedEmail && !username.includes("@")) {
+      const lookupUrl = `${supabaseUrl}/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id&limit=1`;
+      const lookup = await fetch(lookupUrl, {
+        method: "GET",
+        headers: gatewayHeaders(secretKey),
+      });
+      if (!lookup.ok) return response({ error: "Authentication service is unavailable." }, 503);
+      const matches = await lookup.json() as Array<{ id?: string }>;
+      const registeredId = matches?.[0]?.id || "";
+      const expectedId = Deno.env.get("BLINK_OWNER_AUTH_USER_ID") || "";
+      if (registeredId && registeredId.toLowerCase() !== expectedId.toLowerCase()) {
+        return response({ error: "Invalid email/username or password." }, 401);
+      }
+    }
+
     let email = mappedEmail;
     if (!email) {
       const profileUrl =
