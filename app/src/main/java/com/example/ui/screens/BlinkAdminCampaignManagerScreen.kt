@@ -172,6 +172,10 @@ fun BlinkAdminCampaignManagerScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
+    var analyticsDays by remember { mutableStateOf(30) }
+    var analyticsReport by remember { mutableStateOf<JSONObject?>(null) }
+    var analyticsLoading by remember { mutableStateOf(false) }
+    var analyticsError by remember { mutableStateOf<String?>(null) }
     val selected=rows.firstOrNull { it.optString("id")==selectedId }
 
     fun openRecord(id:String?) {
@@ -193,6 +197,16 @@ fun BlinkAdminCampaignManagerScreen(
             loading=false
         }
     }
+    fun loadAnalytics() {
+        scope.launch {
+            analyticsLoading = true
+            analyticsError = null
+            service.liveCampaignAnalytics(analyticsDays)
+                .onSuccess { analyticsReport = it }
+                .onFailure { analyticsError = it.message ?: "Could not load campaign analytics." }
+            analyticsLoading = false
+        }
+    }
     fun loadHistory() {
         val id=selectedId ?: return
         scope.launch {
@@ -202,6 +216,9 @@ fun BlinkAdminCampaignManagerScreen(
         }
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(mode, analyticsDays) {
+        if (mode == "Analytics") loadAnalytics()
+    }
     BackHandler(enabled=pendingAction!=null) { if (!busy) pendingAction=null }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
@@ -233,20 +250,15 @@ fun BlinkAdminCampaignManagerScreen(
                 it.optString("starts_at").isNotBlank() }.sortedBy { it.optString("starts_at") }
             else -> rows.filter { !it.optBoolean("is_template") }
         }
-        if(mode=="Analytics") {
-            val impressions=rows.sumOf { it.optInt("impressions") }
-            val clicks=rows.sumOf { it.optInt("clicks") }
-            val dismissals=rows.sumOf { it.optInt("dismissals") }
-            Surface(color=MaterialTheme.colorScheme.surfaceVariant) {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("Campaign overview",fontWeight=FontWeight.Bold)
-                    Text("Impressions: $impressions • Clicks: $clicks • Dismissals: $dismissals")
-                    Text("Click-through rate: " + if(impressions==0) "—"
-                        else "${(clicks*100.0/impressions).toInt()}%")
-                    Text("Directional analytics; not suitable for ad billing.",
-                        style=MaterialTheme.typography.bodySmall)
-                }
-            }
+        if (mode == "Analytics") {
+            BlinkLiveCampaignAnalyticsPanel(
+                analytics = analyticsReport,
+                days = analyticsDays,
+                isLoading = analyticsLoading,
+                failure = analyticsError,
+                onDaysChanged = { analyticsDays = it },
+                onRefresh = ::loadAnalytics
+            )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             Button(onClick={openRecord(null)},enabled=!busy) { Text("New campaign") }
@@ -305,7 +317,7 @@ fun BlinkAdminCampaignManagerScreen(
             draft=draft.copy(accent=it)
         }
         Text("Banner image",fontWeight=FontWeight.SemiBold)
-        Text("Choose a JPG/PNG photo (up to 2 MB). Uploading creates an image draft only; publish the campaign separately.",
+        Text("Choose a JPEG/PNG photo up to 20 MB. BLINK automatically compresses large images below 2 MB before uploading. Oversized transparent PNGs may get a white background. Save the draft, then publish separately.",
             style=MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
