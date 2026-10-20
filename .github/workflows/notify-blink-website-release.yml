@@ -27,6 +27,11 @@ on:
       - .github/scripts/test_notify_blink_release.py
       - .github/workflows/notify-blink-website-release.yml
 
+concurrency:
+  # Do not cancel a notification when another APK publication or validation starts.
+  group: blink-release-notify-${{ github.event_name }}-${{ github.run_id }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -52,7 +57,7 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Checkout trusted production notifier (never workflow_run head code)
         uses: actions/checkout@v4
