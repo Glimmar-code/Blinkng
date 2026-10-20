@@ -31,8 +31,8 @@ jobs:
           deno-version: v2.x
       - name: Type-check Supabase owner login
         run: deno check supabase/functions/username-login/index.ts
-      - name: Test fail-closed owner alias policy
-        run: deno test supabase/functions/username-login/owner-identity_test.ts
+      - name: Test owner alias rules and full mocked authentication flow
+        run: deno test --allow-env supabase/functions/username-login/owner-identity_test.ts supabase/functions/username-login/handler_integration_test.ts
       - name: Check website JavaScript
         run: node --check web/app.js
       - name: Ensure owner IDs and secret configuration are not baked into clients
