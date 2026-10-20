@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Campaign
@@ -121,6 +122,8 @@ fun BlinkItemsScreen(
     onOpenBoost: () -> Unit = {},
     onOpenDrops: () -> Unit = {},
     onOpenStore: () -> Unit = {},
+    isAdmin: Boolean = false,
+    onOpenAdmin: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by remember { mutableStateOf(BlinkItemsPage.HOME) }
@@ -151,7 +154,9 @@ fun BlinkItemsScreen(
                 onGame = onOpenGame,
                 onBoost = onOpenBoost,
                 onDrops = onOpenDrops,
-                onStore = onOpenStore
+                onStore = onOpenStore,
+                isAdmin = isAdmin,
+                onAdmin = onOpenAdmin
             )
             BlinkItemsPage.STEPS -> BlinkStepsItem()
             BlinkItemsPage.WEATHER -> BlinkWeatherItem()
@@ -213,7 +218,9 @@ private fun BlinkItemsHome(
     onGame: () -> Unit,
     onBoost: () -> Unit,
     onDrops: () -> Unit,
-    onStore: () -> Unit
+    onStore: () -> Unit,
+    isAdmin: Boolean,
+    onAdmin: () -> Unit
 ) {
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
@@ -371,6 +378,22 @@ private fun BlinkItemsHome(
                     onToggle = {},
                     onClick = onStore,
                     modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (isAdmin) {
+            item {
+                BlinkItemsGroupLabel("MANAGE")
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Security,
+                    title = "Admin Dashboard",
+                    subtitle = "Manage BLINK",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onAdmin,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
