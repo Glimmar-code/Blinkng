@@ -59,6 +59,12 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
+      - name: Install disposable Marketplace schema for Paystack tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_market_pgfixture
+      - name: Apply staged Market, Gift and refund migration to disposable PostgreSQL
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019110000_paystack_market_gifts_refunds.sql
+      - name: Verify paid buyer checkout, gift fulfilment and settlement blocks
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_market_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
         run: node --test scripts/test_paystack_integrity.mjs
       - name: Production-safety affirmation

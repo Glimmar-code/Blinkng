@@ -76,6 +76,38 @@ Deno.serve(async req=>{
       if(fulfillError) throw new Error("SUBSCRIPTION_FULFILLMENT_FAILED");
       return json({received:true,status:"fulfilled"});
     }
+    if(["transfer.success","transfer.failed","transfer.reversed"].includes(event.event)) {
+      const ref=String(event.data?.reference||"");
+      if(!/^blink-seller-[0-9a-f]{32}$/.test(ref)) return json({received:true});
+      const svc=serviceClient();
+      const {data:payout,error:payoutError}=await svc.from("blink_paystack_seller_payouts")
+        .select("id,payment_id,amount_kobo,status")
+        .eq("provider_transfer_ref",ref).maybeSingle();
+      if(payoutError || !payout) throw new Error("TRANSFER_LEDGER_NOT_FOUND");
+      if(payout.status==="completed" || payout.status==="cancelled")
+        return json({received:true,status:payout.status});
+      const verified=await paystackApi(`transfer/verify/${encodeURIComponent(ref)}`);
+      if(!verified || verified.reference!==ref ||
+        verified.domain!==(Deno.env.get("PAYSTACK_EXPECTED_DOMAIN")||"test") ||
+        Number(verified.amount)!==payout.amount_kobo ||
+        verified.currency!=="NGN") throw new Error("TRANSFER_PROVIDER_MISMATCH");
+      const resultStatus=String(verified.status||"").toLowerCase();
+      if(resultStatus!=="success" && resultStatus!=="failed")
+        return json({received:true,status:"processing"});
+      // Only a Paystack-verified terminal transfer can settle the order.
+      const desired=resultStatus==="success"?"completed":"failed";
+      const {error:updateError}=await svc.from("blink_paystack_seller_payouts")
+        .update({status:desired,updated_at:new Date().toISOString()})
+        .eq("id",payout.id).in("status",["submitted","processing"]);
+      if(updateError) throw new Error("TRANSFER_LEDGER_UPDATE_FAILED");
+      if(desired==="completed") {
+        const {error:marketError}=await svc.from("blink_paystack_market_orders")
+          .update({fulfilment_status:"settled"})
+          .eq("payment_id",payout.payment_id).eq("fulfilment_status","delivered");
+        if(marketError) throw new Error("MARKET_SETTLEMENT_UPDATE_FAILED");
+      }
+      return json({received:true,status:desired});
+    }
     if(!reviewedEvents.has(event.event)) return json({received:true});
     const data=event.data||{};
     const reference=data.transaction_reference ||
@@ -98,6 +130,26 @@ Deno.serve(async req=>{
       p_currency:"NGN",
     });
     if(error) throw new Error("PROVIDER_EVENT_LEDGER_FAILED");
+    if(event.event==="refund.processed") {
+      const {data:paid,error:paymentError}=await serviceClient()
+        .from("blink_paystack_payments").select("id,amount_ngn,status")
+        .eq("reference",reference).maybeSingle();
+      if(paymentError||!paid||paid.amount_ngn*100!==amount || paid.status!=="refunded")
+        throw new Error("REFUND_RECORD_MISMATCH");
+      const {error:refundError}=await serviceClient().from("blink_paystack_refunds")
+        .update({status:"completed",updated_at:new Date().toISOString()})
+        .eq("payment_id",paid.id).in("status",["submitted","processing"]);
+      if(refundError) throw new Error("REFUND_STATUS_RECONCILIATION_FAILED");
+      const {error:marketError}=await serviceClient().from("blink_paystack_market_orders")
+        .update({fulfilment_status:"refunded"})
+        .eq("payment_id",paid.id)
+        .in("fulfilment_status",["paid_hold","delivered","review_required","refunding"]);
+      if(marketError) throw new Error("MARKET_REFUND_RECONCILIATION_FAILED");
+      const {error:payoutError}=await serviceClient().from("blink_paystack_seller_payouts")
+        .update({status:"cancelled",updated_at:new Date().toISOString()})
+        .eq("payment_id",paid.id).in("status",["blocked","eligible"]);
+      if(payoutError) throw new Error("SELLER_PAYOUT_REFUND_CANCELLATION_FAILED");
+    }
     return json({received:true});
   } catch(error) {
     console.error("paystack-webhook:",String(error).slice(0,160));

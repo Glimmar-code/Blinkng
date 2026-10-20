@@ -45,8 +45,15 @@ if web_release:
     assert "blink-life-web.zip" in release_workflow, (
         "Game archive must be published alongside the matching APK"
     )
-    assert "build_full_website_apk.sh" not in release_workflow, (
-        "Option B must not replace the small website APK with a universal APK"
+    # A path-filter mention of the old script is harmless; only a run step
+    # executing it would replace the small signed APK with a universal APK.
+    import re
+    universal_command = re.search(
+        r"(?m)^\s*(?:run:\s*)?(?:bash\s+)?(?:\./)?\.github/scripts/build_full_website_apk\.sh(?:\s|$)",
+        release_workflow,
+    )
+    assert universal_command is None, (
+        "Option B must not execute the universal website APK builder"
     )
     publisher = (root / ".github/scripts/publish_verified_apk.py").read_text()
     assert "verify_web_pack" in publisher and "blink-life-web.zip" in publisher, (

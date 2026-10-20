@@ -325,6 +325,93 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return result.optInt("delivered", 0)
     }
 
+    /** Read-only unpublished content for the existing Admin dashboard. */
+    suspend fun adminReadLiveConfig(): JSONArray {
+        requireAdmin()
+        return rpc("admin_read_blink_live_config", JSONObject()).optJSONArray("items") ?: JSONArray()
+    }
+
+    /** Only owner authorization in the RPC can publish, regardless of UI state. */
+    suspend fun adminPublishLiveConfig(
+        key: String, value: JSONObject, enabled: Boolean, revision: Long,
+    ): JSONObject {
+        requireAdmin()
+        require(key in setOf("announcement", "promotion", "display", "feature_visibility"))
+        return rpc("admin_publish_blink_live_config", JSONObject()
+            .put("p_key", key).put("p_value", value)
+            .put("p_enabled", enabled).put("p_expected_revision", revision))
+    }
+
+    /** Public-facing campaigns are filtered by Supabase role and server schedule. */
+    suspend fun liveCampaigns(placement: String): JSONArray {
+        if (placement !in com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements) return JSONArray()
+        val result = rpcAny("get_blink_live_campaigns",
+            JSONObject().put("p_placement", placement).put("p_app_version", 0))
+        return result as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun recordLiveCampaignEvent(placement: String, id: String, kind: String): Boolean {
+        if (kind !in setOf("impression", "click", "dismiss")) return false
+        val result = rpcAny("record_blink_live_campaign_event",
+            JSONObject().put("p_id", id).put("p_placement", placement)
+                .put("p_app_version", 0).put("p_event", kind))
+        return result == true
+    }
+
+    suspend fun adminLiveCampaigns(): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_live_campaigns", JSONObject()) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminLiveCampaignAnalytics(days: Int): JSONObject {
+        requireAdmin()
+        require(days in setOf(7, 30, 90)) { "Choose a 7, 30, or 90-day reporting window." }
+        return rpc("admin_blink_live_campaign_analytics", JSONObject().put("p_days", days))
+    }
+
+    suspend fun adminSaveLiveCampaign(id: String?, draft: JSONObject, revision: Long?): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_live_campaign", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL)
+            .put("p_data", draft)
+            .put("p_expected_revision", revision ?: JSONObject.NULL))
+    }
+
+    suspend fun adminTransitionLiveCampaign(id: String, revision: Long, action: String): JSONObject {
+        requireAdmin()
+        require(action in setOf("submit","approve","pause","archive"))
+        return rpc("admin_transition_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision).put("p_action", action))
+    }
+
+    suspend fun adminLiveCampaignHistory(id: String): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_blink_live_campaign_history",
+            JSONObject().put("p_id", id)) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminRestoreLiveCampaign(id: String, current: Long, past: Long): JSONObject {
+        requireAdmin()
+        return rpc("admin_restore_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", current)
+            .put("p_history_revision", past))
+    }
+
+    /** Locally compresss large artwork; RLS still restricts uploads to the owner. */
+    suspend fun uploadLiveBanner(file: java.io.File): String = withContext(Dispatchers.IO) {
+        requireAdmin()
+        val image = DesktopLiveBannerCompressor.prepare(file)
+        // Server-side Storage validation enforces the MIME and 2 MB limits again.
+        requireSessionUserId()
+        val path = "banners/${java.util.UUID.randomUUID()}.${image.extension}"
+        val bucket = "blink-live-banners"
+        execute(requestBuilder("/storage/v1/object/$bucket/$path")
+            .header("x-upsert", "false")
+            .post(image.bytes.toRequestBody(image.mime.toMediaType()))
+            .build())
+        "$baseUrl/storage/v1/object/public/$bucket/$path"
+    }
+
     suspend fun adminGlobalSearch(query: String): JSONObject {
         requireAdmin()
         return rpc("admin_global_search_v2", JSONObject().put("p_query", query.trim()))
