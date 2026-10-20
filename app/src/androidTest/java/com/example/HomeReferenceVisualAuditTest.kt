@@ -1,6 +1,9 @@
 package com.example
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +49,31 @@ class HomeReferenceVisualAuditTest {
     @get:Rule val rule = createComposeRule()
 
     @Test fun captureLightThemeHomeChromeAndPostCard() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val fixture = File(ctx.cacheDir, "reference-only-4-by-3-media.png")
+        // Build a non-personal test image with a 4:3 ratio to match the artwork's
+        // media bounding box, without embedding or shipping anyone's photograph.
+        val bitmapFixture = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmapFixture)
+        val paint = Paint().apply { isAntiAlias = true }
+        canvas.drawColor(AndroidColor.rgb(190, 218, 237))
+        paint.color = AndroidColor.rgb(244, 238, 204)
+        canvas.drawCircle(325f, 60f, 29f, paint)
+        paint.color = AndroidColor.rgb(170, 173, 157)
+        canvas.drawRect(0f, 150f, 400f, 300f, paint)
+        paint.color = AndroidColor.rgb(125, 146, 109)
+        canvas.drawRect(0f, 215f, 400f, 300f, paint)
+        paint.color = AndroidColor.rgb(188, 160, 133)
+        canvas.drawRect(45f, 75f, 240f, 222f, paint)
+        paint.color = AndroidColor.rgb(245, 243, 222)
+        for (x in 64..217 step 49) {
+            for (y in 100..190 step 46) {
+                canvas.drawRect(x.toFloat(), y.toFloat(), x + 25f, y + 27f, paint)
+            }
+        }
+        FileOutputStream(fixture).use { check(bitmapFixture.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        val fixtureUri = fixture.toURI().toString()
+
         rule.setContent {
             BlinkTheme(darkTheme = false) {
                 val context = LocalContext.current
@@ -88,7 +116,7 @@ class HomeReferenceVisualAuditTest {
                                 authorAvatar = testImage,
                                 timeAgo = "2h",
                                 text = "Beautiful day on campus ☀️\nGood people make great days.",
-                                images = listOf(testImage),
+                                images = listOf(fixtureUri),
                                 likes = 0,
                                 commentsCount = 164,
                                 sharesCount = 0,
@@ -129,8 +157,10 @@ class HomeReferenceVisualAuditTest {
             }
         }
         rule.waitForIdle()
+        // The Media3/Coil image decoder needs an async frame after composition.
+        Thread.sleep(900L)
+        rule.waitForIdle()
         val bitmap = rule.onNodeWithTag("home_reference_audit_root").captureToImage().asAndroidBitmap()
-        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = requireNotNull(ctx.getExternalFilesDir(null))
         val file = File(folder, "home-reference-staging-light.png")
         FileOutputStream(file).use { stream ->
