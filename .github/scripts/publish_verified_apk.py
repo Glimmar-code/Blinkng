@@ -87,11 +87,23 @@ def gh(repository, *args, check=True):
                           check=check, capture_output=True, text=True)
 
 
-def require_current_main(repository, commit):
-    """Block an old successful build from overwriting a newer production release.
+# Explicitly allow newer *unpackaged* changes to land while a signed APK builds.
+# Treat unknown paths as APK-impacting. Never allow outdated native app, signing
+# scripts, workflow definitions, secrets, or dependencies to be published.
+POST_SIGNING_SAFE_PREFIXES = ("web/", "docs/")
+POST_SIGNING_SAFE_FILES = frozenset({
+    ".github/workflows/supabase-safety-check.yml",
+    "scripts/check_supabase_data_api_grants.py",
+    "scripts/test_supabase_data_api_grants.py",
+})
 
-    Always ask GitHub for the *current* main ref. A checked-out Git ref or
-    workflow_run completion status can become stale while a build is running.
+
+def require_current_main(repository, commit):
+    """Verify that the signed build still matches the current packaged Android code.
+
+    A web/docs-only main merge must not discard an otherwise valid signed APK.
+    If GitHub cannot prove ancestry and a small, allowlisted source-only delta,
+    fail closed and retain the previous published release.
     """
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Release commit must be a complete lowercase Git SHA")
@@ -103,11 +115,39 @@ def require_current_main(repository, commit):
     current = (result.get("object") or {}).get("sha", "")
     if not re.fullmatch(r"[0-9a-f]{40}", current):
         raise ValueError("Unable to verify current production main SHA")
-    if current != commit:
-        raise ValueError(
-            f"Stale Android release: candidate {commit} does not match main {current}; "
-            "keep the previous latest APK intact"
+    if current == commit:
+        return
+    failure = (
+        f"Stale Android release: candidate {commit} differs from main {current}; "
+        "keep the previous latest APK intact"
+    )
+    try:
+        response = subprocess.run(
+            ["gh", "api", f"repos/{repository}/compare/{commit}...{current}"],
+            check=True, capture_output=True, text=True, timeout=30,
         )
+        comparison = json.loads(response.stdout)
+    except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+        raise ValueError(failure) from exc
+    files = comparison.get("files") or []
+    # GitHub's compare endpoint limits the files array to 300 entries.
+    # Do not trust an incomplete comparison or unbounded commit range.
+    if (comparison.get("status") != "ahead"
+            or comparison.get("behind_by") != 0
+            or not 1 <= comparison.get("ahead_by", 0) <= 100
+            or not 1 <= len(files) < 300):
+        raise ValueError(failure)
+    for file in files:
+        for path in (file.get("filename"), file.get("previous_filename")):
+            if path is None:
+                continue
+            if not isinstance(path, str) or not (
+                path.startswith(POST_SIGNING_SAFE_PREFIXES)
+                or path in POST_SIGNING_SAFE_FILES
+            ):
+                raise ValueError(failure)
+    print(f"Main advanced from {commit} to {current} only by unpackaged changes; "
+          "signed APK remains eligible for checksum and version verification.")
 
 
 def require_newer_than_public(repository, candidate):

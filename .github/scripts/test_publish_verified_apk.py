@@ -116,6 +116,36 @@ class ReleaseIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "complete"):
             publisher.require_current_main("Glimmar-code/Blinkng", "invalid")
 
+    def test_only_unpacked_main_advances_keep_signed_apk_eligible(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        compare = subprocess.CompletedProcess([], 0, '{"status":"ahead","ahead_by":2,"behind_by":0,'
+                                                  '"files":[{"filename":"web/app.js"},'
+                                                  '{"filename":"docs/release.md"}]}', "")
+        with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]) as request:
+            publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+            self.assertEqual(request.call_count, 2)
+
+    def test_native_changes_after_signing_still_block_publication(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        compare = subprocess.CompletedProcess([], 0, '{"status":"ahead","ahead_by":1,"behind_by":0,'
+                                                  '"files":[{"filename":"app/src/main/java/App.kt"}]}', "")
+        with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]):
+            with self.assertRaisesRegex(ValueError, "Stale Android release"):
+                publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+
+    def test_diverged_or_incomplete_main_comparison_is_rejected(self):
+        current = "f" * 40
+        ref = subprocess.CompletedProcess([], 0, '{"object":{"sha":"' + current + '"}}', "")
+        for comparison in ('{"status":"diverged","ahead_by":2,"behind_by":1,'
+                           '"files":[{"filename":"web/app.js"}]}',
+                           '{"status":"ahead","ahead_by":2,"behind_by":0,"files":[]}'):
+            compare = subprocess.CompletedProcess([], 0, comparison, "")
+            with patch.object(publisher.subprocess, "run", side_effect=[ref, compare]):
+                with self.assertRaisesRegex(ValueError, "Stale Android release"):
+                    publisher.require_current_main("Glimmar-code/Blinkng", self.commit)
+
     def test_old_or_equal_published_version_is_rejected(self):
         candidate = publisher.metadata(self.info, self.commit)
 
