@@ -36,6 +36,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -113,6 +116,9 @@ fun BlinkItemsScreen(
     currentUserId: String,
     currentUsername: String,
     onClose: () -> Unit,
+    onOpenGame: () -> Unit = {},
+    onOpenBoost: () -> Unit = {},
+    onOpenDrops: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by remember { mutableStateOf(BlinkItemsPage.HOME) }
@@ -139,7 +145,10 @@ fun BlinkItemsScreen(
             BlinkItemsPage.HOME -> BlinkItemsHome(
                 onSteps = { page = BlinkItemsPage.STEPS },
                 onWeather = { page = BlinkItemsPage.WEATHER },
-                onLocation = { page = BlinkItemsPage.LOCATION }
+                onLocation = { page = BlinkItemsPage.LOCATION },
+                onGame = onOpenGame,
+                onBoost = onOpenBoost,
+                onDrops = onOpenDrops
             )
             BlinkItemsPage.STEPS -> BlinkStepsItem()
             BlinkItemsPage.WEATHER -> BlinkWeatherItem()
@@ -197,7 +206,10 @@ private fun BlinkItemsHeader(
 private fun BlinkItemsHome(
     onSteps: () -> Unit,
     onWeather: () -> Unit,
-    onLocation: () -> Unit
+    onLocation: () -> Unit,
+    onGame: () -> Unit,
+    onBoost: () -> Unit,
+    onDrops: () -> Unit
 ) {
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
@@ -300,6 +312,48 @@ private fun BlinkItemsHome(
                     modifier = Modifier.weight(1f)
                 )
             }
+        }
+
+        // Home's gamepad toolbar icon opens Items. Games and Home utilities
+        // are accessible here without adding visual clutter back to the feed.
+        item {
+            BlinkItemsGroupLabel("PLAY & GROW")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.SportsEsports,
+                    title = "Game",
+                    subtitle = "Play BLINK games",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onGame,
+                    modifier = Modifier.weight(1f)
+                )
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Campaign,
+                    title = "Boost",
+                    subtitle = "Grow your posts",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onBoost,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            BlinkCompactItemTile(
+                icon = Icons.Default.CardGiftcard,
+                title = "Drops",
+                subtitle = "Explore BLINK Drops",
+                enabled = true,
+                showSwitch = false,
+                onToggle = {},
+                onClick = onDrops,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         item {
