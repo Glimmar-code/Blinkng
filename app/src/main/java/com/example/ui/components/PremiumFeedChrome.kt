@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.outlined.Language
 import java.text.NumberFormat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -352,7 +353,7 @@ fun FeedReferenceStatsRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                Icon(Icons.Default.Public, contentDescription = null,
+                Icon(Icons.Outlined.Language, contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(23.dp))
                 Column {
                     Text("World Rank", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
