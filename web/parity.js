@@ -614,6 +614,7 @@
   }
 
   function decorateAndroidUiParityDock() {
+    if(['/feed','/reels'].includes(location.pathname)) return;
     const host=document.querySelector('.content-wrap,.parity-content');
     if(!host || host.querySelector('[data-android-ui-parity]')) return;
     const modules=androidParityModulesForPath();
