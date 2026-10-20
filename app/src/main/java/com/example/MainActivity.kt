@@ -1777,8 +1777,11 @@ fun MainAppContent(
                             onOpenDrops = { dismissUtility { feedUtilitySheet = "drops" } },
                             onOpenStore = {
                                 dismissUtility {
-                                    if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
-                                    else feedUtilitySheet = "store"
+                                    if (BlinkStoreAvailability.isPaused) {
+                                        showStoreComingSoon = true
+                                    } else {
+                                        feedUtilitySheet = "store"
+                                    }
                                 }
                             },
                             isAdmin = canOpenAdmin,
