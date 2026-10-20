@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Public
@@ -240,7 +241,7 @@ fun PostCard(
         shape = RoundedCornerShape(if (xFeedStyle) 18.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        shadowElevation = if (xFeedStyle) 2.dp else 0.dp,
         border = BorderStroke(if (xFeedStyle) 0.7.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.27f else 0.52f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -371,7 +372,7 @@ fun PostCard(
                         }
                     }
                     IconButton(onClick = onOptionsClick, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreHoriz, contentDescription = "Post options",
+                        Icon(Icons.Default.MoreVert, contentDescription = "Post options",
                             tint = primaryText, modifier = Modifier.size(22.dp))
                     }
                 }
@@ -636,8 +637,11 @@ fun PostCard(
                         Text(
                             text = post.text,
                             color = primaryText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+                            style = if (xFeedStyle) MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp
+                            ) else MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 9.dp else 10.dp),
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
