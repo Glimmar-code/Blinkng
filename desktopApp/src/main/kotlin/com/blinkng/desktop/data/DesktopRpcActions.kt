@@ -363,6 +363,12 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         return rpcAny("admin_list_blink_live_campaigns", JSONObject()) as? JSONArray ?: JSONArray()
     }
 
+    suspend fun adminLiveCampaignAnalytics(days: Int): JSONObject {
+        requireAdmin()
+        require(days in setOf(7, 30, 90)) { "Choose a 7, 30, or 90-day reporting window." }
+        return rpc("admin_blink_live_campaign_analytics", JSONObject().put("p_days", days))
+    }
+
     suspend fun adminSaveLiveCampaign(id: String?, draft: JSONObject, revision: Long?): JSONObject {
         requireAdmin()
         return rpc("admin_save_blink_live_campaign", JSONObject()
