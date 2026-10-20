@@ -49,7 +49,7 @@ if web_release:
     # executing it would replace the small signed APK with a universal APK.
     import re
     universal_command = re.search(
-        r"(?m)^\\s*(?:run:\\s*)?(?:bash\\s+)?(?:\\./)?\\.github/scripts/build_full_website_apk\\.sh(?:\\s|$)",
+        r"(?m)^\s*(?:run:\s*)?(?:bash\s+)?(?:\./)?\.github/scripts/build_full_website_apk\.sh(?:\s|$)",
         release_workflow,
     )
     assert universal_command is None, (
