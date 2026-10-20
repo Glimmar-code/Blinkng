@@ -148,6 +148,51 @@ class BlinkPaystackCheckoutService {
         return BlinkPaystackCheckout(url, reference, "boost")
     }
 
+    /** Only available when the verified merchant has separately enabled Market checkout. */
+    suspend fun createMarketCheckout(listingId: String): BlinkPaystackCheckout {
+        require(listingId.matches(Regex("^[0-9a-fA-F-]{36}$")))
+        val result = invoke("paystack-checkout", JSONObject()
+            .put("kind", "marketplace").put("itemCode", "MARKET_ITEM")
+            .put("listingId", listingId))
+        val url = result.optString("checkoutUrl")
+        val ref = result.optString("reference")
+        check(url.startsWith("https://checkout.paystack.com/") &&
+            ref.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        return BlinkPaystackCheckout(url, ref, "marketplace")
+    }
+
+    /** Coin gifts credit the selected recipient only after Paystack confirms funds. */
+    suspend fun createGiftCheckout(
+        recipientUsername: String, packId: String, message: String = ""
+    ): BlinkPaystackCheckout {
+        require(recipientUsername.matches(Regex("^[a-zA-Z0-9_.]{2,40}$")))
+        require(packId.matches(Regex("^coins_[0-9]+$")))
+        require(message.length <= 160)
+        val result = invoke("paystack-checkout", JSONObject()
+            .put("kind", "gift").put("itemCode", "GIFT_COINS")
+            .put("recipientUsername", recipientUsername)
+            .put("packId", packId).put("message", message))
+        val url = result.optString("checkoutUrl")
+        val ref = result.optString("reference")
+        check(url.startsWith("https://checkout.paystack.com/") &&
+            ref.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        return BlinkPaystackCheckout(url, ref, "gift")
+    }
+
+    suspend fun requestRefund(reference: String, reason: String): JSONObject {
+        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        require(reason.trim().length in 10..1000)
+        return invoke("paystack-market-ops", JSONObject()
+            .put("action", "request_refund")
+            .put("reference", reference).put("reason", reason.trim()))
+    }
+
+    suspend fun confirmMarketDelivery(reference: String): JSONObject {
+        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        return invoke("paystack-market-ops", JSONObject()
+            .put("action", "confirm_delivery").put("reference", reference))
+    }
+
     suspend fun confirmPayment(reference: String): Boolean {
         require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
             "Invalid payment reference."
