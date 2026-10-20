@@ -1,0 +1,72 @@
+\set ON_ERROR_STOP on
+-- Disposable CI only. The original fixture has one valid view and click today.
+insert into private.blink_live_campaign_events (campaign_id,user_id,event_day,event_kind)
+values
+ (current_setting('test.campaign')::uuid,
+  '00000000-0000-4000-8000-000000000001',
+  (now() at time zone 'UTC')::date - 9, 'impression'),
+ (current_setting('test.campaign')::uuid,
+  '00000000-0000-4000-8000-000000000001',
+  (now() at time zone 'UTC')::date - 9, 'click'),
+ (current_setting('test.campaign')::uuid,
+  '00000000-0000-4000-8000-000000000001',
+  (now() at time zone 'UTC')::date - 70, 'impression');
+
+set role authenticated;
+-- Nonadmin must not receive even aggregate campaign data.
+select set_config('request.jwt.claim.sub',
+  '00000000-0000-4000-8000-000000000003',false);
+do $$
+begin
+  begin
+    perform public.admin_blink_live_campaign_analytics(30);
+    raise exception 'NONADMIN_ANALYTICS_ACCESS';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+-- Authorized admin can see counts but never individual user records.
+select set_config('request.jwt.claim.sub',
+  '00000000-0000-4000-8000-000000000002',false);
+do $$
+declare
+  v7 jsonb;
+  v30 jsonb;
+  v90 jsonb;
+begin
+  v7:=public.admin_blink_live_campaign_analytics(7);
+  v30:=public.admin_blink_live_campaign_analytics(30);
+  v90:=public.admin_blink_live_campaign_analytics(90);
+  if jsonb_array_length(v7->'daily')<>7 or
+     jsonb_array_length(v30->'daily')<>30 or
+     jsonb_array_length(v90->'daily')<>90 then
+     raise exception 'ANALYTICS_INCOMPLETE_TREND';
+  end if;
+  if (v7->'summary'->>'impressions')::int<>1 or
+     (v30->'summary'->>'impressions')::int<>2 or
+     (v90->'summary'->>'impressions')::int<>3 then
+     raise exception 'ANALYTICS_PERIOD_LEAK % % %',v7->'summary',v30->'summary',v90->'summary';
+  end if;
+  if (v7->'summary'->>'clicks')::int<>1 or
+     (v30->'summary'->>'clicks')::int<>2 then
+     raise exception 'ANALYTICS_CLICK_COUNT';
+  end if;
+  if (v7->'summary'->>'ctr_pct')::numeric<>100.0 then
+     raise exception 'ANALYTICS_CTR_MATH';
+  end if;
+  if (v7->'top_campaigns'->0->>'id')::uuid<>
+     current_setting('test.campaign')::uuid then
+     raise exception 'ANALYTICS_RANKING';
+  end if;
+  if v30::text like '%user_id%' or v30::text like '%00000000-0000-4000-8000-000000000004%' then
+     raise exception 'ANALYTICS_LEAKED_VIEWER_IDENTIFIERS';
+  end if;
+  begin
+    perform public.admin_blink_live_campaign_analytics(8);
+    raise exception 'INVALID_ANALYTICS_PERIOD_ACCEPTED';
+  exception when invalid_parameter_value then null;
+  end;
+end;
+$$;
+reset role;
