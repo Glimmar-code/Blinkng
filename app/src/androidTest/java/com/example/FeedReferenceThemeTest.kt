@@ -107,4 +107,34 @@ class FeedReferenceThemeTest {
         composeRule.onNodeWithTag("feed_notification_action").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_menu_action").assertIsDisplayed()
     }
+    @Test fun adminHomeHeaderAlsoKeepsReferenceFourIconsAndItemsTap() {
+        var itemsClicked = 0
+        composeRule.setContent {
+            BlinkTheme(darkTheme = false) {
+                FeedTopBar(
+                    userAvatar = "",
+                    userIsOnline = true,
+                    isAdmin = true,
+                    hasUnreadNotifications = false,
+                    onSearchClick = {},
+                    onAdminClick = {},
+                    onItemsClick = { itemsClicked++ },
+                    onNotificationClick = {},
+                    onMenuClick = {},
+                    onProfileClick = {},
+                    reserveStatusBar = false,
+                    modifier = Modifier.width(360.dp)
+                )
+            }
+        }
+        composeRule.onNodeWithText("BLINK").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_search_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_items_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_notification_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_menu_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_admin_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("feed_items_action").performClick()
+        composeRule.runOnIdle { assertEquals(1, itemsClicked) }
+    }
+
 }
