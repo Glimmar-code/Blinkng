@@ -1772,6 +1772,9 @@ fun MainAppContent(
                             currentUserId = uiState.myProfile.id,
                             currentUsername = uiState.myProfile.username,
                             onClose = { dismissUtility() },
+                            onOpenGame = { dismissUtility { feedUtilitySheet = "game" } },
+                            onOpenBoost = { dismissUtility { feedUtilitySheet = "boost" } },
+                            onOpenDrops = { dismissUtility { feedUtilitySheet = "drops" } },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
