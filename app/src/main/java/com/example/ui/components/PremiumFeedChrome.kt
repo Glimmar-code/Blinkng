@@ -119,10 +119,10 @@ fun FeedTopBar(
             .background(MaterialTheme.colorScheme.surface)
             .then(if (reserveStatusBar) Modifier.statusBarsPadding() else Modifier)
     ) {
-        // Four 44dp actions fit a 360dp handset without pushing BLINK away.
-        // The admin-only action wins over branding when space is constrained.
-        val showBrand = maxWidth >= 315.dp
-        val compactAdmin = isAdmin && maxWidth < 415.dp
+        // Keep exactly four 44dp header actions, including on admin accounts.
+        // Admin moves to Items so the header never hides BLINK or inserts a fifth icon.
+        val showBrand = maxWidth >= 310.dp
+        val compactAdmin = false
         Row(
             modifier = Modifier.fillMaxWidth()
                 .padding(start = 12.dp, end = 8.dp, top = 3.dp, bottom = 6.dp)
@@ -142,8 +142,6 @@ fun FeedTopBar(
                 hasUnreadNotifications = hasUnreadNotifications,
                 unreadNotificationCount = unreadNotificationCount,
                 onSearchClick = onSearchClick,
-                isAdmin = isAdmin,
-                onAdminClick = onAdminClick,
                 onItemsClick = onItemsClick,
                 onNotificationClick = onNotificationClick,
                 onMenuClick = onMenuClick
@@ -208,7 +206,7 @@ private fun FeedProfileAvatar(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(32.dp)
+                .size(36.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                 .graphicsLayer { clip = true; shape = CircleShape }
         )
@@ -228,8 +226,6 @@ private fun FeedHeaderActions(
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int,
     onSearchClick: () -> Unit,
-    isAdmin: Boolean,
-    onAdminClick: () -> Unit,
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit
@@ -245,15 +241,6 @@ private fun FeedHeaderActions(
             onClick = onSearchClick,
             modifier = Modifier.testTag("feed_search_action")
         )
-        if (isAdmin) {
-            FeedRadialHeaderAction(
-                compact = compact,
-                imageVector = Icons.Outlined.Security,
-                contentDescription = "Open admin dashboard",
-                onClick = onAdminClick,
-                modifier = Modifier.testTag("feed_admin_action")
-            )
-        }
         FeedRadialHeaderAction(
             compact = compact,
             imageVector = Icons.Outlined.SportsEsports,
