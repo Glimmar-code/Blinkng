@@ -1297,6 +1297,7 @@ fun MainAppContent(
                         stories = uiState.stories,
                         profiles = uiState.profiles,
                         currentUserProfile = uiState.myProfile,
+                        blinkCoinBalance = uiState.blinkCoinBalance,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
@@ -1361,6 +1362,7 @@ fun MainAppContent(
                             }
                         },
                         onItemsClick = { feedUtilitySheet = "items" },
+                        onGetCoinsClick = { viewModel.buyBlinkCoins() },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
                             if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
