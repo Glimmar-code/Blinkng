@@ -41,7 +41,7 @@ begin
   -- Every UTC day appears, even with zero events.
   select coalesce(jsonb_agg(
       jsonb_build_object(
-        'day', d.day,
+        'day', d.day::date,
         'impressions', coalesce(t.impressions,0),
         'clicks', coalesce(t.clicks,0),
         'dismissals', coalesce(t.dismissals,0)
