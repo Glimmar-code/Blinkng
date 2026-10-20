@@ -41,6 +41,15 @@ jobs:
       - name: Validate migration SQL syntax
         run: python3 scripts/check_supabase_sql_syntax.py
 
+
+      - name: Regression-test Data API permissions gate
+        run: python3 -m unittest discover -s scripts -p 'test_supabase_data_api_grants.py' -v
+
+      - name: Require new public tables to declare Data API access
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: python3 scripts/check_supabase_data_api_grants.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
