@@ -45,7 +45,14 @@ if web_release:
     assert "blink-life-web.zip" in release_workflow, (
         "Game archive must be published alongside the matching APK"
     )
-    assert "build_full_website_apk.sh" not in release_workflow, (
+    # GitHub workflow path filters may legitimately mention the legacy script
+    # as a change trigger. Reject invocation in executable workflow steps,
+    # not a quoted filename inside the non-executable `push.paths` stanza.
+    active_release_lines = [
+        line for line in release_workflow.splitlines()
+        if not line.lstrip().startswith(("- '", '- "', "#"))
+    ]
+    assert "build_full_website_apk.sh" not in "\\n".join(active_release_lines), (
         "Option B must not replace the small website APK with a universal APK"
     )
     publisher = (root / ".github/scripts/publish_verified_apk.py").read_text()
