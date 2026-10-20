@@ -1781,6 +1781,17 @@ fun MainAppContent(
                                     else feedUtilitySheet = "store"
                                 }
                             },
+                            isAdmin = canOpenAdmin,
+                            onOpenAdmin = {
+                                if (canOpenAdmin) {
+                                    dismissUtility {
+                                        adminContext.startActivitySafely(
+                                            Intent(adminContext, AdminControlCenterActivity::class.java),
+                                            "Unable to open admin dashboard."
+                                        )
+                                    }
+                                }
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
