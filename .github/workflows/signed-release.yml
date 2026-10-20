@@ -12,6 +12,25 @@ on:
       - main
     tags:
       - 'v*'
+    # Only package a new signed Android app when Android/shared/build inputs change.
+    # Web/Supabase/desktop/docs-only edits can ship without another APK.
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'blinkLifeFeature/**'
+      - 'game3d/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'scripts/sync_android_launcher_assets.py'
+      - '.github/scripts/restore_google_services.sh'
+      - '.github/scripts/build_full_website_apk.sh'
+      - '.github/workflows/signed-release.yml'
 
 permissions:
   contents: read
