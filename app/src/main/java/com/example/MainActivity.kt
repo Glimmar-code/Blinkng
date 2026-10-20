@@ -1775,6 +1775,12 @@ fun MainAppContent(
                             onOpenGame = { dismissUtility { feedUtilitySheet = "game" } },
                             onOpenBoost = { dismissUtility { feedUtilitySheet = "boost" } },
                             onOpenDrops = { dismissUtility { feedUtilitySheet = "drops" } },
+                            onOpenStore = {
+                                dismissUtility {
+                                    if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
+                                    else feedUtilitySheet = "store"
+                                }
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
