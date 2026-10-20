@@ -124,6 +124,18 @@ struct BLINKConversationView: View {
         .navigationTitle(conversationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    BLINKCallsView(
+                        auth: auth,
+                        userID: userID,
+                        conversationID: summary.conversationId
+                    )
+                } label: {
+                    Image(systemName: "phone")
+                        .accessibilityLabel("View call history for this conversation")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task { await reload(silent: false) }
