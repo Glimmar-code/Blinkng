@@ -1,5 +1,8 @@
 package com.example
 
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -160,11 +163,22 @@ class HomeReferenceVisualAuditTest {
         Thread.sleep(900L)
         rule.waitForIdle()
         val bitmap = rule.onNodeWithTag("home_reference_audit_root").captureToImage().asAndroidBitmap()
-        val folder = requireNotNull(ctx.getExternalFilesDir(null))
-        val file = File(folder, "home-reference-staging-light.png")
-        FileOutputStream(file).use { stream ->
+        // Save through MediaStore outside app-owned storage: Gradle removes app
+        // external files when connectedDebugAndroidTest uninstalls the test APK.
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "home-reference-staging-light.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val resolver = ctx.contentResolver
+        val imageUri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+        resolver.openOutputStream(imageUri).use { stream ->
+            checkNotNull(stream)
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
         }
-        check(file.exists() && file.length() > 1_000)
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        check(resolver.update(imageUri, values, null, null) == 1)
     }
 }
