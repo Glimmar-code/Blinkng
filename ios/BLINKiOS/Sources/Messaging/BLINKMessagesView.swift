@@ -65,6 +65,32 @@ struct BLINKMessagesView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
+                    NavigationLink {
+                        BLINKNotificationView(auth: auth)
+                    } label: {
+                        Label("Activity", systemImage: "bell")
+                    }
+                    NavigationLink {
+                        BLINKCallsView(auth: auth, userID: userID, conversationID: nil)
+                    } label: {
+                        Label("Calls", systemImage: "phone")
+                    }
+                    NavigationLink {
+                        BLINKNotificationSettingsView()
+                    } label: {
+                        Label("Notification settings", systemImage: "gear")
+                    }
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
+                        Task { await auth.signOut() }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.circle")
+                        .accessibilityLabel("BLINK menu")
+                }
+            }
+
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
                     Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
                         Task { await auth.signOut() }
                     }
