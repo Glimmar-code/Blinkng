@@ -31,6 +31,8 @@ on:
       - '.github/scripts/restore_google_services.sh'
       - '.github/scripts/build_full_website_apk.sh'
       - '.github/workflows/signed-release.yml'
+      # Publication-security updates must be exercised through a fresh signed build.
+      - '.github/scripts/publish_verified_apk.py'
 
 permissions:
   contents: read
