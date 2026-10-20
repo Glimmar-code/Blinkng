@@ -1436,7 +1436,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 56.dp + bottomNavigationInset)
+                    .padding(bottom = 64.dp + bottomNavigationInset)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1867,7 +1867,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 64.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = 72.dp + bottomNavigationInset),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
