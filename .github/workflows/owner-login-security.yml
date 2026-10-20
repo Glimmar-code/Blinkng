@@ -1,0 +1,44 @@
+name: Owner Login Security
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/username-login/**'
+      - 'app/src/main/java/com/example/data/repository/AuthRepository.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt'
+      - 'web/app.js'
+      - '.github/workflows/owner-login-security.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/username-login/**'
+      - 'app/src/main/java/com/example/data/repository/AuthRepository.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt'
+      - 'web/app.js'
+
+permissions:
+  contents: read
+
+jobs:
+  auth-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Supabase owner login
+        run: deno check supabase/functions/username-login/index.ts
+      - name: Test fail-closed owner alias policy
+        run: deno test supabase/functions/username-login/owner-identity_test.ts
+      - name: Check website JavaScript
+        run: node --check web/app.js
+      - name: Ensure owner IDs and secret configuration are not baked into clients
+        shell: bash
+        run: |
+          if grep -En 'BLINK_OWNER_LOGIN_IDENTIFIER_MAP|BLINK_OWNER_AUTH_USER_ID' web/app.js; then
+            echo "Owner alias private configuration must not appear in the web client." >&2
+            exit 1
+          fi

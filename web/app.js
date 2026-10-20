@@ -280,8 +280,10 @@
 
   async function login(identifier,password){
     const input=identifier.trim().toLowerCase(); let data;
-    if(input.includes('@')&&!input.startsWith('@')) data=await api('/auth/v1/token?grant_type=password',{method:'POST',body:{email:input,password},auth:false});
-    else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
+    if(input.includes('@')&&!input.startsWith('@')) {
+      try { data=await api('/auth/v1/token?grant_type=password',{method:'POST',body:{email:input,password},auth:false}); }
+      catch { data=await api('/functions/v1/username-login',{method:'POST',body:{username:input,password},auth:false}); }
+    } else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
     if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount();
   }
   async function signup(fullName,username,email,password){

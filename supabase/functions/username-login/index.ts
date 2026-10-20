@@ -1,3 +1,5 @@
+import { resolveOwnerLoginAlias, isExpectedOwnerSession } from "./owner-identity.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
@@ -35,6 +37,14 @@ function gatewayHeaders(key: string): Record<string, string> {
 function response(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
+
+/**
+ * Optional owner sign-in aliases. This is configuration, not authorization:
+ * GoTrue still validates the real account's password and issues its session.
+ *
+ * Store the JSON mapping only in a server-side Supabase Edge Function secret,
+ * never in the repo, mobile app, or web bundle. No alias is active by default.
+ */
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -77,29 +87,38 @@ Deno.serve(async (req: Request) => {
     .toLowerCase();
   const password = String(payload.password ?? "");
 
-  if (!username || !password || username.includes("@") || username.length > 30) {
+  const mappedEmail = resolveOwnerLoginAlias(
+    username,
+    Deno.env.get("BLINK_OWNER_LOGIN_IDENTIFIER_MAP"),
+    Deno.env.get("BLINK_OWNER_AUTH_USER_ID"),
+  );
+  if (!username || !password || username.length > 254 ||
+      (!mappedEmail && (username.includes("@") || username.length > 30))) {
     return response({ error: "Invalid email/username or password." }, 401);
   }
 
   try {
-    const profileUrl =
-      `${supabaseUrl}/rest/v1/profiles?username=eq.${encodeURIComponent(username)}` +
-      `&select=email&limit=1`;
-
-    const profileResult = await fetch(profileUrl, {
-      method: "GET",
-      headers: gatewayHeaders(secretKey),
-    });
-
-    if (!profileResult.ok) {
-      console.error(`username-login: profile lookup failed (${profileResult.status})`);
-      return response({ error: "Invalid email/username or password." }, 401);
-    }
-
-    const profiles = await profileResult.json() as Array<{ email?: string }>;
-    const email = profiles?.[0]?.email?.trim().toLowerCase() || "";
+    let email = mappedEmail;
     if (!email) {
-      return response({ error: "Invalid email/username or password." }, 401);
+      const profileUrl =
+        `${supabaseUrl}/rest/v1/profiles?username=eq.${encodeURIComponent(username)}` +
+        `&select=email&limit=1`;
+
+      const profileResult = await fetch(profileUrl, {
+        method: "GET",
+        headers: gatewayHeaders(secretKey),
+      });
+
+      if (!profileResult.ok) {
+        console.error(`username-login: profile lookup failed (${profileResult.status})`);
+        return response({ error: "Invalid email/username or password." }, 401);
+      }
+
+      const profiles = await profileResult.json() as Array<{ email?: string }>;
+      email = profiles?.[0]?.email?.trim().toLowerCase() || "";
+      if (!email) {
+        return response({ error: "Invalid email/username or password." }, 401);
+      }
     }
 
     const tokenResult = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
@@ -112,13 +131,24 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!tokenResult.ok) {
+      // Preserve the GoTrue rate-limit response rather than masking it as a bad password.
+      if (tokenResult.status === 429) {
+        return response({ error: "Too many login attempts. Try again later." }, 429);
+      }
       return response({ error: "Invalid email/username or password." }, 401);
     }
 
     const session = await tokenResult.json();
+    if (mappedEmail && !isExpectedOwnerSession(
+      session, mappedEmail, Deno.env.get("BLINK_OWNER_AUTH_USER_ID") || "",
+    )) {
+      console.error("username-login: configured owner identity mismatch");
+      return response({ error: "Invalid email/username or password." }, 401);
+    }
     return response(session, 200);
-  } catch (error) {
-    console.error("username-login unexpected error", error);
+  } catch {
+    // Do not log credentials or request bodies during authentication failures.
+    console.error("username-login unexpected authentication error");
     return response({ error: "Authentication service is temporarily unavailable." }, 503);
   }
 });

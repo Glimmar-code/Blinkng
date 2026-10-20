@@ -62,7 +62,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         try {
             val isEmail = cleanInput.contains("@") && !cleanInput.startsWith("@")
             val result = if (isEmail) {
-                supabaseService.authenticateUser(cleanInput, password)
+                val direct = supabaseService.authenticateUser(cleanInput, password)
+                if (direct.isSuccess) direct else authenticateWithUsername(cleanInput, password)
             } else {
                 authenticateWithUsername(cleanInput, password)
             }
@@ -111,7 +112,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                 }
 
                 val metadata = user.optJSONObject("user_metadata")
-                val resolvedUsername = metadata?.optString("username", "")?.trim()?.takeIf { it.isNotBlank() } ?: cleanUsername
+                val resolvedUsername = metadata?.optString("username", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: userEmail.substringBefore('@')
                 val fullName = metadata?.optString("full_name", "")?.trim()?.takeIf { it.isNotBlank() }
                     ?: metadata?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() }
                     ?: resolvedUsername
