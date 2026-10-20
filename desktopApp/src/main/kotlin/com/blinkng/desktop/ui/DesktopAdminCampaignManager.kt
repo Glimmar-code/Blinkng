@@ -89,6 +89,10 @@ fun DesktopAdminCampaignManager(
     var success by remember { mutableStateOf<String?>(null) }
     var chosenImage by remember { mutableStateOf<java.io.File?>(null) }
     var uploadingImage by remember { mutableStateOf(false) }
+    var analyticsDays by remember { mutableStateOf(30) }
+    var analyticsData by remember { mutableStateOf<JSONObject?>(null) }
+    var analyticsLoading by remember { mutableStateOf(false) }
+    var analyticsFailure by remember { mutableStateOf<String?>(null) }
 
     fun entries(): List<JSONObject> = (0 until campaigns.length())
         .mapNotNull { campaigns.optJSONObject(it) }
@@ -113,6 +117,16 @@ fun DesktopAdminCampaignManager(
         success=null
         history=JSONArray()
     }
+    fun reloadAnalytics() {
+        scope.launch {
+            analyticsLoading = true
+            analyticsFailure = null
+            runCatching { actions.adminLiveCampaignAnalytics(analyticsDays) }
+                .onSuccess { analyticsData = it }
+                .onFailure { analyticsFailure = it.message ?: "Cannot load analytics." }
+            analyticsLoading = false
+        }
+    }
     fun reloadHistory() {
         val id=selectedId ?: return
         scope.launch { runCatching { actions.adminLiveCampaignHistory(id) }
@@ -120,6 +134,9 @@ fun DesktopAdminCampaignManager(
             .onFailure { error=it.message } }
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(view, analyticsDays) {
+        if (view == "Analytics") reloadAnalytics()
+    }
 
     Dialog(onCloseRequest={if(!busy)onDismiss()}, title="BLINK — Content Management Center") {
         Surface {
@@ -146,14 +163,13 @@ fun DesktopAdminCampaignManager(
                     "Calendar" -> desktopField(it,"starts_at").isNotBlank()
                     else -> !it.optBoolean("is_template")
                 }}.let { if(view=="Calendar") it.sortedBy { item -> item.optString("starts_at") } else it }
-                if(view=="Analytics") {
-                    val views=entries().sumOf { it.optInt("impressions") }
-                    val clicks=entries().sumOf { it.optInt("clicks") }
-                    val dismissals=entries().sumOf { it.optInt("dismissals") }
-                    Text("Views $views • Clicks $clicks • Dismissals $dismissals • CTR " +
-                        if(views==0) "—" else "${(clicks*100.0/views).toInt()}%")
-                    Text("These are engagement estimates, not billing-grade impression data.",
-                        style=MaterialTheme.typography.labelSmall)
+                if (view == "Analytics") {
+                    DesktopLiveCampaignAnalyticsPanel(
+                        report = analyticsData, days = analyticsDays,
+                        loading = analyticsLoading, error = analyticsFailure,
+                        onDays = { analyticsDays = it },
+                        onRefresh = ::reloadAnalytics
+                    )
                 }
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     Button(onClick={open(null)}) { Text("New campaign") }
