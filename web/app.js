@@ -619,9 +619,9 @@
     const raw=typeof post.video_url==='string'?post.video_url.trim():'';
     const video=safeUrl(raw);
     const declaredVideo=post.media_type==='video'||post.type==='video'||post.is_reel===true;
-    const videoExtension=/\\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
+    const videoExtension=/\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
     const invalidPlaceholder=/^(null|undefined|none|false|0|about:blank)$/i.test(raw);
-    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/\\/storage\\/v1\\/object\\//i.test(raw));
+    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/\/storage\/v1\/object\//i.test(raw));
     if(hasRealVideo)return `<div class="post-media" data-video-post><video src="${esc(video)}" playsinline preload="metadata" data-autopause controls onerror="this.closest('[data-video-post]').innerHTML='<div class=&quot;muted&quot; style=&quot;padding:16px&quot;>Video unavailable</div>'"></video></div>`;
     if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;
     if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;
