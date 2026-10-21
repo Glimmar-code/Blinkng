@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,8 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -105,11 +102,13 @@ internal fun BlinkReferenceInbox(
                     .testTag("inbox_my_avatar")
             ) {
                 InboxAvatar(myAvatar, myName, 40.dp, bg)
-                Box(
-                    Modifier.align(Alignment.BottomEnd).size(12.dp)
-                        .border(2.dp, bg, CircleShape).clip(CircleShape)
-                        .background(Color(0xFF14D76D))
-                )
+                if (isConnected) {
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).size(12.dp)
+                            .border(2.dp, bg, CircleShape).clip(CircleShape)
+                            .background(Color(0xFF14D76D))
+                    )
+                }
             }
             Spacer(Modifier.width(14.dp))
             Text(
