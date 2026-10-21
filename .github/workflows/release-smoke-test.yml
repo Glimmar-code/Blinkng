@@ -153,3 +153,14 @@ jobs:
           echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
 
           echo "Release smoke APK/AAB package, version and signatures verified."
+
+      - name: Unit-test the WebRTC binary integrity audit
+        run: PYTHONPATH=scripts python3 scripts/test_webrtc_apk_integrity.py -v
+
+      - name: Verify JNI Java classes and ARM64 library in actual R8-minified APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          python3 scripts/check_webrtc_apk_integrity.py "$APK"
