@@ -8,6 +8,11 @@
 -keep class com.example.data.models.** { *; }
 -keep class com.example.data.local.** { *; }
 
+# WebRTC JNI_OnLoad resolves these Java classes by their original names.
+# R8 shrinking renamed/removed them in the Android 15 release call crash.
+-keep class org.webrtc.** { *; }
+
+
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
 

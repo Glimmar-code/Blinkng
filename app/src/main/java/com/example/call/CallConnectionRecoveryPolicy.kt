@@ -9,6 +9,10 @@ internal object CallConnectionRecoveryPolicy {
     const val ICE_RESTART_ATTEMPTS = 3
     const val SDP_SEND_ATTEMPTS = 3
     const val FINAL_RECOVERY_GRACE_MS = 8_000L
+    const val MAX_UNANSWERED_RINGING_MS = 75_000L
+
+    fun unansweredCallTimedOut(status: CallStatus?, elapsedMillis: Long): Boolean =
+        status == CallStatus.RINGING && elapsedMillis >= MAX_UNANSWERED_RINGING_MS
 
     private val iceRetryDelays = longArrayOf(1_500L, 4_000L, 7_000L)
 
