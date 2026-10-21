@@ -1,7 +1,13 @@
 import SwiftUI
 
 struct BLINKRootView: View {
+    private var currentUserID: String? {
+        if case .signedIn(let user) = auth.state { return user.id }
+        return nil
+    }
+
     @StateObject private var auth = BLINKAuthStore()
+    @StateObject private var systemCalls = BLINKCallKitManager.shared
     @State private var selectedSection: BLINKSection = .home
     @State private var sellerMessageRecipient: String?
 
@@ -59,6 +65,27 @@ struct BLINKRootView: View {
             }
         }
         .task { await auth.restore() }
+        .task(id: currentUserID) {
+            if let userID = currentUserID {
+                systemCalls.setAccount(auth: auth, userID: userID)
+                BLINKVoIPPushManager.shared.bindUser(auth: auth, userID: userID)
+            } else {
+                systemCalls.signOut()
+                BLINKVoIPPushManager.shared.clearUser()
+            }
+        }
+        .sheet(item: Binding(
+            get: { systemCalls.presentation },
+            set: { value in
+                if value == nil { systemCalls.dismissPresentation() }
+            }
+        )) { presentation in
+            if let live = systemCalls.activeSession {
+                BLINKCallSessionView(coordinator: live, callKitID: presentation.id)
+            } else {
+                ContentUnavailableView("Call unavailable", systemImage: "phone.down")
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await auth.revalidate() }
         }
