@@ -23,10 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -98,7 +98,7 @@ internal fun BlinkReferenceInbox(
     val border = if (isDark) Color(0xFF313236) else Color(0xFFEEEEEE)
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -128,11 +128,11 @@ internal fun BlinkReferenceInbox(
                 Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
             }
             IconButton(onClick = onGameClick, modifier = Modifier.size(43.dp).testTag("inbox_game")) {
-                Icon(Icons.Default.SportsEsports, contentDescription = "Open BLINK games", tint = primary, modifier = Modifier.size(27.dp))
+                Icon(Icons.Outlined.SportsEsports, contentDescription = "Open BLINK games", tint = primary, modifier = Modifier.size(27.dp))
             }
             Box {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.size(43.dp).testTag("inbox_notifications")) {
-                    Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
+                    Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
                 }
                 if (hasUnreadNotifications) {
                     Box(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 6.dp)
@@ -142,7 +142,7 @@ internal fun BlinkReferenceInbox(
         }
         HorizontalDivider(thickness = 1.dp, color = border)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 7.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 7.dp, bottom = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary)
@@ -258,7 +258,7 @@ private fun BlinkInboxStories(
     }
     LazyRow(
         modifier = Modifier.fillMaxWidth().testTag("inbox_stories"),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 12.dp, top = 2.dp),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 2.dp, top = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp)
     ) {
         item(key = "add_note") {
@@ -342,7 +342,7 @@ private fun BlinkInboxConversationRow(
             .testTag("inbox_chat_${conversation.id}")
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 11.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.size(58.dp).clickable(role = Role.Button, onClick = onAvatarClick)) {
@@ -415,7 +415,7 @@ private fun BlinkInboxConversationRow(
             }
         }
         HorizontalDivider(
-            modifier = Modifier.padding(start = 94.dp, end = 18.dp),
+            modifier = Modifier.padding(start = 98.dp, end = 18.dp),
             thickness = 1.dp, color = border
         )
     }
