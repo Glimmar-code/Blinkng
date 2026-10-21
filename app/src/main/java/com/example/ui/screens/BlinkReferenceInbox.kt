@@ -84,6 +84,7 @@ internal fun BlinkReferenceInbox(
     onAddStoryClick: () -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     onComposeMessage: () -> Unit,
     onOpenSettings: () -> Unit,
     isConnected: Boolean,
@@ -128,6 +129,10 @@ internal fun BlinkReferenceInbox(
             Box {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.size(43.dp).testTag("inbox_notifications")) {
                     Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
+                }
+                if (hasUnreadNotifications) {
+                    Box(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 6.dp)
+                        .size(8.dp).clip(CircleShape).background(Color(0xFFFF3049)))
                 }
             }
         }
