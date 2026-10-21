@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import com.blinkng.shared.BlinkAppearanceMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
