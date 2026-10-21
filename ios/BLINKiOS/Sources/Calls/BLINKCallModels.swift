@@ -2,10 +2,11 @@ import Foundation
 
 /// Authenticated call-state records provided by BLINK Supabase.
 /// SDP/ICE media transport is not connected on iOS Phase 6.
-enum BLINKCallKind: String, Decodable, CaseIterable {
+enum BLINKCallKind: String, Decodable, CaseIterable, Identifiable {
     case audio
     case video
 
+    var id: String { rawValue }
     var title: String { self == .audio ? "Voice" : "Video" }
 }
 
