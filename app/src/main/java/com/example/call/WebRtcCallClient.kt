@@ -250,24 +250,31 @@ class WebRtcCallClient(
     }
 
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
-        speakerEnabled = enabled
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val targetType = if (enabled) {
-                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+        // Android 12+ reports whether a communication route was actually selected.
+        // Do not show the speaker as enabled after Telecom/AudioManager rejects it.
+        return try {
+            val routed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val devices = audioManager.availableCommunicationDevices
+                val target = if (enabled) {
+                    devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                 } else {
-                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
+                        ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                        ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+                        ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
                 }
-                val target = audioManager.availableCommunicationDevices.firstOrNull { it.type == targetType }
-                if (target != null) audioManager.setCommunicationDevice(target)
+                target != null && audioManager.setCommunicationDevice(target)
             } else {
                 @Suppress("DEPRECATION")
                 run { audioManager.isSpeakerphoneOn = enabled }
+                true
             }
+            if (routed) speakerEnabled = enabled
+            routed
         } catch (error: Exception) {
             Log.w(TAG, "Audio route update failed", error)
+            false
         }
-        return speakerEnabled
     }
 
     fun toggleSpeaker(): Boolean = setSpeakerEnabled(!speakerEnabled)
@@ -343,12 +350,17 @@ class WebRtcCallClient(
     }
 
     private fun initializeFactoryOnce() {
-        if (factoryInitialized.compareAndSet(false, true)) {
+        // Mark initialization complete only AFTER WebRTC has successfully loaded.
+        // A failed initialization must not poison subsequent calls in this process.
+        if (factoryInitialized.get()) return
+        synchronized(factoryInitialized) {
+            if (factoryInitialized.get()) return
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(appContext)
                     .setEnableInternalTracer(false)
                     .createInitializationOptions()
             )
+            factoryInitialized.set(true)
         }
     }
 
