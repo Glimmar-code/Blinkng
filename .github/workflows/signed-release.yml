@@ -339,6 +339,15 @@ jobs:
 
           echo "APK package/version/signature and AAB signature verified."
 
+      - name: Verify WebRTC JNI bridge survives production R8 shrinking
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          PYTHONPATH=scripts python3 scripts/test_webrtc_apk_integrity.py -v
+          python3 scripts/check_webrtc_apk_integrity.py "$APK"
+
       - name: Write release metadata
         shell: bash
         run: |
