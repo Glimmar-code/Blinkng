@@ -35,6 +35,8 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         NSMicrophoneUsageDescription: "BLINK uses the microphone only when you choose a supported voice or video call."
         NSCameraUsageDescription: "BLINK uses the camera only when you choose a supported video call."
+        BLINK_VOIP_PUSH_ENABLED: "$(BLINK_VOIP_PUSH_ENABLED)"
+        BLINK_APNS_ENVIRONMENT: "$(BLINK_APNS_ENVIRONMENT)"
         BLINK_SUPABASE_URL: "$(BLINK_SUPABASE_URL)"
         BLINK_SUPABASE_ANON_KEY: "$(BLINK_SUPABASE_ANON_KEY)"
     settings:
@@ -44,6 +46,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         BLINK_SUPABASE_URL: "https://jhwgifrlxwspoedxjaly.supabase.co"
         BLINK_SUPABASE_ANON_KEY: "sb_publishable_2lfIyTW9SwiTOvafGXp10Q_I7DwUs-J"
+        BLINK_VOIP_PUSH_ENABLED: "NO"
+        BLINK_APNS_ENVIRONMENT: "unconfigured"
   BLINKiOSTests:
     type: bundle.unit-test
     platform: iOS
