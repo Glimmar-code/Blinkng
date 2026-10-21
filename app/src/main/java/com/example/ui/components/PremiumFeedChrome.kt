@@ -170,8 +170,8 @@ private fun FeedBrandBlock(
         if (showTitle) {
             Text(
                 text = "BLINK",
-                fontSize = if (compact) 20.sp else 24.sp,
-                letterSpacing = if (compact) 2.sp else 3.sp,
+                fontSize = if (compact) 22.sp else 27.sp,
+                letterSpacing = if (compact) 3.sp else 4.sp,
                 lineHeight = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -315,7 +315,7 @@ private fun FeedRadialHeaderAction(
             imageVector = imageVector,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(24.dp)
         )
     }
 }
@@ -356,9 +356,9 @@ fun FeedReferenceStatsRow(
                 horizontalArrangement = Arrangement.spacedBy(9.dp)
             ) {
                 Icon(Icons.Outlined.Language, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(23.dp))
+                    tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(30.dp))
                 Column {
-                    Text("World Rank", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text("World Rank", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(rankLabel, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Black, maxLines = 1)
@@ -387,9 +387,9 @@ fun FeedReferenceStatsRow(
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 Icon(Icons.Default.MonetizationOn, contentDescription = "BLINK Coins",
-                    tint = Color(0xFFEAB308), modifier = Modifier.size(26.dp))
+                    tint = Color(0xFFEAB308), modifier = Modifier.size(31.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Coins", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text("Coins", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     Text(coinLabel, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Black, maxLines = 1)
                 }
