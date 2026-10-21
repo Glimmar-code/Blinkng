@@ -928,7 +928,11 @@ fun MainAppContent(
 
     fun startV2Checkout(kind: String, item: String, months: Int = 1) {
         if (v2PaymentBusy) return
-        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+        // The authenticated server is authoritative for the owner-only LIVE pilot.
+        // Do not gate Coins on a cached global cashCheckoutEnabled flag: the
+        // paystack-checkout Edge Function rejects all unauthorized accounts and
+        // still enforces its own payment kill switch.
+        if (kind != "coin_pack" && !uiState.economyPolicy.cashCheckoutEnabled) {
             viewModel.showToast("Paystack cash checkout is not available yet.")
             return
         }
