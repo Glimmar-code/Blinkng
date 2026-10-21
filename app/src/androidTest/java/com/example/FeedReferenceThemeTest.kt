@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.ui.components.FeedReferenceStatsRow
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedTopBar
 import com.example.ui.theme.BlinkTheme
@@ -32,8 +33,6 @@ class FeedReferenceThemeTest {
     @Test fun darkThemeFeedTabsRemainSelectableAndActionsWork() = verifyTabs(dark = true)
 
     private fun verifyTabs(dark: Boolean) {
-        var refreshCount = 0
-        var filterCount = 0
         composeRule.setContent {
             var selected by remember { mutableIntStateOf(0) }
             BlinkTheme(darkTheme = dark) {
@@ -41,8 +40,8 @@ class FeedReferenceThemeTest {
                     selectedIndex = selected,
                     onForYouClick = { selected = 0 },
                     onFollowingClick = { selected = 1 },
-                    onFilterClick = { filterCount++ },
-                    onRefreshClick = { refreshCount++ },
+                    onFilterClick = {},
+                    onRefreshClick = {},
                     modifier = Modifier.width(360.dp)
                 )
             }
@@ -54,11 +53,33 @@ class FeedReferenceThemeTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("feed_tab_following").assertIsSelected()
         composeRule.onNodeWithTag("feed_tab_for_you").assertIsNotSelected()
-        composeRule.onNodeWithTag("feed_refresh_action").performClick()
-        composeRule.onNodeWithTag("feed_filter_action").performClick()
+        // Refresh and filters are deliberately not visible in the supplied
+        // reference. Pull-to-refresh remains available on the actual Home feed.
+        composeRule.onNodeWithTag("feed_refresh_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("feed_filter_action").assertDoesNotExist()
+    }
+
+    @Test fun realRankAndCoinsCardsUseAccountValuesAndOpenActions() {
+        var rankClicked = 0
+        var coinsClicked = 0
+        composeRule.setContent {
+            BlinkTheme(darkTheme = false) {
+                FeedReferenceStatsRow(
+                    worldRank = 248,
+                    coins = 1250,
+                    onRankClick = { rankClicked++ },
+                    onCoinsClick = { coinsClicked++ },
+                    modifier = Modifier.width(360.dp)
+                )
+            }
+        }
+        composeRule.onNodeWithText("#248").assertIsDisplayed()
+        composeRule.onNodeWithText("1,250").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_world_rank_card").performClick()
+        composeRule.onNodeWithTag("feed_add_coins").performClick()
         composeRule.runOnIdle {
-            assertEquals(1, refreshCount)
-            assertEquals(1, filterCount)
+            assertEquals(1, rankClicked)
+            assertEquals(1, coinsClicked)
         }
     }
 
@@ -80,10 +101,40 @@ class FeedReferenceThemeTest {
             }
         }
 
-        composeRule.onNodeWithText("Home").assertIsDisplayed()
+        composeRule.onNodeWithText("BLINK").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_search_action").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_items_action").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_notification_action").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_menu_action").assertIsDisplayed()
     }
+    @Test fun adminHomeHeaderAlsoKeepsReferenceFourIconsAndItemsTap() {
+        var itemsClicked = 0
+        composeRule.setContent {
+            BlinkTheme(darkTheme = false) {
+                FeedTopBar(
+                    userAvatar = "",
+                    userIsOnline = true,
+                    isAdmin = true,
+                    hasUnreadNotifications = false,
+                    onSearchClick = {},
+                    onAdminClick = {},
+                    onItemsClick = { itemsClicked++ },
+                    onNotificationClick = {},
+                    onMenuClick = {},
+                    onProfileClick = {},
+                    reserveStatusBar = false,
+                    modifier = Modifier.width(360.dp)
+                )
+            }
+        }
+        composeRule.onNodeWithText("BLINK").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_search_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_items_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_notification_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_menu_action").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_admin_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("feed_items_action").performClick()
+        composeRule.runOnIdle { assertEquals(1, itemsClicked) }
+    }
+
 }

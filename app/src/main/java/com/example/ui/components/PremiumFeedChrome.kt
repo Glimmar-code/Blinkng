@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CardGiftcard
@@ -53,6 +54,14 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.outlined.Language
+import java.text.NumberFormat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,9 +96,14 @@ import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.feedAccentBrush
 
+/**
+ * Reference-matched Home chrome. Use the Items destination behind the gamepad glyph:
+ * Game remains one of the features INSIDE Items, not a new toolbar destination.
+ */
 @Composable
 fun FeedTopBar(
     userAvatar: String,
+    userIsOnline: Boolean = false,
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int = 0,
     onSearchClick: () -> Unit,
@@ -103,42 +117,33 @@ fun FeedTopBar(
     reserveStatusBar: Boolean = true,
 ) {
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            // Keep the status-bar safe inset so toolbar controls never sit under
-            // the camera cutout, but match it to the exact Feed background.
-            // The old radial purple/blue wash made this inset look like a
-            // separate colored strip with empty space above Home.
+        modifier = modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .then(if (reserveStatusBar) Modifier.statusBarsPadding() else Modifier)
     ) {
-        val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 10.dp
-        // Reserve proper 48dp minimum targets for all four toolbar buttons.
-        // On narrow devices collapse the decorative title, not the actions.
-        val showHomeTitle = maxWidth >= (if (isAdmin) 430.dp else 350.dp)
+        // Keep exactly four 44dp header actions, including on admin accounts.
+        // Admin moves to Items so the header never hides BLINK or inserts a fifth icon.
+        val showBrand = maxWidth >= 310.dp
+        val compactAdmin = false
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = horizontalPadding,
-                    end = horizontalPadding,
-                    top = 0.dp,
-                    bottom = 0.dp
-                ),
+            modifier = Modifier.fillMaxWidth()
+                .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp)
+                .height(50.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             FeedBrandBlock(
                 userAvatar = userAvatar,
+                userIsOnline = userIsOnline,
                 onProfileClick = onProfileClick,
-                showTitle = showHomeTitle,
-                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                showTitle = showBrand,
+                compact = compactAdmin,
+                modifier = Modifier.weight(1f)
             )
             FeedHeaderActions(
+                compact = compactAdmin,
                 hasUnreadNotifications = hasUnreadNotifications,
                 unreadNotificationCount = unreadNotificationCount,
                 onSearchClick = onSearchClick,
-                isAdmin = isAdmin,
-                onAdminClick = onAdminClick,
                 onItemsClick = onItemsClick,
                 onNotificationClick = onNotificationClick,
                 onMenuClick = onMenuClick
@@ -150,24 +155,29 @@ fun FeedTopBar(
 @Composable
 private fun FeedBrandBlock(
     userAvatar: String,
+    userIsOnline: Boolean,
     onProfileClick: () -> Unit,
     showTitle: Boolean,
+    compact: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        FeedProfileAvatar(userAvatar = userAvatar, onProfileClick = onProfileClick)
+        FeedProfileAvatar(userAvatar = userAvatar, userIsOnline = userIsOnline, onProfileClick = onProfileClick)
         if (showTitle) {
             Text(
-                text = "Home",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
+                text = "BLINK",
+                fontSize = if (compact) 22.sp else 27.sp,
+                letterSpacing = if (compact) 3.sp else 4.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
-                modifier = Modifier.weight(1f)
+                softWrap = false,
+                overflow = TextOverflow.Clip
             )
         }
     }
@@ -176,12 +186,13 @@ private fun FeedBrandBlock(
 @Composable
 private fun FeedProfileAvatar(
     userAvatar: String,
+    userIsOnline: Boolean,
     onProfileClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .size(48.dp)
-            .background((if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF3266D5)), CircleShape)
+            .size(40.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
             .padding(2.dp)
             .background(MaterialTheme.colorScheme.surface, CircleShape)
             .padding(2.dp)
@@ -197,78 +208,70 @@ private fun FeedProfileAvatar(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(40.dp)
+                .size(36.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                 .graphicsLayer { clip = true; shape = CircleShape }
         )
+        if (userIsOnline) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(10.dp)
+                    .background(Color(0xFF22C55E), CircleShape)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+            )
+        }
     }
 }
 
 @Composable
 private fun FeedHeaderActions(
+    compact: Boolean,
     hasUnreadNotifications: Boolean,
     unreadNotificationCount: Int,
     onSearchClick: () -> Unit,
-    isAdmin: Boolean,
-    onAdminClick: () -> Unit,
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         FeedRadialHeaderAction(
-            imageVector = Icons.Default.Search,
+            compact = compact,
+            imageVector = Icons.Outlined.Search,
             contentDescription = "Search people and posts",
             onClick = onSearchClick,
             modifier = Modifier.testTag("feed_search_action")
         )
-        if (isAdmin) {
-            FeedRadialHeaderAction(
-                imageVector = Icons.Outlined.Security,
-                contentDescription = "Open admin dashboard",
-                onClick = onAdminClick,
-                modifier = Modifier.testTag("feed_admin_action")
-            )
-        }
         FeedRadialHeaderAction(
-            imageVector = Icons.Default.Widgets,
-            contentDescription = "Open Items",
+            compact = compact,
+            imageVector = Icons.Outlined.SportsEsports,
+            contentDescription = "Open Items (includes Game)",
             onClick = onItemsClick,
             modifier = Modifier.testTag("feed_items_action")
         )
-        Box(modifier = Modifier.size(48.dp)) {
+        Box(modifier = Modifier.size(if (compact) 38.dp else 44.dp)) {
             FeedRadialHeaderAction(
-                imageVector = Icons.Default.NotificationsNone,
-                contentDescription = "Notifications",
+                compact = compact,
+                imageVector = Icons.Outlined.NotificationsNone,
+                contentDescription = if (hasUnreadNotifications || unreadNotificationCount > 0)
+                    "Notifications, ${maxOf(unreadNotificationCount, 1)} unread" else "Notifications",
                 onClick = onNotificationClick,
                 modifier = Modifier.align(Alignment.Center).testTag("feed_notification_action")
             )
-            val visibleUnreadCount = maxOf(unreadNotificationCount, if (hasUnreadNotifications) 1 else 0)
-            if (visibleUnreadCount > 0) {
+            if (hasUnreadNotifications || unreadNotificationCount > 0) {
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 2.dp, y = (-2).dp)
-                        .size(if (visibleUnreadCount < 10) 18.dp else 22.dp)
-                        .background(feedAccentBrush(), CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (visibleUnreadCount > 99) "99+" else visibleUnreadCount.toString(),
-                        color = Color.White,
-                        fontSize = if (visibleUnreadCount > 99) 7.sp else 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
+                    modifier = Modifier.align(Alignment.TopEnd)
+                        .offset(x = (-7).dp, y = 5.dp)
+                        .size(8.dp)
+                        .background(Color(0xFFF12D45), CircleShape)
+                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                )
             }
         }
         FeedRadialHeaderAction(
-            imageVector = Icons.Default.Menu,
+            compact = compact,
+            imageVector = Icons.Outlined.Menu,
             contentDescription = "Menu",
             onClick = onMenuClick,
             modifier = Modifier.testTag("feed_menu_action")
@@ -278,6 +281,7 @@ private fun FeedHeaderActions(
 
 @Composable
 private fun FeedRadialHeaderAction(
+    compact: Boolean = false,
     imageVector: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -292,10 +296,10 @@ private fun FeedRadialHeaderAction(
     )
     Box(
         modifier = modifier
-            .size(48.dp)
+            .size(if (compact) 38.dp else 44.dp)
             .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
             .background(
-                color = if (pressed) FeedPurple.copy(alpha = 0.16f) else Color.Transparent,
+                color = if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent,
                 shape = CircleShape
             )
             .clickable(
@@ -311,8 +315,97 @@ private fun FeedRadialHeaderAction(
             imageVector = imageVector,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(25.dp)
+            modifier = Modifier.size(24.dp)
         )
+    }
+}
+
+/**
+ * Above-feed summary values are server-sourced. Never display sample rank/coin
+ * numbers from the reference artwork as though they belonged to a BLINK user.
+ */
+@Composable
+fun FeedReferenceStatsRow(
+    worldRank: Int,
+    coins: Long,
+    onRankClick: () -> Unit,
+    onCoinsClick: () -> Unit,
+    rankImprovement: Int? = null,
+    modifier: Modifier = Modifier
+) {
+    val rankLabel = if (worldRank > 0) "#${NumberFormat.getIntegerInstance().format(worldRank)}" else "—"
+    val coinLabel = NumberFormat.getIntegerInstance().format(coins.coerceAtLeast(0L))
+    Row(
+        modifier = modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Surface(
+            modifier = Modifier.weight(1f).height(64.dp)
+                .clickable(role = Role.Button, onClick = onRankClick)
+                .testTag("feed_world_rank_card"),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Icon(Icons.Outlined.Language, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(30.dp))
+                Column {
+                    Text("World Rank", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(rankLabel, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Black, maxLines = 1)
+                        // Only show movement when it is backed by a previous recorded rank.
+                        if (rankImprovement != null && rankImprovement > 0) {
+                            Icon(
+                                Icons.Default.ArrowDropUp,
+                                contentDescription = "World rank improved",
+                                tint = Color(0xFF29AB48), modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier.weight(1f).height(64.dp).testTag("feed_coins_card"),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 9.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Icon(Icons.Default.MonetizationOn, contentDescription = "BLINK Coins",
+                    tint = Color(0xFFEAB308), modifier = Modifier.size(31.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Coins", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text(coinLabel, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Black, maxLines = 1)
+                }
+                Box(
+                    modifier = Modifier.size(32.dp)
+                        .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onCoinsClick)
+                        .semantics { contentDescription = "Get BLINK Coins" }
+                        .testTag("feed_add_coins"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.surface, modifier = Modifier.size(19.dp))
+                }
+            }
+        }
     }
 }
 
@@ -406,6 +499,10 @@ private fun FeedUtilityAction(
     }
 }
 
+/**
+ * Home tabs mirror the Play reference: simple black/white text and underline,
+ * while content refresh stays on pull-to-refresh rather than a visible icon.
+ */
 @Composable
 fun FeedTabs(
     selectedIndex: Int,
@@ -416,71 +513,43 @@ fun FeedTabs(
     isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    // Reference blue pill selector, with theme-aware background and 48dp targets.
     Row(
-        modifier = modifier.fillMaxWidth().height(56.dp)
-            .background(MaterialTheme.colorScheme.surface).padding(horizontal = 8.dp),
+        modifier = modifier.fillMaxWidth().height(58.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 14.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        BoxWithConstraints(
-            modifier = Modifier.weight(1f).height(44.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp))
-                .padding(3.dp)
-        ) {
-            val segmentWidth = maxWidth / 2
-            val selection = selectedIndex.coerceIn(0, 1)
-            val selectedOffset by animateDpAsState(
-                targetValue = segmentWidth * selection,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
-                label = "feedSegmentOffset"
-            )
-            Box(Modifier.offset(x = selectedOffset).width(segmentWidth).fillMaxHeight()
-                .background(if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF2563EB), RoundedCornerShape(22.dp)))
-            Row(Modifier.fillMaxWidth().fillMaxHeight()) {
-                FeedTabLabel("For You", selection == 0, Modifier.weight(1f), onForYouClick)
-                FeedTabLabel("Following", selection == 1, Modifier.weight(1f), onFollowingClick)
-            }
-        }
-        Box(
-            Modifier.size(48.dp)
-                .clickable(enabled = !isRefreshing, role = Role.Button, onClick = onRefreshClick)
-                .semantics { contentDescription = "Refresh feed" }
-                .testTag("feed_refresh_action"),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isRefreshing) CircularProgressIndicator(
-                modifier = Modifier.size(19.dp), color = if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primary else Color(0xFF2563EB), strokeWidth = 2.dp
-            ) else Icon(Icons.Default.Refresh, null,
-                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
-        }
-        Box(
-            Modifier.size(48.dp).clickable(role = Role.Button, onClick = onFilterClick)
-                .semantics { contentDescription = "Filter feed" }
-                .testTag("feed_filter_action"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Tune, null,
-                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
-        }
+        FeedTabLabel("For You", selectedIndex == 0, Modifier.weight(1f), onForYouClick)
+        FeedTabLabel("Following", selectedIndex == 1, Modifier.weight(1f), onFollowingClick)
     }
 }
 
 @Composable
 private fun FeedTabLabel(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val labelColor by animateColorAsState(
-        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(180),
-        label = "feedSegmentLabelColor"
-    )
-    Box(
-        modifier.fillMaxHeight().clickable(role = Role.Tab, onClick = onClick)
+    val ink = MaterialTheme.colorScheme.onSurface
+    val lightInk = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
+    Column(
+        modifier = modifier.fillMaxHeight()
+            .clickable(role = Role.Tab, onClick = onClick)
             .semantics { this.selected = selected }
             .testTag(if (label == "For You") "feed_tab_for_you" else "feed_tab_following"),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
     ) {
-        Text(label, color = labelColor, fontSize = 14.sp, lineHeight = 17.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Text(
+                label, color = if (selected) ink else lightInk,
+                fontSize = 15.sp, lineHeight = 19.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+        Box(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 1.dp)
+                .height(2.dp)
+                .background(if (selected) ink else Color.Transparent, RoundedCornerShape(2.dp))
+        )
     }
 }
 
@@ -535,12 +604,12 @@ fun CreatePostFab(
                         Box(
                             modifier = Modifier
                                 .size(27.dp)
-                                .background(feedAccentBrush(), CircleShape),
+                                .background(MaterialTheme.colorScheme.onSurface, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "AI",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
@@ -559,7 +628,7 @@ fun CreatePostFab(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.size(21.dp)
                         )
                     },
@@ -572,8 +641,8 @@ fun CreatePostFab(
             modifier = Modifier
                 .shadow(10.dp, pill, clip = false)
                 .graphicsLayer { scaleX = mainScale; scaleY = mainScale }
-                .background(feedAccentBrush(), pill)
-                .border(1.dp, Color.White.copy(alpha = 0.14f), pill)
+                .background(MaterialTheme.colorScheme.onSurface, pill)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f), pill)
                 .clickable(
                     interactionSource = mainInteractionSource,
                     indication = null,
@@ -593,7 +662,7 @@ fun CreatePostFab(
             Icon(
                 imageVector = if (actionsExpanded) Icons.Default.Close else Icons.Default.Add,
                 contentDescription = null,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.size(23.dp)
             )
             AnimatedVisibility(
@@ -605,7 +674,7 @@ fun CreatePostFab(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Create",
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1
@@ -629,7 +698,7 @@ private fun FeedCreateAction(
         modifier = modifier
             .shadow(7.dp, shape, clip = false)
             .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .border(1.dp, FeedPurple.copy(alpha = 0.52f), shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f), shape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics {
                 role = Role.Button

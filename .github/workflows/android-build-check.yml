@@ -58,6 +58,9 @@ jobs:
       - name: Guard Auth-inspired dark theme design tokens
         run: python3 scripts/check_premium_dark_tokens.py
 
+      - name: Guard approved BLINK Home reference structure
+        run: python3 scripts/test_home_reference_contract.py
+
       - name: Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
