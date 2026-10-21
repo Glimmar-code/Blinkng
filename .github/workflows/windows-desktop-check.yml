@@ -14,17 +14,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      windows: ${{ steps.detect.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Windows build-affecting changes
+        id: detect
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
   parity:
+    needs: scope
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Fail safely if test selection failed
+        if: always() && needs.scope.result != 'success'
+        run: |
+          echo "CI change detection failed; refusing to bypass Windows parity."
+          exit 1
+
       - name: Enforce Android-Windows feature parity
+        if: needs.scope.result == 'success'
         run: python3 scripts/check_windows_parity.py
 
   windows-build:
+    needs: scope
+    if: needs.scope.result == 'success' && needs.scope.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
