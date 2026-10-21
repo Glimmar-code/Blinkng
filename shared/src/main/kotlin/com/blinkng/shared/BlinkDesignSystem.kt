@@ -12,7 +12,24 @@ enum class BlinkAppearanceMode(val persistedValue: String) {
     LIGHT("light"),
     DARK("dark");
 
+    /** UI selection is resolved independently of the stored user preference. */
+    fun isDark(systemDark: Boolean): Boolean = when (this) {
+        SYSTEM -> systemDark
+        LIGHT -> false
+        DARK -> true
+    }
+
     companion object {
+        /** Preserve pre-existing Android boolean choices; use Light for a new account. */
+        fun restored(raw: String?, legacyDark: Boolean?): BlinkAppearanceMode =
+            entries.firstOrNull {
+                it.persistedValue.equals(raw, ignoreCase = true) ||
+                    it.name.equals(raw, ignoreCase = true)
+            } ?: when (legacyDark) {
+                true -> DARK
+                false, null -> LIGHT
+            }
+
         fun fromPersisted(value: String?, fallbackDark: Boolean = true): BlinkAppearanceMode {
             return entries.firstOrNull { it.persistedValue == value?.trim()?.lowercase() }
                 ?: if (fallbackDark) DARK else LIGHT
