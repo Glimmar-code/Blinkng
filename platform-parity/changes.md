@@ -1069,3 +1069,9 @@ publisher-signed APK directly from any of up to 10 compatible past releases.
 Windows does not use APKs or Android's installer; its native desktop update
 and distribution flow is unchanged. Full APK and Google Play update routes
 remain independent and intact. QA and Testlab approval required before main.
+
+## 2026-10-21 — Android 15 WebRTC calling recovery, scoped production port
+
+- **PARITY-EXCEPTION: android15-webrtc-native-jni** — Android's `JNI_OnLoad`, R8 APK shrinking, FCM-to-Activity ordering, `AudioManager` endpoint routing, and Android Telecom foreground service are native to Android. Windows retains its existing desktop calling interface, signaling, TURN, microphone/camera and error recovery without JNI or FCM Activity lifecycle. Supabase call-state and SDP/ICE contracts are unchanged.
+- **Scope:** Bring only the tested native startup, outgoing push ordering, notification delivery feedback, bounded ringing and SDP retries into current main. Keep main's newer Android Telecom, call-quality reporting, low-bandwidth support, on-demand BLINK LIFE packaging, signed release and Windows features untouched.
+- **Owner's testing exception:** owner explicitly requested bypassing physical two-phone testing *for this promotion*. Android 15 CI emulates two WebRTC peers, not cellular NAT, real caller/callee accounts, FCM, locked-screen notifications, or Redmi Telecom. Do not describe these as physically verified. CI and R8 JNI checks still must pass.
