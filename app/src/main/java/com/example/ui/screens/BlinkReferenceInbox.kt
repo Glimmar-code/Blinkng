@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.CircularProgressIndicator
@@ -70,6 +71,7 @@ internal fun BlinkReferenceInbox(
     isDark: Boolean,
     query: String,
     onQueryChange: (String) -> Unit,
+    onVoiceSearch: () -> Unit,
     showSearch: Boolean,
     onToggleSearch: () -> Unit,
     showAll: Boolean,
@@ -163,6 +165,11 @@ internal fun BlinkReferenceInbox(
                 singleLine = true,
                 placeholder = { Text("Search messages", color = secondary) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = secondary) },
+                trailingIcon = {
+                    IconButton(onClick = onVoiceSearch, modifier = Modifier.testTag("inbox_voice_search")) {
+                        Icon(Icons.Default.Mic, contentDescription = "Search messages by voice", tint = primary)
+                    }
+                },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = bg,
                     unfocusedContainerColor = bg,
