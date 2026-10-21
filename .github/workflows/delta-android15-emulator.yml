@@ -44,12 +44,18 @@ jobs:
         run: |
           python3 .github/scripts/blink_delta.py --old /tmp/blink-old.apk --new /tmp/blink-new.apk --output /tmp/blink-patch.bdp
           python3 - <<'PY'
-          import hashlib
+          import importlib.util
           from pathlib import Path
-          expected = Path('/tmp/blink-new.apk').read_bytes()
-          assert expected[:2] == b'PK'
-          assert len(Path('/tmp/blink-patch.bdp').read_bytes()) < len(expected), 'Delta saves no data'
-          print('Patch bytes:', Path('/tmp/blink-patch.bdp').stat().st_size)
+          spec = importlib.util.spec_from_file_location("blink_delta", ".github/scripts/blink_delta.py")
+          delta = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(delta)
+          old, new = Path('/tmp/blink-old.apk'), Path('/tmp/blink-new.apk')
+          patch, rebuilt = Path('/tmp/blink-patch.bdp'), Path('/tmp/blink-rebuilt.apk')
+          delta.apply_patch(old, patch, rebuilt)
+          assert new.read_bytes()[:2] == b'PK'
+          assert delta.digest(new) == delta.digest(rebuilt), 'Rebuilt signed APK does not match'
+          assert patch.stat().st_size < new.stat().st_size, 'Delta saves no data'
+          print('Patch bytes:', patch.stat().st_size)
           PY
       - name: Upgrade on Android 15 with app data preserved
         uses: reactivecircus/android-emulator-runner@v2
@@ -64,7 +70,7 @@ jobs:
             adb shell run-as com.aistudio.blink.appvtwo mkdir -p files
             printf 'BLINK-PERSISTENT-STATE\n' | adb shell run-as com.aistudio.blink.appvtwo sh -c 'cat > files/delta_marker'
             test "$(adb shell run-as com.aistudio.blink.appvtwo cat files/delta_marker | tr -d '\r')" = 'BLINK-PERSISTENT-STATE'
-            adb install -r /tmp/blink-new.apk
+            adb install -r /tmp/blink-rebuilt.apk
             test "$(adb shell run-as com.aistudio.blink.appvtwo cat files/delta_marker | tr -d '\r')" = 'BLINK-PERSISTENT-STATE'
             adb shell dumpsys package com.aistudio.blink.appvtwo | grep -q 'versionCode=10000011'
             echo 'PASS: Android 15 upgrade retained private app data and installed newer signed APK'
