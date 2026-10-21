@@ -18,6 +18,8 @@ import com.example.MainActivity
 import com.example.R
 import com.blinkng.shared.update.BlinkApkResumePolicy
 import com.blinkng.shared.update.BlinkApkUpdatePolicy
+import com.blinkng.shared.update.BlinkDeltaPatch
+import com.blinkng.shared.update.BlinkDeltaEntry
 import com.blinkng.shared.update.BlinkReleaseInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -77,7 +79,9 @@ class BlinkResumableApkWorker(
                 verified.delete()
             }
 
-            download(release, partial)
+            // Reconstruct the latest signed APK directly from the installed version,
+            // even when the user has missed many intermediate releases.
+            if (!tryDelta(release, installedCode, partial)) download(release, partial)
             coroutineContext.ensureActive()
             if (sha256(partial) != release.apkSha256) {
                 partial.delete()
@@ -106,6 +110,139 @@ class BlinkResumableApkWorker(
             partial.delete()
             verified.delete()
             return Result.failure()
+        }
+    }
+
+
+    /**
+     * Only a source-SHA-matching delta for this exact installed APK can be used.
+     * Missing/unsafe patches safely fall back to the existing full APK path.
+     * Network interruptions retain partial patch bytes for WorkManager retry.
+     */
+    private suspend fun tryDelta(
+        release: BlinkReleaseInfo, installedCode: Int, reconstructed: File,
+    ): Boolean {
+        val base = File(applicationContext.applicationInfo.sourceDir)
+        if (!base.isFile || base.length() !in 1..BlinkApkUpdatePolicy.MAX_DOWNLOAD_BYTES) return false
+        val metadataUrl =
+            "https://github.com/Glimmar-code/Blinkng/releases/latest/download/deltas.txt"
+        val manifest = try {
+            client.newCall(Request.Builder().url(metadataUrl)
+                .header("Cache-Control", "no-cache").build()).execute().use { response ->
+                if (!response.isSuccessful ||
+                    !BlinkApkUpdatePolicy.isOfficialAssetOrigin(
+                        response.request.url.scheme, response.request.url.host)) return false
+                val body = response.body ?: return false
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(1024)
+                body.byteStream().use { input ->
+                    while (output.size() <= 4096) {
+                        val read = input.read(buffer, 0, minOf(buffer.size, 4097 - output.size()))
+                        if (read == -1) break
+                        if (read == 0) continue
+                        output.write(buffer, 0, read)
+                    }
+                }
+                if (output.size() > 4096) return false
+                output.toString(Charsets.UTF_8.name())
+            }
+        } catch (_: java.io.IOException) {
+            return false
+        }
+        val candidate = BlinkDeltaPatch.select(manifest, release, installedCode) ?: return false
+        // Signed APK ZIP bytes in sourceDir are the only acceptable delta base.
+        if (BlinkDeltaPatch.sha256(base) != candidate.baseSha256) return false
+
+        val part = File(applicationContext.filesDir,
+            "blink-updates/partial/${release.apkSha256}.${installedCode}.bdp")
+        part.parentFile?.mkdirs()
+        if (part.isFile && part.length() > candidate.patchBytes) part.delete()
+        try {
+            if (!part.isFile || part.length() != candidate.patchBytes ||
+                BlinkDeltaPatch.sha256(part) != candidate.patchSha256) {
+                downloadDelta(candidate, part)
+            }
+            if (BlinkDeltaPatch.sha256(part) != candidate.patchSha256) {
+                part.delete()
+                return false
+            }
+            BlinkDeltaPatch.reconstruct(base, part, reconstructed, release.apkSha256)
+            return true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (transient: IOException) {
+            // A dropped connection is retried without abandoning saved patch bytes.
+            throw transient
+        } catch (_: Exception) {
+            // Invalid patch, signer or device format: use verified full-APK fallback.
+            part.delete()
+            reconstructed.delete()
+            return false
+        }
+    }
+
+    private suspend fun downloadDelta(entry: BlinkDeltaEntry, part: File) {
+        var existing = if (part.isFile) part.length() else 0L
+        if (existing < 0 || existing >= entry.patchBytes) {
+            part.delete()
+            existing = 0L
+        }
+        val url =
+            "https://github.com/Glimmar-code/Blinkng/releases/latest/download/${entry.filename}"
+        val builder = Request.Builder().url(url)
+            .header("Accept", "application/octet-stream").header("Cache-Control", "no-store")
+        if (existing > 0) builder.header("Range", "bytes=${existing}-")
+        client.newCall(builder.build()).execute().use { response ->
+            if (response.code == 404 || response.code == 410) {
+                // The exact patch may have been pruned; caller uses full APK.
+                throw IllegalArgumentException("Version-specific patch unavailable")
+            }
+            if (response.code == 416 && existing > 0) {
+                part.delete()
+                throw IOException("Partial patch range rejected")
+            }
+            require(BlinkApkUpdatePolicy.isOfficialAssetOrigin(
+                response.request.url.scheme, response.request.url.host)) {
+                "Untrusted delta asset host"
+            }
+            val isPartial = response.code == 206 && existing > 0
+            val body = response.body ?: throw IOException("Missing patch response")
+            val length = body.contentLength()
+            val range = if (isPartial) BlinkApkResumePolicy.acceptedRange(
+                response.header("Content-Range"), existing, length,
+            ) else null
+            if (BlinkApkResumePolicy.restartFromZero(response.code)) existing = 0
+            else if (isPartial) requireNotNull(range) { "Invalid patch range" }
+            else throw IOException("Patch download failed with HTTP ${response.code}")
+            val total = range?.total ?: length
+            require(total == -1L || total == entry.patchBytes) { "Patch length mismatch" }
+            val file = RandomAccessFile(part, "rw")
+            file.use { output ->
+                output.setLength(existing)
+                output.seek(existing)
+                var bytes = existing
+                val buffer = ByteArray(64 * 1024)
+                body.byteStream().use { stream ->
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        bytes += read
+                        require(bytes <= entry.patchBytes) { "Patch exceeds published size" }
+                        output.write(buffer, 0, read)
+                        if (bytes == entry.patchBytes || bytes % (512 * 1024) < read) {
+                            setProgress(workDataOf(
+                                BlinkApkWorkContract.PROGRESS_BYTES to bytes,
+                                BlinkApkWorkContract.PROGRESS_TOTAL to entry.patchBytes,
+                            ))
+                            setForeground(notification(bytes, entry.patchBytes))
+                        }
+                    }
+                }
+                output.fd.sync()
+                if (bytes != entry.patchBytes) throw IOException("Incomplete patch transfer")
+            }
         }
     }
 
