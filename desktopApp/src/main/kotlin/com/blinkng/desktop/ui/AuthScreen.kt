@@ -161,7 +161,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text("Email") },
+                    label = { Text(if (mode == AuthMode.SIGN_IN) "Email or username" else "Email") },
                 )
 
                 if (mode != AuthMode.RESET) {
