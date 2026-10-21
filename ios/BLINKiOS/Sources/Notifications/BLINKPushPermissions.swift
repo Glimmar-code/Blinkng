@@ -45,6 +45,9 @@ final class BLINKiOSDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil)
         -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        Task { @MainActor in
+            BLINKVoIPPushManager.shared.startAtLaunchIfEnabled()
+        }
         return true
     }
 
