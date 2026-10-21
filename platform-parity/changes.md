@@ -1,3 +1,9 @@
+## 2026-10-21 — Owner-only Android Paystack Coins pilot (PR #443)
+
+- **PARITY-EXCEPTION: android-owner-coin-checkout-pilot-20261021** — Android's native Coins button previously rejected all purchases using a stale global economy flag. This change allows the Android pack picker and authenticated Paystack client to reach the existing secured backend; server-side allowlist, account identity verification and checkout kill switch remain authoritative. No public payment access is being unlocked.
+- **Windows equivalent:** Windows retains its existing Coins interface and global payment gate during the limited Android owner pilot. Equivalent Windows purchase behaviour is required before public rollout.
+- **Required verification:** Android/Windows CI, signed APK integrity, real-phone owner and non-owner checks, exactly-once Coin credit, webhook replay rejection and receipts. No real payment is verified by this source-only change.
+
 ## 2026-10-20 — Home reference visual reconstruction (Testlab-only candidate)
 
 - **Android:** Stage a near-reference 1:1 Compose Home presentation, not a fabricated image: BLINK wordmark and outlined Search / Items-gamepad / Notifications / Menu header; real world-rank and coin summary cards; simple underlined For You/Following; rounded real-content PostCards with user university/age, blue/gold verification only when backed by account state, black Follow control, five primary footer actions; minimal monochrome bottom navigation. Keep the floating Create action and dark theme.
