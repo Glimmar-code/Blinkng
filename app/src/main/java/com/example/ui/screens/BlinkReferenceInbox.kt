@@ -56,6 +56,7 @@ import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.VerifiedMark
+import com.example.ui.theme.InterFontFamily
 import androidx.compose.ui.platform.LocalContext
 
 /**
@@ -118,6 +119,7 @@ internal fun BlinkReferenceInbox(
                 modifier = Modifier.weight(1f),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
+                fontFamily = InterFontFamily,
                 color = primary,
                 maxLines = 1
             )
@@ -142,9 +144,9 @@ internal fun BlinkReferenceInbox(
             modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, color = primary)
+            Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary)
             TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
-                Text(if (showAll) "Close" else "See all", fontSize = 13.sp, color = secondary)
+                Text(if (showAll) "Close" else "See all", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
             }
         }
@@ -279,7 +281,7 @@ private fun BlinkInboxStories(
                     }
                 }
                 Spacer(Modifier.height(5.dp))
-                Text("Your note", color = secondary, fontSize = 11.sp, maxLines = 1)
+                Text("Your note", color = secondary, fontSize = 11.sp, fontFamily = InterFontFamily, maxLines = 1)
             }
         }
         items(visible, key = { "inbox_story_${it.id}" }) { story ->
@@ -357,7 +359,7 @@ private fun BlinkInboxConversationRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         conversation.partnerName,
-                        fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily,
                         color = primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
@@ -383,7 +385,7 @@ private fun BlinkInboxConversationRow(
                 }
                 Text(
                     preview, color = secondary,
-                    fontSize = 14.sp, maxLines = 2,
+                    fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
                     lineHeight = 17.sp,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -393,7 +395,7 @@ private fun BlinkInboxConversationRow(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(conversation.lastMessageTime, fontSize = 11.sp, color = secondary, maxLines = 1)
+                Text(conversation.lastMessageTime, fontSize = 11.sp, fontFamily = InterFontFamily, color = secondary, maxLines = 1)
                 if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
                     Box(
                         Modifier.size(23.dp).clip(CircleShape)
