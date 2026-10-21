@@ -38,4 +38,32 @@ struct BLINKVoIPRegistrationAPI {
             throw BLINKCallError.notAvailable
         }
     }
+
+    /// Revoke from the authenticated user's device before the JWT is invalidated.
+    /// Does not send the APNs token during revocation.
+    func revoke(deviceID: UUID, environment: String, userJWT: String) async throws {
+        guard BLINKVoIPConfiguration.enabledInBuild,
+              ["sandbox", "production"].contains(environment) else {
+            throw BLINKCallError.notAvailable
+        }
+        let url = configuration.url.appendingPathComponent(
+            BLINKVoIPConfiguration.registrationPath
+        )
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.httpMethod = "POST"
+        request.setValue(configuration.publicKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \\(userJWT)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "action": "revoke", "platform": "ios", "channel": "voip",
+            "bundle_id": Bundle.main.bundleIdentifier ?? "",
+            "device_id": deviceID.uuidString,
+            "environment": environment
+        ])
+        let (_, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw BLINKCallError.notAvailable
+        }
+    }
 }
