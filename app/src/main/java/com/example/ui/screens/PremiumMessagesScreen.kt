@@ -664,6 +664,7 @@ private fun PremiumMessagesHome(
     isDark: Boolean
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
+    val startVoiceSearch = rememberSpeechInput { result -> query = result }
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
     var showAll by rememberSaveable { mutableStateOf(false) }
@@ -700,6 +701,7 @@ private fun PremiumMessagesHome(
         isDark = isDark,
         query = query,
         onQueryChange = { query = it },
+        onVoiceSearch = startVoiceSearch,
         showSearch = showSearch,
         onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
         showAll = showAll,
