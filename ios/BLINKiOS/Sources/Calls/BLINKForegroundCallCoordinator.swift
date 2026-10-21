@@ -239,7 +239,7 @@ final class BLINKForegroundCallCoordinator: ObservableObject {
                 try await api.end(callID: active.id, token: token)
             }
         } catch {
-            error = "Call ended locally; the server has not confirmed the hang-up."
+            self.error = "Call ended locally; the server has not confirmed the hang-up."
         }
         release()
     }
@@ -257,7 +257,7 @@ final class BLINKForegroundCallCoordinator: ObservableObject {
     func toggleSpeaker() {
         speaker.toggle()
         do { try engine?.setSpeaker(speaker) }
-        catch { error = "Could not change your audio output." }
+        catch { self.error = "Could not change your audio output." }
     }
 
     private func failAndEnd(reason: String, via api: BLINKCallsAPI, error: Error) async {
