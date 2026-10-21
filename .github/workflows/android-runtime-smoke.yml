@@ -81,7 +81,9 @@ jobs:
             # This test data is separate from the production APK and account content.
             mkdir -p app/build/visual-audit
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/home-reference-staging-light.png app/build/visual-audit/home-reference-staging-light.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/home-reference-with-create.png app/build/visual-audit/home-reference-with-create.png
             test -s app/build/visual-audit/home-reference-staging-light.png
+            test -s app/build/visual-audit/home-reference-with-create.png
 
       - name: Upload instrumentation reports
         if: always()
