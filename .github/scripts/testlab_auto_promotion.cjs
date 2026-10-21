@@ -12,12 +12,45 @@ const OWNER = 'Glimmar-code';
 const REPO = 'Blinkng';
 const OPT_IN = 'auto-promote';
 const STAGING = 'staging-verified';
+const DEVICE_REQUIRED = 'needs-device-verification';
+const DEVICE_VERIFIED = 'device-verified';
 const APPROVE = 'BLINK APPROVE ';
 const REVOKE = 'BLINK REVOKE ';
 const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build', 'integrity'];
 
+/**
+ * Only a deliberately small allowlist can skip per-commit owner authorization.
+ * Unknown paths and executable code fail closed, even when described as "UI".
+ * The opt-in label, complete CI, and branch rules still apply to routine PRs.
+ */
+function isRoutineFile(path) {
+  return /^(?:README|CHANGELOG|CONTRIBUTING)\.md$/i.test(path) ||
+    /^docs\/[\w.\/-]+\.md$/i.test(path) ||
+    /^web\/[\w.-]+\.css$/i.test(path) ||
+    /^web\/[\w./-]+\.(?:png|jpe?g|webp)$/i.test(path) ||
+    /^app\/src\/main\/res\/(?:drawable|mipmap)(?:-[\w]+)?\/[\w.-]+\.(?:png|jpe?g|webp)$/i.test(path);
+}
+function requiresOwnerApproval(files) {
+  return !Array.isArray(files) || files.length === 0 || !files.every(isRoutineFile);
+}
+
+/**
+ * OEM hardware, push delivery, native media, and installer behaviors cannot
+ * be established by an Android emulator alone. A real-device or independent
+ * hosted device-lab report is required; it must not require the owner to
+ * repeatedly download a candidate APK onto a personal phone.
+ */
+function requiresDeviceVerification(files, labels = new Set()) {
+  return labels.has(DEVICE_REQUIRED) || files.some(path =>
+    /^app\/src\/main\/jniLibs\//i.test(path) ||
+    /^app\/src\/main\/java\/.*(?:\/call\/|\/calling\/|\/webrtc\/|\/telecom\/|\/updater\/|\/installer\/|\/notifications?\/)/i.test(path) ||
+    /^app\/src\/main\/java\/.*(?:Call|WebRTC|WebRtc|Telecom|Bluetooth|AudioRoute|InAppUpdate|ApkUpdate|ApkInstall|PushNotification)[\w]*\.kt$/i.test(path)
+  );
+}
+
 function filePathsRequireStaging(files) {
   return files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^supabase\/(?:migrations\/|functions\/|config\.toml$)/.test(path) ||
     /^app\/proguard-rules\.pro$/.test(path) ||
     /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
@@ -33,6 +66,7 @@ function requiredChecks(files) {
     /^gradle\//.test(path)
   );
   const release = android || files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^app\/(?:proguard-rules\.pro|google-services\.json\.example)$/.test(path) ||
     /^\.github\/(?:scripts\/restore_google_services\.sh|workflows\/(?:signed-release|release-smoke-test)\.yml)$/.test(path)
   );
@@ -58,6 +92,8 @@ function requiredChecks(files) {
 function releaseWorkflows(files) {
   const toRun = [];
   if (files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
+    /^\.github\/workflows\/signed-release\.yml$/.test(path) ||
     /^(?:app\/|shared\/|gradle\/)/.test(path) ||
     /^(?:build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/.test(path)
   )) toRun.push('signed-release.yml');
@@ -80,6 +116,7 @@ function preflight(pr, changedFiles) {
   if (/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(pr.body || '')) return 'Unfinished task checklist';
   if (/\bdo not auto-merge\b/i.test(pr.body || '')) return 'PR explicitly prohibits auto-merge';
   if (filePathsRequireStaging(changedFiles) && !labels.has(STAGING)) return 'Staging verification is not attested';
+  if (requiresDeviceVerification(changedFiles, labels) && !labels.has(DEVICE_VERIFIED)) return 'Independent physical-device verification is not attested';
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') return 'PR is not cleanly mergeable';
   if ((pr.changed_files || 0) > changedFiles.length) return 'Could not examine every changed file';
   return null;
@@ -151,7 +188,9 @@ async function ensureLabel(github, name, color, description) {
 async function run({github, context, core}) {
   // Labels are bootstrapped by the trusted main workflow; no manual setup.
   await ensureLabel(github, OPT_IN, '0e8a16', 'Merge when Testlab checklist and all CI pass');
-  await ensureLabel(github, STAGING, '5319e7', 'Staging/device validation verified for backend or release changes');
+  await ensureLabel(github, STAGING, '5319e7', 'Staging validation verified for backend or release changes');
+  await ensureLabel(github, DEVICE_REQUIRED, 'd73a4a', 'This PR needs independent physical-device or hosted device-lab testing');
+  await ensureLabel(github, DEVICE_VERIFIED, '0e8a16', 'Independent physical-device acceptance evidence reviewed on current SHA');
 
   let candidates;
   if (context.eventName === 'pull_request_target') {
@@ -212,11 +251,16 @@ async function run({github, context, core}) {
 
       // Verify final human approval only after all checks have passed, and
       // immediately before the final PR/main consistency check and merge.
-      const comments = await github.paginate(github.rest.issues.listComments, {
-        owner: OWNER, repo: REPO, issue_number: number, per_page: 100
-      });
-      const approvalFailure = approvalGate(comments, pr.head.sha);
-      if (approvalFailure) { core.info('#' + number + ': ' + approvalFailure); continue; }
+      if (requiresOwnerApproval(paths) ||
+          requiresDeviceVerification(paths, new Set((pr.labels || []).map(label => label.name)))) {
+        const comments = await github.paginate(github.rest.issues.listComments, {
+          owner: OWNER, repo: REPO, issue_number: number, per_page: 100
+        });
+        const approvalFailure = approvalGate(comments, pr.head.sha);
+        if (approvalFailure) { core.info('#' + number + ': ' + approvalFailure); continue; }
+      } else {
+        core.info('#' + number + ': routine-only change; full CI and explicit auto-promote opt-in apply without per-SHA owner comment');
+      }
 
       const {data: current} = await github.rest.pulls.get({owner: OWNER, repo: REPO, pull_number: number});
       const {data: finalMain} = await github.rest.repos.getBranch({owner: OWNER, repo: REPO, branch: 'main'});
@@ -254,6 +298,9 @@ async function run({github, context, core}) {
 
 module.exports = run;
 module.exports.preflight = preflight;
+module.exports.isRoutineFile = isRoutineFile;
+module.exports.requiresOwnerApproval = requiresOwnerApproval;
+module.exports.requiresDeviceVerification = requiresDeviceVerification;
 module.exports.requiredChecks = requiredChecks;
 module.exports.checkGate = checkGate;
 module.exports.approvalGate = approvalGate;
