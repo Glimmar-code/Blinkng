@@ -142,7 +142,7 @@ internal fun BlinkReferenceInbox(
             modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold, color = primary)
+            Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, color = primary)
             TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
                 Text(if (showAll) "Close" else "See all", fontSize = 13.sp, color = secondary)
                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
@@ -256,7 +256,7 @@ private fun BlinkInboxStories(
     LazyRow(
         modifier = Modifier.fillMaxWidth().testTag("inbox_stories"),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 12.dp, top = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(11.dp)
     ) {
         item(key = "add_note") {
             Column(
@@ -284,7 +284,7 @@ private fun BlinkInboxStories(
         }
         items(visible, key = { "inbox_story_${it.id}" }) { story ->
             Column(
-                modifier = Modifier.width(66.dp).clickable(role = Role.Button, onClick = { onStoryClick(story) }),
+                modifier = Modifier.width(64.dp).clickable(role = Role.Button, onClick = { onStoryClick(story) }),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val ring = Brush.sweepGradient(
@@ -352,12 +352,12 @@ private fun BlinkInboxConversationRow(
                     )
                 }
             }
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(18.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         conversation.partnerName,
-                        fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         color = primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
@@ -383,7 +383,7 @@ private fun BlinkInboxConversationRow(
                 }
                 Text(
                     preview, color = secondary,
-                    fontSize = 13.sp, maxLines = 2,
+                    fontSize = 14.sp, maxLines = 2,
                     lineHeight = 17.sp,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -412,7 +412,7 @@ private fun BlinkInboxConversationRow(
             }
         }
         HorizontalDivider(
-            modifier = Modifier.padding(start = 89.dp, end = 18.dp),
+            modifier = Modifier.padding(start = 94.dp, end = 18.dp),
             thickness = 1.dp, color = border
         )
     }
