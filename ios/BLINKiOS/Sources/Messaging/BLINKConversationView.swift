@@ -16,6 +16,7 @@ struct BLINKConversationView: View {
     @State private var loadingOlder = false
     @State private var sending = false
     @State private var draft = ""
+    @State private var outgoingCallKind: BLINKCallKind?
     @State private var error: String?
 
     private var isGroup: Bool { group?.isGroup == true }
@@ -122,8 +123,33 @@ struct BLINKConversationView: View {
         }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle(conversationTitle)
+        .sheet(item: $outgoingCallKind) { kind in
+            if let partner = summary.partnerId {
+                BLINKCallSessionView(
+                    auth: auth, userID: userID,
+                    start: .outgoing(conversationID: summary.conversationId,
+                                     calleeID: partner, kind: kind)
+                )
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if !isGroup, let partner = summary.partnerId,
+                   UUID(uuidString: partner) != nil {
+                    Menu {
+                        Button("Experimental voice call", systemImage: "phone") {
+                            outgoingCallKind = .audio
+                        }
+                        Button("Experimental video call", systemImage: "video") {
+                            outgoingCallKind = .video
+                        }
+                    } label: {
+                        Image(systemName: "video")
+                            .accessibilityLabel("Experimental call options")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink {
                     BLINKCallsView(
