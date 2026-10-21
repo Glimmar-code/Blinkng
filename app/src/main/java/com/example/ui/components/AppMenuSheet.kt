@@ -77,6 +77,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
+import com.example.ui.theme.BlinkAppearanceMode
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -137,6 +139,8 @@ fun AppMenuSheet(
     onFindFriends: () -> Unit,
     onOpenEarning: () -> Unit,
     onToggleTheme: () -> Unit,
+    appearanceMode: BlinkAppearanceMode = if (isDark) BlinkAppearanceMode.DARK else BlinkAppearanceMode.LIGHT,
+    onAppearanceModeChange: (BlinkAppearanceMode) -> Unit = {},
     onLogout: () -> Unit,
     onShowToast: (String) -> Unit,
     showAdPrivacyOptions: Boolean,
@@ -163,7 +167,7 @@ fun AppMenuSheet(
             "Marketplace browse campus listings",
             "List an item create a marketplace listing",
             "Seller hub seller verification and tools",
-            "Settings and privacy appearance light dark theme",
+            "Settings and privacy appearance light dark device default system theme",
             "Calls & notification sounds ringtones message sounds vibration Android call alerts",
             "Call history missed incoming outgoing Blink calls",
             "Privacy & DM settings private account and messaging controls",
@@ -294,13 +298,13 @@ fun AppMenuSheet(
 
             MenuSection(
                 query = menuQuery,
-                searchTerms = "appearance dark light theme calls notifications sounds call history privacy blocked DM login account security data storage cache ad consent ringtones messages",
+                searchTerms = "appearance dark light device default system theme calls notifications sounds call history privacy blocked DM login account security data storage cache ad consent ringtones messages",
                 title = "Settings and privacy",
                 expanded = menuQuery.isNotBlank() || "Settings and privacy" in expandedSections,
                 onToggle = { toggle("Settings and privacy") }
             ) {
-                if (MenuSearch.matches(settingsSearchQuery, "appearance", "theme light dark")) {
-                    ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
+                if (MenuSearch.matches(settingsSearchQuery, "appearance", "theme light dark device default system")) {
+                    AppearanceSelectorRow(selected = appearanceMode, onSelect = onAppearanceModeChange)
                 }
                 SearchableMenuItemRow(settingsSearchQuery, 
                     Icons.Outlined.Notifications,
@@ -553,6 +557,38 @@ private fun MenuSection(
     }
 }
 
+/** Vertical options remain tappable and readable at large Android font scales. */
+@Composable
+private fun AppearanceSelectorRow(
+    selected: BlinkAppearanceMode,
+    onSelect: (BlinkAppearanceMode) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Choose Light, Dark, or your device's appearance.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        BlinkAppearanceMode.entries.forEach { mode ->
+            val title = when (mode) {
+                BlinkAppearanceMode.LIGHT -> "Light"
+                BlinkAppearanceMode.DARK -> "Dark"
+                BlinkAppearanceMode.SYSTEM -> "Device Default"
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onSelect(mode) }
+                    .padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = selected == mode, onClick = { onSelect(mode) })
+                Spacer(Modifier.width(12.dp))
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ThemeToggleRow(isDark: Boolean, onToggleTheme: () -> Unit) {
     Row(
@@ -630,14 +666,14 @@ private fun MenuItemRow(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 color = if (titleColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else titleColor,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
+                maxLines = 2, overflow = TextOverflow.Ellipsis
             )
             Text(
                 subtitle,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2, overflow = TextOverflow.Ellipsis
+                maxLines = 3, overflow = TextOverflow.Ellipsis
             )
         }
         if (trailingText != null) {
