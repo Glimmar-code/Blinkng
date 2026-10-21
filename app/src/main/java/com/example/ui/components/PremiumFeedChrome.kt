@@ -604,12 +604,12 @@ fun CreatePostFab(
                         Box(
                             modifier = Modifier
                                 .size(27.dp)
-                                .background(feedAccentBrush(), CircleShape),
+                                .background(MaterialTheme.colorScheme.onSurface, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "AI",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )
@@ -628,7 +628,7 @@ fun CreatePostFab(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.size(21.dp)
                         )
                     },
@@ -641,8 +641,8 @@ fun CreatePostFab(
             modifier = Modifier
                 .shadow(10.dp, pill, clip = false)
                 .graphicsLayer { scaleX = mainScale; scaleY = mainScale }
-                .background(feedAccentBrush(), pill)
-                .border(1.dp, Color.White.copy(alpha = 0.14f), pill)
+                .background(MaterialTheme.colorScheme.onSurface, pill)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f), pill)
                 .clickable(
                     interactionSource = mainInteractionSource,
                     indication = null,
@@ -662,7 +662,7 @@ fun CreatePostFab(
             Icon(
                 imageVector = if (actionsExpanded) Icons.Default.Close else Icons.Default.Add,
                 contentDescription = null,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.size(23.dp)
             )
             AnimatedVisibility(
@@ -674,7 +674,7 @@ fun CreatePostFab(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Create",
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1
@@ -698,7 +698,7 @@ private fun FeedCreateAction(
         modifier = modifier
             .shadow(7.dp, shape, clip = false)
             .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .border(1.dp, FeedPurple.copy(alpha = 0.52f), shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f), shape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics {
                 role = Role.Button
