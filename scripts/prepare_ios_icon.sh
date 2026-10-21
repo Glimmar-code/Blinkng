@@ -11,7 +11,7 @@ if [[ ! -s "$SOURCE" ]]; then
 fi
 command -v sips >/dev/null || { echo "::error::macOS sips is required"; exit 1; }
 mkdir -p "$OUT"
-TMP_JPEG="$(mktemp "${RUNNER_TEMP:-/tmp}/blink-icon-XXXXXX.jpg")"
+TMP_JPEG="$(mktemp "${RUNNER_TEMP:-/tmp}/blink-icon.XXXXXX")"
 trap 'rm -f "$TMP_JPEG"' EXIT
 # Flatten any alpha via JPEG before converting back to opaque PNG.
 sips -s format jpeg -z 1024 1024 "$SOURCE" --out "$TMP_JPEG" >/dev/null
