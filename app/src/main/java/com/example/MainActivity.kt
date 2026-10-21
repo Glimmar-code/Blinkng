@@ -421,6 +421,9 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             // Resolve Android's live theme without overwriting the stored user preference.
             val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            LaunchedEffect(uiState.appearanceMode, systemDark) {
+                viewModel.applySystemAppearance(systemDark)
+            }
             val themedUiState = uiState.copy(
                 isDarkMode = uiState.appearanceMode.isDark(systemDark)
             )
