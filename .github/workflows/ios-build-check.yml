@@ -1,6 +1,11 @@
 name: iOS foundation quality gate
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build-check.yml'
   pull_request:
     paths:
       - 'ios/**'
