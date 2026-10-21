@@ -186,6 +186,13 @@ final class BLINKAuthStore: ObservableObject {
         defer { isBusy = false }
         let token = session?.accessToken
         clearLocalSession()
+        if let token {
+            do {
+                try await BLINKVoIPPushManager.shared.revokeForSignOut(userJWT: token)
+            } catch {
+                message = "Signed out locally, but call notification revocation needs attention."
+            }
+        }
         if let api, let token {
             do { try await api.signOut(accessToken: token) }
             catch {
