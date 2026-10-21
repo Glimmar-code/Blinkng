@@ -13,12 +13,20 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     SWIFT_STRICT_CONCURRENCY: minimal
 
+packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 153.0.0
+
 targets:
   BLINKiOS:
     type: application
     platform: iOS
     sources:
       - path: BLINKiOS/Sources
+    dependencies:
+      - package: WebRTC
+        product: WebRTC
     info:
       path: BLINKiOS/Generated/Info.plist
       properties:
