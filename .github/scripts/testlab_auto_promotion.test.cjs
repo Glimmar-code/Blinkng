@@ -150,6 +150,51 @@ test('synchronize fails closed if GitHub cannot revoke existing opt-in', async (
   );
 });
 
+test('end-to-end trusted controller merges fully verified agent-opted Testlab PR without owner comments', async () => {
+  const names = policy.requiredChecks(['README.md']);
+  const labels = [{name: 'auto-promote'}];
+  const pr = ready({labels, changed_files: 1, body: '- [x] Complete'});
+  let merges = 0;
+  let commentsFetched = 0;
+  const rest = {
+    issues: {
+      getLabel: async () => ({data: {}}),
+      createLabel: async () => { throw new Error('should not be creating labels'); },
+      listComments: async () => { commentsFetched++; throw new Error('owner approval must not be requested'); },
+    },
+    pulls: {
+      get: async () => ({data: pr}),
+      listFiles: async () => [{filename: 'README.md'}],
+      listReviews: async () => [],
+      merge: async x => {
+        assert.equal(x.sha, head);
+        merges++;
+        return {data: {merged: true}};
+      },
+    },
+    repos: {
+      getBranch: async () => ({data: {commit: {sha: main}}}),
+      compareCommits: async () => ({data: {behind_by: 0, ahead_by: 1}}),
+    },
+    checks: {
+      listForRef: async () => names.map((name, i) => check(name, 'completed', 'success', i+1)),
+    },
+    actions: {
+      createWorkflowDispatch: async () => { throw new Error('Docs-only PR must not trigger build'); },
+    },
+  };
+  const github = {rest, paginate: async (fn, args) => fn(args)};
+  const logs = [], failed = [];
+  await policy({github, context: {
+    eventName: 'pull_request_target',
+    payload: {action: 'labeled', pull_request: {number: 300}},
+  }, core: {info: m => logs.push(m), setFailed: m => failed.push(m)}});
+  assert.equal(merges, 1);
+  assert.equal(commentsFetched, 0);
+  assert.deepEqual(failed, []);
+  assert.ok(logs.some(m => m.includes('Promoted verified Testlab PR #300')));
+});
+
 test('CI fails closed on missing, pending, failed or stale checks', () => {
   const required = ['validate','guard'];
   assert.equal(policy.checkGate([check('validate', 'completed', 'success', 1), check('guard', 'completed', 'success', 2)],required,300,main,head), null);
