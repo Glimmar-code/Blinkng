@@ -293,17 +293,17 @@ fun PostCard(
             // Exact Home reference hierarchy: avatar | name and badge | metadata | follow | options.
             if (xFeedStyle) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 9.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(43.dp)) {
+                    Box(Modifier.size(52.dp)) {
                         AsyncImage(
                             model = authorAvatar,
                             error = painterResource(R.drawable.ic_default_profile),
                             fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = "$resolvedAuthorName profile picture",
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(42.dp).clip(CircleShape)
+                            modifier = Modifier.size(51.dp).clip(CircleShape)
                                 .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                         )
                         if (authorOnline == true) {
@@ -641,7 +641,7 @@ fun PostCard(
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp
                             ) else MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 9.dp else 10.dp),
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp),
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
