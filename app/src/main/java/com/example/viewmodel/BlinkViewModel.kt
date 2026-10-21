@@ -67,7 +67,7 @@ data class BlinkUiState(
     val destination: AppDestination = AppDestination.SPLASH,
     val selectedTab: MainTab = MainTab.HOME,
     val isDarkMode: Boolean = false,
-    val appearanceMode: com.example.ui.theme.BlinkAppearanceMode = com.example.ui.theme.BlinkAppearanceMode.LIGHT,
+    val appearanceMode: com.blinkng.shared.BlinkAppearanceMode = com.blinkng.shared.BlinkAppearanceMode.LIGHT,
     val myProfile: UserProfile = UserProfile(),
     val profiles: List<UserProfile> = emptyList(),
     val viewingProfile: UserProfile? = null,
@@ -601,7 +601,7 @@ private suspend fun restoreSupabaseSession() {
     private fun restoreUiPreferences() {
         val tabName = prefs.getString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
         val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
-        val appearance = com.example.ui.theme.BlinkAppearanceMode.restored(
+        val appearance = com.blinkng.shared.BlinkAppearanceMode.restored(
             prefs.getString(KEY_APPEARANCE_MODE, null),
             if (prefs.contains(KEY_DARK_MODE)) prefs.getBoolean(KEY_DARK_MODE, false) else null
         )
@@ -617,7 +617,7 @@ private suspend fun restoreSupabaseSession() {
         val state = _uiState.value
         prefs.edit()
             .putBoolean(KEY_DARK_MODE, state.isDarkMode)
-            .putString(KEY_APPEARANCE_MODE, state.appearanceMode.name)
+            .putString(KEY_APPEARANCE_MODE, state.appearanceMode.persistedValue)
             .putString(KEY_SELECTED_TAB, state.selectedTab.name)
             .putInt(KEY_FEED_SUB_TAB, state.feedSubTab)
             .apply()
@@ -1903,11 +1903,11 @@ private suspend fun restoreSupabaseSession() {
         )
         persistUiPreferences()
     }
-    fun setAppearanceMode(mode: com.example.ui.theme.BlinkAppearanceMode) {
+    fun setAppearanceMode(mode: com.blinkng.shared.BlinkAppearanceMode) {
         val currentDark = _uiState.value.isDarkMode
         _uiState.value = _uiState.value.copy(
             appearanceMode = mode,
-            isDarkMode = if (mode == com.example.ui.theme.BlinkAppearanceMode.SYSTEM) currentDark
+            isDarkMode = if (mode == com.blinkng.shared.BlinkAppearanceMode.SYSTEM) currentDark
                 else mode.isDark(systemDark = false)
         )
         persistUiPreferences()
@@ -1915,8 +1915,8 @@ private suspend fun restoreSupabaseSession() {
 
     fun toggleDarkMode() {
         setAppearanceMode(
-            if (_uiState.value.isDarkMode) com.example.ui.theme.BlinkAppearanceMode.LIGHT
-            else com.example.ui.theme.BlinkAppearanceMode.DARK
+            if (_uiState.value.isDarkMode) com.blinkng.shared.BlinkAppearanceMode.LIGHT
+            else com.blinkng.shared.BlinkAppearanceMode.DARK
         )
     }
     fun openMenu(open: Boolean) { _uiState.value = _uiState.value.copy(isMenuOpen = open) }
