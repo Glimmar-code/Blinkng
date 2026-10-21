@@ -51,14 +51,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.ChatConversation
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.InterFontFamily
-import androidx.compose.ui.platform.LocalContext
 
 /**
  * Reference-matched inbox ONLY. Chat detail, calls, and message backend remain untouched.
@@ -329,14 +327,6 @@ private fun BlinkInboxConversationRow(
     onOpen: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    val draft = remember(conversation.id, conversation.partnerUsername, conversation.lastMessageRawTime) {
-        PersistentTextDraftStore.readDraft(
-            context = context,
-            key = "chat_composer_text",
-            scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
-        )
-    }
     Column(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpen)
             .testTag("inbox_chat_${conversation.id}")
@@ -379,10 +369,7 @@ private fun BlinkInboxConversationRow(
                     )
                 }
                 Spacer(Modifier.height(3.dp))
-                val preview = when {
-                    !draft.isNullOrBlank() -> "Draft: $draft"
-                    else -> conversation.lastMessage.ifBlank { "Start the conversation" }
-                }
+                val preview = conversation.lastMessage.ifBlank { "Start the conversation" }
                 Text(
                     preview, color = secondary,
                     fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
