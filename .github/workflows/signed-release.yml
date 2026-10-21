@@ -282,6 +282,13 @@ jobs:
           echo "PASS: lightweight website APK, Google Play AAB keeps on-demand native game."
           du -h "$APK" app/build/outputs/publish/blink-life-web.zip
 
+      - name: Refuse release with missing WebRTC JNI Java classes or ARM64 library
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          python3 scripts/check_webrtc_apk_integrity.py "$APK"
+
       - name: Verify embedded source revision
         shell: bash
         run: |
