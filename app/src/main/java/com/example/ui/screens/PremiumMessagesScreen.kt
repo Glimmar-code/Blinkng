@@ -222,6 +222,9 @@ fun PremiumMessagesScreen(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenActivity: () -> Unit,
+    onMyProfileClick: () -> Unit = {},
+    onGameClick: () -> Unit = {},
+    onComposeMessage: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
@@ -309,8 +312,14 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
+                            onMyProfileClick = onMyProfileClick,
+                            onGameClick = onGameClick,
+                            onComposeMessage = onComposeMessage,
+                            onNotificationsClick = onOpenActivity,
+                            hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
-                            isLoading = isLoading
+                            isLoading = isLoading,
+                            isDark = isDark
                         )
                     }
 
@@ -374,8 +383,14 @@ fun PremiumMessagesScreen(
                     onStoryClick = onStoryClick,
                     onAddStoryClick = onAddStoryClick,
                     onOpenAppearance = { showAppearanceSheet = true },
+                    onMyProfileClick = onMyProfileClick,
+                    onGameClick = onGameClick,
+                    onComposeMessage = onComposeMessage,
+                    onNotificationsClick = onOpenActivity,
+                    hasUnreadNotifications = activities.any { it.isUnread },
                     isConnected = isConnected,
-                    isLoading = isLoading
+                    isLoading = isLoading,
+                    isDark = isDark
                 )
             }
         }
@@ -628,13 +643,22 @@ private fun PremiumMessagesHome(
     palette: MessagePalette,
     onOpenConversation: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onMyProfileClick: () -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onComposeMessage: () -> Unit,
+    onGameClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     isConnected: Boolean,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isDark: Boolean
 ) {
     var query by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:query:1")
+    var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val startVoiceSearch = rememberSpeechInput { result -> query = result }
     val sortedConversations = remember(conversations) {
         conversations.sortedWith(
             compareByDescending<ChatConversation> { it.lastMessageRawTime }
@@ -649,100 +673,33 @@ private fun PremiumMessagesHome(
                 it.lastMessage.contains(query, ignoreCase = true)
         }
     }
-    val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-
-    MessageBackground(palette) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            MessagesHeader(
-                myAvatar = myAvatar,
-                myName = myName,
-                palette = palette,
-                onMore = onOpenAppearance
-            )
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 320)) + slideInVertically(
-                    initialOffsetY = { -it / 4 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                )
-            ) {
-                SearchMatchesField(
-                    value = query,
-                    onValueChange = { query = it },
-                    onVoiceSearch = startVoiceSearch,
-                    palette = palette
-                )
-            }
-
-            Text(
-                "Stories", color = palette.textPrimary, fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 18.dp, top = 10.dp),
-            )
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 380, delayMillis = 45)) + slideInVertically(
-                    initialOffsetY = { it / 5 },
-                    animationSpec = tween(
-                        durationMillis = 380,
-                        delayMillis = 45,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                MatchesRail(
-                    conversations = conversations,
-                    stories = stories,
-                    palette = palette,
-                    onAddStoryClick = onAddStoryClick,
-                    onOpenConversation = onOpenConversation,
-                    onStoryClick = onStoryClick
-                )
-            }
-
-            Text(
-                text = "Chats",
-                color = palette.textPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 18.dp, top = 12.dp, bottom = 8.dp)
-            )
-
-            if (!isConnected) {
-                OfflineNotice(palette)
-            }
-
-            AnimatedVisibility(
-                visible = entered,
-                modifier = Modifier.weight(1f),
-                enter = fadeIn(tween(durationMillis = 420, delayMillis = 90)) + slideInVertically(
-                    initialOffsetY = { it / 8 },
-                    animationSpec = tween(
-                        durationMillis = 420,
-                        delayMillis = 90,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                ConversationList(
-                    conversations = filteredConversations,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onProfileClick = onProfileClick,
-                    isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-    }
+    BlinkReferenceInbox(
+        conversations = filteredConversations,
+        stories = stories,
+        myAvatar = myAvatar,
+        myName = myName,
+        isDark = isDark,
+        query = query,
+        onQueryChange = { query = it },
+        onVoiceSearch = startVoiceSearch,
+        showSearch = showSearch,
+        onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
+        showAll = showAll,
+        onToggleAll = { showAll = !showAll },
+        onOpenConversation = onOpenConversation,
+        onProfileClick = onProfileClick,
+        onMyProfileClick = onMyProfileClick,
+        onStoryClick = onStoryClick,
+        onAddStoryClick = onAddStoryClick,
+        onGameClick = onGameClick,
+        onNotificationsClick = onNotificationsClick,
+        hasUnreadNotifications = hasUnreadNotifications,
+        onComposeMessage = onComposeMessage,
+        onOpenSettings = onOpenAppearance,
+        isConnected = isConnected,
+        isLoading = isLoading,
+        filterContent = {}
+    )
 }
 
 @Composable
