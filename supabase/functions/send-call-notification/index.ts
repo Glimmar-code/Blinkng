@@ -161,6 +161,31 @@ Deno.serve(async (req) => {
     return json({ ok: true, skipped: "recipient_preferences" });
   }
 
+  // Phase 9: optional secure server-to-server APNs invite dispatch.
+  // Keeps Android's FCM logic unchanged. This happens before Android token
+  // checks so an iPhone-only recipient can still receive a genuine call.
+  // Both flags default OFF until Apple signing and a real iPhone test pass.
+  if (event === "invite" &&
+      Deno.env.get("BLINK_IOS_VOIP_SERVER_ENABLED") === "true" &&
+      Deno.env.get("BLINK_IOS_VOIP_DISPATCH_ENABLED") === "true") {
+    const iosSecret = Deno.env.get("BLINK_IOS_DISPATCH_SECRET");
+    if (iosSecret) {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/ios-voip-dispatch`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-blink-ios-dispatch-secret": iosSecret,
+          },
+          body: JSON.stringify({ call_id: callId }),
+          signal: AbortSignal.timeout(7000),
+        });
+      } catch {
+        // Android FCM should never fail because an optional iOS server is down.
+      }
+    }
+  }
+
   const { data: prior } = await admin
     .from("call_push_dispatches")
     .select("status,attempts,updated_at")
