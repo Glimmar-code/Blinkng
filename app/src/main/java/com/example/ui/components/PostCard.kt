@@ -774,7 +774,8 @@ fun PostCard(
                     )
                     PremiumPostAction(
                         icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        value = null, tint = savedTint,
+                        // Render the backend aggregate when known, never a placeholder.
+                        value = post.savesCount?.let(::formatNumber), tint = savedTint,
                         description = if (post.isBookmarked) "Remove saved post" else "Save post",
                         onClick = onBookmark
                     )
