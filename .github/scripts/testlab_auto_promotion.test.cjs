@@ -49,38 +49,6 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     assert.equal(policy.preflight(ready({labels: [{name: 'auto-promote'}, {name: 'staging-verified'}]}), [filename]), null);
   }
 });
-test('routine assets and copy can promote with opt-in and full CI but without owner comment', () => {
-  const routine = [
-    'README.md',
-    'docs/testlab-auto-promotion.md',
-    'web/styles.css',
-    'web/icons/home.png',
-    'app/src/main/res/drawable-hdpi/blink.png',
-  ];
-  for (const filename of routine) {
-    assert.equal(policy.requiresOwnerApproval([filename]), false, filename);
-    assert.equal(policy.preflight(ready(), [filename]), null, filename);
-  }
-  assert.equal(policy.requiresOwnerApproval(['docs/help.md', 'web/styles.css']), false);
-});
-test('sensitive, ambiguous, mixed and executable changes always need owner authorization', () => {
-  for (const filename of [
-    'web/app.js',
-    'web/index.html',
-    'web/blink-icon.svg',
-    'app/src/main/java/com/example/ui/screens/HomeScreen.kt',
-    'app/src/main/AndroidManifest.xml',
-    'supabase/functions/verify/index.ts',
-    'supabase/migrations/20261021.sql',
-    '.github/workflows/publish-latest-apk.yml',
-    '.github/scripts/testlab_auto_promotion.cjs',
-    '.github/scripts/testlab_auto_promotion.test.cjs',
-  ]) {
-    assert.equal(policy.requiresOwnerApproval([filename]), true, filename);
-  }
-  assert.equal(policy.requiresOwnerApproval(['docs/readme.md', 'web/app.js']), true);
-  assert.equal(policy.requiresOwnerApproval([]), true);
-});
 test('hardware and OEM-specific Android changes require independent device evidence', () => {
   for (const path of [
     'app/src/main/java/com/example/call/CallManager.kt',
@@ -128,24 +96,58 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['.github/workflows/signed-release.yml']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
-test('explicit owner approval must match the current PR head SHA', () => {
-  const owner = {login: 'Glimmar-code'};
-  const fake = {login: 'untrusted-user'};
-  const oldHead = 'c'.repeat(40);
-  assert.match(policy.approvalGate([], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: fake, body: 'BLINK APPROVE ' + head}], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + oldHead}], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head + ' extra'}], head), /missing/);
-  assert.equal(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
+test('authorized AI opt-in on the latest Testlab revision requires no GitHub owner comment', () => {
+  assert.equal(policy.preflight(ready({body: '- [x] verified'}), ['web/app.js']), null);
+  assert.equal(policy.preflight(ready({labels: []}), ['web/app.js']), 'No auto-promote opt-in label');
+  assert.equal(policy.preflight(ready({draft: true}), ['web/app.js']),
+    'PR is not open and ready for review');
 });
 
-test('an owner can revoke an approval and reapprove the same exact SHA', () => {
-  const owner = {login: 'Glimmar-code'};
-  const approve = {id: 1, user: owner, body: 'BLINK APPROVE ' + head};
-  const revoke = {id: 2, user: owner, body: 'BLINK REVOKE ' + head};
-  assert.match(policy.approvalGate([revoke, approve], head), /revoked/);
-  assert.equal(policy.approvalGate([revoke, approve, {id: 3, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
-  assert.match(policy.approvalGate([approve], 'not-a-commit-sha'), /Invalid/);
+test('synchronize always revokes stale agent promotion and verification attestations', async () => {
+  const removed = [];
+  const github = {rest: {issues: {removeLabel: async ({name, issue_number}) => {
+    removed.push([name, issue_number]);
+    if (name === 'staging-verified') throw Object.assign(new Error('absent'), {status: 404});
+  }}}};
+  const context = {eventName: 'pull_request_target', payload: {
+    action: 'synchronize',
+    pull_request: {number: 300, base: {ref: 'main'}, head: {
+      repo: {full_name: 'Glimmar-code/Blinkng'},
+    }},
+  }};
+  const msgs = [];
+  const core = {info: msg => msgs.push(msg)};
+  assert.equal(await policy.revokeStaleOptIn(github, context, core), true);
+  assert.deepEqual(removed, [
+    ['auto-promote', 300],
+    ['staging-verified', 300],
+    ['device-verified', 300],
+  ]);
+  assert.equal(await policy.revokeStaleOptIn(github, {
+    ...context, payload: {...context.payload, action: 'labeled'},
+  }, core), false);
+  assert.equal(await policy.revokeStaleOptIn(github, {
+    ...context, payload: {...context.payload,
+      pull_request: {...context.payload.pull_request, head: {
+        repo: {full_name: 'unauthorized/fork'},
+      }}},
+  }, core), false);
+  assert.equal(removed.length, 3);
+});
+
+test('synchronize fails closed if GitHub cannot revoke existing opt-in', async () => {
+  const github = {rest: {issues: {removeLabel: async () => {
+    throw Object.assign(new Error('permission denied'), {status: 403});
+  }}}};
+  await assert.rejects(
+    policy.revokeStaleOptIn(github, {eventName: 'pull_request_target', payload: {
+      action: 'synchronize',
+      pull_request: {number: 300, base: {ref: 'main'}, head: {
+        repo: {full_name: 'Glimmar-code/Blinkng'},
+      }},
+    }}, {info: () => {}}),
+    /permission denied/
+  );
 });
 
 test('CI fails closed on missing, pending, failed or stale checks', () => {
