@@ -77,14 +77,21 @@ class DesktopSupabaseClient(
     }
 
     suspend fun signIn(email: String, password: String): DesktopSession = withContext(Dispatchers.IO) {
-        val cleanEmail = email.trim().lowercase()
-        require(cleanEmail.isNotBlank()) { "Email is required." }
+        val identifier = email.trim().lowercase()
+        require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
-        val response = authPost(
-            "/auth/v1/token?grant_type=password",
-            JSONObject().put("email", cleanEmail).put("password", password),
-        )
-        saveAuthResponse(response, cleanEmail)
+        val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
+        val response = if (identifier.contains("@") && !identifier.startsWith("@")) {
+            runCatching {
+                authPost("/auth/v1/token?grant_type=password",
+                    JSONObject().put("email", identifier).put("password", password))
+            }.getOrElse {
+                authPost("/functions/v1/username-login", body)
+            }
+        } else {
+            authPost("/functions/v1/username-login", body)
+        }
+        saveAuthResponse(response, identifier)
     }
 
     suspend fun signUp(
