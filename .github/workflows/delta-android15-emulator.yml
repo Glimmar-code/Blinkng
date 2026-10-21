@@ -71,7 +71,7 @@ jobs:
             # adb shell strips nested quotes before sh -c; the old redirect ran
             # outside the run-as app context and could not find files/.
             # tee writes as the app UID, preserving the exact private-data marker.
-            printf 'BLINK-PERSISTENT-STATE\\n' | adb shell run-as com.aistudio.blink.appvtwo tee files/delta_marker >/dev/null
+            printf 'BLINK-PERSISTENT-STATE\n' | adb shell run-as com.aistudio.blink.appvtwo tee files/delta_marker >/dev/null
             adb shell run-as com.aistudio.blink.appvtwo ls -l files/delta_marker
             test "$(adb shell run-as com.aistudio.blink.appvtwo cat files/delta_marker | tr -d '\r')" = 'BLINK-PERSISTENT-STATE'
             adb install -r /tmp/blink-rebuilt.apk
