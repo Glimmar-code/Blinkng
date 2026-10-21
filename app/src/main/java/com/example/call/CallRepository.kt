@@ -187,7 +187,15 @@ class CallRepository {
                 }
                 val json = runCatching { JSONObject(responseBody) }.getOrNull()
                 if (json?.optBoolean("ok", true) == false) {
-                    Log.w(TAG, "Call push returned ok=false: ${responseBody.take(400)}")
+                    throw CallApiException("The other phone could not receive the call alert.", 502)
+                }
+                if (event == "invite" && json?.optString("skipped") == "recipient_has_no_push_token") {
+                    // Supabase can accept a call while the receiver has no registered FCM
+                    // token. Surface this to the caller; otherwise 'Calling…' hides it.
+                    throw CallApiException(
+                        "The other phone may need to open BLINK and allow notifications.",
+                        503
+                    )
                 }
             }
         }
