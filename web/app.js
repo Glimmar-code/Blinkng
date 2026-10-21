@@ -614,7 +614,19 @@
 
   async function fetchProfiles(ids){ const unique=[...new Set(ids.filter(Boolean))];if(!unique.length)return new Map(); const rows=await rpc('get_public_profiles_by_ids',{p_ids:unique});return new Map((rows||[]).map(p=>[p.id,p])); }
   function normalizeFeedItem(row,profiles){ const x=row?.item||row; const p=profiles.get(x.user_id)||{}; return {...x,author:p}; }
-  function mediaBlock(post){ const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);const video=safeUrl(post.video_url);if(video)return `<div class="post-media"><video src="${esc(video)}" controls playsinline preload="none" data-autopause></video></div>`;if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;return ''; }
+  function mediaBlock(post){
+    const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);
+    const raw=typeof post.video_url==='string'?post.video_url.trim():'';
+    const video=safeUrl(raw);
+    const declaredVideo=post.media_type==='video'||post.type==='video'||post.is_reel===true;
+    const videoExtension=/\\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
+    const invalidPlaceholder=/^(null|undefined|none|false|0|about:blank)$/i.test(raw);
+    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/\\/storage\\/v1\\/object\\//i.test(raw));
+    if(hasRealVideo)return `<div class="post-media" data-video-post><video src="${esc(video)}" playsinline preload="metadata" data-autopause controls onerror="this.closest('[data-video-post]').innerHTML='<div class=&quot;muted&quot; style=&quot;padding:16px&quot;>Video unavailable</div>'"></video></div>`;
+    if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;
+    if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;
+    return '';
+  }
   function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
