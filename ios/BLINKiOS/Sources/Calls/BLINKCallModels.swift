@@ -45,7 +45,7 @@ struct BLINKCallRecord: Decodable, Identifiable {
 /// server push, CallKit, and TURN are in place.
 enum BLINKiOSCallAvailability {
     static let mediaTransportReady = false
-    static let incomingVoIPPushReady = false
+    static let incomingVoIPPushReady = false // Enable only after Apple APNs and two-device validation.
     static let systemCallKitReady = false
 }
 
