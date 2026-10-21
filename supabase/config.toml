@@ -54,6 +54,17 @@ verify_jwt = true
 [functions.send-call-notification]
 verify_jwt = true
 
+# Signed-in iPhones register or revoke their own encrypted-in-transit
+# VoIP tokens; server feature flag defaults OFF until Apple provisioning.
+[functions.ios-voip-register]
+verify_jwt = true
+
+# Internal-only APNs dispatcher. Supabase JWT is OFF because this function
+# accepts ONLY a strong service-to-service secret header and validates the
+# actual server-side ringing call before every push. Never expose to clients.
+[functions.ios-voip-dispatch]
+verify_jwt = false
+
 # Server-issued short-lived TURN credentials require a signed-in call participant.
 [functions.get-call-ice-config]
 verify_jwt = true
