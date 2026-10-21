@@ -1,6 +1,13 @@
 name: iOS unsigned device archive quality gate
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'scripts/ios_testflight_preflight.py'
+      - 'scripts/prepare_ios_icon.sh'
+      - '.github/workflows/ios-device-archive-check.yml'
   pull_request:
     paths:
       - 'ios/**'
