@@ -43,6 +43,7 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     'app/proguard-rules.pro',
     '.github/workflows/signed-release.yml',
     '.github/workflows/auto-promote-testlab.yml',
+    '.github/scripts/install_release_smoke_apk.sh',
   ]) {
     assert.match(policy.preflight(ready(), [filename]), /Staging/, filename);
     assert.equal(policy.preflight(ready({labels: [{name: 'auto-promote'}, {name: 'staging-verified'}]}), [filename]), null);
@@ -110,6 +111,8 @@ test('Android, web and backend jobs have explicit required gates', () => {
   const web = policy.requiredChecks(['web/app.js']);
   assert.ok(web.includes('web-parity'));
   assert.ok(web.includes('verify'));
+  const signed = policy.requiredChecks(['.github/scripts/install_release_smoke_apk.sh']);
+  assert.ok(signed.includes('release-smoke'));
   const backend = policy.requiredChecks(['supabase/migrations/foo.sql']);
   assert.ok(backend.includes('migration-safety'));
 });
@@ -122,6 +125,8 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['app/src/main/Foo.kt']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['web/app.js']), ['deploy-web-preview.yml']);
   assert.deepEqual(policy.releaseWorkflows(['README.md']), []);
+  assert.deepEqual(policy.releaseWorkflows(['.github/workflows/signed-release.yml']), ['signed-release.yml']);
+  assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
 test('explicit owner approval must match the current PR head SHA', () => {
   const owner = {login: 'Glimmar-code'};
