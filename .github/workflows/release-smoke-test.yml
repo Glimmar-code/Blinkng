@@ -214,6 +214,31 @@ jobs:
 
           echo "Release smoke APK/AAB package, version and signatures verified."
 
+      - name: Unit-test WebRTC APK integrity checker
+        run: PYTHONPATH=scripts python3 scripts/test_webrtc_apk_integrity.py -v
+
+      - name: Verify native WebRTC JNI bridge in actual R8-minified release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          python3 scripts/check_webrtc_apk_integrity.py "$APK"
+
+      # Read-only diagnosis of the already published APK; an older broken release
+      # must not block a corrected staging candidate. This runs on GitHub's runner.
+      - name: Inspect the currently published APK JNI bridge
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/blink-public-apk"
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern Blink-latest.apk --dir "$RUNNER_TEMP/blink-public-apk"
+          python3 scripts/check_webrtc_apk_integrity.py "$RUNNER_TEMP/blink-public-apk/Blink-latest.apk"
+
       # Verify the actual release APK can be installed by Android 15's package manager,
       # not merely read by aapt or apksigner. CI's disposable key is never published.
       - name: Enable KVM for Android 15 release installation test
