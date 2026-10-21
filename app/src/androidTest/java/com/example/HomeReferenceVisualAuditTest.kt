@@ -171,7 +171,7 @@ class HomeReferenceVisualAuditTest {
                           expanded = false,
                           onClick = {},
                           modifier = Modifier.align(Alignment.BottomEnd)
-                              .padding(end = 14.dp, bottom = 74.dp)
+                              .padding(end = 14.dp, bottom = 144.dp)
                       )
                   }
                 }
