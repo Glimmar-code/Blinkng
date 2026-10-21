@@ -72,6 +72,9 @@ for proof in (
     "partial.renameTo(verified)", "WebsiteApkUpdateCoordinator.checkForUpdate(",
 ):
     check(proof in worker, f"Missing worker download safety safeguard: {proof}")
+check("BlinkDeltaPatch.select(" in worker and "BlinkDeltaPatch.reconstruct(" in worker and
+      "BlinkDeltaPatch.sha256(base)" in worker and "downloadDelta(" in worker,
+      "Delta path must validate old APK bytes and reconstruct a verified signed target")
 check("BlinkApkUpdatePolicy.matchesInstalledApp(" in worker,
       "Package and signature continuity checks must run in background before ready")
 check('https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk' in contract,
