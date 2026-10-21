@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import zipfile
 
+from blink_delta import build_release, check_delta_assets, manifest as delta_manifest
+
 
 def verify_apk(apk, expected):
     if not re.fullmatch(r"[0-9a-f]{64}", expected):
@@ -222,6 +224,25 @@ def publish(source, repository, commit):
         shutil.copyfile(apks[0], apk)
         shutil.copyfile(infos[0], saved_info)
         checksum.write_text(f"{expected}  Blink-latest.apk\n")
+        # Version-aware deltas are built from up to ten older signed releases, so a
+        # user can jump straight from an old APK to latest without downloading
+        # each intermediate update. Full APK remains the safety fallback.
+        delta_dir = work / "delta-assets"
+        delta_dir.mkdir()
+        try:
+            rows = build_release(repository, apk, int(info["versionCode"]), expected,
+                                 info["signingCertificateSha256"], delta_dir)
+        except (OSError, ValueError, subprocess.SubprocessError) as failure:
+            # Do not block a critical security release when patch generation is
+            # unavailable. Clients will fall back to the fully verified APK.
+            print(f"Delta generation unavailable; full APK fallback: {failure}")
+            rows = []
+            for stale in delta_dir.glob("delta-*.bdp"):
+                stale.unlink()
+            (delta_dir / "deltas.txt").write_text(
+                delta_manifest(int(info["versionCode"]), expected, []))
+        check_delta_assets(delta_dir, int(info["versionCode"]), expected)
+        delta_assets = sorted(delta_dir.iterdir())
         notes = work / "notes.txt"
         notes.write_text(f"Signed Blink production build from main.\n\nVersion code: {info['versionCode']}\n"
                          f"APK SHA-256: {expected}\n\n"
@@ -230,15 +251,17 @@ def publish(source, repository, commit):
             gh(repository, "create", tag, "--draft", "--target", commit,
                "--title", "Blink " + info["versionName"], "--notes-file", str(notes))
         gh(repository, "upload", tag, str(apk), str(saved_info), str(checksum),
-           str(pack), str(pack_checksum), "--clobber")
+           str(pack), str(pack_checksum), *(str(path) for path in delta_assets), "--clobber")
         downloaded = work / "downloaded"
         gh(repository, "download", tag, "--dir", str(downloaded),
            "--pattern", "Blink-latest.apk", "--pattern", "release-info.txt",
            "--pattern", "Blink-latest.apk.sha256",
-           "--pattern", "blink-life-web.zip", "--pattern", "blink-life-web.zip.sha256")
+           "--pattern", "blink-life-web.zip", "--pattern", "blink-life-web.zip.sha256",
+           "--pattern", "deltas.txt", "--pattern", "delta-*.bdp")
         verify_apk(downloaded / apk.name, expected)
         verify_web_pack(downloaded / pack.name, pack_sha)
-        for original in (saved_info, checksum, pack_checksum):
+        check_delta_assets(downloaded, int(info["versionCode"]), expected)
+        for original in (saved_info, checksum, pack_checksum, *delta_assets):
             if (downloaded / original.name).read_bytes() != original.read_bytes():
                 raise ValueError("Uploaded release metadata changed; draft remains unpublished")
         # A newer commit might land while draft assets are being uploaded.
