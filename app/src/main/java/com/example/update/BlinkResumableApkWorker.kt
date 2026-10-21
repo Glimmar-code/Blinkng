@@ -151,7 +151,8 @@ class BlinkResumableApkWorker(
         }
         val candidate = BlinkDeltaPatch.select(manifest, release, installedCode) ?: return false
         // Signed APK ZIP bytes in sourceDir are the only acceptable delta base.
-        if (BlinkDeltaPatch.sha256(base) != candidate.baseSha256) return false
+        if (runCatching { BlinkDeltaPatch.sha256(base) }.getOrNull() !=
+            candidate.baseSha256) return false
 
         val part = File(applicationContext.filesDir,
             "blink-updates/partial/${release.apkSha256}.${installedCode}.bdp")
