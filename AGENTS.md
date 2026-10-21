@@ -42,8 +42,8 @@ Whenever an AI agent or developer is asked to add, fix, remove, redesign, or cha
 5. wire the Windows surface;
 6. preserve the same route IDs, permission rules, data semantics, and server behavior;
 7. update `platform-parity/changes.md`;
-8. run Android quality checks;
-9. run Windows desktop build checks;
+8. run Android quality checks when Android, shared, or Android build inputs change;
+9. always enforce Windows parity for changed Android user-facing features, and run Windows desktop packaging checks when desktop/shared/Windows build inputs change;
 10. only consider the work finished when both supported clients are accounted for.
 
 ## Backend rule
@@ -92,6 +92,23 @@ This includes, where applicable:
 Use production-compatible test data without copying unnecessary sensitive user data. Run the relevant app/backend tests against staging, confirm migrations and rollback/recovery behavior, and only promote the change to production after staging passes. Production must not be used as the first place to experiment with a risky Supabase change.
 
 This Supabase preview/staging-first policy and the Testlab-first policy are the defaults for future Blinkng development unless the repository owner explicitly instructs otherwise.
+
+## Targeted CI rule: test the affected change, not every platform
+
+For small patches, inspect the changed files first and select only relevant checks.
+A web/CSS/docs-only change should not rebuild an Android APK, Windows installer,
+or unrelated Supabase/Paystack test database. Backend, auth, payment, calling,
+native-game, and release changes must still receive their respective full safety
+checks whenever those areas are affected. Android user-facing work must still
+pass the Windows parity policy above. Always retain a compatible required
+GitHub check status, even when its expensive inner steps are legitimately skipped.
+
+Do not add duplicate, cosmetic, speculative, or irrelevant test gates merely to
+increase the number of green checks. If changed-file detection is unreliable,
+run the full checks rather than falsely reporting success. Record which checks
+actually executed versus which were skipped as not applicable. Full signed
+release verification is required only when publishing a new APK, not after
+every unrelated website, docs, or backend-only change.
 
 ## BLINK mandatory auto-fix → verify → Testlab → main → update app
 
