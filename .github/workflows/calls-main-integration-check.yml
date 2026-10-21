@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'release/calls-phase5-safe-integration-20261018'
+      - 'Testlab-call-*'
     paths:
       - '.github/workflows/calls-main-integration-check.yml'
       - 'app/src/main/java/com/example/call/**'
