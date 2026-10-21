@@ -94,6 +94,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var query by remember { mutableStateOf("") }
+    var inboxShowSearch by remember { mutableStateOf(false) }
+    var inboxShowAll by remember { mutableStateOf(false) }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
@@ -270,35 +272,45 @@ fun MessagesScreen(state: DesktopAppState) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
             ) {
                 Text(
-                    "Messages",
+                    "B L I N K",
                     fontWeight = FontWeight.Black,
                     fontSize = 22.sp,
-                    modifier = Modifier.align(Alignment.Center)
+                    modifier = Modifier.align(Alignment.CenterStart)
                 )
-                IconButton(
-                    onClick = { scope.launch { loadConversations() } },
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
+                Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                    IconButton(onClick = { inboxShowSearch = !inboxShowSearch; if (!inboxShowSearch) query = "" }) {
+                        Icon(Icons.Rounded.Search, contentDescription = "Search messages")
+                    }
+                    IconButton(onClick = { scope.launch { loadConversations() } }) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
+                    }
                 }
             }
 
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                placeholder = { Text("Search by name or conversation") },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp)
-            )
+            if (inboxShowSearch) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    placeholder = { Text("Search messages") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
 
-            Text(
-                "Important",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 8.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                TextButton(onClick = {
+                    inboxShowAll = !inboxShowAll
+                    inbox = if (inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY
+                }) {
+                    Text(if (inboxShowAll) "Close" else "See all")
+                }
+            }
 
             if (important.isNotEmpty()) {
                 LazyRow(
@@ -330,18 +342,13 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
 
-            Text(
-                "Inbox",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 17.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 8.dp)
-            )
             HorizontalDivider()
-
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BlinkMessageInbox.entries.forEach { tab ->
-                    FilterChip(selected = inbox == tab, onClick = { inbox = tab },
-                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+            if (inboxShowAll) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BlinkMessageInbox.entries.forEach { tab ->
+                        FilterChip(selected = inbox == tab, onClick = { inbox = tab },
+                            label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    }
                 }
             }
 
@@ -356,8 +363,8 @@ fun MessagesScreen(state: DesktopAppState) {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
+                contentPadding = PaddingValues(bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 if (loading) {
                     item {
@@ -383,11 +390,12 @@ fun MessagesScreen(state: DesktopAppState) {
                             error = null
                             selected = conversation
                         },
-                        shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surface
+                        shape = RoundedCornerShape(0.dp),
+                        color = MaterialTheme.colorScheme.background
                     ) {
+                        Column {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(13.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             PresenceAvatar(
@@ -405,12 +413,27 @@ fun MessagesScreen(state: DesktopAppState) {
                                         if (conversation.isGroup) "Group conversation"
                                         else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
                                     },
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
+                                    fontSize = 13.sp,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            if (conversation.unreadCount > 0 || conversation.markedUnread) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                ) {
+                                    Text(
+                                        if (conversation.unreadCount > 0) conversation.unreadCount.coerceAtMost(99).toString() else "•",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.background,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(start = 77.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }

@@ -244,6 +244,8 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
+    onMyProfileClick: () -> Unit = {},
+    onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
@@ -328,8 +330,13 @@ fun PremiumMessagesScreen(
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
                             onComposeMessage = onComposeMessage,
+                            onMyProfileClick = onMyProfileClick,
+                            onGameClick = onGameClick,
+                            onNotificationsClick = onOpenActivity,
+                            hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
-                            isLoading = isLoading
+                            isLoading = isLoading,
+                            isDark = isDark
                         )
                     }
 
@@ -644,31 +651,39 @@ private fun PremiumMessagesHome(
     palette: MessagePalette,
     onOpenConversation: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onMyProfileClick: () -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenAppearance: () -> Unit,
     onComposeMessage: () -> Unit,
+    onGameClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     isConnected: Boolean,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isDark: Boolean
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
+    val startVoiceSearch = rememberSpeechInput { result -> query = result }
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
-    val unreadCount = conversations.count { !it.isArchived && it.inboxCategory != "requests" && (it.unreadCount > 0 || it.isMarkedUnread) }
+    var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val unreadCount = conversations.count {
+        !it.isArchived && it.inboxCategory != "requests" && (it.unreadCount > 0 || it.isMarkedUnread)
+    }
     val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
     val archivedCount = conversations.count { it.isArchived }
     val sortedConversations = remember(conversations, inboxTab) {
-        conversations
-            .filter { conversation ->
-                com.blinkng.shared.BlinkChatInboxPolicy.matches(
-                    inboxTab, conversation.isArchived, conversation.inboxCategory,
-                    conversation.unreadCount > 0 || conversation.isMarkedUnread
-                )
-            }
-            .sortedWith(
-                compareByDescending<ChatConversation> { it.isConversationPinned }
-                    .thenByDescending { it.lastMessageRawTime }
-                    .thenByDescending { it.id }
+        conversations.filter { conversation ->
+            com.blinkng.shared.BlinkChatInboxPolicy.matches(
+                inboxTab, conversation.isArchived, conversation.inboxCategory,
+                conversation.unreadCount > 0 || conversation.isMarkedUnread
             )
+        }.sortedWith(
+            compareByDescending<ChatConversation> { it.isConversationPinned }
+                .thenByDescending { it.lastMessageRawTime }
+                .thenByDescending { it.id }
+        )
     }
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
@@ -678,91 +693,42 @@ private fun PremiumMessagesHome(
             )
         }
     }
-    val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-
-    MessageBackground(palette) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            MessagesHeader(
-                palette = palette,
-                onMenu = onOpenAppearance,
-                onCompose = onComposeMessage
-            )
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 320)) + slideInVertically(
-                    initialOffsetY = { -it / 4 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                )
-            ) {
-                SearchMatchesField(
-                    value = query,
-                    onValueChange = { query = it },
-                    onVoiceSearch = startVoiceSearch,
-                    palette = palette
-                )
-            }
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 380, delayMillis = 45)) + slideInVertically(
-                    initialOffsetY = { it / 5 },
-                    animationSpec = tween(
-                        durationMillis = 380,
-                        delayMillis = 45,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                ImportantContactsRail(
-                    conversations = conversations,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation
-                )
-            }
-
+    BlinkReferenceInbox(
+        conversations = filteredConversations,
+        stories = stories,
+        myAvatar = myAvatar,
+        myName = myName,
+        isDark = isDark,
+        query = query,
+        onQueryChange = { query = it },
+        onVoiceSearch = startVoiceSearch,
+        showSearch = showSearch,
+        onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
+        showAll = showAll,
+        onToggleAll = { showAll = !showAll; inboxTab = if (showAll) MessageInboxTab.ALL else MessageInboxTab.PRIMARY },
+        onOpenConversation = onOpenConversation,
+        onProfileClick = onProfileClick,
+        onMyProfileClick = onMyProfileClick,
+        onStoryClick = onStoryClick,
+        onAddStoryClick = onAddStoryClick,
+        onGameClick = onGameClick,
+        onNotificationsClick = onNotificationsClick,
+        hasUnreadNotifications = hasUnreadNotifications,
+        onComposeMessage = onComposeMessage,
+        onOpenSettings = onOpenAppearance,
+        isConnected = isConnected,
+        isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
+        filterContent = {
             MessageInboxTabs(
                 selected = inboxTab,
                 requestCount = requestCount,
                 unreadCount = unreadCount,
                 archivedCount = archivedCount,
-                palette = palette,
+                palette = messagePalette(if (isDark) MessageThemeMode.DARK else MessageThemeMode.LIGHT),
                 onSelect = { inboxTab = it }
             )
-
-            if (!isConnected) {
-                OfflineNotice(palette)
-            }
-
-            AnimatedVisibility(
-                visible = entered,
-                modifier = Modifier.weight(1f),
-                enter = fadeIn(tween(durationMillis = 420, delayMillis = 90)) + slideInVertically(
-                    initialOffsetY = { it / 8 },
-                    animationSpec = tween(
-                        durationMillis = 420,
-                        delayMillis = 90,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                ConversationList(
-                    conversations = filteredConversations,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onProfileClick = onProfileClick,
-                    isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
         }
-    }
+    )
 }
 
 @Composable
