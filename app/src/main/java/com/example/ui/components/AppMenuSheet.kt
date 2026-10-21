@@ -78,7 +78,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.RadioButton
-import com.example.ui.theme.BlinkAppearanceMode
+import com.blinkng.shared.BlinkAppearanceMode
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
