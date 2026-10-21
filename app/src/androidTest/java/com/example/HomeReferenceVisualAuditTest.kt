@@ -89,7 +89,7 @@ class HomeReferenceVisualAuditTest {
                 // Repository-owned icon, used as a stand-in photograph solely in test screenshots.
                 val testImage = "android.resource://${context.packageName}/${R.drawable.app_icon}"
                 Box(
-                    Modifier.fillMaxWidth().height(752.dp)
+                    Modifier.fillMaxWidth().height(790.dp)
                         .background(MaterialTheme.colorScheme.surface)
                         .testTag("home_reference_audit_root")
                 ) {
