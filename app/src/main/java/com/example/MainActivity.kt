@@ -1015,6 +1015,11 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
+                        // HorizontalPager keeps neighboring pages composed: selection
+                        // inside Reels alone cannot prove the video is on-screen.
+                        isReelsDestinationActive = page == 1 &&
+                            selectedPage == 1 && pagerState.currentPage == 1 &&
+                            allowMainPageSwipe,
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
