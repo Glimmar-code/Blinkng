@@ -47,6 +47,11 @@ object BlinkCallLauncher {
                     return@launch
                 }
 
+                // Send the invitation BEFORE opening the JNI/WebRTC call screen.
+                // Previously a native abort during that Activity's startup killed
+                // this coroutine, so no FCM invite was attempted on the other phone.
+                val invitation = repository.dispatchPush(call.id, "invite")
+
                 val intent = CallActivity.outgoingIntent(
                     context = context,
                     callId = call.id,
@@ -58,17 +63,19 @@ object BlinkCallLauncher {
                 )
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (!context.startActivitySafely(intent, "Unable to open the Blink call screen.")) {
+                    // Don't leave the receiver ringing for a call with no caller UI.
+                    val ended = repository.endCall(call.id, "failed").getOrNull()
+                    if (ended != null) repository.dispatchPush(call.id, ended.status.wireValue)
                     return@launch
                 }
 
-                repository.dispatchPush(call.id, "invite")
-                    .onFailure {
-                        Toast.makeText(
-                            context,
-                            "Call started, but the other device may not receive a push alert.",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                invitation.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Call started, but the other phone may not receive an alert.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } finally {
                 starting.set(false)
             }
