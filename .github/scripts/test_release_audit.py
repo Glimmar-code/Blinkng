@@ -100,6 +100,24 @@ class PublishedReleaseAuditTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     auditor.release_snapshot("owner/repo")
 
+    def test_version_specific_deltas_are_verified_and_rejected_if_tampered(self):
+        from blink_delta import create_patch, manifest, digest
+        old = self.folder / "older.apk"
+        old.write_bytes(b"initial-" + self.apk.read_bytes())
+        patch_file = self.folder / "delta-12345667.bdp"
+        create_patch(old, self.apk, patch_file)
+        sha = digest(patch_file)
+        text = manifest(12345678, self.apk_hash, [
+            (12345667, digest(old), patch_file.name, sha, patch_file.stat().st_size)
+        ])
+        (self.folder / "deltas.txt").write_text(text)
+        old.unlink()
+        self.assertEqual(auditor.inspect_download(self.folder, self.release)["versionCode"],
+                         "12345678")
+        patch_file.write_bytes(patch_file.read_bytes() + b"tampered")
+        with self.assertRaisesRegex(ValueError, "delta checksum"):
+            auditor.inspect_download(self.folder, self.release)
+
     def test_public_latest_alias_must_match_downloaded_verified_metadata(self):
         info = {"raw": self.info.read_text()}
         responses = [io.BytesIO(info["raw"].encode()), io.BytesIO(b"PK")]

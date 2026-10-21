@@ -10,6 +10,7 @@ import time
 import urllib.request
 
 from publish_verified_apk import metadata, verify_apk, verify_web_pack
+from blink_delta import check_delta_assets
 
 EXPECTED_ASSETS = {
     "Blink-latest.apk",
@@ -44,7 +45,16 @@ def release_snapshot(repository, tag=""):
     if tag and result_tag != tag:
         raise ValueError("The requested release tag was not returned")
     names = [asset.get("name", "") for asset in data.get("assets", [])]
-    if len(names) != len(set(names)) or set(names) != EXPECTED_ASSETS:
+    allowed = EXPECTED_ASSETS | {"deltas.txt"}
+    extra = set(names) - allowed
+    if (len(names) != len(set(names)) or
+            not EXPECTED_ASSETS.issubset(names) or
+            (extra and "deltas.txt" not in names) or
+            len(extra) > 10 or
+            any(not re.fullmatch(r"delta-[1-9][0-9]{0,9}\\.bdp", name)
+                for name in extra) or
+            (set(names) - EXPECTED_ASSETS != extra | {"deltas.txt"} and
+             set(names) != EXPECTED_ASSETS)):
         raise ValueError("Release assets are missing, duplicated, or unexpected")
     for asset in data["assets"]:
         if not isinstance(asset.get("size"), int) or asset["size"] < 1:
@@ -56,7 +66,9 @@ def inspect_download(directory, release):
     """Verify real downloaded assets, embedded identity, and all published hashes."""
     folder = Path(directory)
     names = {path.name for path in folder.iterdir() if path.is_file()}
-    if names != EXPECTED_ASSETS:
+    if not EXPECTED_ASSETS.issubset(names):
+        raise ValueError("The downloaded release contains an unexpected asset set")
+    if names != EXPECTED_ASSETS and "deltas.txt" not in names:
         raise ValueError("The downloaded release contains an unexpected asset set")
     sha = release.get("targetCommitish", "")
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -65,6 +77,10 @@ def inspect_download(directory, release):
     if release["tagName"] != "v" + info["versionName"]:
         raise ValueError("Published tag does not match signed release version")
     expected_apk = info.get("apkSha256", "")
+    if names != EXPECTED_ASSETS:
+        rows = check_delta_assets(folder, int(info["versionCode"]), expected_apk)
+        if names != EXPECTED_ASSETS | {"deltas.txt"} | {row[2] for row in rows}:
+            raise ValueError("The downloaded release contains an unexpected asset set")
     verify_apk(folder / "Blink-latest.apk", expected_apk)
     verify_web_pack(folder / "blink-life-web.zip", info["gamePackSha256"])
     if (folder / "blink-life-web.zip").stat().st_size != int(info["gamePackSize"]):
@@ -128,6 +144,8 @@ def audit(repository, expected_tag=""):
             "--pattern", "release-info.txt",
             "--pattern", "blink-life-web.zip",
             "--pattern", "blink-life-web.zip.sha256",
+            "--pattern", "deltas.txt",
+            "--pattern", "delta-*.bdp",
         )
         info = inspect_download(temp, latest)
         info["raw"] = (Path(temp) / "release-info.txt").read_text()

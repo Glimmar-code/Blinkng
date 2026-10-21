@@ -77,6 +77,13 @@ jobs:
             adb shell settings put global animator_duration_scale 1.0
             echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
             gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon
+            # Export emulator-rendered Compose staging fixture for visual audit.
+            # This test data is separate from the production APK and account content.
+            mkdir -p app/build/visual-audit
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/home-reference-staging-light.png app/build/visual-audit/home-reference-staging-light.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/home-reference-with-create.png app/build/visual-audit/home-reference-with-create.png
+            test -s app/build/visual-audit/home-reference-staging-light.png
+            test -s app/build/visual-audit/home-reference-with-create.png
 
       - name: Upload instrumentation reports
         if: always()
@@ -86,5 +93,6 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            app/build/visual-audit/
           if-no-files-found: warn
           retention-days: 14

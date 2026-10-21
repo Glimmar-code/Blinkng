@@ -1,8 +1,17 @@
 ## 2026-10-21 — Owner-only Android Paystack Coins pilot (PR #443)
 
-- **PARITY-EXCEPTION: android-owner-coin-checkout-pilot-20261021** — Android's native Coins button previously rejected all purchases using a stale global economy flag. This change only allows the Android pack picker and existing authenticated Paystack client to reach the production Edge Function. The server remains authoritative: confirmed owner UUID/email allowlist, independent checkout kill switch, merchant mode validation, and database cash-checkout gate are still required. No new public payments or bypass of backend security.
-- **Windows equivalent:** The Windows client retains its existing Coins interface and global payment gate. No Windows checkout change is intended during the Android-only owner pilot. Before any general release, implement equivalent Windows purchase behavior and remove the temporary Android-only exception.
-- **Verification:** CI Android and Windows quality/parity gates, signed APK integrity, real-device owner checkout, non-owner rejection, one genuine authorized ₦100 Paystack LIVE purchase delivering exactly 100 Coins, signed webhook validation, duplicate replay idempotency, and receipt delivery. No LIVE transaction or fulfillment has been verified by this code change.
+- **PARITY-EXCEPTION: android-owner-coin-checkout-pilot-20261021** — Android's native Coins button previously rejected all purchases using a stale global economy flag. This change allows the Android pack picker and authenticated Paystack client to reach the existing secured backend; server-side allowlist, account identity verification and checkout kill switch remain authoritative. No public payment access is being unlocked.
+- **Windows equivalent:** Windows retains its existing Coins interface and global payment gate during the limited Android owner pilot. Equivalent Windows purchase behaviour is required before public rollout.
+- **Required verification:** Android/Windows CI, signed APK integrity, real-phone owner and non-owner checks, exactly-once Coin credit, webhook replay rejection and receipts. No real payment is verified by this source-only change.
+
+## 2026-10-20 — Home reference visual reconstruction (Testlab-only candidate)
+
+- **Android:** Stage a near-reference 1:1 Compose Home presentation, not a fabricated image: BLINK wordmark and outlined Search / Items-gamepad / Notifications / Menu header; real world-rank and coin summary cards; simple underlined For You/Following; rounded real-content PostCards with user university/age, blue/gold verification only when backed by account state, black Follow control, five primary footer actions; minimal monochrome bottom navigation. Keep the floating Create action and dark theme.
+- **Items:** The gamepad icon opens **Items**, not Game. Games, Boost and Drops remain accessible inside Items so removing the old Home utility row does not strand their entry points. The real messaging Stories surface remains intact; Home has no Story row.
+- **PARITY-EXCEPTION: android-reference-feed-compose-20261020** — Device-specific screenshot geometry, status-bar insets, 44dp header buttons, portrait post-card spacing and five-icon Android bottom navigation are not meaningful literal Windows layouts. Desktop preserves the existing account-backed Home feed, messages, marketplace, ranking, coins, Like, Follow, Repost, Save and Game/Boost/Drops workflows. Shared validation/server semantics remain unchanged; desktop needs its own layout QA rather than stretching mobile UI.
+- **Safety:** sample ranks, sample coins, fake verified users and artwork-only post content must never ship as live data. The new summary reads `currentUserProfile.worldRank` and `uiState.blinkCoinBalance`. Likes on photo cards are still available by double-tapping media and via an accessibility action, and text-only cards retain a visible Like control.
+- **Release blockers:** Android unit/lint/build, Android emulator runtime screenshot with real feed, Windows parity/build, screenshot diff on a real Android phone in light and dark themes, connection/follow/like/posts/Coins click tests, and owner visual approval. Do not merge into main or publish before verification.
+- **Staging strategy:** Working feature branch `Testlab-home-reference-20261020` starts from the latest main rather than rolling back hundreds of production commits in the shared diverged `Testlab` branch. This is an isolated Testlab candidate, not production.
 
 ## 2026-10-19 — BLINK production release safety and Android website updater (integrated Testlab candidate)
 
@@ -1049,3 +1058,14 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - These database migrations are **committed ONLY to a Testlab-derived branch**; the connected production Supabase project is unchanged.
 - The owner declined paid Supabase preview branches. Do not incur charges. Use a truly isolated no-cost Postgres fixture or free-safe preview for RLS, Auth, Storage, scheduled workers, media uploads, Paystack, and coin-ledger tests. Pure SQL parsing and GitHub green checks are insufficient.
 - Do not merge PR #342 into Testlab, PR #341 into main, or publish new APK/Windows builds until latest-SHA SQL regression, Android build/tests, Windows build/parity, runtime, backend and server-provider checks have all passed. Fix actual failures rather than bypassing checks. If these gates are unavailable, leave PRs draft and production untouched.
+
+
+## Cross-version APK delta updater (Testlab, 2026-10-21)
+
+The delta manifest/validation and pure JVM `BlinkDeltaPatch` parser/reconstruction
+live in shared sources (Android + Windows compile parity). Android uses its
+existing WorkManager and OS PackageInstaller to reconstruct a byte-identical
+publisher-signed APK directly from any of up to 10 compatible past releases.
+Windows does not use APKs or Android's installer; its native desktop update
+and distribution flow is unchanged. Full APK and Google Play update routes
+remain independent and intact. QA and Testlab approval required before main.

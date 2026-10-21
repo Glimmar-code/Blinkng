@@ -928,10 +928,8 @@ fun MainAppContent(
 
     fun startV2Checkout(kind: String, item: String, months: Int = 1) {
         if (v2PaymentBusy) return
-        // The authenticated server is authoritative for the owner-only LIVE pilot.
-        // Do not gate Coins on a cached global cashCheckoutEnabled flag: the
-        // paystack-checkout Edge Function rejects all unauthorized accounts and
-        // still enforces its own payment kill switch.
+        // Preserve the authenticated, owner-only Coins pilot from main/PR #443.
+        // The server remains authoritative for authorisation and payment gates.
         if (kind != "coin_pack" && !uiState.economyPolicy.cashCheckoutEnabled) {
             viewModel.showToast("Paystack cash checkout is not available yet.")
             return
@@ -1301,6 +1299,7 @@ fun MainAppContent(
                         stories = uiState.stories,
                         profiles = uiState.profiles,
                         currentUserProfile = uiState.myProfile,
+                        blinkCoinBalance = uiState.blinkCoinBalance,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
@@ -1365,6 +1364,7 @@ fun MainAppContent(
                             }
                         },
                         onItemsClick = { feedUtilitySheet = "items" },
+                        onGetCoinsClick = { viewModel.buyBlinkCoins() },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
                             if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
@@ -1774,6 +1774,29 @@ fun MainAppContent(
                             currentUserId = uiState.myProfile.id,
                             currentUsername = uiState.myProfile.username,
                             onClose = { dismissUtility() },
+                            onOpenGame = { dismissUtility { feedUtilitySheet = "game" } },
+                            onOpenBoost = { dismissUtility { feedUtilitySheet = "boost" } },
+                            onOpenDrops = { dismissUtility { feedUtilitySheet = "drops" } },
+                            onOpenStore = {
+                                dismissUtility {
+                                    if (BlinkStoreAvailability.isPaused) {
+                                        showStoreComingSoon = true
+                                    } else {
+                                        feedUtilitySheet = "store"
+                                    }
+                                }
+                            },
+                            isAdmin = canOpenAdmin,
+                            onOpenAdmin = {
+                                if (canOpenAdmin) {
+                                    dismissUtility {
+                                        adminContext.startActivitySafely(
+                                            Intent(adminContext, AdminControlCenterActivity::class.java),
+                                            "Unable to open admin dashboard."
+                                        )
+                                    }
+                                }
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1877,6 +1900,7 @@ fun MainAppContent(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FeedBottomBar(
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 },
                 currentTab = uiState.selectedTab,
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {

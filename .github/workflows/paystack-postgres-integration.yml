@@ -67,6 +67,14 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_market_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
         run: node --test scripts/test_paystack_integrity.mjs
+      - name: Start separate disposable Home save-count test database
+        run: |
+          psql -d postgres -v ON_ERROR_STOP=1 -c 'create database blink_home_ci'
+          psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_fixture.pgfixture
+      - name: Apply Save-count RPC to isolated test database
+        run: psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/migrations/20261021061500_home_post_save_counts.sql
+      - name: Verify Save-count access, totals and privacy restrictions
+        run: psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_assertions.pgfixture
       - name: Production-safety affirmation
         run: |
           echo 'All tests run against a disposable GitHub runner PostgreSQL service.'
