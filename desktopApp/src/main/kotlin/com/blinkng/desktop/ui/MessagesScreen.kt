@@ -304,7 +304,10 @@ fun MessagesScreen(state: DesktopAppState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { inboxShowAll = !inboxShowAll }) {
+                TextButton(onClick = {
+                    inboxShowAll = !inboxShowAll
+                    inbox = if (inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY
+                }) {
                     Text(if (inboxShowAll) "Close" else "See all")
                 }
             }
