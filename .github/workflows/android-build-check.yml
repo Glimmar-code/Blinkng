@@ -20,18 +20,34 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Android-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
+      - name: Explain intentionally skipped Android work
+        if: steps.scope.outputs.android != 'true'
+        run: echo "No Android build inputs changed; the Android quality gate is not applicable."
 
       - uses: actions/setup-java@v5
+        if: steps.scope.outputs.android == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.scope.outputs.android == 'true'
 
       - name: Unit tests
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Android lint
+        if: steps.scope.outputs.android == 'true'
         shell: bash
         run: |
           set +e
@@ -47,12 +63,15 @@ jobs:
           exit "$status"
 
       - name: Compile instrumentation tests
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
 
       - name: Build debug APK
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Verify native BLINK LIFE is actually packaged
+        if: steps.scope.outputs.android == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -74,9 +93,11 @@ jobs:
           echo "BLINK LIFE native Godot Android binary, scene, and activity are bundled."
 
       - name: Build debug App Bundle
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:bundleDebug --stacktrace --no-daemon
 
       - name: Upload debug App Bundle
+        if: steps.scope.outputs.android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-aab-${{ github.sha }}
@@ -85,6 +106,7 @@ jobs:
           retention-days: 14
 
       - name: Upload latest debug APK
+        if: steps.scope.outputs.android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-${{ github.sha }}
