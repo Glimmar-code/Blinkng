@@ -241,7 +241,8 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
-    routedReelId: String? = null
+    routedReelId: String? = null,
+    isReelsDestinationActive: Boolean = true
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -335,7 +336,10 @@ fun PremiumFeedScreen(
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
-        1 -> FeedScreen(
+        1 -> androidx.compose.runtime.CompositionLocalProvider(
+            LocalBlinkReelDestinationVisible provides isReelsDestinationActive
+        ) {
+            FeedScreen(
             posts = posts,
             reels = reels,
             stories = stories,
@@ -386,7 +390,8 @@ fun PremiumFeedScreen(
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             initialReelId = routedReelId ?: launchReelId,
             initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
-        )
+            )
+        }
 
         2 -> PremiumConnectHost(
             profiles = profiles,
