@@ -703,7 +703,7 @@ private fun PremiumMessagesHome(
         showSearch = showSearch,
         onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
         showAll = showAll,
-        onToggleAll = { showAll = !showAll },
+        onToggleAll = { showAll = !showAll; inboxTab = if (showAll) MessageInboxTab.ALL else MessageInboxTab.PRIMARY },
         onOpenConversation = onOpenConversation,
         onProfileClick = onProfileClick,
         onMyProfileClick = onMyProfileClick,
