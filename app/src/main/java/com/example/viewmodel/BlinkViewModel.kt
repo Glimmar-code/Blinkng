@@ -1913,6 +1913,14 @@ private suspend fun restoreSupabaseSession() {
         persistUiPreferences()
     }
 
+    /** Device Default must react to Android changes without replacing the saved mode. */
+    fun applySystemAppearance(systemDark: Boolean) {
+        if (_uiState.value.appearanceMode != com.blinkng.shared.BlinkAppearanceMode.SYSTEM) return
+        if (_uiState.value.isDarkMode != systemDark) {
+            _uiState.value = _uiState.value.copy(isDarkMode = systemDark)
+        }
+    }
+
     fun toggleDarkMode() {
         setAppearanceMode(
             if (_uiState.value.isDarkMode) com.blinkng.shared.BlinkAppearanceMode.LIGHT
