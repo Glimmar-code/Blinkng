@@ -52,7 +52,7 @@ struct BLINKVoIPRegistrationAPI {
         var request = URLRequest(url: url, timeoutInterval: 12)
         request.httpMethod = "POST"
         request.setValue(configuration.publicKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \\(userJWT)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(userJWT)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "action": "revoke", "platform": "ios", "channel": "voip",
