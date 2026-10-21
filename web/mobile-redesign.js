@@ -25,9 +25,22 @@
    if(location.pathname==='/reels'){
      shell.querySelectorAll('.reel-card video').forEach(video=>{
        if(video.dataset.blinkGestures)return;video.dataset.blinkGestures='1';
-       video.addEventListener('click',()=>{if(video.paused)video.play().catch(()=>{});else video.pause();});
-       let held=false,timer;video.addEventListener('pointerdown',()=>{timer=setTimeout(()=>{held=true;video.playbackRate=2;},450);});
-       for(const event of ['pointerup','pointercancel','pointerleave'])video.addEventListener(event,()=>{clearTimeout(timer);if(held){video.playbackRate=1;held=false;}});
+       let timer=null,held=false,moved=false,startY=0,suppressClick=false;
+       video.addEventListener('pointerdown',e=>{
+         if(e.pointerType==='mouse'&&e.button!==0)return;
+         startY=e.clientY;moved=false;held=false;
+         clearTimeout(timer);
+         timer=setTimeout(()=>{if(!moved){held=true;suppressClick=true;video.playbackRate=2;}},450);
+       },{passive:true});
+       video.addEventListener('pointermove',e=>{if(Math.abs(e.clientY-startY)>12){moved=true;clearTimeout(timer);if(held)video.playbackRate=1;}},{passive:true});
+       for(const event of ['pointerup','pointercancel','pointerleave'])video.addEventListener(event,()=>{
+         clearTimeout(timer);if(held){video.playbackRate=1;held=false;suppressClick=true;setTimeout(()=>{suppressClick=false;},350);}
+       });
+       video.addEventListener('click',()=>{
+         if(moved||suppressClick){suppressClick=false;return;}
+         if(!video.getAttribute('src')&&video.dataset.src){video.src=video.dataset.src;video.load();}
+         if(video.paused)video.play().catch(()=>{});else video.pause();
+       });
      });
    }
  }
