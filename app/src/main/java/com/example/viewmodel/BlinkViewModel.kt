@@ -1468,12 +1468,9 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun buyBlinkCoins() {
-        val policy = _uiState.value.economyPolicy
-        if (!policy.cashCheckoutEnabled) {
-            val packs = policy.coinPacks.joinToString(" • ") { "₦${it.priceNgn}→${it.coins}" }
-            showToast("Blink Coin packs are ready ($packs). Secure cash checkout is not enabled yet.")
-            return
-        }
+        // Let the user select a pack. The authenticated Paystack Edge Function
+        // independently enforces the owner-only pilot and server-side kill switches.
+        // A stale client-side economy flag must not hide the pilot checkout.
         _uiState.value = _uiState.value.copy(isCoinPackPickerOpen = true)
     }
 
