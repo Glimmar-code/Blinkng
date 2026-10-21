@@ -89,7 +89,7 @@ struct BLINKNotificationSettingsView: View {
                 Label("Background push notifications not connected",
                       systemImage: "bell.slash")
                     .font(.subheadline)
-                Text("Your iPhone cannot receive remote BLINK alerts until an eligible Apple Developer account, signed APNs capability and secured server delivery are configured and verified.")
+                Text("Apple push and system calls require signing, a secured server delivery service and device verification. They are disabled in this development build.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
