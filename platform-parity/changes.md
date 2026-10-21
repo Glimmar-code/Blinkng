@@ -1049,3 +1049,14 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - These database migrations are **committed ONLY to a Testlab-derived branch**; the connected production Supabase project is unchanged.
 - The owner declined paid Supabase preview branches. Do not incur charges. Use a truly isolated no-cost Postgres fixture or free-safe preview for RLS, Auth, Storage, scheduled workers, media uploads, Paystack, and coin-ledger tests. Pure SQL parsing and GitHub green checks are insufficient.
 - Do not merge PR #342 into Testlab, PR #341 into main, or publish new APK/Windows builds until latest-SHA SQL regression, Android build/tests, Windows build/parity, runtime, backend and server-provider checks have all passed. Fix actual failures rather than bypassing checks. If these gates are unavailable, leave PRs draft and production untouched.
+
+
+## Cross-version APK delta updater (Testlab, 2026-10-21)
+
+The delta manifest/validation and pure JVM `BlinkDeltaPatch` parser/reconstruction
+live in shared sources (Android + Windows compile parity). Android uses its
+existing WorkManager and OS PackageInstaller to reconstruct a byte-identical
+publisher-signed APK directly from any of up to 10 compatible past releases.
+Windows does not use APKs or Android's installer; its native desktop update
+and distribution flow is unchanged. Full APK and Google Play update routes
+remain independent and intact. QA and Testlab approval required before main.
