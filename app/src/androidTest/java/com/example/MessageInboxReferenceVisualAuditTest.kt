@@ -51,23 +51,23 @@ class MessageInboxReferenceVisualAuditTest {
         val gamesOpened = mutableIntStateOf(0)
         val rows = listOf(
             ChatConversation("audit_a", "aisha", partnerName = "Aisha Khan", partnerAvatar = "",
-                lastMessage = "Hey! Are you coming to the event tonight? 👀", lastMessageTime = "2m",
+                lastMessage = "Hey! Are you coming to the event tonight? 👀", lastMessageTime = "2m", lastMessageRawTime = "2026-10-21T14:00:00Z",
                 unreadCount = 3, isOnline = true, verificationBadge = VerificationBadge.BLUE),
             ChatConversation("audit_b", "noah", partnerName = "Noah Parker", partnerAvatar = "",
-                lastMessage = "That was such a fun class today", lastMessageTime = "14m",
+                lastMessage = "That was such a fun class today", lastMessageTime = "14m", lastMessageRawTime = "2026-10-21T13:45:00Z",
                 unreadCount = 1, isOnline = true),
             ChatConversation("audit_c", "maya", partnerName = "Maya Singh", partnerAvatar = "",
-                lastMessage = "Let's grab coffee tomorrow ☕", lastMessageTime = "1h", isOnline = true),
+                lastMessage = "Let's grab coffee tomorrow ☕", lastMessageTime = "1h", lastMessageRawTime = "2026-10-21T12:00:00Z", isOnline = true),
             ChatConversation("audit_d", "ethan", partnerName = "Ethan Brooks", partnerAvatar = "",
                 lastMessage = "Sent a photo", lastMessageTime = "2h"),
-            ChatConversation("audit_e", "sophie", partnerName = "Sophie Chen", partnerAvatar = "",
+            ChatConversation("audit_e", lastMessageRawTime = "2026-10-21T11:00:00Z", "sophie", partnerName = "Sophie Chen", partnerAvatar = "",
                 lastMessage = "Same! See you then 💛", lastMessageTime = "3h"),
-            ChatConversation("audit_f", "campus-crew", partnerName = "Campus Crew", partnerAvatar = "",
+            ChatConversation("audit_f", lastMessageRawTime = "2026-10-21T10:00:00Z", "campus-crew", partnerName = "Campus Crew", partnerAvatar = "",
                 lastMessage = "Liam: Who's down for the game tomorrow?", lastMessageTime = "4h"),
-            ChatConversation("audit_g", "james", partnerName = "James Wilson", partnerAvatar = "",
+            ChatConversation("audit_g", lastMessageRawTime = "2026-10-21T09:00:00Z", "james", partnerName = "James Wilson", partnerAvatar = "",
                 lastMessage = "Sounds good!", lastMessageTime = "1d")
         )
-        val stories = listOf("Aisha" to "aisha", "Noah" to "noah", "Maya" to "maya", "Leo" to "leo")
+        val stories = listOf("Aisha" to "aisha", lastMessageRawTime = "2026-10-21T08:00:00Z", "Noah" to "noah", "Maya" to "maya", "Leo" to "leo")
             .mapIndexed { index, (name, user) ->
                 Story(id = "audit_story_$index", username = user, avatar = "", displayName = name,
                     storyImage = "audit-local-fixture", hasUnseen = true)
