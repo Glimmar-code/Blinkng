@@ -419,6 +419,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            // Resolve Android's live theme without overwriting the stored user preference.
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val themedUiState = uiState.copy(
+                isDarkMode = uiState.appearanceMode.isDark(systemDark)
+            )
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
@@ -517,7 +522,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BlinkTheme(darkTheme = uiState.isDarkMode) {
+            BlinkTheme(darkTheme = themedUiState.isDarkMode) {
                 Scaffold(
                     // The main pages paint behind the status bar. Their own headers
                     // apply statusBarsPadding once; keep the bottom/side safe areas
@@ -624,7 +629,7 @@ class MainActivity : ComponentActivity() {
 
                                 AppDestination.MAIN -> {
                                     MainAppContent(
-                                        uiState = uiState,
+                                        uiState = themedUiState,
                                         viewModel = viewModel,
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
@@ -1814,6 +1819,8 @@ fun MainAppContent(
                 onFindFriends = onFindFriends,
                 onOpenEarning = { showEarning = true },
                 onToggleTheme = { viewModel.toggleDarkMode() },
+                appearanceMode = uiState.appearanceMode,
+                onAppearanceModeChange = { viewModel.setAppearanceMode(it) },
                 onLogout = { viewModel.logout() },
                 onShowToast = { viewModel.showToast(it) },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
