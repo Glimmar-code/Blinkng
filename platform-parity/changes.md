@@ -1,3 +1,10 @@
+## 2026-10-21 — Message inbox reference visual upgrade (Testlab-only staging)
+
+- Android: isolated Compose inbox UI with avatar/BLINK/search/game/notification header, Stories and notes-style entry, real story rings, flat rows, previews, verified badges and real unread counts. Chat detail and WebRTC calling remain as-is; no database migrations. The text "Your note" currently triggers existing story creation, not a fabricated notes backend.
+- Windows: shared messaging behavior and real online contacts in the reference-inspired desktop inbox; no fake story rings or unread counters where Testlab desktop lacks those server fields. Conversation detail unchanged.
+- This Testlab-based candidate is distinct from the main-based PR #459 because Testlab and main have extensive unrelated divergence. Never merge the old Testlab code wholesale onto main; promote only the verified scoped inbox change against the latest main tree and rerun Android/Windows gates.
+- Acceptance: Android compile, lint, relevant instrumentation on Android 15, screenshot compared with owner reference, Windows build/parity, intact existing conversations. Remain isolated until successful.
+
 ## 2026-10-19 — Final combined Testlab integration: Feature 6 Stories + Feature 8 universities
 
 - Based on the latest Testlab with Features 2,3,4,5,7,9 already merged; combines real 24-hour Messages stories, media, owner insights, opt-in reposts and DM previews with normalized campus IDs, FUTA alias directory, moderated school additions and campus leaderboard matching.
