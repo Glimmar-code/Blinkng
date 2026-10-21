@@ -56,19 +56,23 @@ object BlinkCallLauncher {
                     peerAvatar = calleeAvatar,
                     callType = type
                 )
+                // Deliver the incoming alert before loading JNI in CallActivity.
+                // Even a native WebRTC startup abort must not swallow the invite.
+                val pushOutcome = repository.dispatchPush(call.id, "invite")
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (!context.startActivitySafely(intent, "Unable to open the Blink call screen.")) {
+                    val ended = repository.endCall(call.id, "failed").getOrNull()
+                    if (ended != null) repository.dispatchPush(call.id, ended.status.wireValue)
                     return@launch
                 }
 
-                repository.dispatchPush(call.id, "invite")
-                    .onFailure {
-                        Toast.makeText(
-                            context,
-                            "Call started, but the other device may not receive a push alert.",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                pushOutcome.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Call started, but the other phone may not receive an alert.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } finally {
                 starting.set(false)
             }
