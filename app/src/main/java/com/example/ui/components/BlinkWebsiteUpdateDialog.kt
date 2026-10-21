@@ -78,7 +78,7 @@ fun BlinkWebsiteUpdateDialog(
                 when (downloadState) {
                     WebsiteApkDownloadCoordinator.State.Idle -> {
                         Text(
-                            "Download within BLINK. The APK will be checked before Android asks for installation approval.",
+                            "BLINK uses a smaller patch from your installed version when available, even if you missed several updates. Otherwise, it downloads the verified full APK.",
                             color = Color(0xFFBABABA),
                             style = MaterialTheme.typography.bodySmall,
                         )
