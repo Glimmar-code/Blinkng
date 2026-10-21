@@ -3938,8 +3938,16 @@ private suspend fun restoreSupabaseSession() {
             .firstOrNull { it.id == postId } ?: return
         if (!pendingBookmarkPostIds.add(postId)) return
         val next = !target.isBookmarked
+        fun updatedPost(post: FeedPost, value: Boolean): FeedPost {
+            val saves = post.savesCount?.let { count ->
+                // Keep the displayed aggregate honest and stable during optimistic saves.
+                if (value == target.isBookmarked) target.savesCount ?: count
+                else (target.savesCount ?: count).plus(if (value) 1 else -1).coerceAtLeast(0)
+            }
+            return post.copy(isBookmarked = value, savesCount = saves)
+        }
         fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
-            items.map { if (it.id == postId) it.copy(isBookmarked = value) else it }
+            items.map { if (it.id == postId) updatedPost(it, value) else it }
 
         _uiState.value = state.copy(
             posts = update(state.posts, next),
@@ -3950,7 +3958,7 @@ private suspend fun restoreSupabaseSession() {
             myLikedPosts = update(state.myLikedPosts, next),
             mySavedPosts = syncInteractionCollection(
                 state.mySavedPosts, target, next
-            ) { it.copy(isBookmarked = next) }
+            ) { updatedPost(it, next) }
         )
         persistCurrentFeed()
 
@@ -3966,7 +3974,7 @@ private suspend fun restoreSupabaseSession() {
                     myLikedPosts = update(latest.myLikedPosts, target.isBookmarked),
                     mySavedPosts = syncInteractionCollection(
                         latest.mySavedPosts, target, target.isBookmarked
-                    ) { it.copy(isBookmarked = target.isBookmarked) }
+                    ) { updatedPost(it, target.isBookmarked) }
                 )
                 persistCurrentFeed()
                 showToast("Failed to update bookmark.")
