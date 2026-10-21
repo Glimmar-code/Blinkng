@@ -66,7 +66,8 @@ enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(
 data class BlinkUiState(
     val destination: AppDestination = AppDestination.SPLASH,
     val selectedTab: MainTab = MainTab.HOME,
-    val isDarkMode: Boolean = true,
+    val isDarkMode: Boolean = false,
+    val appearanceMode: com.example.ui.theme.BlinkAppearanceMode = com.example.ui.theme.BlinkAppearanceMode.LIGHT,
     val myProfile: UserProfile = UserProfile(),
     val profiles: List<UserProfile> = emptyList(),
     val viewingProfile: UserProfile? = null,
@@ -152,6 +153,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_VERIFICATION = "verification_badge"
         private const val KEY_SELLER_ACTIVE = "is_seller_active"
         private const val KEY_DARK_MODE = "ui_dark_mode"
+        private const val KEY_APPEARANCE_MODE = "ui_appearance_mode"
         private const val KEY_SELECTED_TAB = "ui_selected_tab"
         private const val KEY_FEED_SUB_TAB = "ui_feed_sub_tab"
         private const val KEY_RESUME_PROFILE_USERNAME = "ui_resume_profile_username"
@@ -599,8 +601,13 @@ private suspend fun restoreSupabaseSession() {
     private fun restoreUiPreferences() {
         val tabName = prefs.getString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
         val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
+        val appearance = com.example.ui.theme.BlinkAppearanceMode.restored(
+            prefs.getString(KEY_APPEARANCE_MODE, null),
+            if (prefs.contains(KEY_DARK_MODE)) prefs.getBoolean(KEY_DARK_MODE, false) else null
+        )
         _uiState.value = _uiState.value.copy(
-            isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
+            appearanceMode = appearance,
+            isDarkMode = appearance.isDark(systemDark = false),
             selectedTab = selected,
             feedSubTab = prefs.getInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
         )
@@ -610,6 +617,7 @@ private suspend fun restoreSupabaseSession() {
         val state = _uiState.value
         prefs.edit()
             .putBoolean(KEY_DARK_MODE, state.isDarkMode)
+            .putString(KEY_APPEARANCE_MODE, state.appearanceMode.name)
             .putString(KEY_SELECTED_TAB, state.selectedTab.name)
             .putInt(KEY_FEED_SUB_TAB, state.feedSubTab)
             .apply()
@@ -1895,9 +1903,21 @@ private suspend fun restoreSupabaseSession() {
         )
         persistUiPreferences()
     }
-    fun toggleDarkMode() {
-        _uiState.value = _uiState.value.copy(isDarkMode = !_uiState.value.isDarkMode)
+    fun setAppearanceMode(mode: com.example.ui.theme.BlinkAppearanceMode) {
+        val currentDark = _uiState.value.isDarkMode
+        _uiState.value = _uiState.value.copy(
+            appearanceMode = mode,
+            isDarkMode = if (mode == com.example.ui.theme.BlinkAppearanceMode.SYSTEM) currentDark
+                else mode.isDark(systemDark = false)
+        )
         persistUiPreferences()
+    }
+
+    fun toggleDarkMode() {
+        setAppearanceMode(
+            if (_uiState.value.isDarkMode) com.example.ui.theme.BlinkAppearanceMode.LIGHT
+            else com.example.ui.theme.BlinkAppearanceMode.DARK
+        )
     }
     fun openMenu(open: Boolean) { _uiState.value = _uiState.value.copy(isMenuOpen = open) }
     fun openActivity(open: Boolean) { _uiState.value = _uiState.value.copy(isActivityOpen = open) }
