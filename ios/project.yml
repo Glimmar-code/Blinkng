@@ -31,6 +31,8 @@ targets:
       path: BLINKiOS/Generated/Info.plist
       properties:
         CFBundleDisplayName: BLINK
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         NSMicrophoneUsageDescription: "BLINK uses the microphone only when you choose a supported voice or video call."
@@ -42,6 +44,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
         BLINK_SUPABASE_URL: "https://jhwgifrlxwspoedxjaly.supabase.co"
