@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
@@ -85,7 +86,7 @@ class MessageInboxReferenceVisualAuditTest {
                             PremiumMessagesScreen(
                                 conversations = rows,
                                 stories = stories,
-                                activities = emptyList(),
+                                activities = listOf(ActivityItem(id = "audit_notification", user = "Aisha", avatar = "", action = "Followed you", time = "2m", isUnread = true)),
                                 myAvatar = avatar,
                                 myName = "BLINK user",
                                 activePartner = null,
