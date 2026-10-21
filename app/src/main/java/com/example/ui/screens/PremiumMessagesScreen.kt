@@ -333,6 +333,7 @@ fun PremiumMessagesScreen(
                             onMyProfileClick = onMyProfileClick,
                             onGameClick = onGameClick,
                             onNotificationsClick = onOpenActivity,
+                            hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
                             isDark = isDark
@@ -657,6 +658,7 @@ private fun PremiumMessagesHome(
     onComposeMessage: () -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
     isDark: Boolean
@@ -709,6 +711,7 @@ private fun PremiumMessagesHome(
         onAddStoryClick = onAddStoryClick,
         onGameClick = onGameClick,
         onNotificationsClick = onNotificationsClick,
+        hasUnreadNotifications = hasUnreadNotifications,
         onComposeMessage = onComposeMessage,
         onOpenSettings = onOpenAppearance,
         isConnected = isConnected,
@@ -719,7 +722,7 @@ private fun PremiumMessagesHome(
                 requestCount = requestCount,
                 unreadCount = unreadCount,
                 archivedCount = archivedCount,
-                palette = palette,
+                palette = messagePalette(if (isDark) MessageThemeMode.DARK else MessageThemeMode.LIGHT),
                 onSelect = { inboxTab = it }
             )
         }
