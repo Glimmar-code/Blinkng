@@ -49,8 +49,22 @@ final class BLINKVoIPPushManager: NSObject, ObservableObject, PKPushRegistryDele
         }
     }
 
-    /// Does not claim that removing a local token revokes the server's token.
-    /// A server-side revoke route is required before the flag can be enabled.
+    /// Called by AuthStore before the JWT is invalidated on sign-out.
+    /// The signed-in user may revoke only their own iOS device token.
+    func revokeForSignOut(userJWT: String) async throws {
+        guard BLINKVoIPConfiguration.enabledInBuild else { return }
+        guard let configuration = BLINKBackendConfiguration.fromBundle() else {
+            throw BLINKCallError.notAvailable
+        }
+        let environment = (Bundle.main.object(
+            forInfoDictionaryKey: "BLINK_APNS_ENVIRONMENT"
+        ) as? String) ?? ""
+        try await BLINKVoIPRegistrationAPI(configuration: configuration)
+            .revoke(deviceID: deviceID, environment: environment, userJWT: userJWT)
+        registeredForUser = nil
+    }
+
+    /// Local state cleanup is independent from a successful server-side revoke.
     func clearUser() {
         auth = nil
         userID = nil
