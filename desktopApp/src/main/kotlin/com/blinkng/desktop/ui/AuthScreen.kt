@@ -119,7 +119,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = authFieldColors,
-                    label = { Text("Email") },
+                    label = { Text(if (mode == AuthMode.SIGN_IN) "Email or username" else "Email") },
                 )
 
                 if (mode != AuthMode.RESET) {
