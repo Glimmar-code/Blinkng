@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -95,7 +96,7 @@ internal fun BlinkReferenceInbox(
     val primary = if (isDark) Color.White else Color(0xFF121212)
     val secondary = if (isDark) Color(0xFFACADB0) else Color(0xFF858585)
     val border = if (isDark) Color(0xFF313236) else Color(0xFFEEEEEE)
-    Column(Modifier.fillMaxSize().background(bg)) {
+    Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
