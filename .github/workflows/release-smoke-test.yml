@@ -216,6 +216,17 @@ jobs:
 
           echo "Release smoke APK/AAB package, version and signatures verified."
 
+      - name: Unit-test WebRTC APK native/Java bridge validator
+        run: PYTHONPATH=scripts python3 scripts/test_webrtc_apk_integrity.py -v
+
+      - name: Verify JNI symbols and ARM64 native bridge in R8-minified APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          python3 scripts/check_webrtc_apk_integrity.py "$APK"
+
       # Verify the actual release APK can be installed by Android 15's package manager,
       # not merely read by aapt or apksigner. CI's disposable key is never published.
       - name: Enable KVM for Android 15 release installation test
