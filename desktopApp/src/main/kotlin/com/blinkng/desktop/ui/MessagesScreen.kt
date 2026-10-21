@@ -21,13 +21,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
@@ -38,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
@@ -67,6 +72,9 @@ fun MessagesScreen(state: DesktopAppState) {
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var draft by remember { mutableStateOf("") }
+    var inboxSearch by remember { mutableStateOf("") }
+    var showInboxSearch by remember { mutableStateOf(false) }
+    var showAllInbox by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
@@ -114,12 +122,47 @@ fun MessagesScreen(state: DesktopAppState) {
     if (active == null) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Messages", fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
+                Text("B L I N K", fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
+                IconButton(onClick = { showInboxSearch = !showInboxSearch; if (!showInboxSearch) inboxSearch = "" }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "Search messages")
+                }
                 IconButton(onClick = { scope.launch { loadConversations() } }) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Messages", fontWeight = FontWeight.Bold, fontSize = 27.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { showAllInbox = !showAllInbox }) { Text(if (showAllInbox) "Close" else "See all") }
+            }
+            if (showInboxSearch) {
+                OutlinedTextField(
+                    value = inboxSearch,
+                    onValueChange = { inboxSearch = it },
+                    singleLine = true,
+                    placeholder = { Text("Search conversations") },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                )
+            }
+            if (!showAllInbox) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(conversations.filter { it.isOnline }.take(12), key = { "recent_${it.id}" }) { peer ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(68.dp).clickable { error = null; selected = peer }
+                        ) {
+                            PresenceAvatar(name = peer.title, isOnline = if (peer.isGroup) null else peer.isOnline, size = 52.dp)
+                            Text(peer.title.substringBefore(" "), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
+                        }
+                    }
                 }
             }
             HorizontalDivider()
@@ -133,8 +176,8 @@ fun MessagesScreen(state: DesktopAppState) {
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 if (loading) {
                     item {
@@ -145,7 +188,7 @@ fun MessagesScreen(state: DesktopAppState) {
                         )
                     }
                 }
-                if (!loading && conversations.isEmpty()) {
+                if (!loading && conversations.none { inboxSearch.isBlank() || it.title.contains(inboxSearch, ignoreCase = true) }) {
                     item {
                         Text(
                             "No conversations yet.",
@@ -154,17 +197,18 @@ fun MessagesScreen(state: DesktopAppState) {
                         )
                     }
                 }
-                items(conversations, key = { it.id }) { conversation ->
+                items(conversations.filter { inboxSearch.isBlank() || it.title.contains(inboxSearch, ignoreCase = true) }, key = { it.id }) { conversation ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             error = null
                             selected = conversation
                         },
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(0.dp),
+                        color = MaterialTheme.colorScheme.background,
                     ) {
+                        Column {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             PresenceAvatar(
@@ -181,6 +225,8 @@ fun MessagesScreen(state: DesktopAppState) {
                                     color = if (!conversation.isGroup && conversation.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(start = 76.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
