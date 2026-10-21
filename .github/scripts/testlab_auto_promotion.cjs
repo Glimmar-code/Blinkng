@@ -50,6 +50,7 @@ function requiresDeviceVerification(files, labels = new Set()) {
 
 function filePathsRequireStaging(files) {
   return files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^supabase\/(?:migrations\/|functions\/|config\.toml$)/.test(path) ||
     /^app\/proguard-rules\.pro$/.test(path) ||
     /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
@@ -65,6 +66,7 @@ function requiredChecks(files) {
     /^gradle\//.test(path)
   );
   const release = android || files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^app\/(?:proguard-rules\.pro|google-services\.json\.example)$/.test(path) ||
     /^\.github\/(?:scripts\/restore_google_services\.sh|workflows\/(?:signed-release|release-smoke-test)\.yml)$/.test(path)
   );
@@ -90,6 +92,8 @@ function requiredChecks(files) {
 function releaseWorkflows(files) {
   const toRun = [];
   if (files.some(path =>
+    /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
+    /^\.github\/workflows\/signed-release\.yml$/.test(path) ||
     /^(?:app\/|shared\/|gradle\/)/.test(path) ||
     /^(?:build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/.test(path)
   )) toRun.push('signed-release.yml');
@@ -247,7 +251,8 @@ async function run({github, context, core}) {
 
       // Verify final human approval only after all checks have passed, and
       // immediately before the final PR/main consistency check and merge.
-      if (requiresOwnerApproval(paths)) {
+      if (requiresOwnerApproval(paths) ||
+          requiresDeviceVerification(paths, new Set((pr.labels || []).map(label => label.name)))) {
         const comments = await github.paginate(github.rest.issues.listComments, {
           owner: OWNER, repo: REPO, issue_number: number, per_page: 100
         });
