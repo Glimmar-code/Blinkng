@@ -43,11 +43,62 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     'app/proguard-rules.pro',
     '.github/workflows/signed-release.yml',
     '.github/workflows/auto-promote-testlab.yml',
+    '.github/scripts/install_release_smoke_apk.sh',
   ]) {
     assert.match(policy.preflight(ready(), [filename]), /Staging/, filename);
     assert.equal(policy.preflight(ready({labels: [{name: 'auto-promote'}, {name: 'staging-verified'}]}), [filename]), null);
   }
 });
+test('routine assets and copy can promote with opt-in and full CI but without owner comment', () => {
+  const routine = [
+    'README.md',
+    'docs/testlab-auto-promotion.md',
+    'web/styles.css',
+    'web/icons/home.png',
+    'app/src/main/res/drawable-hdpi/blink.png',
+  ];
+  for (const filename of routine) {
+    assert.equal(policy.requiresOwnerApproval([filename]), false, filename);
+    assert.equal(policy.preflight(ready(), [filename]), null, filename);
+  }
+  assert.equal(policy.requiresOwnerApproval(['docs/help.md', 'web/styles.css']), false);
+});
+test('sensitive, ambiguous, mixed and executable changes always need owner authorization', () => {
+  for (const filename of [
+    'web/app.js',
+    'web/index.html',
+    'web/blink-icon.svg',
+    'app/src/main/java/com/example/ui/screens/HomeScreen.kt',
+    'app/src/main/AndroidManifest.xml',
+    'supabase/functions/verify/index.ts',
+    'supabase/migrations/20261021.sql',
+    '.github/workflows/publish-latest-apk.yml',
+    '.github/scripts/testlab_auto_promotion.cjs',
+    '.github/scripts/testlab_auto_promotion.test.cjs',
+  ]) {
+    assert.equal(policy.requiresOwnerApproval([filename]), true, filename);
+  }
+  assert.equal(policy.requiresOwnerApproval(['docs/readme.md', 'web/app.js']), true);
+  assert.equal(policy.requiresOwnerApproval([]), true);
+});
+test('hardware and OEM-specific Android changes require independent device evidence', () => {
+  for (const path of [
+    'app/src/main/java/com/example/call/CallManager.kt',
+    'app/src/main/java/com/example/TelecomService.kt',
+    'app/src/main/java/com/example/ApkUpdater.kt',
+    'app/src/main/java/com/example/notifications/PushReceiver.kt',
+    'app/src/main/jniLibs/arm64-v8a/libwebrtc.so',
+  ]) {
+    assert.equal(policy.requiresDeviceVerification([path]), true, path);
+    assert.match(policy.preflight(ready(), [path]), /physical-device/, path);
+    const approved = ready({labels: [{name: 'auto-promote'}, {name: 'device-verified'}]});
+    assert.equal(policy.preflight(approved, [path]), null, path);
+  }
+  assert.equal(policy.requiresDeviceVerification(['web/styles.css']), false);
+  const flagged = ready({labels: [{name: 'auto-promote'}, {name: 'needs-device-verification'}]});
+  assert.match(policy.preflight(flagged, ['web/styles.css']), /physical-device/);
+});
+
 test('incomplete file list or unmergeable PR fail closed', () => {
   assert.match(policy.preflight(ready({changed_files: 2}), ['app/src/Foo.kt']), /every/);
   assert.match(policy.preflight(ready({mergeable: false}), ['app/src/Foo.kt']), /mergeable/);
@@ -60,6 +111,8 @@ test('Android, web and backend jobs have explicit required gates', () => {
   const web = policy.requiredChecks(['web/app.js']);
   assert.ok(web.includes('web-parity'));
   assert.ok(web.includes('verify'));
+  const signed = policy.requiredChecks(['.github/scripts/install_release_smoke_apk.sh']);
+  assert.ok(signed.includes('release-smoke'));
   const backend = policy.requiredChecks(['supabase/migrations/foo.sql']);
   assert.ok(backend.includes('migration-safety'));
 });
@@ -72,6 +125,8 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['app/src/main/Foo.kt']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['web/app.js']), ['deploy-web-preview.yml']);
   assert.deepEqual(policy.releaseWorkflows(['README.md']), []);
+  assert.deepEqual(policy.releaseWorkflows(['.github/workflows/signed-release.yml']), ['signed-release.yml']);
+  assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
 test('explicit owner approval must match the current PR head SHA', () => {
   const owner = {login: 'Glimmar-code'};

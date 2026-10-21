@@ -1,5 +1,19 @@
 # Blinkng Repository Instructions
 
+## Permanent BLINK release policy — no owner testing downloads
+
+This instruction applies to every BLINK task, feature branch, pull request, agent, GitHub Actions workflow, and release. **Do not ask the repository owner to download or install an unfinished APK simply to test it, confirm it works, or report results back.** Mobile data is limited. The owner should install only the approved final release intended for actual daily use.
+
+1. **Stage first:** Develop non-destructively in a current `Testlab-*` branch, preserve all existing functionality and settings, and reconcile with the latest `main`. Do not bypass protected `main`.
+2. **Automation first:** Use GitHub Actions, Android 15 emulators, UI/instrumentation tests, Android/Windows builds, backend/provider staging checks, CI artifacts, screenshot comparisons, security checks, and regression testing. Collect logs and fix failures without demanding owner-side APK installs.
+3. **Only final APK:** For Android releases, test the signed *production candidate* on CI, including package/signature identity, install, previous-published-version upgrade without uninstall, and startup. Ensure the final download is published only after all required gates pass. The emulator install check is not proof that all user data or device/OEM flows survive.
+4. **Physical-device exception:** For voice/video calls, WebRTC/JNI, Telecom, Bluetooth audio, OEM notifications, background behavior, and installation/updating on vendor-specific phones, require independent physical-device or hosted device-lab evidence when emulators cannot validate behavior. Do not automatically pay for device labs; ask before incurring costs. If no safe independent verification is available, hold the high-risk release in Testlab and report the precise unverified risk rather than claiming success.
+5. **Approval by risk:** Routine changes in the explicitly defined allowlist may follow opt-in automated promotion after all applicable CI passes. Executable, mixed, unfamiliar, payment, authentication, data, security, release, and other sensitive changes need exact-SHA owner approval and any staging/independent device attestation required by policy. No label or successful workflow may be fabricated or used to bypass owner approval.
+6. **One consolidated release:** Batch related verified app updates wherever possible. Avoid multiple successive owner downloads. Report final commit, test evidence, GitHub release and actual APK version only after publication is verified. The owner's use of the published app is not a substitute for pre-release QA.
+7. **Never overclaim:** Differentiate implementation, emulator-tested, independently device-tested, merged, built, published, and confirmed on an owner's phone. The last cannot be asserted without evidence, and routine releases should not depend on asking the owner for a test-install confirmation.
+
+See `docs/testlab-auto-promotion.md` for the exact CI and release gates.
+
 ## BLINK mandatory auto-fix → verify → Testlab → main → update app
 
 User command (repeat for each BLINK repair/release request):
