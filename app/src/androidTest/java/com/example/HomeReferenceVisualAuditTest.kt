@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -82,7 +83,9 @@ class HomeReferenceVisualAuditTest {
                 // Repository-owned icon, used as a stand-in photograph solely in test screenshots.
                 val testImage = "android.resource://${context.packageName}/${R.drawable.app_icon}"
                 Column(
-                    Modifier.fillMaxSize()
+                    // The marketing reference uses a substantially shorter portrait.
+                    // Fix the audit viewport to the reference aspect ratio; do NOT crop the actual app.
+                    Modifier.fillMaxWidth().height(752.dp)
                         .background(MaterialTheme.colorScheme.surface)
                         .testTag("home_reference_audit_root")
                 ) {
@@ -101,6 +104,7 @@ class HomeReferenceVisualAuditTest {
                     FeedReferenceStatsRow(
                         worldRank = 248,
                         coins = 1250,
+                        rankImprovement = 1, // test-only historical movement fixture
                         onRankClick = {},
                         onCoinsClick = {}
                     )
@@ -124,6 +128,7 @@ class HomeReferenceVisualAuditTest {
                                 sharesCount = 0,
                                 repostsCount = 320,
                                 viewsCount = 12400,
+                                savesCount = 412,
                                 authorUsername = "aisha",
                                 authorProfileId = "visual-only"
                             ),
