@@ -1,0 +1,285 @@
+name: BLINK iOS internal TestFlight release
+
+# Manual only. This workflow has NO push, PR, schedule, or automatic upload.
+# It is inert until the owner merges the full verified iOS stack to main,
+# configures their eligible Apple Developer/App Store Connect access, and approves.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "iOS version (X.Y.Z), e.g. 0.1.0"
+        type: string
+        required: true
+      build_number:
+        description: "Unused, increasing App Store Connect build number"
+        type: string
+        required: true
+      approval:
+        description: "Type I_APPROVE_BLINK_INTERNAL_TESTFLIGHT"
+        type: string
+        required: true
+      upload_to_testflight:
+        description: "Explicitly upload internally to App Store Connect after building"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: ios-testflight-internal-release
+  cancel-in-progress: false
+
+jobs:
+  owner-release:
+    # Only the main branch of the repository is eligible, never Testlab or
+    # feature PRs. GitHub Environment ios-testflight SHOULD require owner review.
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: ios-testflight
+    runs-on: macos-15
+    timeout-minutes: 65
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify explicit source, version and owner approval
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build_number }}
+          RELEASE_APPROVAL: ${{ inputs.approval }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ios_testflight_preflight.py --mode release \
+            --ref "$GITHUB_REF" --version "$RELEASE_VERSION" \
+            --build "$RELEASE_BUILD" --approval "$RELEASE_APPROVAL"
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Release commit must belong to production main."
+            exit 1
+          }
+
+      - name: Require all preceding quality gates on this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from urllib.parse import quote
+          repo = os.environ["GITHUB_REPOSITORY"]
+          sha = os.environ["GITHUB_SHA"]
+          cmd = ["gh","api",f"repos/{repo}/commits/{sha}/check-runs?per_page=100"]
+          response = json.loads(subprocess.check_output(cmd, text=True))
+          names = {
+              "iOS foundation quality gate",
+              "iOS VoIP backend security gate",
+              "iOS unsigned device archive quality gate",
+              "Android quality gate",
+              "Windows desktop quality gate",
+          }
+          # Check runs may be named by JOB rather than workflow: job names
+          # on this repo are also accepted. No missing gate is silently green.
+          equivalents = {
+              "iOS foundation quality gate": {"simulator", "iOS foundation quality gate"},
+              "iOS VoIP backend security gate": {"validate", "iOS VoIP backend security gate"},
+              "iOS unsigned device archive quality gate": {"unsigned-device", "iOS unsigned device archive quality gate"},
+              "Android quality gate": {"android", "Android quality gate"},
+              "Windows desktop quality gate": {"windows", "Windows desktop quality gate"},
+          }
+          checks = response.get("check_runs", [])
+          for name in sorted(names):
+              matched = [c for c in checks if c.get("name") in equivalents[name]]
+              if not matched or any(c.get("conclusion") != "success" for c in matched):
+                  print(f"::error::{name} has not passed for this exact commit")
+                  sys.exit(1)
+              print(f"PASS {name}")
+          PY
+
+      - name: Enforce minimum Xcode 26 SDK for 2026 Apple uploads
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
+          MAJOR="${VERSION%%.*}"
+          if [[ ! "$MAJOR" =~ ^[0-9]+$ ]] || (( MAJOR < 26 )); then
+            echo "::error::Apple requires Xcode 26+ for 2026 iOS uploads. Use a suitably configured macOS runner."
+            exit 1
+          fi
+
+      - name: Require owner-provided certificate, profile and App Store key
+        env:
+          IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in IOS_CERT_P12_BASE64 IOS_CERT_PASSWORD IOS_PROFILE_BASE64 IOS_TEAM_ID \
+              ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_PRIVATE_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Owner-managed secret $name is missing. Nothing was signed or uploaded."
+              exit 1
+            fi
+          done
+          echo "All required secret NAMES are present (values not displayed)."
+
+      - name: Import distribution certificate and provisioning profile ephemerally
+        env:
+          IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          echo "IOS_TEMP_DIR=$RUNNER_TEMP/blink-ios-signing" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/blink-ios-signing"
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          d=Path(os.environ["RUNNER_TEMP"])/"blink-ios-signing"
+          for var,name in [("IOS_CERT_P12_BASE64","cert.p12"),("IOS_PROFILE_BASE64","profile.mobileprovision")]:
+              raw=os.environ[var].strip()
+              (d/name).write_bytes(base64.b64decode(raw,validate=True))
+              (d/name).chmod(0o600)
+          PY
+          KEYCHAIN_PATH="$RUNNER_TEMP/blink-ios-signing/build.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 1800 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/blink-ios-signing/cert.p12" -k "$KEYCHAIN_PATH" \
+            -P "$IOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security cms -D -i "$RUNNER_TEMP/blink-ios-signing/profile.mobileprovision" \
+            -o "$RUNNER_TEMP/blink-ios-signing/profile.plist"
+          PROFILE="$RUNNER_TEMP/blink-ios-signing/profile.plist"
+          /usr/libexec/PlistBuddy -c "Print :UUID" "$PROFILE" > "$RUNNER_TEMP/blink-ios-signing/profile-uuid"
+          /usr/libexec/PlistBuddy -c "Print :Name" "$PROFILE" > "$RUNNER_TEMP/blink-ios-signing/profile-name"
+          PROFILE_UUID="$(cat "$RUNNER_TEMP/blink-ios-signing/profile-uuid")"
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE")"
+          APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE")"
+          test "$PROFILE_TEAM" = "$IOS_TEAM_ID" || {
+            echo "::error::Provisioning team mismatch"; exit 1;
+          }
+          test "$APP_ID" = "${IOS_TEAM_ID}.ng.com.blink.ios" || {
+            echo "::error::Profile does not match the BLINK iOS bundle ID"; exit 1;
+          }
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/blink-ios-signing/profile.mobileprovision" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          # Each keychain and provisioning profile exists ONLY on the runner.
+          security find-identity -p codesigning "$KEYCHAIN_PATH" | grep -q 'Apple Distribution' || {
+            echo "::error::Apple Distribution signing identity not found"; exit 1;
+          }
+
+      - name: Prepare an opaque AppIcon from existing BLINK branding
+        run: bash scripts/prepare_ios_icon.sh
+
+      - name: Generate iOS Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+
+      - name: Archive the signed iOS app (VoIP still OFF)
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BUILD: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          PROFILE_NAME="$(cat "$RUNNER_TEMP/blink-ios-signing/profile-name")"
+          cd ios
+          xcodebuild -project BLINKiOS.xcodeproj -scheme BLINKiOS \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/BLINK-internal.xcarchive" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            MARKETING_VERSION="$RELEASE_VERSION" \
+            CURRENT_PROJECT_VERSION="$RELEASE_BUILD" \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
+            BLINK_VOIP_PUSH_ENABLED=NO BLINK_APNS_ENVIRONMENT=unconfigured \
+            archive
+          test -d "$RUNNER_TEMP/BLINK-internal.xcarchive/Products/Applications/BLINKiOS.app"
+
+      - name: Export internal distribution IPA
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          d=Path(os.environ["RUNNER_TEMP"])/"blink-ios-signing"
+          profile=(d/"profile-name").read_text().strip()
+          options={
+            "method":"app-store-connect",
+            "destination":"export",
+            "signingStyle":"manual",
+            "signingCertificate":"Apple Distribution",
+            "teamID":os.environ["IOS_TEAM_ID"],
+            "provisioningProfiles":{"ng.com.blink.ios":profile},
+            "stripSwiftSymbols":True,
+            "uploadSymbols":False,
+          }
+          (d/"ExportOptions.plist").write_bytes(plistlib.dumps(options))
+          PY
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/BLINK-internal.xcarchive" \
+            -exportPath "$RUNNER_TEMP/blink-ios-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/blink-ios-signing/ExportOptions.plist"
+          IPA="$(find "$RUNNER_TEMP/blink-ios-export" -maxdepth 1 -name '*.ipa' -type f | head -n1)"
+          test -s "$IPA" || { echo "::error::Export produced no IPA"; exit 1; }
+          echo "IPA_FILE=$IPA" >> "$GITHUB_ENV"
+          shasum -a 256 "$IPA" | cut -d' ' -f1 > "$RUNNER_TEMP/blink-ios-export/BLINK-SHA256.txt"
+          echo "Signed IPA exported. App Store submission is a separate opt-in."
+
+      - name: Upload the internal IPA to App Store Connect (explicit opt-in only)
+        if: inputs.upload_to_testflight == true
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.private_keys"
+          KEY_FILE="$HOME/.private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          printf '%s' "$ASC_API_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          # No automatic external group distribution or public App Store publish.
+          xcrun altool --upload-app --type ios \
+            --file "$IPA_FILE" \
+            --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"
+          rm -f "$KEY_FILE"
+          echo "Submitted for Apple processing; delivery to testers is NOT confirmed."
+
+      - name: Store signed archive SHA for owner audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLINK-iOS-internal-release-checksum
+          path: ${{ runner.temp }}/blink-ios-export/BLINK-SHA256.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Always clear ephemeral signing material
+        if: always()
+        run: |
+          set +e
+          security delete-keychain "$RUNNER_TEMP/blink-ios-signing/build.keychain-db" 2>/dev/null
+          rm -rf "$RUNNER_TEMP/blink-ios-signing"
+          rm -f "$HOME/.private_keys/AuthKey_"*.p8
