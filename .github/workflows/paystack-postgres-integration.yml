@@ -12,6 +12,13 @@ on:
       - '.github/workflows/paystack-postgres-integration.yml'
   push:
     branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/paystack_postgres_*'
+      - 'supabase/functions/paystack-*/**'
+      - 'supabase/functions/_shared/*paystack*'
+      - 'scripts/test_paystack_integrity.mjs'
+      - '.github/workflows/paystack-postgres-integration.yml'
   workflow_dispatch:
 
 permissions:

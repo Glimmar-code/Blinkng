@@ -14,6 +14,15 @@ on:
       - '.github/workflows/blink-feature-schema-staging.yml'
   push:
     branches: [Testlab]
+    paths:
+      - 'supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql'
+      - 'supabase/migrations/20261018041000_campus_registration_account_type.sql'
+      - 'supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql'
+      - 'supabase/migrations/20261018063000_blink_verification_subscription_contract.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/feature_schema_staging_*'
+      - 'supabase/tests/stories_universities_*'
+      - '.github/workflows/blink-feature-schema-staging.yml'
   workflow_dispatch:
 
 permissions:
