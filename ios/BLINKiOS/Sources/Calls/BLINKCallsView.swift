@@ -2,6 +2,10 @@ import SwiftUI
 
 /// Honest call history/state UI. Do not show "Answer" or a fake call duration
 /// until actual bidirectional iOS voice/video transport is implemented.
+private struct BLINKIncomingCallTarget: Identifiable {
+    let id: String
+}
+
 struct BLINKCallsView: View {
     @ObservedObject var auth: BLINKAuthStore
     let userID: String
@@ -11,6 +15,7 @@ struct BLINKCallsView: View {
     @State private var error: String?
     @State private var loading = false
     @State private var pending: Set<String> = []
+    @State private var answeredCallID: BLINKIncomingCallTarget?
 
     private var api: BLINKCallsAPI? {
         BLINKBackendConfiguration.fromBundle().map {
@@ -30,7 +35,7 @@ struct BLINKCallsView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Calls")
                         .font(.title2.bold())
-                    Text("Voice and video connection is not available in this iOS preview. You can review BLINK call history and decline existing incoming requests.")
+                    Text("Foreground voice and video calls are experimental. Background incoming calls need CallKit and Apple PushKit.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -75,6 +80,11 @@ struct BLINKCallsView: View {
                             Text(call.status.rawValue.capitalized)
                                 .font(.subheadline)
                             if call.isIncoming(for: userID) && call.canDecline {
+                                Button("Answer experimental foreground call") {
+                                    answeredCallID = BLINKIncomingCallTarget(id: call.id)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(pending.contains(call.id))
                                 Button("Decline ringing call") {
                                     Task { await decline(call.id) }
                                 }
@@ -88,7 +98,7 @@ struct BLINKCallsView: View {
                                 .disabled(pending.contains(call.id))
                             }
                             if call.status == .ringing {
-                                Text("Answer unavailable: secure media transport isn't connected on iOS.")
+                                Text("Answering requires microphone permission and a secure TURN connection.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -104,6 +114,11 @@ struct BLINKCallsView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("BLINK Calls")
+        .sheet(item: $answeredCallID) { target in
+            BLINKCallSessionView(
+                auth: auth, userID: userID, start: .incoming(callID: target.id)
+            )
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
