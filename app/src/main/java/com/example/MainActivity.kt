@@ -928,7 +928,9 @@ fun MainAppContent(
 
     fun startV2Checkout(kind: String, item: String, months: Int = 1) {
         if (v2PaymentBusy) return
-        if (!uiState.economyPolicy.cashCheckoutEnabled) {
+        // Preserve the authenticated, owner-only Coins pilot from main/PR #443.
+        // The server remains authoritative for authorisation and payment gates.
+        if (kind != "coin_pack" && !uiState.economyPolicy.cashCheckoutEnabled) {
             viewModel.showToast("Paystack cash checkout is not available yet.")
             return
         }
