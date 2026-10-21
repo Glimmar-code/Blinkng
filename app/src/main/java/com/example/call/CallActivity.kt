@@ -433,7 +433,14 @@ class CallActivity : ComponentActivity() {
 
         // Permissions are granted at this point, so it is safe to start the phone-call
         // foreground service before registering the call with Telecom.
-        startForegroundCall(active.id)
+        try {
+            startForegroundCall(active.id)
+        } catch (error: RuntimeException) {
+            Log.e("BlinkCall", "Android rejected call foreground service", error)
+            errorText = "Call audio could not start. Check microphone permission and retry."
+            failAndFinish("failed")
+            return
+        }
         BlinkTelecomManager.ensureCallRegistered(
             context = this,
             callId = active.id,
@@ -481,16 +488,23 @@ class CallActivity : ComponentActivity() {
                 dataSaverEnabled = dataSaverEnabled
             )
         } catch (error: Exception) {
+            Log.e("BlinkCall", "Call media initialization failed", error)
             mediaStarted = false
-            errorText = "Unable to initialize call media."
+            errorText = "Unable to initialize call media. Try again."
+            failAndFinish("failed")
+            return
+        } catch (error: LinkageError) {
+            // Recoverable native loader errors should not bring down the whole app.
+            // A JNI fatal abort still requires fixing the release's WebRTC APK.
+            Log.e("BlinkCall", "WebRTC native library could not be loaded", error)
+            mediaStarted = false
+            errorText = "This BLINK build cannot start calls. Update BLINK and try again."
             failAndFinish("failed")
             return
         }
         mediaReady = true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            speakerOn = rtcClient?.setSpeakerEnabled(speakerOn)?.let { routed ->
-                if (routed) speakerOn else false
-            } ?: speakerOn
+            if (rtcClient?.setSpeakerEnabled(speakerOn) != true) speakerOn = false
         }
 
         BlinkTelecomManager.bindMediaLifecycle(
