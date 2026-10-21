@@ -37,6 +37,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.blinkng.shared.BlinkReelPlaybackVisibility
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +79,9 @@ import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+/** Page visibility comes from BLINK's main navigation, not only the vertical reel pager. */
+val LocalBlinkReelDestinationVisible = staticCompositionLocalOf { true }
 
 /**
  * A polished, TikTok / Reels-style vertical video feed.
@@ -1348,8 +1355,25 @@ private fun ReelVideo(
     onBufferingChange: (Boolean) -> Unit,
     onPositionChange: (Long) -> Unit = {},
     onSessionEnd: (ReelPlaybackSession) -> Unit = {}
-) {
+ ) {
     val context = LocalContext.current
+    val destinationVisible = LocalBlinkReelDestinationVisible.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            appForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val playbackAllowed = BlinkReelPlaybackVisibility.mayPlay(
+        reelSelected = isActive,
+        destinationVisible = destinationVisible,
+        appForeground = appForeground
+    )
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
@@ -1398,9 +1422,9 @@ private fun ReelVideo(
             }
     }
 
-    LaunchedEffect(isActive, player, initialPositionMs) {
-        player.playWhenReady = isActive
-        if (isActive) {
+    LaunchedEffect(playbackAllowed, player, initialPositionMs) {
+        player.playWhenReady = playbackAllowed
+        if (playbackAllowed) {
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
                 currentOnInitialPositionConsumed()
@@ -1415,9 +1439,9 @@ private fun ReelVideo(
         player.volume = if (isMuted) 0f else 1f
     }
 
-    LaunchedEffect(player, isActive) {
+    LaunchedEffect(player, playbackAllowed) {
         var lastTickMs = android.os.SystemClock.elapsedRealtime()
-        while (isActive) {
+        while (playbackAllowed) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             if (player.isPlaying) {
                 watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)
@@ -1471,11 +1495,14 @@ private fun ReelVideo(
                 PlayerView(ctx).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+                    keepScreenOn = playbackAllowed
                     this.player = player
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.keepScreenOn = playbackAllowed
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (error != null) {
@@ -1484,7 +1511,7 @@ private fun ReelVideo(
                 TextButton(onClick = {
                     error = null
                     player.prepare()
-                    if (isActive) player.play()
+                    if (playbackAllowed) player.play()
                 }) {
                     Text("Retry")
                 }
