@@ -19,6 +19,7 @@ WINDOWS_ROOTS = ("desktopApp/", "shared/", "game3d/", "gradle/")
 BACKEND_ROOTS = ("supabase/",)
 ANDROID_FILES = BUILD_INPUTS | {
     ".github/workflows/android-build-check.yml",
+    ".github/workflows/domain-integration-check.yml",
     ".github/workflows/release-smoke-test.yml",
     ".github/scripts/restore_google_services.sh",
     ".github/scripts/build_full_website_apk.sh",
