@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.FeedPost
@@ -206,6 +207,14 @@ class HomeReferenceVisualAuditTest {
         // Separate capture proving that the preserved floating Create fits above navigation.
         rule.runOnIdle { showFab.value = true }
         rule.waitForIdle()
+        val fab = rule.onNodeWithTag("create_post_fab").fetchSemanticsNode().boundsInRoot
+        val share = rule.onNodeWithContentDescription("Share post").fetchSemanticsNode().boundsInRoot
+        val message = rule.onNodeWithContentDescription("Message").fetchSemanticsNode().boundsInRoot
+        fun noOverlap(left: androidx.compose.ui.geometry.Rect, right: androidx.compose.ui.geometry.Rect): Boolean =
+            left.right <= right.left || left.left >= right.right ||
+                left.bottom <= right.top || left.top >= right.bottom
+        check(noOverlap(fab, share)) { "Create must not cover the feed Share control." }
+        check(noOverlap(fab, message)) { "Create must not cover bottom navigation Messages." }
         saveShot("home-reference-with-create.png")
     }
 }
