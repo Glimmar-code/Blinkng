@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CardGiftcard
@@ -126,7 +127,7 @@ fun FeedTopBar(
         val compactAdmin = false
         Row(
             modifier = Modifier.fillMaxWidth()
-                .padding(start = 12.dp, end = 8.dp, top = 3.dp, bottom = 6.dp)
+                .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp)
                 .height(50.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -329,6 +330,7 @@ fun FeedReferenceStatsRow(
     coins: Long,
     onRankClick: () -> Unit,
     onCoinsClick: () -> Unit,
+    rankImprovement: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val rankLabel = if (worldRank > 0) "#${NumberFormat.getIntegerInstance().format(worldRank)}" else "—"
@@ -357,8 +359,18 @@ fun FeedReferenceStatsRow(
                     tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(23.dp))
                 Column {
                     Text("World Rank", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                    Text(rankLabel, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Black, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(rankLabel, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Black, maxLines = 1)
+                        // Only show movement when it is backed by a previous recorded rank.
+                        if (rankImprovement != null && rankImprovement > 0) {
+                            Icon(
+                                Icons.Default.ArrowDropUp,
+                                contentDescription = "World rank improved",
+                                tint = Color(0xFF29AB48), modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
