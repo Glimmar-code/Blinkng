@@ -107,6 +107,7 @@ import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedUtilityRow
 import com.example.ui.components.FeedTopBar
+import com.example.ui.components.FeedReferenceStatsRow
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.shimmerBackground
@@ -278,6 +279,7 @@ fun PremiumFeedScreen(
     stories: List<Story>,
     profiles: List<UserProfile>,
     currentUserProfile: UserProfile? = null,
+    blinkCoinBalance: Long = 0L,
     leaderboardUsers: List<LeaderboardUser>,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
@@ -324,6 +326,7 @@ fun PremiumFeedScreen(
     isAdmin: Boolean = false,
     onAdminClick: () -> Unit = {},
     onItemsClick: () -> Unit = {},
+    onGetCoinsClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
@@ -422,6 +425,9 @@ fun PremiumFeedScreen(
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            worldRank = currentUserProfile?.worldRank ?: 0,
+            userIsOnline = currentUserProfile?.onlineNow == true,
+            blinkCoinBalance = blinkCoinBalance,
             resumeUserKey = resumeUserKey,
             isDark = isDark,
             laneIndex = feedLane,
@@ -456,6 +462,7 @@ fun PremiumFeedScreen(
             isAdmin = isAdmin,
             onAdminClick = onAdminClick,
             onItemsClick = onItemsClick,
+            onGetCoinsClick = onGetCoinsClick,
             onLeaderboardClick = onLeaderboardClick,
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
@@ -594,6 +601,9 @@ private fun PremiumHomeFeed(
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
+    worldRank: Int,
+    userIsOnline: Boolean,
+    blinkCoinBalance: Long,
     resumeUserKey: String,
     isDark: Boolean,
     laneIndex: Int,
@@ -628,6 +638,7 @@ private fun PremiumHomeFeed(
     isAdmin: Boolean,
     onAdminClick: () -> Unit,
     onItemsClick: () -> Unit,
+    onGetCoinsClick: () -> Unit,
     onLeaderboardClick: () -> Unit,
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
@@ -644,7 +655,7 @@ private fun PremiumHomeFeed(
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
-    val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color(0xFFF5F6FA)
+    val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color.White
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
@@ -1427,7 +1438,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 56.dp + bottomNavigationInset)
+                    .padding(bottom = 64.dp + bottomNavigationInset)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1457,6 +1468,7 @@ private fun PremiumHomeFeed(
                     FeedTopBar(
                         reserveStatusBar = false,
                         userAvatar = userAvatar,
+                        userIsOnline = userIsOnline,
                         hasUnreadNotifications = hasUnreadNotifications,
                         unreadNotificationCount = unreadNotificationCount,
                         onSearchClick = onSearchClick,
@@ -1467,16 +1479,18 @@ private fun PremiumHomeFeed(
                         onMenuClick = onOpenMenu,
                         onProfileClick = { onProfileClick(currentUsername) }
                     )
-                    FeedUtilityRow(
-                        onLeaderboardClick = onLeaderboardClick,
-                        onGameClick = onGameClick,
-                        onStoreClick = onStoreClick,
-                        onBoostClick = onBoostClick,
-                        onDropsClick = onDropsClick
+                    // The reference places real rank and coin totals directly below BLINK.
+                    // Legacy game/boost/drops/store actions remain in their existing
+                    // destinations; Game is available INSIDE the Items menu.
+                    FeedReferenceStatsRow(
+                        worldRank = worldRank,
+                        coins = blinkCoinBalance,
+                        onRankClick = onLeaderboardClick,
+                        onCoinsClick = onGetCoinsClick
                     )
                 }
 
-                // X-style lane tabs stay pinned while only the upper BLINK chrome collapses.
+                // Reference-style underlined tabs stay pinned while the upper chrome collapses.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1642,6 +1656,7 @@ private fun PremiumHomeFeed(
                                                     authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
                                                     authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
                                                     authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                     authorUniversity = profile?.university.orEmpty(),
                                                     authorProfileId = resolvedFeedAuthorId(post, profile),
                                                     isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
@@ -1673,6 +1688,7 @@ private fun PremiumHomeFeed(
                                                 authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
                                                 authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
                                                 authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                     authorUniversity = profile?.university.orEmpty(),
                                                 authorProfileId = resolvedFeedAuthorId(post, profile),
                                                 isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
@@ -1854,7 +1870,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 64.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(

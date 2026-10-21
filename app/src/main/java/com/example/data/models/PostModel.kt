@@ -65,6 +65,8 @@ data class FeedPost(
     val repostedById: String? = null,
     val repostedByUsername: String? = null,
     var viewsCount: Int = 0,
+    /** Public aggregate supplied by the authenticated backend; null when unavailable. */
+    var savesCount: Int? = null,
     var isBookmarked: Boolean = false,
     val isReel: Boolean = false,
     val videoDuration: String = "0:00",

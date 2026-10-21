@@ -2220,6 +2220,38 @@ fun getCurrentUserId(): String? {
             } else emptySet()
         }
 
+        // One bounded aggregate RPC per feed page, never a per-card network call.
+        // On older production schemas (before the verified migration is deployed),
+        // leave the count unknown rather than displaying a fabricated zero.
+        val saveCounts: Map<String, Int>? = runCatching {
+            val pageIds = (0 until postsRaw.length())
+                .mapNotNull { postsRaw.optJSONObject(it)?.cleanString("id")?.takeIf(::isValidUuid) }
+                .distinct()
+                .take(60)
+            if (pageIds.isEmpty()) {
+                emptyMap()
+            } else {
+                val request = newRequestBuilder(
+                    "/rest/v1/rpc/get_visible_post_save_counts",
+                    authenticated = true
+                ).post(
+                    JSONObject().put("p_post_ids", JSONArray(pageIds)).toString().toRequestBody(jsonMediaType)
+                ).build()
+                executeRequest(request).use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException("Save count endpoint unavailable.")
+                    val rows = JSONArray(body.ifBlank { "[]" })
+                    buildMap {
+                        for (i in 0 until rows.length()) {
+                            val row = rows.optJSONObject(i) ?: continue
+                            val postId = row.cleanString("post_id")
+                            if (postId in pageIds) put(postId, row.optLong("save_count", 0L).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                        }
+                    }
+                }
+            }
+        }.getOrNull()
+
         // Hydrate poll metadata so poll posts render as real polls in Home.
         val pollIds = buildSet {
             for (i in 0 until postsRaw.length()) {
@@ -2323,6 +2355,8 @@ fun getCurrentUserId(): String? {
                     put("author_avatar", profile.cleanString("avatar_url"))
                     put("username", username)
                     put("author_username", username)
+                    // Unknown count is null until its safely aggregated backend is available.
+                    put("saves_count", saveCounts?.get(source.cleanString("id")) ?: if (saveCounts != null) 0 else JSONObject.NULL)
                     put("is_verified", profile.optBoolean("is_verified"))
                     put("verification_badge", profile.cleanString("verification_badge"))
                     source.cleanString("poll_id")
@@ -4159,6 +4193,8 @@ suspend fun uploadPostMedia(
             repostedById = obj.cleanString("reposted_by_id").takeIf { it.isNotBlank() },
             repostedByUsername = obj.cleanString("reposted_by_username").takeIf { it.isNotBlank() },
             viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
+            savesCount = if (obj.has("saves_count") && !obj.isNull("saves_count"))
+                obj.optInt("saves_count", 0).coerceAtLeast(0) else null,
             isBookmarked = obj.optBoolean("is_bookmarked", false),
             isReel = parsedIsReel,
             videoDuration = obj.cleanString("video_duration", "0:00"),
