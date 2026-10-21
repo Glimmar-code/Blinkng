@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -28,6 +31,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.models.FeedPost
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.FeedBottomBar
+import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedReferenceStatsRow
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedTopBar
@@ -77,18 +81,18 @@ class HomeReferenceVisualAuditTest {
         FileOutputStream(fixture).use { check(bitmapFixture.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         val fixtureUri = fixture.toURI().toString()
 
+        val showFab = mutableStateOf(false)
         rule.setContent {
             BlinkTheme(darkTheme = false) {
                 val context = LocalContext.current
                 // Repository-owned icon, used as a stand-in photograph solely in test screenshots.
                 val testImage = "android.resource://${context.packageName}/${R.drawable.app_icon}"
-                Column(
-                    // The marketing reference uses a substantially shorter portrait.
-                    // Fix the audit viewport to the reference aspect ratio; do NOT crop the actual app.
+                Box(
                     Modifier.fillMaxWidth().height(752.dp)
                         .background(MaterialTheme.colorScheme.surface)
                         .testTag("home_reference_audit_root")
                 ) {
+                  Column(Modifier.fillMaxSize()) {
                     FeedTopBar(
                         userAvatar = testImage,
                         userIsOnline = true,
@@ -160,6 +164,15 @@ class HomeReferenceVisualAuditTest {
                         isDark = false,
                         hasUnreadMessages = true
                     )
+                  }
+                  if (showFab.value) {
+                      CreatePostFab(
+                          expanded = false,
+                          onClick = {},
+                          modifier = Modifier.align(Alignment.BottomEnd)
+                              .padding(end = 14.dp, bottom = 74.dp)
+                      )
+                  }
                 }
             }
         }
@@ -167,23 +180,31 @@ class HomeReferenceVisualAuditTest {
         // The Media3/Coil image decoder needs an async frame after composition.
         Thread.sleep(900L)
         rule.waitForIdle()
-        val bitmap = rule.onNodeWithTag("home_reference_audit_root").captureToImage().asAndroidBitmap()
-        // Save through MediaStore outside app-owned storage: Gradle removes app
-        // external files when connectedDebugAndroidTest uninstalls the test APK.
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "home-reference-staging-light.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+        fun saveShot(filename: String) {
+            val bitmap = rule.onNodeWithTag("home_reference_audit_root")
+                .captureToImage().asAndroidBitmap()
+            // MediaStore survives the test package uninstall.
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/BLINK-Visual-Audit")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val resolver = ctx.contentResolver
+            val imageUri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+            resolver.openOutputStream(imageUri).use { stream ->
+                checkNotNull(stream)
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+            }
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            check(resolver.update(imageUri, values, null, null) == 1)
         }
-        val resolver = ctx.contentResolver
-        val imageUri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
-        resolver.openOutputStream(imageUri).use { stream ->
-            checkNotNull(stream)
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
-        }
-        values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-        check(resolver.update(imageUri, values, null, null) == 1)
+        // Clean reference view for direct visual comparison.
+        saveShot("home-reference-staging-light.png")
+        // Separate capture proving that the preserved floating Create fits above navigation.
+        rule.runOnIdle { showFab.value = true }
+        rule.waitForIdle()
+        saveShot("home-reference-with-create.png")
     }
 }
