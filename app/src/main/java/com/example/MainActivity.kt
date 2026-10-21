@@ -1153,6 +1153,9 @@ fun MainAppContent(
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
+                        onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
+                        onGameClick = { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) },
+                        onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
                         isLoading = uiState.isConversationsLoading
