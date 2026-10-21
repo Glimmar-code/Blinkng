@@ -757,31 +757,32 @@ fun PostCard(
                 ) {
                     ReadOnlyMetricAction(
                         icon = Icons.Default.Visibility, value = formatNumber(displayedViewsCount),
-                        description = "${displayedViewsCount} views"
+                        description = "${displayedViewsCount} views",
+                        tint = primaryText
                     )
                     PremiumPostAction(
                         icon = Icons.Default.Repeat,
-                        value = formatNumber(post.repostsCount), tint = repostTint,
+                        value = formatNumber(post.repostsCount), tint = if (post.isRepostedByMe) repostTint else primaryText,
                         description = if (post.isRepostedByMe) "Undo repost" else "Repost",
                         enabled = !isAuthor && onRepost != null,
                         onClick = { onRepost?.invoke() }
                     )
                     PremiumPostAction(
                         icon = Icons.Default.ChatBubbleOutline,
-                        value = formatNumber(post.commentsCount), tint = secondaryText,
+                        value = formatNumber(post.commentsCount), tint = primaryText,
                         description = "Comments", enabled = post.allowComments,
                         onClick = onComment
                     )
                     PremiumPostAction(
                         icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                         // Render the backend aggregate when known, never a placeholder.
-                        value = post.savesCount?.let(::formatNumber), tint = savedTint,
+                        value = post.savesCount?.let(::formatNumber), tint = if (post.isBookmarked) savedTint else primaryText,
                         description = if (post.isBookmarked) "Remove saved post" else "Save post",
                         onClick = onBookmark
                     )
                     PremiumPostAction(
                         icon = Icons.Default.Share, value = null,
-                        tint = secondaryText, description = "Share post", onClick = onShare
+                        tint = primaryText, description = "Share post", onClick = onShare
                     )
                     if (displayImages.isEmpty()) {
                         PremiumPostAction(
@@ -992,7 +993,8 @@ private fun PremiumPollCard(
 private fun RowScope.ReadOnlyMetricAction(
     icon: ImageVector,
     value: String,
-    description: String
+    description: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
     Box(
         modifier = Modifier
@@ -1005,13 +1007,13 @@ private fun RowScope.ReadOnlyMetricAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = tint,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(4.dp))
             Text(
                 text = value,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = tint,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1
             )
