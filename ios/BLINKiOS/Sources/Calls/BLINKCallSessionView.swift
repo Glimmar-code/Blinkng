@@ -13,11 +13,27 @@ struct BLINKCallSessionView: View {
     enum Start {
         case outgoing(conversationID: String, calleeID: String, kind: BLINKCallKind)
         case incoming(callID: String)
+        case systemAnswered(callID: UUID)
     }
 
     init(auth: BLINKAuthStore, userID: String, start: Start) {
         _call = StateObject(wrappedValue: BLINKForegroundCallCoordinator(auth: auth, userID: userID))
         self.start = start
+    }
+
+    /// Keep exactly the same WebRTC coordinator as the CallKit answer action;
+    /// never create a second peer connection for one accepted system call.
+    init(coordinator: BLINKForegroundCallCoordinator, callKitID: UUID) {
+        _call = StateObject(wrappedValue: coordinator)
+        start = .systemAnswered(callID: callKitID)
+    }
+
+    private func finish() {
+        if case .systemAnswered(let id) = start {
+            BLINKCallKitManager.shared.requestEnd(callID: id)
+        } else {
+            Task { await call.end() }
+        }
     }
 
     var body: some View {
@@ -85,10 +101,8 @@ struct BLINKCallSessionView: View {
                 .disabled(call.engine == nil)
 
                 Button(role: .destructive) {
-                    Task {
-                        await call.end()
-                        dismiss()
-                    }
+                    finish()
+                    dismiss()
                 } label: {
                     Label("End call", systemImage: "phone.down.fill")
                         .frame(maxWidth: .infinity)
@@ -97,7 +111,7 @@ struct BLINKCallSessionView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
 
-                Text("Experimental foreground calling. Background ringing and CallKit/PushKit are not yet enabled.")
+                Text("Experimental calling. System incoming calls require a signed, server-configured iOS release.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -108,7 +122,8 @@ struct BLINKCallSessionView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") {
-                        Task { await call.end(); dismiss() }
+                        finish()
+                        dismiss()
                     }
                 }
             }
@@ -121,17 +136,24 @@ struct BLINKCallSessionView: View {
                 await call.outgoing(conversationID: conversation, calleeID: callee, kind: kind)
             case .incoming(let id):
                 await call.incoming(callID: id)
+            case .systemAnswered:
+                break // CallKit already verified/answered using this coordinator.
             }
         }
         .onChange(of: scenePhase) { _, phase in
             // Until PushKit/CallKit exist, stop the foreground-only media call
             // on backgrounding rather than pretending it remains reliably active.
             if phase == .background {
-                Task { await call.end() }
+                if case .systemAnswered = start {
+                    // CallKit manages system call lifecycle; do not create a
+                    // second local hangup just because the UI backgrounds.
+                } else {
+                    Task { await call.end() }
+                }
             }
         }
         .onDisappear {
-            Task { await call.end() }
+            finish()
         }
     }
 }
