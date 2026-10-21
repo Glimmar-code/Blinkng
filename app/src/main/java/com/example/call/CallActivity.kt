@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -158,6 +159,8 @@ class CallActivity : ComponentActivity() {
     private var answerRequested = false
     private var isCaller = false
     private var connectingSinceMillis = 0L
+    private var ringingSinceElapsedRealtimeMs = 0L
+    private var queuedSpeakerPreference = false
 
     private var statusText by mutableStateOf("Loading call…")
     private var callType by mutableStateOf(CallType.AUDIO)
@@ -236,21 +239,7 @@ class CallActivity : ComponentActivity() {
                         cameraOn = rtcClient?.toggleCamera() ?: cameraOn
                     },
                     onSwitchCamera = { rtcClient?.switchCamera() },
-                    onToggleSpeaker = {
-                        val activeCall = call
-                        val desired = !speakerOn
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                            speakerOn = rtcClient?.setSpeakerEnabled(desired) ?: speakerOn
-                        } else if (activeCall != null) {
-                            lifecycleScope.launch {
-                                val routedByTelecom =
-                                    BlinkTelecomManager.setSpeakerEnabled(activeCall.id, desired)
-                                if (!routedByTelecom) {
-                                    errorText = "Unable to change audio output right now."
-                                }
-                            }
-                        }
-                    }
+                    onToggleSpeaker = { requestSpeakerRoute(!speakerOn) }
                 )
             }
         }
@@ -344,10 +333,15 @@ class CallActivity : ComponentActivity() {
         peerUsername = sourceIntent.getStringExtra(EXTRA_PEER_USERNAME).orEmpty()
         peerAvatar = sourceIntent.getStringExtra(EXTRA_PEER_AVATAR).orEmpty()
         if (peerId.isNotBlank() && (peerName == "Blink user" || peerUsername.isBlank())) {
-            repository.fetchPeer(peerId).getOrNull()?.let { peer ->
-                peerName = peer.name
-                peerUsername = peer.username
-                peerAvatar = peer.avatar
+            // Profile loading is optional; don't delay call signaling on a slow profile request.
+            lifecycleScope.launch {
+                repository.fetchPeer(peerId).getOrNull()?.let { peer ->
+                    if (call?.id == loaded.id && !ending.get()) {
+                        peerName = peer.name
+                        peerUsername = peer.username
+                        peerAvatar = peer.avatar
+                    }
+                }
             }
         }
 
@@ -361,6 +355,8 @@ class CallActivity : ComponentActivity() {
         }
         speakerOn = callType == CallType.VIDEO
         cameraOn = callType == CallType.VIDEO
+        ringingSinceElapsedRealtimeMs =
+            if (loaded.status == CallStatus.RINGING) SystemClock.elapsedRealtime() else 0L
 
         startRealtime(loaded.id)
         startReconciliationLoop(loaded.id)
@@ -372,6 +368,41 @@ class CallActivity : ComponentActivity() {
             loaded.status in setOf(CallStatus.CONNECTING, CallStatus.CONNECTED) -> {
                 mediaRequestedForIncomingAnswer = true
                 requestMediaPermissions(incomingAnswer = true)
+            }
+        }
+    }
+
+    private fun requestSpeakerRoute(enabled: Boolean) {
+        if (!mediaReady) {
+            // The Telecom audio endpoint may not exist while the other phone is ringing.
+            // Remember the selection instead of reporting a premature routing failure.
+            speakerOn = enabled
+            queuedSpeakerPreference = true
+            errorText = null
+            return
+        }
+        val activeId = call?.id ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            val routed = rtcClient?.setSpeakerEnabled(enabled) == true
+            if (routed) {
+                speakerOn = enabled
+                errorText = null
+            } else {
+                errorText = "Audio output is unavailable. Try again when connected."
+            }
+            return
+        }
+        lifecycleScope.launch {
+            val byTelecom = BlinkTelecomManager.setSpeakerEnabled(activeId, enabled)
+            if (ending.get() || call?.id != activeId) return@launch
+            // Core-Telecom is the preferred route; use AudioManager only when Telecom
+            // couldn't supply an endpoint. Never report success on a rejected route.
+            val routed = byTelecom || (rtcClient?.setSpeakerEnabled(enabled) == true)
+            if (routed) {
+                speakerOn = enabled
+                errorText = null
+            } else {
+                errorText = "Audio output is unavailable. Try again when connected."
             }
         }
     }
@@ -456,7 +487,11 @@ class CallActivity : ComponentActivity() {
             return
         }
         mediaReady = true
-        speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            speakerOn = rtcClient?.setSpeakerEnabled(speakerOn)?.let { routed ->
+                if (routed) speakerOn else false
+            } ?: speakerOn
+        }
 
         BlinkTelecomManager.bindMediaLifecycle(
             callId = active.id,
@@ -488,6 +523,10 @@ class CallActivity : ComponentActivity() {
                     speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
                 }
             }
+        }
+        if (queuedSpeakerPreference) {
+            queuedSpeakerPreference = false
+            requestSpeakerRoute(speakerOn)
         }
 
         val queued = pendingSignals.sortedBy { it.id }.toList()
@@ -527,6 +566,17 @@ class CallActivity : ComponentActivity() {
                     System.currentTimeMillis() - connectingSinceMillis > 35_000L
                 ) {
                     failAndFinish("connection_timeout")
+                    break
+                }
+                if (
+                    ringingSinceElapsedRealtimeMs > 0L &&
+                    CallStartupPolicy.shouldFailUnanswered(
+                        call?.status,
+                        SystemClock.elapsedRealtime() - ringingSinceElapsedRealtimeMs
+                    )
+                ) {
+                    errorText = "The other phone did not answer. Check its connection and notifications."
+                    failAndFinish("no_answer")
                     break
                 }
             }
@@ -583,12 +633,14 @@ class CallActivity : ComponentActivity() {
         when (updated.status) {
             CallStatus.RINGING -> statusText = if (isCaller) "Calling…" else "Incoming call"
             CallStatus.CONNECTING -> {
+                ringingSinceElapsedRealtimeMs = 0L
                 incomingRinging = false
                 statusText = "Connecting…"
                 if (connectingSinceMillis == 0L) connectingSinceMillis = System.currentTimeMillis()
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
+                ringingSinceElapsedRealtimeMs = 0L
                 incomingRinging = false
                 statusText = "Connected"
                 if (!mediaStarted) requestMediaPermissions(incomingAnswer = !isCaller)
@@ -612,12 +664,29 @@ class CallActivity : ComponentActivity() {
         override fun onLocalDescription(kind: String, description: SessionDescription) {
             val active = call ?: return
             lifecycleScope.launch {
-                signalSendMutex.withLock {
-                    repository.sendSignal(
-                        active.id,
-                        kind,
-                        JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)
-                    )
+                val payload = JSONObject()
+                    .put("type", description.type.canonicalForm())
+                    .put("sdp", description.description)
+                val delivered = signalSendMutex.withLock {
+                    var saved = false
+                    for (attempt in 0 until CallStartupPolicy.MAX_SIGNAL_ATTEMPTS) {
+                        if (ending.get()) break
+                        val result = repository.sendSignal(active.id, kind, payload)
+                        if (result.isSuccess) {
+                            saved = true
+                            break
+                        }
+                        Log.w("BlinkCall", "Unable to save $kind signaling (attempt ${attempt + 1})",
+                            result.exceptionOrNull())
+                        if (attempt + 1 < CallStartupPolicy.MAX_SIGNAL_ATTEMPTS) {
+                            delay(CallStartupPolicy.signalRetryDelayMillis(attempt))
+                        }
+                    }
+                    saved
+                }
+                if (!delivered && !ending.get() && call?.id == active.id) {
+                    errorText = "Call setup could not reach the other phone. Check your connection."
+                    failAndFinish("failed")
                 }
             }
         }
@@ -633,7 +702,11 @@ class CallActivity : ComponentActivity() {
                             .put("sdpMid", candidate.sdpMid ?: JSONObject.NULL)
                             .put("sdpMLineIndex", candidate.sdpMLineIndex)
                             .put("candidate", candidate.sdp)
-                    )
+                    ).onFailure { error ->
+                        // ICE is best-effort; later candidates can still work, but log
+                        // failures instead of silently presenting an endless 'Calling'.
+                        Log.w("BlinkCall", "Unable to save ICE candidate", error)
+                    }
                 }
             }
         }
