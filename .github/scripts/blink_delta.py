@@ -130,6 +130,49 @@ def manifest(target_code, target_sha, rows):
     return "\n".join(lines) + "\n"
 
 
+def parse_manifest(text, target_code, target_sha):
+    lines = text.splitlines()
+    if (len(lines) not in range(3, 14) or lines[:3] !=
+            ["BLINK-DELTA-1", f"targetVersionCode={target_code}",
+             f"targetApkSha256={target_sha}"]):
+        raise ValueError("Delta manifest target identity mismatch")
+    versions = set()
+    result = []
+    for line in lines[3:]:
+        parts = line.removeprefix("base=").split(",")
+        if not line.startswith("base=") or len(parts) != 5:
+            raise ValueError("Invalid delta manifest row")
+        version = int(parts[0])
+        size = int(parts[4])
+        if (version < 1 or version >= target_code or version in versions or
+                not re.fullmatch(r"[0-9a-f]{64}", parts[1]) or
+                parts[2] != f"delta-{version}.bdp" or
+                not re.fullmatch(r"[0-9a-f]{64}", parts[3]) or
+                not 1 <= size <= 85 * 1024 * 1024):
+            raise ValueError("Unsafe delta entry")
+        versions.add(version)
+        result.append((version, parts[1], parts[2], parts[3], size))
+    return result
+
+
+def check_delta_assets(folder, target_code, target_sha):
+    root = Path(folder)
+    manifest_file = root / "deltas.txt"
+    if not manifest_file.is_file() or manifest_file.stat().st_size > 4096:
+        raise ValueError("Missing or oversized delta manifest")
+    rows = parse_manifest(manifest_file.read_text(), target_code, target_sha)
+    allowed = {"deltas.txt"} | {r[2] for r in rows}
+    present = {p.name for p in root.iterdir() if p.name == "deltas.txt" or
+               p.name.startswith("delta-")}
+    if present != allowed:
+        raise ValueError("Unexpected delta assets")
+    for version, old_sha, filename, patch_sha, size in rows:
+        patch = root / filename
+        if not patch.is_file() or patch.stat().st_size != size or digest(patch) != patch_sha:
+            raise ValueError(f"Published delta checksum mismatch for {version}")
+    return rows
+
+
 def build_release(repository, apk, target_code, target_sha, signing_sha, destination):
     """Best-effort patches for up to 10 distinct prior published, compatible APKs.
 
@@ -155,6 +198,7 @@ def build_release(repository, apk, target_code, target_sha, signing_sha, destina
         if not re.fullmatch(r"v[A-Za-z0-9][A-Za-z0-9._-]{0,79}", tag):
             continue
         with tempfile.TemporaryDirectory() as temp:
+            patch = None
             try:
                 subprocess.run(["gh", "release", "download", tag, "--repo", repository,
                                 "--pattern", "Blink-latest.apk", "--pattern",
@@ -187,7 +231,8 @@ def build_release(repository, apk, target_code, target_sha, signing_sha, destina
                     raise ValueError("Delta did not reconstruct signed APK exactly")
                 rows.append((code, old_sha, name, digest(patch), size))
             except (OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
-                (destination / f"delta-{item.get('versionCode', 'failed')}.bdp").unlink(missing_ok=True)
+                if patch is not None:
+                    patch.unlink(missing_ok=True)
                 print(f"Skipped unsafe/unavailable delta for {tag}: {error}")
     text = manifest(target_code, target_sha, rows)
     (destination / "deltas.txt").write_text(text)
