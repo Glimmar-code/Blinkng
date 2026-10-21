@@ -1,3 +1,9 @@
+## 2026-10-21 — Owner-only Android Paystack Coins pilot (PR #443)
+
+- **PARITY-EXCEPTION: android-owner-coin-checkout-pilot-20261021** — Android's native Coins button previously rejected all purchases using a stale global economy flag. This change only allows the Android pack picker and existing authenticated Paystack client to reach the production Edge Function. The server remains authoritative: confirmed owner UUID/email allowlist, independent checkout kill switch, merchant mode validation, and database cash-checkout gate are still required. No new public payments or bypass of backend security.
+- **Windows equivalent:** The Windows client retains its existing Coins interface and global payment gate. No Windows checkout change is intended during the Android-only owner pilot. Before any general release, implement equivalent Windows purchase behavior and remove the temporary Android-only exception.
+- **Verification:** CI Android and Windows quality/parity gates, signed APK integrity, real-device owner checkout, non-owner rejection, one genuine authorized ₦100 Paystack LIVE purchase delivering exactly 100 Coins, signed webhook validation, duplicate replay idempotency, and receipt delivery. No LIVE transaction or fulfillment has been verified by this code change.
+
 ## 2026-10-19 — BLINK production release safety and Android website updater (integrated Testlab candidate)
 
 - **Shared:** official-release policy validates HTTPS GitHub delivery origins, maximum download sizes, Android package/version identity and signing continuity. `BlinkApkResumePolicy` validates HTTP byte-range responses, refuses mismatched offsets and restarts safely when a server ignores a Range request.
