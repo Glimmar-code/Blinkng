@@ -1870,7 +1870,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 72.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
