@@ -233,10 +233,13 @@ private fun BlinkInboxStories(
     onStoryClick: (Story) -> Unit
 ) {
     // Only server-provided, uploaded stories appear; online status never creates a fake ring.
+    val ownStory = remember(stories) {
+        stories.firstOrNull { it.isUser && it.storyImage.isNotBlank() }
+    }
     val visible = remember(stories) {
         stories.asSequence().filter { it.storyImage.isNotBlank() }
             .filterNot { it.isUser }
-            .distinctBy { it.username.lowercase() }
+            .distinctBy { it.username.removePrefix("@").lowercase() }
             .toList()
     }
     val onlineUsers = remember(conversations) {
@@ -250,15 +253,23 @@ private fun BlinkInboxStories(
     ) {
         item(key = "add_note") {
             Column(
-                modifier = Modifier.width(64.dp).clickable(role = Role.Button, onClick = onAddStoryClick)
-                    .testTag("inbox_your_note"),
+                modifier = Modifier.width(64.dp).clickable(
+                    role = Role.Button,
+                    onClick = { ownStory?.let(onStoryClick) ?: onAddStoryClick() }
+                ).testTag("inbox_your_note"),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Box(
-                    Modifier.size(62.dp).border(1.dp, secondary.copy(alpha = .22f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add your story", tint = primary, modifier = Modifier.size(25.dp))
+                if (ownStory == null) {
+                    Box(
+                        Modifier.size(62.dp).border(1.dp, secondary.copy(alpha = .22f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Create your story", tint = primary, modifier = Modifier.size(25.dp))
+                    }
+                } else {
+                    Box(Modifier.size(62.dp).border(2.dp, Color(0xFF1687FF), CircleShape).padding(3.dp)) {
+                        InboxAvatar(ownStory.avatar, ownStory.displayLabel, 56.dp, bg)
+                    }
                 }
                 Spacer(Modifier.height(5.dp))
                 Text("Your note", color = secondary, fontSize = 11.sp, maxLines = 1)
