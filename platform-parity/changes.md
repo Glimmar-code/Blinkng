@@ -1049,3 +1049,10 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - These database migrations are **committed ONLY to a Testlab-derived branch**; the connected production Supabase project is unchanged.
 - The owner declined paid Supabase preview branches. Do not incur charges. Use a truly isolated no-cost Postgres fixture or free-safe preview for RLS, Auth, Storage, scheduled workers, media uploads, Paystack, and coin-ledger tests. Pure SQL parsing and GitHub green checks are insufficient.
 - Do not merge PR #342 into Testlab, PR #341 into main, or publish new APK/Windows builds until latest-SHA SQL regression, Android build/tests, Windows build/parity, runtime, backend and server-provider checks have all passed. Fix actual failures rather than bypassing checks. If these gates are unavailable, leave PRs draft and production untouched.
+
+## 2026-10-21 — Android 15 WebRTC JNI and Telecom call readiness (Testlab candidate)
+
+- PARITY-EXCEPTION: android15-webrtc-jni-audio-route — Android Core-Telecom, Android AudioManager, native WebRTC JNI and R8 shrinking are Android-only. Windows does not use Android's Java JNI bridge, Android Telecom, or Android APK resource shrinking.
+- Android: check actual minified APK for org.webrtc JNI classes and ARM64 native library; make WebRTC factory initialization retry-safe; queue speaker changes before media becomes ready, verify endpoint switch outcome, and surface failed FCM invitation/SDP delivery instead of hanging in Calling.
+- Shared semantics: failed SDP sends retry in a bounded manner; unanswered ringing times out and is reconciled with Supabase server state. Existing Windows calling and account permissions must not regress.
+- Tests: Android unit/release/instrumentation smoke, Windows compile/parity, real two-phone Android 15 voice/video/FCM/ICE/TURN call matrix required before main release. No changes to production backend.
