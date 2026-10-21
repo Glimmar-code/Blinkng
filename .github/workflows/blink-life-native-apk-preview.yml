@@ -5,14 +5,20 @@ on:
     branches: [Testlab]
     paths:
       - 'game3d/**'
-      - 'app/src/**'
+      - 'app/src/main/java/com/example/game/**'
+      - 'app/src/test/java/com/example/game/**'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
   push:
     branches: [Testlab]
     paths:
       - 'game3d/**'
-      - 'app/src/**'
+      - 'app/src/main/java/com/example/game/**'
+      - 'app/src/test/java/com/example/game/**'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
   workflow_dispatch:
