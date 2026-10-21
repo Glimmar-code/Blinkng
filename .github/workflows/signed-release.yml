@@ -33,6 +33,7 @@ on:
       - '.github/workflows/signed-release.yml'
       # Publication-security updates must be exercised through a fresh signed build.
       - '.github/scripts/publish_verified_apk.py'
+      - '.github/scripts/install_release_smoke_apk.sh'
 
 permissions:
   contents: read
