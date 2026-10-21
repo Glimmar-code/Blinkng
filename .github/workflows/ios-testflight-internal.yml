@@ -73,34 +73,33 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, os, subprocess, sys
-          from urllib.parse import quote
+          from collections import defaultdict
           repo = os.environ["GITHUB_REPOSITORY"]
           sha = os.environ["GITHUB_SHA"]
-          cmd = ["gh","api",f"repos/{repo}/commits/{sha}/check-runs?per_page=100"]
-          response = json.loads(subprocess.check_output(cmd, text=True))
-          names = {
+          # Actions workflow names, not just ambiguous job names such as
+          # "validate" used by several unrelated GitHub workflows.
+          data = json.loads(subprocess.check_output([
+              "gh", "api",
+              f"repos/{repo}/actions/runs?head_sha={sha}&per_page=100"
+          ], text=True))
+          # Max 100 runs for this one SHA; missing gates must fail closed.
+          runs = data.get("workflow_runs", [])
+          required = [
               "iOS foundation quality gate",
               "iOS VoIP backend security gate",
               "iOS unsigned device archive quality gate",
               "Android quality gate",
               "Windows desktop quality gate",
-          }
-          # Check runs may be named by JOB rather than workflow: job names
-          # on this repo are also accepted. No missing gate is silently green.
-          equivalents = {
-              "iOS foundation quality gate": {"simulator", "iOS foundation quality gate"},
-              "iOS VoIP backend security gate": {"validate", "iOS VoIP backend security gate"},
-              "iOS unsigned device archive quality gate": {"unsigned-device", "iOS unsigned device archive quality gate"},
-              "Android quality gate": {"android", "Android quality gate"},
-              "Windows desktop quality gate": {"windows", "Windows desktop quality gate"},
-          }
-          checks = response.get("check_runs", [])
-          for name in sorted(names):
-              matched = [c for c in checks if c.get("name") in equivalents[name]]
-              if not matched or any(c.get("conclusion") != "success" for c in matched):
-                  print(f"::error::{name} has not passed for this exact commit")
+          ]
+          for workflow in required:
+              candidates = sorted(
+                  [r for r in runs if r.get("name") == workflow],
+                  key=lambda r: r.get("created_at", ""), reverse=True
+              )
+              if not candidates or candidates[0].get("conclusion") != "success":
+                  print(f"::error::{workflow} has not passed on exact commit {sha}")
                   sys.exit(1)
-              print(f"PASS {name}")
+              print(f"PASS {workflow}")
           PY
 
       - name: Enforce minimum Xcode 26 SDK for 2026 Apple uploads
