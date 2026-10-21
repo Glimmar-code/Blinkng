@@ -78,7 +78,9 @@ def inspect_download(directory, release):
         raise ValueError("Published tag does not match signed release version")
     expected_apk = info.get("apkSha256", "")
     if names != EXPECTED_ASSETS:
-        check_delta_assets(folder, int(info["versionCode"]), expected_apk)
+        rows = check_delta_assets(folder, int(info["versionCode"]), expected_apk)
+        if names != EXPECTED_ASSETS | {"deltas.txt"} | {row[2] for row in rows}:
+            raise ValueError("The downloaded release contains an unexpected asset set")
     verify_apk(folder / "Blink-latest.apk", expected_apk)
     verify_web_pack(folder / "blink-life-web.zip", info["gamePackSha256"])
     if (folder / "blink-life-web.zip").stat().st_size != int(info["gamePackSize"]):
