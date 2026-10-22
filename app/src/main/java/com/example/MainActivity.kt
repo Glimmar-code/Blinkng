@@ -456,6 +456,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             viewModel.retryPendingRewardedAdClaim()
             if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
