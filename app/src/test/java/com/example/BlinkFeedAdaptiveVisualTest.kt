@@ -16,7 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -42,10 +43,10 @@ import org.robolectric.annotation.GraphicsMode
  * The actual authenticated LazyColumn and bottom navbar require emulator capture.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
 class BlinkFeedAdaptiveVisualTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun homeHeaderAt100PercentOnCompact320dpScreen() = render(320, 1f, 0)
     @Test fun homeHeaderAt130PercentOnCompact320dpScreen() = render(320, 1.3f, 0)
@@ -116,7 +117,7 @@ class BlinkFeedAdaptiveVisualTest {
         rule.onNodeWithContentDescription("Filter feed").assertExists()
         rule.onNodeWithContentDescription("Open Game").assertExists()
         val sizeName = fontScale.toString().replace('.', '_')
-        rule.onNodeWithTag("feed_visual_frame").captureRoboImage(
+        rule.activity.window.decorView.captureRoboImage(
             filePath = "build/test-visuals/home_w${widthDp}_scale${sizeName}_scroll${postScrollPixels}.png"
         )
     }
