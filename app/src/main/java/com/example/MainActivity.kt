@@ -2651,6 +2651,11 @@ fun MainAppContent(
                 onReactStory = { storyId, emoji -> viewModel.reactToStory(storyId, emoji) },
                 onReplyStory = { story, text -> viewModel.replyToStory(story, text) },
                 onDeleteStory = { storyId -> viewModel.deleteStory(storyId) },
+                onSetStoryRepostsAllowed = { storyId, allowed ->
+                    viewModel.setStoryRepostsAllowed(storyId, allowed)
+                },
+                onRepostStory = { story -> viewModel.repostStory(story) },
+                onMuteUser = { username -> viewModel.muteUser(username) },
                 onProfileClick = { username -> viewModel.openProfile(username) }
             )
         }

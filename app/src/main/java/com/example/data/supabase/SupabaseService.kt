@@ -3249,7 +3249,10 @@ suspend fun uploadPostMedia(
                         isLiked = liked.contains(sid),
                         verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE,
                         createdAt = createdAt,
-                        isVideo = mediaType.equals("video", true)
+                        isVideo = mediaType.equals("video", true),
+                        allowReposts = o.optBoolean("allow_reposts", false),
+                        repostedFromId = o.optString("reposted_from_id")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) }
                     )
                 )
             }
@@ -3338,6 +3341,39 @@ suspend fun uploadPostMedia(
      * to this account's canonical story-media path. A cached public copy may
      * remain accessible elsewhere, so this is not secure private archiving.
      */
+    /** Server validates ownership; disabling consent also revokes derived reposts. */
+    suspend fun setStoryRepostsAllowed(storyId: String, allowed: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId() ?: return@withContext false
+            val body = JSONObject().put("p_story_id", storyId).put("p_allow", allowed)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/set_my_story_reposts_allowed", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    parseSupabaseError(raw, "Couldn't update status repost permissions.")
+                )
+                raw.trim() == "true"
+            }
+        }
+
+    /** Reposts inherit the original expiry and cannot bypass opt-in or blocks. */
+    suspend fun repostStory(storyId: String): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/repost_blink_story", true)
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw IllegalStateException(
+                parseSupabaseError(raw, "This status can't be reposted.")
+            )
+            raw.trim().trim('"').isNotBlank() && raw.trim() != "null"
+        }
+    }
+
     suspend fun deleteOwnedStory(storyId: String, mediaUrl: String): Pair<Boolean, Boolean> =
         withContext(Dispatchers.IO) {
             val uid = getCurrentUserId() ?: return@withContext false to false

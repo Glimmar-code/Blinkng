@@ -70,6 +70,9 @@ fun StoryViewerDialog(
     onReactStory: (storyId: String, emoji: String) -> Unit = { _, _ -> },
     onReplyStory: (story: Story, replyText: String) -> Unit = { _, _ -> },
     onDeleteStory: (storyId: String) -> Unit = {},
+    onSetStoryRepostsAllowed: (storyId: String, allowed: Boolean) -> Unit = { _, _ -> },
+    onRepostStory: (Story) -> Unit = {},
+    onMuteUser: (String) -> Unit = {},
     onProfileClick: (String) -> Unit = {}
 ) {
     // Synthetic "Your Story" cards are not media; actual owner stories are viewable.
@@ -129,6 +132,7 @@ fun StoryViewerDialog(
     var videoReady by remember(currentStory.id) { mutableStateOf(!currentStory.isVideo) }
     var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     var confirmDelete by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    var confirmMute by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     LaunchedEffect(currentStory.id) {
         progress = 0f
         var elapsedMs = 0L
@@ -477,7 +481,43 @@ fun StoryViewerDialog(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) { Text("Delete") }
                 }
+                if (currentStory.repostedFromId == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Allow reposts",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = currentStory.allowReposts,
+                            onCheckedChange = {
+                                onSetStoryRepostsAllowed(currentStory.id, it)
+                            }
+                        )
+                    }
+                }
             } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (currentStory.allowReposts && currentStory.repostedFromId == null) {
+                    OutlinedButton(
+                        onClick = { onRepostStory(currentStory) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Repost to Status") }
+                }
+                OutlinedButton(
+                    onClick = { confirmMute = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) { Text("Mute") }
+            }
             // Quick Emojis Row (Togglable or permanent)
             Row(
                 modifier = Modifier
@@ -591,6 +631,23 @@ fun StoryViewerDialog(
             storyId = currentStory.id,
             onDismiss = { showInsights = false },
             onProfileClick = onProfileClick
+        )
+    }
+    if (confirmMute && !currentStory.isUser) {
+        AlertDialog(
+            onDismissRequest = { confirmMute = false },
+            title = { Text("Mute this account?") },
+            text = { Text("Hide this account's posts, reels and statuses. You can unmute later.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMute = false
+                    onDismiss()
+                    onMuteUser(currentStory.username)
+                }) { Text("Mute") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMute = false }) { Text("Cancel") }
+            }
         )
     }
     if (confirmDelete && currentStory.isUser) {

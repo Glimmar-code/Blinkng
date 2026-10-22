@@ -146,7 +146,10 @@ data class Story(
     val displayName: String = "",
     // Server timestamps and media type allow reliable 24-hour expiry and playback.
     val createdAt: String = "",
-    val isVideo: Boolean = false
+    val isVideo: Boolean = false,
+    // Reposts require per-story creator consent and inherit original expiry.
+    val allowReposts: Boolean = false,
+    val repostedFromId: String? = null
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }

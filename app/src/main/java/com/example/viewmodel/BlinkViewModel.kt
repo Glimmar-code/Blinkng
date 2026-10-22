@@ -6828,13 +6828,56 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun setStoryRepostsAllowed(storyId: String, allowed: Boolean) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (!story.isUser || story.repostedFromId != null ||
+            !BlinkStoryLifecycle.isActive(story.createdAt, true)) return
+        viewModelScope.launch {
+            val saved = runCatching {
+                supabaseService.setStoryRepostsAllowed(storyId, allowed)
+            }.getOrDefault(false)
+            if (saved) {
+                val state = _uiState.value
+                val next = state.stories.map {
+                    if (it.id == storyId) it.copy(allowReposts = allowed) else it
+                }.let { stories ->
+                    if (allowed) stories else stories.filterNot { it.repostedFromId == storyId }
+                }
+                _uiState.value = state.copy(
+                    stories = next,
+                    activeViewingStory = next.firstOrNull {
+                        it.id == state.activeViewingStory?.id
+                    }
+                )
+                showToast(if (allowed) "Reposts enabled for this status."
+                    else "Reposts disabled and existing shares revoked.")
+            } else showToast("Couldn't change status sharing.")
+        }
+    }
+
+    fun repostStory(story: Story) {
+        if (story.isUser || !story.allowReposts || story.repostedFromId != null ||
+            !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status isn't available for reposting.")
+            return
+        }
+        viewModelScope.launch {
+            val done = runCatching { supabaseService.repostStory(story.id) }.getOrDefault(false)
+            if (done) {
+                val updated = runCatching { postRepository.fetchStories() }.getOrNull()
+                if (updated != null) _uiState.value = _uiState.value.copy(stories = updated)
+                showToast("Reposted to your Status.")
+            } else showToast("Couldn't repost this status.")
+        }
+    }
+
     fun deleteStory(storyId: String) {
         val story = _uiState.value.stories.firstOrNull {
             it.id == storyId && it.isUser
         } ?: return
         viewModelScope.launch {
             val result = runCatching {
-                supabaseService.deleteOwnedStory(story.id, story.storyImage)
+                supabaseService.deleteOwnedStory(story.id, if (story.repostedFromId == null) story.storyImage else "")
             }.getOrNull()
             if (result?.first == true) {
                 val current = _uiState.value
