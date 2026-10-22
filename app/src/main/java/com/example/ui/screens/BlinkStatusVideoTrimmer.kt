@@ -59,9 +59,10 @@ internal object BlinkStatusVideoTrimmer {
             extractor.setDataSource(context, source, null)
             val tracks = mutableMapOf<Int, Int>()
             var videoFound = false
-            muxer = MediaMuxer(
+            val writer = MediaMuxer(
                 output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             )
+            muxer = writer
             for (i in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(i)
                 val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
@@ -71,12 +72,12 @@ internal object BlinkStatusVideoTrimmer {
                 }
                 if (mime in videoMimes || mime == "audio/mp4a-latm") {
                     if (mime in videoMimes) videoFound = true
-                    tracks[i] = muxer.addTrack(format)
+                    tracks[i] = writer.addTrack(format)
                     extractor.selectTrack(i)
                 }
             }
             require(videoFound) { "No supported video track found." }
-            muxer.start()
+            writer.start()
             started = true
 
             val startUs = window.startMs * 1_000L
@@ -106,13 +107,13 @@ internal object BlinkStatusVideoTrimmer {
                     val monotonicTime = maxOf(newTime, (lastByTrack[outputTrack] ?: -1L) + 1L)
                     lastByTrack[outputTrack] = monotonicTime
                     info.set(0, count, monotonicTime, extractor.sampleFlags)
-                    muxer.writeSampleData(outputTrack, buffer, info)
+                    writer.writeSampleData(outputTrack, buffer, info)
                     samplesWritten++
                 }
                 if (!extractor.advance()) break
             }
             require(samplesWritten > 0) { "Video has no samples in this trim window." }
-            muxer.stop()
+            writer.stop()
             started = false
             require(output.length() in 1..BlinkStatusVideoTrimPolicy.MAX_INPUT_BYTES) {
                 "Edited video is too large to share."
