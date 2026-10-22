@@ -1077,3 +1077,12 @@ publisher-signed APK directly from any of up to 10 compatible past releases.
 Windows does not use APKs or Android's installer; its native desktop update
 and distribution flow is unchanged. Full APK and Google Play update routes
 remain independent and intact. QA and Testlab approval required before main.
+
+
+## 2026-10-22 — Status 2.0 foundation (Testlab staging only)
+
+- **Shared:** `BlinkStoryLifecycle` sets a strict 24-hour story activity contract, covered by unit tests. Server migration applies the same cutoff at the authenticated API boundary and schedules safe deactivation.
+- **Android:** Correct own-story viewer exclusion bug, decode video with Media3, release player resources and pause during backgrounding, and preserve story progress on hold.
+- **Windows:** Existing desktop app has **no dedicated Story viewer**, so this is *not full user-facing Windows Story parity*. The lifecycle rule is available in shared code for the planned desktop story surface. A desktop feature implementation is a release prerequisite unless an approved platform exception is documented. Do not substitute placeholder content or silently mark Windows done.
+- **Backend:** Query visibility narrowing affects both platforms once deployed. Staging RLS and cross-version compatibility tests are mandatory. Private audiences are not enabled by this patch, and legacy public media URLs are not private.
+- **Release state:** Draft Testlab branch only. No production migration, main merge or APK publication.
