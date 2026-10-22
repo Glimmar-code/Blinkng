@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -95,6 +96,7 @@ import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.performance.FeedScrollPerformanceMonitor
 import com.example.performance.rememberBlinkReduceMotion
 import com.example.data.supabase.BlinkEconomyService
@@ -455,6 +457,7 @@ fun PremiumFeedScreen(
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
             onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
             onOpenCreatePost = onOpenCreatePost,
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
@@ -631,6 +634,7 @@ private fun PremiumHomeFeed(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
@@ -659,6 +663,8 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val pendingCoinGiftRequests = remember { mutableStateMapOf<String, String>() }
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
     // The Home feed must hydrate follows independently. Previously only Reels
     // called refresh(), leaving Home to show '+ Follow' for existing follows.
@@ -1662,6 +1668,31 @@ private fun PremiumHomeFeed(
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                     onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                     onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                    onMessageAuthor = {
+                                                        onDirectMessage(
+                                                            post.authorUsername.trim().removePrefix("@")
+                                                                .ifBlank { post.author.trim().removePrefix("@") },
+                                                            post.author,
+                                                            post.authorAvatar
+                                                        )
+                                                    },
+                                                    onGiftCoinsAuthor = { recipientId, amount ->
+                                                        val key = "$recipientId:$amount"
+                                                        val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        uiScope.launch {
+                                                            val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                            if (sent) pendingCoinGiftRequests.remove(key)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Coin gift not confirmed. No transfer shown.",
+                                                                android.widget.Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    },
+                                                    coinGiftingEnabled = true,
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1694,6 +1725,31 @@ private fun PremiumHomeFeed(
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                 onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                 onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                onMessageAuthor = {
+                                                    onDirectMessage(
+                                                        post.authorUsername.trim().removePrefix("@")
+                                                            .ifBlank { post.author.trim().removePrefix("@") },
+                                                        post.author,
+                                                        post.authorAvatar
+                                                    )
+                                                },
+                                                onGiftCoinsAuthor = { recipientId, amount ->
+                                                    val key = "$recipientId:$amount"
+                                                    val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
+                                                    uiScope.launch {
+                                                        val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                        if (sent) pendingCoinGiftRequests.remove(key)
+                                                        android.widget.Toast.makeText(
+                                                            context,
+                                                            if (sent) "Sent $amount BLINK Coins"
+                                                            else "Coin gift not confirmed. No transfer shown.",
+                                                            android.widget.Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                },
+                                                coinGiftingEnabled = true,
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
