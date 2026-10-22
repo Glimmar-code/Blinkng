@@ -1185,6 +1185,22 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+    /** Refresh only the authenticated wallet after a verified checkout, not the feed. */
+    fun refreshCoinBalanceAfterPayment() {
+        val accountId = _uiState.value.myProfile.id
+        if (accountId.isBlank() || !_uiState.value.isOnline) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                .onFailure { Log.w(TAG, "Payment wallet refresh failed", it) }
+                .getOrNull() ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (_uiState.value.myProfile.id != accountId) return@withContext
+                _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                BlinkWalletStore.publish(balance)
+            }
+        }
+    }
+
     fun refreshProfileRewards() {
         val before = _uiState.value
         if (!before.isOnline || before.myProfile.id.isBlank()) return
