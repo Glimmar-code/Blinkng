@@ -48,6 +48,23 @@ class UserInteractionRepository {
         }.getOrDefault(false)
     }
 
+    /** Requires staged gift_blink_coins_once RPC; reuse the same request ID on retry. */
+    suspend fun giftCoinsOnce(profileId: String, amount: Int, requestId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val receiver = profileId.trim()
+            if (receiver.isBlank() || amount !in setOf(20, 50, 100) ||
+                runCatching { java.util.UUID.fromString(requestId) }.isFailure) return@withContext false
+            runCatching {
+                rpc(
+                    "gift_blink_coins_once",
+                    JSONObject()
+                        .put("p_receiver_id", receiver)
+                        .put("p_amount", amount)
+                        .put("p_request_id", requestId)
+                ).toLongOrNull() != null
+            }.getOrDefault(false)
+        }
+
     private fun rpc(name: String, body: JSONObject): String {
         val token = SupabaseService.accessToken()
             ?: throw IllegalStateException("Please sign in again.")
