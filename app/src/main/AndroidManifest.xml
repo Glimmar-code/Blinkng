@@ -109,6 +109,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Payment return deep link only wakes the authenticated server-side verifier.
+                 Callback parameters are untrusted and never credit Coins locally. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="payment" />
+            </intent-filter>
+
             <!-- Verified public BLINK links. Production builds resolve shareHost to
                  www.blink.com.ng; sharePathPrefix is empty on the canonical domain. -->
             <intent-filter android:autoVerify="true">
