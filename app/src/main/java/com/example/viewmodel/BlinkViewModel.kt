@@ -6688,7 +6688,7 @@ private suspend fun restoreSupabaseSession() {
     fun closeStory() { _uiState.value = _uiState.value.copy(activeViewingStory = null) }
     fun createStory(storyImage: String, caption: String, faculty: String = "") {
         val p=_uiState.value.myProfile
-        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
+        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString())
         viewModelScope.launch(Dispatchers.IO){
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
@@ -6708,7 +6708,7 @@ private suspend fun restoreSupabaseSession() {
                 val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
                 val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
                 val p=_uiState.value.myProfile
-                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
+                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString(),isVideo=isVideo)
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
                 _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
                 showToast("Story shared.")
@@ -6720,7 +6720,14 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-    fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
+    fun markStoryViewed(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser || story.id == "story_me") return
+        _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map {
+            if (it.id == storyId) it.copy(hasUnseen = false) else it
+        })
+        viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) }
+    }
     fun toggleStoryLike(storyId: String) {
         var next = false
         var count = 0
