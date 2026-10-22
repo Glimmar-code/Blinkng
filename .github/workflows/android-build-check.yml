@@ -46,6 +46,17 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Upload adaptive-font and Feed-motion screenshots for visual review
+        if: steps.scope.outputs.android == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-feed-visual-captures-${{ github.sha }}
+          path: |
+            app/build/test-visuals/**/*.png
+            app/build/test-visuals/*.png
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Android lint
         if: steps.scope.outputs.android == 'true'
         shell: bash
