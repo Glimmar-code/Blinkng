@@ -260,6 +260,7 @@ class MainActivity : ComponentActivity() {
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             intent.data = null
             return
         }
@@ -414,6 +415,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var pendingPaystackRefreshJob: Job? = null
+
+    /** A verified Coin pack updates its wallet only; other purchases also change
+     * badges, campaign status, purchase history or third-party delivery.
+     */
+    private fun refreshVerifiedPaystackPurchase(kind: String?) {
+        if (kind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+        else viewModel.fetchSupabaseData()
+    }
+
+    /**
+     * Reconcile a returned Paystack checkout without waiting for the next feed sync.
+     * The server alone decides whether a signed payment has been fulfilled.
+     */
+    private fun reconcileReturnedPaystackPayment() {
+        val accountId = viewModel.uiState.value.myProfile.id
+        if (accountId.isBlank() || pendingPaystackRefreshJob?.isActive == true) return
+        val preferences = getSharedPreferences("blink_paystack_v2_" + accountId, MODE_PRIVATE)
+        val reference = preferences.getString("reference", null)?.trim().orEmpty()
+        if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
+
+        pendingPaystackRefreshJob = lifecycleScope.launch {
+            val service = BlinkPaystackCheckoutService()
+            for (attempt in 0 until 5) {
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    preferences.getString("reference", null) != reference) return@launch
+                val confirmed = runCatching { service.confirmPayment(reference) }.getOrDefault(false)
+                // Payment confirmation is asynchronous; never update a switched account.
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    preferences.getString("reference", null) != reference) return@launch
+                if (confirmed) {
+                    val kind = preferences.getString("kind", null)
+                    preferences.edit().remove("reference").remove("kind").apply()
+                    refreshVerifiedPaystackPurchase(kind)
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
+                    return@launch
+                }
+                if (attempt < 4) delay(2000L * (attempt + 1))
+            }
+            // Keep the reference for recovery on the next foreground entry.
+            viewModel.showToast("Payment verification is pending. Please don't pay again.")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         playInAppUpdateCoordinator.onResume()
@@ -421,6 +466,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             viewModel.retryPendingRewardedAdClaim()
             if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
@@ -944,7 +990,7 @@ fun MainAppContent(
                 val checkout = paystackV2.createCheckout(kind, item, months)
                 v2PendingReference = checkout.reference
                 v2PendingPrompt = true
-                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", kind).apply()
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                         .addCategory(Intent.CATEGORY_BROWSABLE)
@@ -975,7 +1021,7 @@ fun MainAppContent(
                 )
                 v2PendingReference = checkout.reference
                 v2PendingPrompt = true
-                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", "boost").apply()
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                         .addCategory(Intent.CATEGORY_BROWSABLE)
@@ -999,7 +1045,7 @@ fun MainAppContent(
                 val checkout=paystackV2.createMarketCheckout(listingId)
                 v2PendingReference=checkout.reference
                 v2PendingPrompt=true
-                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","market").apply()
                 context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
                 viewModel.showToast("Pay on Paystack, then return to BLINK to verify.")
@@ -1021,7 +1067,7 @@ fun MainAppContent(
                 val checkout=paystackV2.createGiftCheckout(recipient,packId,note)
                 v2PendingReference=checkout.reference
                 v2PendingPrompt=true
-                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","gift").apply()
                 showGiftPurchase=false
                 context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
@@ -1039,11 +1085,13 @@ fun MainAppContent(
         paymentScope.launch {
             try {
                 if (paystackV2.confirmPayment(reference)) {
+                    val purchaseKind = paystackPrefs.getString("kind", null)
                     v2PendingReference = null
                     v2PendingPrompt = false
-                    paystackPrefs.edit().remove("reference").apply()
-                    viewModel.fetchSupabaseData()
-                    viewModel.showToast("Paystack payment confirmed. Purchase delivered.")
+                    paystackPrefs.edit().remove("reference").remove("kind").apply()
+                    if (purchaseKind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+                    else viewModel.fetchSupabaseData()
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
                 } else viewModel.showToast("Payment is still pending. Check again later.")
             } catch (error: Exception) {
                 viewModel.showToast(error.message ?: "Could not verify this payment.")
