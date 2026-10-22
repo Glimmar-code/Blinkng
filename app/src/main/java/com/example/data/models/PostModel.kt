@@ -149,7 +149,8 @@ data class Story(
     val isVideo: Boolean = false,
     // Reposts require per-story creator consent and inherit original expiry.
     val allowReposts: Boolean = false,
-    val repostedFromId: String? = null
+    val repostedFromId: String? = null,
+    val background: String = ""
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
