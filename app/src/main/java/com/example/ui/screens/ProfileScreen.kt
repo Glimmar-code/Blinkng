@@ -307,7 +307,7 @@ fun ProfileScreen(
             ) {
 
                 // ============================================================
-                // COVER HEADER — parallax + gradient wash
+                // REFERENCE DASHBOARD — full-screen profile with live account data
                 // ============================================================
                 item(key = "reference_dashboard") {
                     BlinkReferenceProfileDashboard(
@@ -337,7 +337,10 @@ fun ProfileScreen(
                         onShowBadges = { selectedTab = if (isMe) 5 else 4 },
                         onShare = { showShareSheet = true },
                         onVisitors = { showVisitorHistory = true },
-                        onTopAction = onTopAction
+                        onTopAction = { action ->
+                            if (action == "menu" && !isMe) showMoreSheet = true
+                            else onTopAction(action)
+                        }
                     )
                 }
 
