@@ -165,6 +165,9 @@ fun ProfileScreen(
     val overlayOffset = remember(profile.id) { Animatable(0f) }
     val overlayScope = rememberCoroutineScope()
     val interactionRepository = remember { UserInteractionRepository() }
+    // Preserve request UUID across retries so an unknown network outcome
+    // cannot charge the sender a second time.
+    val pendingGiftRequests = remember(profile.id) { mutableStateMapOf<Int, String>() }
     val mentorListingId = remember(connectHub.mentors, profile.id) {
         connectHub.mentors.firstOrNull { it.userId == profile.id }?.id
     }
@@ -659,13 +662,20 @@ fun ProfileScreen(
                                                 }
                                             },
                                             onMessage = { onDirectMessage(profile.username) },
-                                            onGiftCoins = {
+                                            onGiftCoins = { amount ->
                                                 if (profile.id.isNotBlank()) {
+                                                    val requestId = pendingGiftRequests.getOrPut(amount) {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
                                                     overlayScope.launch {
-                                                        val sent = interactionRepository.giftCoins(profile.id, 10)
+                                                        val sent = interactionRepository.giftCoinsOnce(
+                                                            profile.id, amount, requestId
+                                                        )
+                                                        if (sent) pendingGiftRequests.remove(amount)
                                                         Toast.makeText(
                                                             context,
-                                                            if (sent) "10 Blink Coins sent" else "Unable to send Blink Coins",
+                                                            if (sent) "Sent $amount BLINK Coins"
+                                                            else "Coin gift not confirmed. No transfer shown.",
                                                             Toast.LENGTH_SHORT
                                                         ).show()
                                                     }
