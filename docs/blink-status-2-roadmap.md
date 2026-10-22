@@ -69,3 +69,26 @@ Android/Windows parity or document an explicit platform exception.
       to other parties. Migrate to a private bucket and signed, per-viewer
       authorized media delivery before displaying privacy audience controls.
 - [ ] Window desktop's dedicated Story UI and full parity still missing.
+
+## Phase 5 — text Status creation (staged)
+
+- [x] Android Status composer offers Photo, Video and Text choices.
+- [x] Text statuses have five whitelist-validated colour backgrounds.
+- [x] Text content is limited to 240 characters, with a live counter.
+- [x] Emoji stamps insert into text and are persisted in the status itself.
+- [x] Text status publishing sends `media_type=text`, `text`, `caption`
+      and `background` through the authenticated Stories API, without
+      uploading an empty image or requiring media storage.
+- [x] Story model and immersive viewer render selected text backgrounds.
+- [x] Device-local, user-scoped text/caption drafts autosave; draft contents
+      are not sent to Supabase until Share is pressed. Successful publishing
+      clears the user's local draft; failures retain it.
+- [x] Pure Kotlin tests cover text bounds and colour whitelist fallback.
+- [ ] Verify Android compile, text composition layout, database INSERT and
+      profile logout/account switching (automated/emulator preferred).
+- [ ] Full photo editing/cropping/filters NOT implemented.
+- [ ] Video trimming/export NOT implemented.
+- [ ] Sticker positioning/dragging NOT implemented; emoji inserts are text.
+- [ ] Secure Close Friends/campus-only statuses NOT implemented: existing
+      `story-media` bucket is public and cannot enforce private audiences.
+- [ ] No production migration or APK release until checks/staging validations.
