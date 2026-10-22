@@ -41,6 +41,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.blinkng.shared.notification.BlinkStoryLifecycle
+import com.blinkng.shared.notification.BlinkStatusTextPolicy
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkGold
@@ -176,6 +177,27 @@ fun StoryViewerDialog(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (displayedStory.caption.isNotBlank()) {
+            // Text statuses use a fixed safe palette and never load external media.
+            val safeBackground = BlinkStatusTextPolicy.background(displayedStory.background)
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Color(android.graphics.Color.parseColor(safeBackground))
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = displayedStory.caption,
+                    color = Color.White,
+                    fontSize = 25.sp,
+                    lineHeight = 31.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp),
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         } else {
             // Fallback rich gradient background
             Box(
@@ -435,7 +457,7 @@ fun StoryViewerDialog(
         }
 
         // Caption Overlay (if available)
-        if (currentStory.caption.isNotBlank()) {
+        if (currentStory.caption.isNotBlank() && currentStory.storyImage.isNotBlank()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
