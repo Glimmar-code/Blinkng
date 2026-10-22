@@ -772,10 +772,10 @@ fun ConnectScreen(state: DesktopAppState) {
             val campusName = state.profile?.university?.trim().orEmpty()
             val campusFilteredPosts = if (campusName.isBlank()) emptyList()
                 else campusFeedPosts.filter { post ->
-                    !post.isReel && post.authorUniversity?.trim()?.equals(campusName, ignoreCase = true) == true
+                    !post.isReel && com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(campusName, post.authorUniversity)
                 }
             val visibleCampusPosts = if (discoveryTab == 2)
-                campusFilteredPosts.sortedByDescending { it.likeCount.toLong() + it.commentCount * 2L + it.shareCount * 3L }.take(3)
+                campusFilteredPosts.sortedByDescending { com.blinkng.shared.discovery.BlinkCampusFeedPolicy.previewScore(it.likeCount, it.commentCount, it.shareCount) }.take(3)
             else campusFilteredPosts.sortedByDescending { it.createdAt }.take(3)
             if (postsLoading) item { LoadingRow() }
             if (!postsLoading && visibleCampusPosts.isEmpty()) item {
