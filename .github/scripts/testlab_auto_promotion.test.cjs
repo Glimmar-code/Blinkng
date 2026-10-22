@@ -16,7 +16,7 @@ const ready = (more = {}) => ({
   mergeable_state: 'clean',
   changed_files: 1,
   labels: [{name: 'auto-promote'}],
-  body: '- [x] Build\n- [x] Verify device',
+  body: '- [x] Build\n- [x] Verify device\n<!-- BLINK_AGENT_VERIFIED_SHA: ' + head + ' -->',
   ...more,
 });
 const check = (name, status = 'completed', conclusion = 'success', id = 1, number = 300) => ({
@@ -97,7 +97,7 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
 test('authorized AI opt-in on the latest Testlab revision requires no GitHub owner comment', () => {
-  assert.equal(policy.preflight(ready({body: '- [x] verified'}), ['web/app.js']), null);
+  assert.equal(policy.preflight(ready(), ['web/app.js']), null);
   assert.equal(policy.preflight(ready({labels: []}), ['web/app.js']), 'No auto-promote opt-in label');
   assert.equal(policy.preflight(ready({draft: true}), ['web/app.js']),
     'PR is not open and ready for review');
@@ -153,7 +153,7 @@ test('synchronize fails closed if GitHub cannot revoke existing opt-in', async (
 test('end-to-end trusted controller merges fully verified agent-opted Testlab PR without owner comments', async () => {
   const names = policy.requiredChecks(['README.md']);
   const labels = [{name: 'auto-promote'}];
-  const pr = ready({labels, changed_files: 1, body: '- [x] Complete'});
+  const pr = ready({labels, changed_files: 1});
   let merges = 0;
   let commentsFetched = 0;
   const rest = {
