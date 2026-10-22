@@ -67,6 +67,7 @@ fun ProfileFollowInteractButton(
     onViewProfile: () -> Unit,
     onOpenConnectHub: () -> Unit,
     darkSurface: Boolean = false,
+    giftingEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -116,9 +117,11 @@ fun ProfileFollowInteractButton(
                 menuExpanded = false
                 onMessage()
             }
-            InteractionMenuItem(Icons.Default.CardGiftcard, "Send BLINK Coins") {
-                menuExpanded = false
-                giftDialogOpen = true
+            if (giftingEnabled) {
+                InteractionMenuItem(Icons.Default.CardGiftcard, "Send BLINK Coins") {
+                    menuExpanded = false
+                    giftDialogOpen = true
+                }
             }
             InteractionMenuItem(Icons.Default.SportsEsports, "Game challenge") {
                 menuExpanded = false
