@@ -648,6 +648,9 @@ fun ConnectScreen(state: DesktopAppState) {
     var discoveryTab by remember { mutableStateOf(0) }
     var inviteFeedback by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
+    var campusFeedPosts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var campusPostCommentId by remember { mutableStateOf<String?>(null) }
+    var postsLoading by remember { mutableStateOf(true) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var type by remember { mutableStateOf("community") }
@@ -659,6 +662,9 @@ fun ConnectScreen(state: DesktopAppState) {
         loading = true
         listings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
         loading = false
+        postsLoading = true
+        campusFeedPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
+        postsLoading = false
     }
     LaunchedEffect(Unit) { reload() }
 
@@ -755,6 +761,51 @@ fun ConnectScreen(state: DesktopAppState) {
                         if (listing.tags.isNotEmpty()) Text(listing.tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     }
                 }
+            }
+            item {
+                Text(
+                    if (discoveryTab == 2) "Trending on your campus" else "What's happening on campus",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
+                )
+            }
+            val campusName = state.profile?.university?.trim().orEmpty()
+            val campusFilteredPosts = if (campusName.isBlank()) emptyList()
+                else campusFeedPosts.filter { post ->
+                    !post.isReel && post.authorUniversity?.trim()?.equals(campusName, ignoreCase = true) == true
+                }
+            val visibleCampusPosts = if (discoveryTab == 2)
+                campusFilteredPosts.sortedByDescending { it.likeCount.toLong() + it.commentCount * 2L + it.shareCount * 3L }.take(3)
+            else campusFilteredPosts.sortedByDescending { it.createdAt }.take(3)
+            if (postsLoading) item { LoadingRow() }
+            if (!postsLoading && visibleCampusPosts.isEmpty()) item {
+                Text(
+                    "No posts from your university are available yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            items(visibleCampusPosts, key = { "campus-${it.id}" }) { post ->
+                PostCard(
+                    post = post,
+                    onLike = {
+                        scope.launch {
+                            val liked = runCatching { state.client.toggleLike(post.id) }.getOrNull() ?: return@launch
+                            campusFeedPosts = campusFeedPosts.map {
+                                if (it.id == post.id) it.copy(
+                                    isLiked = liked,
+                                    likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0)
+                                ) else it
+                            }
+                        }
+                    },
+                    onComments = {
+                        campusPostCommentId = if (campusPostCommentId == post.id) null else post.id
+                    },
+                    onCopyLink = {
+                        DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
+                    }
+                )
+                if (campusPostCommentId == post.id) CommentsPanel(state, post.id)
             }
         }
 
