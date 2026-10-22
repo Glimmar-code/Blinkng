@@ -208,8 +208,12 @@ fun BlinkUpdateMiniProgress(
                 .pointerInput(maxX, maxY) {
                     detectDragGestures { change, delta ->
                         change.consume()
-                        dragX = (x + delta.x).coerceIn(0f, maxX) - initialX
-                        dragY = (y + delta.y).coerceIn(0f, maxY) - initialY
+                        // Read the mutable offset each gesture event; pointerInput
+                        // otherwise captures an outdated x/y during continuous dragging.
+                        val currentX = (initialX + dragX).coerceIn(0f, maxX)
+                        val currentY = (initialY + dragY).coerceIn(0f, maxY)
+                        dragX = (currentX + delta.x).coerceIn(0f, maxX) - initialX
+                        dragY = (currentY + delta.y).coerceIn(0f, maxY) - initialY
                     }
                 }
                 .clickable(onClick = onOpen),
