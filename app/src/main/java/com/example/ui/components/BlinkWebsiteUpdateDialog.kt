@@ -1,14 +1,22 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +27,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -102,7 +114,7 @@ fun BlinkWebsiteUpdateDialog(
                         }
                         Text(
                             if (progress == null) "Downloading ${"%.1f".format(done)} MB…"
-                            else "Downloading ${progress}% • ${"%.1f".format(done)} MB",
+                            else "Downloading ${progress}% • ${"%.1f".format(done)} / ${"%.1f".format(total / (1024.0 * 1024.0))} MB",
                             color = Color.White,
                         )
                         TextButton(onClick = onPauseDownload, modifier = Modifier.fillMaxWidth()) {
@@ -151,6 +163,82 @@ fun BlinkWebsiteUpdateDialog(
                         Text("Remind me later", color = Color(0xFFDDDDDD))
                     }
                 }
+            }
+        }
+    }
+}
+
+
+/**
+ * Draggable, compact continuation control for a user-approved background APK download.
+ * Visible only while the user has explicitly closed the dialog; tapping restores it.
+ * This is an in-app overlay, not a system overlay permission.
+ */
+@Composable
+fun BlinkUpdateMiniProgress(
+    downloadState: WebsiteApkDownloadCoordinator.State,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val size = 60.dp
+        val sizePx = with(density) { size.toPx() }
+        val maxX = (with(density) { maxWidth.toPx() } - sizePx).coerceAtLeast(0f)
+        // This overlay is hosted in a measured bottom-aligned box.
+        val maxY = (with(density) { maxHeight.toPx() } - sizePx).coerceAtLeast(0f)
+        val initialX = with(density) { 14.dp.toPx() }.coerceAtMost(maxX)
+        val initialY = (maxY - with(density) { 120.dp.toPx() }).coerceAtLeast(0f)
+        var dragX by rememberSaveable { mutableStateOf(0f) }
+        var dragY by rememberSaveable { mutableStateOf(0f) }
+        val x = (initialX + dragX).coerceIn(0f, maxX)
+        val y = (initialY + dragY).coerceIn(0f, maxY)
+        val amount = (downloadState as? WebsiteApkDownloadCoordinator.State.Downloading)
+        val percent = if (amount != null && amount.total > 0L) {
+            (amount.bytes.toFloat() / amount.total).coerceIn(0f, 1f)
+        } else null
+        Surface(
+            shape = CircleShape,
+            color = Color(0xFF161616),
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .size(size)
+                .pointerInput(maxX, maxY) {
+                    detectDragGestures { change, delta ->
+                        change.consume()
+                        dragX = (x + delta.x).coerceIn(0f, maxX) - initialX
+                        dragY = (y + delta.y).coerceIn(0f, maxY) - initialY
+                    }
+                }
+                .clickable(onClick = onOpen),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (percent != null) {
+                    CircularProgressIndicator(
+                        progress = { percent },
+                        modifier = Modifier.size(48.dp),
+                        strokeWidth = 4.dp,
+                        color = Color.White,
+                    )
+                } else if (downloadState is WebsiteApkDownloadCoordinator.State.Downloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        strokeWidth = 4.dp,
+                        color = Color.White,
+                    )
+                }
+                Text(
+                    when {
+                        downloadState is WebsiteApkDownloadCoordinator.State.Ready -> "✓"
+                        percent != null -> "${(percent * 100).roundToInt()}%"
+                        downloadState is WebsiteApkDownloadCoordinator.State.Paused -> "Ⅱ"
+                        else -> "↓"
+                    },
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }
