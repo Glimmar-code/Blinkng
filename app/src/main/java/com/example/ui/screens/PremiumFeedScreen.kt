@@ -680,6 +680,7 @@ private fun PremiumHomeFeed(
 
     val scrollConnection = remember(
         onBottomBarVisibilityChange,
+        onBottomBarTravel,
         primaryCollapseThreshold,
         immersiveCollapseThreshold
     ) {
@@ -727,17 +728,24 @@ private fun PremiumHomeFeed(
                     }
 
                     available.y > 0f -> {
-                        // Any meaningful reverse scroll leaves immersive mode immediately.
-                        // The primary header intentionally stays hidden until the list is
-                        // genuinely back at the first post.
-                        scrollAccumulator[0] = 0f
+                        // Reverse scrolling progressively reopens the three header
+                        // areas, bottom navigation and Create action; no need to travel
+                        // all the way back to the first post.
                         if (chromeStage == 2) {
                             chromeStage = 1
                             primaryHeaderVisible = false
                             secondaryChromeVisible = true
                             bottomChromeVisible = true
                             fabExpanded = true
+                            scrollAccumulator[0] = 0f
                             onBottomBarVisibilityChange(true)
+                        } else if (chromeStage == 1) {
+                            scrollAccumulator[0] += available.y
+                            if (scrollAccumulator[0] >= primaryCollapseThreshold) {
+                                chromeStage = 0
+                                primaryHeaderVisible = true
+                                scrollAccumulator[0] = 0f
+                            }
                         }
                     }
                 }
