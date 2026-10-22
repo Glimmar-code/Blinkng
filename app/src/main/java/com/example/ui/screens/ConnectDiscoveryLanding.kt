@@ -347,8 +347,8 @@ internal fun ConnectDiscoveryLanding(
                             items(circles, key = { it.id }) { circle ->
                                 ConnectCommunityPreview(
                                     title = circle.name,
-                                    icon = Icons.Default.MenuBook,
-                                    colors = listOf(Color(0xFF67849E), Color(0xFF182937)),
+                                    icon = communityIcon(circle.name),
+                                    colors = communityColors(circle.name),
                                     label = "${circle.memberCount} members",
                                     onClick = {
                                         selectedCircleName = circle.name
@@ -492,7 +492,10 @@ internal fun ConnectDiscoveryLanding(
             }
         }
         if (showStudyCircles) {
-            ModalBottomSheet(onDismissRequest = { showStudyCircles = false }) {
+            ModalBottomSheet(onDismissRequest = {
+                showStudyCircles = false
+                circlesRefreshKey++
+            }) {
                 Column(
                     Modifier.fillMaxWidth().fillMaxHeight(.85f)
                         .verticalScroll(rememberScrollState())
@@ -601,11 +604,29 @@ private fun ConnectCommunityPreview(
             .background(Brush.verticalGradient(colors))
             .then(clickModifier)
     ) {
-        Icon(
-            icon, contentDescription = null,
-            modifier = Modifier.size(55.dp).align(Alignment.Center),
-            tint = Color.White.copy(alpha = .83f)
+        // Artwork is intentionally illustrative until communities have real
+        // user-supplied cover images. Never invent members or use another user's photo.
+        Box(
+            Modifier.size(105.dp).align(Alignment.TopEnd)
+                .offset(x = 27.dp, y = (-22).dp)
+                .background(Color.White.copy(alpha = .14f), CircleShape)
         )
+        Box(
+            Modifier.size(68.dp).align(Alignment.CenterStart)
+                .offset(x = (-29).dp, y = 18.dp)
+                .background(Color.Black.copy(alpha = .15f), CircleShape)
+        )
+        Surface(
+            modifier = Modifier.size(71.dp).align(Alignment.Center),
+            color = Color.White.copy(alpha = .12f),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Icon(
+                icon, contentDescription = null,
+                modifier = Modifier.padding(16.dp),
+                tint = Color.White
+            )
+        }
         Column(
             modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .82f))))
@@ -615,6 +636,23 @@ private fun ConnectCommunityPreview(
             Text(label, color = Color.White.copy(alpha = .83f), fontSize = 10.sp, maxLines = 1)
         }
     }
+}
+
+private fun communityIcon(name: String): ImageVector = when {
+    name.contains("music", ignoreCase = true) -> Icons.Default.MusicNote
+    name.contains("sport", ignoreCase = true) || name.contains("basket", ignoreCase = true) ->
+        Icons.Default.SportsBasketball
+    name.contains("photo", ignoreCase = true) || name.contains("media", ignoreCase = true) ->
+        Icons.Default.PhotoCamera
+    else -> Icons.Default.MenuBook
+}
+
+private fun communityColors(name: String): List<Color> = when {
+    name.contains("music", ignoreCase = true) -> listOf(Color(0xFF8244C0), Color(0xFF281344))
+    name.contains("sport", ignoreCase = true) -> listOf(Color(0xFFC48D63), Color(0xFF392A25))
+    name.contains("photo", ignoreCase = true) || name.contains("media", ignoreCase = true) ->
+        listOf(Color(0xFF5E7AA1), Color(0xFF1D2944))
+    else -> listOf(Color(0xFF7C9DAD), Color(0xFF182937))
 }
 
 @Composable
