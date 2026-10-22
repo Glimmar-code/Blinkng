@@ -3313,6 +3313,26 @@ suspend fun uploadPostMedia(
         executeRequest(newRequestBuilder("/rest/v1/story_replies",true).post(body.toString().toRequestBody(jsonMediaType)).build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Story reply failed."));true}
     }
 
+    /**
+     * Story viewer identities are returned only by the backend RPC after
+     * verifying the authenticated caller owns an active 24-hour story.
+     */
+    suspend fun myStoryInsights(storyId: String): JSONObject = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: throw IllegalStateException("Sign in to view story insights.")
+        require(storyId.isNotBlank()) { "Story id required." }
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/get_my_story_insights", authenticated = true)
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Story insights unavailable."))
+            }
+            JSONObject(raw)
+        }
+    }
+
     suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
         val pollRaw=executeRequest(newRequestBuilder("/rest/v1/polls?post_id=eq.${encodeValue(postId)}&select=id&limit=1",true).get().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Poll lookup failed."));raw}
