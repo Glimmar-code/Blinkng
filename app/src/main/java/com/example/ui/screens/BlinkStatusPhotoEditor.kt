@@ -29,8 +29,11 @@ internal object BlinkStatusPhotoEditor {
     ): Uri = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        // Bounds-only decoding intentionally returns null; check stream availability,
+        // not the nullable Bitmap result.
+        val boundsStream = resolver.openInputStream(source)
             ?: throw IllegalArgumentException("Couldn't open that photo.")
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         require(bounds.outWidth > 0 && bounds.outHeight > 0) {
             "This photo couldn't be decoded."
         }
