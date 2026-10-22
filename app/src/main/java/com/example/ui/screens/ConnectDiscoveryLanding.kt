@@ -170,6 +170,23 @@ internal fun ConnectDiscoveryLanding(
     val campusPeers = remember(peers, myCampus) {
         peers.filter { com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(it.university, myCampus) }
     }
+    // The study-circle directory is global. Only label a circle as a campus
+    // community when its creator's public profile matches the viewer's school.
+    // Otherwise show honest discovery topics rather than another school's club.
+    val campusCircles = remember(circles, profiles, myCampus) {
+        if (myCampus.isBlank()) emptyList()
+        else {
+            val campusOwners = profiles.asSequence()
+                .filter {
+                    com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(it.university, myCampus)
+                }
+                .map { it.id }
+                .filter { it.isNotBlank() }
+                .toSet()
+            circles.filter { it.ownerId in campusOwners }
+        }
+    }
+
     val people = remember(peers, campusPeers, selectedTab) {
         when (selectedTab) {
             1 -> campusPeers
@@ -332,19 +349,19 @@ internal fun ConnectDiscoveryLanding(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                             fontSize = 12.sp, color = muted
                         )
-                    } else if (circles.isEmpty()) {
+                    } else if (campusCircles.isEmpty()) {
                         Text(
-                            "No study circles have been created yet. Explore the Connect tools below.",
+                            "No study circles from your campus are available yet. Browse topics below.",
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                             fontSize = 12.sp, color = muted
                         )
                     }
-                    if (!circlesLoading && !circlesLoadFailed && circles.isNotEmpty()) {
+                    if (!circlesLoading && !circlesLoadFailed && campusCircles.isNotEmpty()) {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            items(circles, key = { it.id }) { circle ->
+                            items(campusCircles, key = { it.id }) { circle ->
                                 ConnectCommunityPreview(
                                     title = circle.name,
                                     icon = communityIcon(circle.name),
