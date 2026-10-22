@@ -57,6 +57,7 @@ data class DesktopFeedPost(
     val isReel: Boolean,
     val createdAt: String,
     val isLiked: Boolean,
+    val authorUniversity: String? = null,
 )
 
 data class DesktopComment(

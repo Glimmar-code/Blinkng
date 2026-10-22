@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -74,6 +76,7 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -643,8 +646,19 @@ fun MarketplaceScreen(state: DesktopAppState) {
 
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
+    // Desktop keeps its existing listing actions and native layout while matching
+    // the Android Connect / Campus / Trending discovery navigation contract.
+    var discoveryTab by remember { mutableStateOf(0) }
     var inviteFeedback by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
+    var connectPeers by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var followedPeerIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var peerBusyId by remember { mutableStateOf<String?>(null) }
+    var peerError by remember { mutableStateOf<String?>(null) }
+    var menuPeerId by remember { mutableStateOf<String?>(null) }
+    var campusFeedPosts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var campusPostCommentId by remember { mutableStateOf<String?>(null) }
+    var postsLoading by remember { mutableStateOf(true) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var type by remember { mutableStateOf("community") }
@@ -656,6 +670,13 @@ fun ConnectScreen(state: DesktopAppState) {
         loading = true
         listings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
         loading = false
+        runCatching { state.client.fetchConnectPeers() }
+            .onSuccess { connectPeers = it }
+            .onFailure { peerError = "Campus people could not be loaded." }
+        followedPeerIds = runCatching { state.client.fetchConnectFollowingIds() }.getOrDefault(emptySet())
+        postsLoading = true
+        campusFeedPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
+        postsLoading = false
     }
     LaunchedEffect(Unit) { reload() }
 
@@ -673,6 +694,109 @@ fun ConnectScreen(state: DesktopAppState) {
                 ) {
                     ScreenHeader("Connect", "Study circles, mentors, communities and campus connections")
                     Button(onClick = { showCreate = true }) { Text("Create") }
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf("Connect", "Campus", "Trending").forEachIndexed { index, tab ->
+                        if (discoveryTab == index) {
+                            Button(onClick = { discoveryTab = index }) { Text(tab) }
+                        } else {
+                            OutlinedButton(onClick = { discoveryTab = index }) { Text(tab) }
+                        }
+                    }
+                }
+            }
+            item {
+                Text(
+                    if (discoveryTab == 1) "Students on your campus"
+                    else "People near you",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+                Text(
+                    "Based on university profiles, not precise location",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val campusPeers = connectPeers.filter {
+                com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(
+                    state.profile?.university, it.university
+                )
+            }
+            val discoverPeers = when (discoveryTab) {
+                1 -> campusPeers
+                2 -> connectPeers.sortedByDescending { it.followerCount }
+                else -> (campusPeers + connectPeers).distinctBy { it.id }
+            }.take(8)
+            if (!loading && discoverPeers.isEmpty()) item {
+                Text(
+                    "No public student profiles found for this view.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (peerError != null) item {
+                Text(peerError.orEmpty(), color = MaterialTheme.colorScheme.error)
+            }
+            items(discoverPeers, key = { "student-${it.id}" }) { profile ->
+                Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AvatarInitial(profile.fullName)
+                        Column(Modifier.weight(1f)) {
+                            Text(profile.fullName.ifBlank { profile.username }, fontWeight = FontWeight.Bold)
+                            Text(
+                                profile.university.orEmpty(),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (profile.id !in followedPeerIds) {
+                            Button(
+                                enabled = peerBusyId != profile.id,
+                                onClick = {
+                                    scope.launch {
+                                        peerBusyId = profile.id
+                                        runCatching { state.client.followBack(profile.id) }
+                                            .onSuccess { followedPeerIds = followedPeerIds + profile.id }
+                                            .onFailure { peerError = "Follow failed. Please retry." }
+                                        peerBusyId = null
+                                    }
+                                }
+                            ) { Text(if (peerBusyId == profile.id) "..." else "Follow") }
+                        } else {
+                            Box {
+                                OutlinedButton(onClick = { menuPeerId = profile.id }) { Text("Interact") }
+                                DropdownMenu(
+                                    expanded = menuPeerId == profile.id,
+                                    onDismissRequest = { menuPeerId = null }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Find messages") },
+                                        onClick = { menuPeerId = null; state.selectedRoute = "messages" }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("I follow · Unfollow") },
+                                        onClick = {
+                                            menuPeerId = null
+                                            scope.launch {
+                                                peerBusyId = profile.id
+                                                runCatching { state.client.unfollowConnectPeer(profile.id) }
+                                                    .onSuccess { followedPeerIds = followedPeerIds - profile.id }
+                                                    .onFailure { peerError = "Unfollow failed. Please retry." }
+                                                peerBusyId = null
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
             item {
@@ -703,7 +827,32 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
             if (loading) item { LoadingRow() }
-            items(listings, key = { it.id }) { listing ->
+            item {
+                Text(
+                    if (discoveryTab == 1) "Your campus communities"
+                    else if (discoveryTab == 2) "Recently active Connect listings"
+                    else "Campus Communities",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+            val scopedListings = when (discoveryTab) {
+                1 -> {
+                    val university = state.profile?.university.orEmpty()
+                    if (university.isBlank()) emptyList()
+                    else listings.filter { it.university?.equals(university, ignoreCase = true) == true }
+                }
+                2 -> listings.sortedByDescending { it.createdAt }
+                else -> listings
+            }
+            if (!loading && scopedListings.isEmpty()) item {
+                Text(
+                    if (discoveryTab == 1) "No Connect listings for your university yet."
+                    else "No Connect listings yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(scopedListings, key = { it.id }) { listing ->
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
@@ -716,6 +865,51 @@ fun ConnectScreen(state: DesktopAppState) {
                         if (listing.tags.isNotEmpty()) Text(listing.tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     }
                 }
+            }
+            item {
+                Text(
+                    if (discoveryTab == 2) "Trending on your campus" else "What's happening on campus",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
+                )
+            }
+            val campusName = state.profile?.university?.trim().orEmpty()
+            val campusFilteredPosts = if (campusName.isBlank()) emptyList()
+                else campusFeedPosts.filter { post ->
+                    !post.isReel && com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(campusName, post.authorUniversity)
+                }
+            val visibleCampusPosts = if (discoveryTab == 2)
+                campusFilteredPosts.sortedByDescending { com.blinkng.shared.discovery.BlinkCampusFeedPolicy.previewScore(it.likeCount, it.commentCount, it.shareCount) }.take(3)
+            else campusFilteredPosts.sortedByDescending { it.createdAt }.take(3)
+            if (postsLoading) item { LoadingRow() }
+            if (!postsLoading && visibleCampusPosts.isEmpty()) item {
+                Text(
+                    "No posts from your university are available yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            items(visibleCampusPosts, key = { "campus-${it.id}" }) { post ->
+                PostCard(
+                    post = post,
+                    onLike = {
+                        scope.launch {
+                            val liked = runCatching { state.client.toggleLike(post.id) }.getOrNull() ?: return@launch
+                            campusFeedPosts = campusFeedPosts.map {
+                                if (it.id == post.id) it.copy(
+                                    isLiked = liked,
+                                    likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0)
+                                ) else it
+                            }
+                        }
+                    },
+                    onComments = {
+                        campusPostCommentId = if (campusPostCommentId == post.id) null else post.id
+                    },
+                    onCopyLink = {
+                        DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
+                    }
+                )
+                if (campusPostCommentId == post.id) CommentsPanel(state, post.id)
             }
         }
 

@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
@@ -94,6 +95,17 @@ fun ConnectSection(
     onReelClick: () -> Unit,
     onConnectClick: () -> Unit,
     onGameClick: () -> Unit,
+    posts: List<FeedPost> = emptyList(),
+    onLikePost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit = {},
+    onBookmarkPost: (String) -> Unit = {},
+    onRepostPost: (String) -> Unit = {},
+    onSharePost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    onVotePoll: (String, String) -> Unit = { _, _ -> },
+    onRefreshFeed: () -> Unit = {},
+    isFeedRefreshing: Boolean = false,
+    hasUnreadNotifications: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
@@ -139,6 +151,39 @@ fun ConnectSection(
     }
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
 
+    // Keep every existing Connect Hub tool and filter available while the
+    // screenshot-inspired discovery page is rolled out in Testlab.
+    var showLegacyTools by rememberSaveable { mutableStateOf(false) }
+    if (!showLegacyTools) {
+        ConnectDiscoveryLanding(
+            profiles = profiles,
+            currentUsername = currentUsername,
+            myCampus = current?.university.orEmpty(),
+            userAvatar = userAvatar,
+            onSearchClick = onFindFriends,
+            onOpenGame = onGameClick,
+            onOpenNotifications = onOpenActivity,
+            onProfileClick = onProfileClick,
+            onOpenHub = { showLegacyTools = true },
+            onOpenCampusFeed = onHomeClick,
+            onMessageStudent = onDirectMessage,
+            hasUnreadNotifications = hasUnreadNotifications,
+            onRefresh = { connectHubActions.refresh(); onRefreshFeed() },
+            isRefreshing = isConnectHubLoading || isFeedRefreshing,
+            posts = posts,
+            isDark = isDark,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onSharePost = onSharePost,
+            onOptionsClick = onOptionsClick,
+            onVotePoll = onVotePoll,
+            modifier = modifier
+        )
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -162,6 +207,14 @@ fun ConnectSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
+            item {
+                OutlinedButton(
+                    onClick = { showLegacyTools = false },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("← Back to Connect") }
+            }
+
             item {
                 Row(
                     modifier = Modifier
