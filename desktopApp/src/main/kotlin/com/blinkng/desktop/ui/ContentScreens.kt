@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -74,6 +76,7 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -648,6 +651,11 @@ fun ConnectScreen(state: DesktopAppState) {
     var discoveryTab by remember { mutableStateOf(0) }
     var inviteFeedback by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
+    var connectPeers by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var followedPeerIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var peerBusyId by remember { mutableStateOf<String?>(null) }
+    var peerError by remember { mutableStateOf<String?>(null) }
+    var menuPeerId by remember { mutableStateOf<String?>(null) }
     var campusFeedPosts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var campusPostCommentId by remember { mutableStateOf<String?>(null) }
     var postsLoading by remember { mutableStateOf(true) }
@@ -662,6 +670,10 @@ fun ConnectScreen(state: DesktopAppState) {
         loading = true
         listings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
         loading = false
+        runCatching { state.client.fetchConnectPeers() }
+            .onSuccess { connectPeers = it }
+            .onFailure { peerError = "Campus people could not be loaded." }
+        followedPeerIds = runCatching { state.client.fetchConnectFollowingIds() }.getOrDefault(emptySet())
         postsLoading = true
         campusFeedPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
         postsLoading = false
@@ -691,6 +703,98 @@ fun ConnectScreen(state: DesktopAppState) {
                             Button(onClick = { discoveryTab = index }) { Text(tab) }
                         } else {
                             OutlinedButton(onClick = { discoveryTab = index }) { Text(tab) }
+                        }
+                    }
+                }
+            }
+            item {
+                Text(
+                    if (discoveryTab == 1) "Students on your campus"
+                    else "People near you",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+                Text(
+                    "Based on university profiles, not precise location",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val campusPeers = connectPeers.filter {
+                com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(
+                    state.profile?.university, it.university
+                )
+            }
+            val discoverPeers = when (discoveryTab) {
+                1 -> campusPeers
+                2 -> connectPeers.sortedByDescending { it.followerCount }
+                else -> (campusPeers + connectPeers).distinctBy { it.id }
+            }.take(8)
+            if (!loading && discoverPeers.isEmpty()) item {
+                Text(
+                    "No public student profiles found for this view.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (peerError != null) item {
+                Text(peerError.orEmpty(), color = MaterialTheme.colorScheme.error)
+            }
+            items(discoverPeers, key = { "student-${it.id}" }) { profile ->
+                Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AvatarInitial(profile.fullName)
+                        Column(Modifier.weight(1f)) {
+                            Text(profile.fullName.ifBlank { profile.username }, fontWeight = FontWeight.Bold)
+                            Text(
+                                profile.university.orEmpty(),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (profile.id !in followedPeerIds) {
+                            Button(
+                                enabled = peerBusyId != profile.id,
+                                onClick = {
+                                    scope.launch {
+                                        peerBusyId = profile.id
+                                        runCatching { state.client.followBack(profile.id) }
+                                            .onSuccess { followedPeerIds = followedPeerIds + profile.id }
+                                            .onFailure { peerError = "Follow failed. Please retry." }
+                                        peerBusyId = null
+                                    }
+                                }
+                            ) { Text(if (peerBusyId == profile.id) "..." else "Follow") }
+                        } else {
+                            Box {
+                                OutlinedButton(onClick = { menuPeerId = profile.id }) { Text("Interact") }
+                                DropdownMenu(
+                                    expanded = menuPeerId == profile.id,
+                                    onDismissRequest = { menuPeerId = null }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Find messages") },
+                                        onClick = { menuPeerId = null; state.selectedRoute = "messages" }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("I follow · Unfollow") },
+                                        onClick = {
+                                            menuPeerId = null
+                                            scope.launch {
+                                                peerBusyId = profile.id
+                                                runCatching { state.client.unfollowConnectPeer(profile.id) }
+                                                    .onSuccess { followedPeerIds = followedPeerIds - profile.id }
+                                                    .onFailure { peerError = "Unfollow failed. Please retry." }
+                                                peerBusyId = null
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
