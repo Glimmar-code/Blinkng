@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
@@ -94,6 +95,16 @@ fun ConnectSection(
     onReelClick: () -> Unit,
     onConnectClick: () -> Unit,
     onGameClick: () -> Unit,
+    posts: List<FeedPost> = emptyList(),
+    onLikePost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit = {},
+    onBookmarkPost: (String) -> Unit = {},
+    onRepostPost: (String) -> Unit = {},
+    onSharePost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    onVotePoll: (String, String) -> Unit = { _, _ -> },
+    onRefreshFeed: () -> Unit = {},
+    isFeedRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
@@ -154,8 +165,17 @@ fun ConnectSection(
             onProfileClick = onProfileClick,
             onOpenHub = { showLegacyTools = true },
             onOpenCampusFeed = onHomeClick,
-            onRefresh = connectHubActions.refresh,
-            isRefreshing = isConnectHubLoading,
+            onRefresh = { connectHubActions.refresh(); onRefreshFeed() },
+            isRefreshing = isConnectHubLoading || isFeedRefreshing,
+            posts = posts,
+            isDark = isDark,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onSharePost = onSharePost,
+            onOptionsClick = onOptionsClick,
+            onVotePoll = onVotePoll,
             modifier = modifier
         )
         return
