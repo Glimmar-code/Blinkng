@@ -3252,7 +3252,8 @@ suspend fun uploadPostMedia(
                         isVideo = mediaType.equals("video", true),
                         allowReposts = o.optBoolean("allow_reposts", false),
                         repostedFromId = o.optString("reposted_from_id")
-                            .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        background = o.optString("background")
                     )
                 )
             }
@@ -3287,6 +3288,34 @@ suspend fun uploadPostMedia(
                 true
             }
         } catch(e:Exception){Log.e(TAG,"createStory exception",e);false}
+    }
+
+    /** Text-only public status; no media upload, no private audience claim. */
+    suspend fun createTextStory(story: Story): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        val text = com.blinkng.shared.notification.BlinkStatusTextPolicy.text(story.caption)
+            ?: return@withContext false
+        val background = com.blinkng.shared.notification.BlinkStatusTextPolicy.background(story.background)
+        val body = JSONObject().apply {
+            put("id", story.id)
+            put("user_id", uid)
+            put("active", true)
+            put("media_type", "text")
+            put("text", text)
+            put("caption", text)
+            put("background", background)
+        }
+        executeRequest(
+            newRequestBuilder("/rest/v1/stories", true)
+                .addHeader("Prefer", "return=minimal")
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Text status failed."))
+            }
+            true
+        }
     }
 
     suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
