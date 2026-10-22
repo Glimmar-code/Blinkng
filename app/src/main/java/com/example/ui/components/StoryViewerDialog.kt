@@ -120,14 +120,15 @@ fun StoryViewerDialog(
 
     // Pause/resume must not reset progress. Video duration follows its real runtime.
     var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
+    var videoReady by remember(currentStory.id) { mutableStateOf(!currentStory.isVideo) }
     LaunchedEffect(currentStory.id) {
         progress = 0f
         var elapsedMs = 0L
         val stepMs = 50L
         while (progress < 1f) {
             delay(stepMs)
-            if (!isPaused && viewerForeground) elapsedMs += stepMs
-            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
+            if (!isPaused && viewerForeground && videoReady) elapsedMs += stepMs
+            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(1_000L) else 5_000L
             progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
         }
 
@@ -153,7 +154,8 @@ fun StoryViewerDialog(
                 BlinkStoryVideoPlayer(
                     story = displayedStory,
                     paused = isPaused || !viewerForeground || displayedStory.id != currentStory.id,
-                    onDuration = { videoDurationMs = it }
+                    onDuration = { videoDurationMs = it },
+                    onReady = { videoReady = it }
                 )
             } else if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(
@@ -567,11 +569,13 @@ fun StoryViewerDialog(
 private fun BlinkStoryVideoPlayer(
     story: Story,
     paused: Boolean,
-    onDuration: (Long) -> Unit
+    onDuration: (Long) -> Unit,
+    onReady: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestPaused by rememberUpdatedState(paused)
+    val latestOnReady by rememberUpdatedState(onReady)
     val player = remember(story.id) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(story.storyImage))
@@ -580,6 +584,13 @@ private fun BlinkStoryVideoPlayer(
         }
     }
     DisposableEffect(player, lifecycleOwner) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                latestOnReady(playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED)
+            }
+        }
+        player.addListener(listener)
+        latestOnReady(player.playbackState == Player.STATE_READY)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> player.pause()
@@ -590,6 +601,7 @@ private fun BlinkStoryVideoPlayer(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            player.removeListener(listener)
             player.release()
         }
     }
