@@ -155,7 +155,7 @@ fun ConnectSection(
     var showLegacyTools by rememberSaveable { mutableStateOf(false) }
     if (!showLegacyTools) {
         ConnectDiscoveryLanding(
-            profiles = liveProfiles,
+            profiles = profiles,
             currentUsername = currentUsername,
             myCampus = current?.university.orEmpty(),
             userAvatar = userAvatar,
