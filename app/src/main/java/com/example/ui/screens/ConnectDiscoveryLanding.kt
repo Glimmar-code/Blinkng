@@ -29,6 +29,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -83,6 +84,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.UserProfile
@@ -191,7 +193,7 @@ internal fun ConnectDiscoveryLanding(
         when (selectedTab) {
             1 -> campusPeers
             2 -> peers.sortedByDescending { it.followerCount }
-            else -> campusPeers.ifEmpty { peers }
+            else -> if (myCampus.isBlank()) peers else campusPeers
         }
     }
     val suggested = remember(peers, campusPeers) {
@@ -302,15 +304,9 @@ internal fun ConnectDiscoveryLanding(
                         title = when (selectedTab) {
                             1 -> "Students on your campus"
                             2 -> "Popular students"
-                            else -> "People near you"
+                            else -> if (myCampus.isBlank()) "Discover students" else "People near you"
                         },
                         onSeeAll = onSearchClick
-                    )
-                    Text(
-                        "Based on university profiles, not precise location",
-                        modifier = Modifier.padding(start = 16.dp, bottom = 10.dp),
-                        fontSize = 11.sp,
-                        color = muted
                     )
                     if (people.isEmpty()) {
                         Text(
@@ -323,7 +319,7 @@ internal fun ConnectDiscoveryLanding(
                     } else {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(people.take(15), key = { it.id.ifBlank { it.username } }) { profile ->
                                 ConnectPeerPreview(profile) { onProfileClick(profile.username) }
@@ -349,20 +345,17 @@ internal fun ConnectDiscoveryLanding(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                             fontSize = 12.sp, color = muted
                         )
-                    } else if (campusCircles.isEmpty()) {
-                        Text(
-                            "No study circles from your campus are available yet. Browse topics below.",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            fontSize = 12.sp, color = muted
-                        )
                     }
                     if (!circlesLoading && !circlesLoadFailed && campusCircles.isNotEmpty()) {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(9.dp)
-                        ) {
-                            items(campusCircles, key = { it.id }) { circle ->
-                                ConnectCommunityPreview(
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val cardWidth = ((maxWidth - 56.dp) / 4).coerceAtLeast(70.dp)
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(campusCircles, key = { it.id }) { circle ->
+                                    ConnectCommunityPreview(
+                                        cardWidth = cardWidth,
                                     title = circle.name,
                                     icon = communityIcon(circle.name),
                                     colors = communityColors(circle.name),
@@ -372,19 +365,23 @@ internal fun ConnectDiscoveryLanding(
                                         selectedCircleName = circle.name
                                         showStudyCircles = true
                                     }
-                                )
+                                    )
+                                }
                             }
                         }
                     } else if (!circlesLoading) {
                         // Topic cards reproduce the reference's photo-led visual layout.
                         // These are discovery shortcuts, NOT created clubs or member claims.
                         val topics = listOf("Music Club", "Sports", "Study Buddies", "Photography")
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(9.dp)
-                        ) {
-                            items(topics) { topic ->
-                                ConnectCommunityPreview(
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val cardWidth = ((maxWidth - 56.dp) / 4).coerceAtLeast(70.dp)
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(topics) { topic ->
+                                    ConnectCommunityPreview(
+                                        cardWidth = cardWidth,
                                     title = topic,
                                     icon = communityIcon(topic),
                                     colors = communityColors(topic),
@@ -398,7 +395,8 @@ internal fun ConnectDiscoveryLanding(
                                         }
                                         showStudyCircles = true
                                     }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -565,10 +563,10 @@ private fun ConnectRoundAvatar(avatar: String, description: String, modifier: Mo
 @Composable
 private fun ConnectPeerPreview(profile: UserProfile, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.width(78.dp).clickable(onClick = onClick),
+        modifier = Modifier.width(66.dp).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(69.dp)) {
+        Box(Modifier.size(64.dp)) {
             ConnectRoundAvatar(
                 avatar = profile.avatarUrl,
                 description = profile.fullName,
@@ -598,6 +596,7 @@ private fun ConnectPeerPreview(profile: UserProfile, onClick: () -> Unit) {
 
 @Composable
 private fun ConnectCommunityPreview(
+    cardWidth: Dp,
     title: String,
     icon: ImageVector,
     colors: List<Color>,
@@ -607,7 +606,7 @@ private fun ConnectCommunityPreview(
 ) {
     val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
-        modifier = Modifier.width(126.dp).height(148.dp)
+        modifier = Modifier.width(cardWidth).height(130.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(Brush.verticalGradient(colors))
             .then(clickModifier)
