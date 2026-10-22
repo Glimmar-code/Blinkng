@@ -395,6 +395,8 @@ fun CreateStoryScreen(
                                         photoSticker,
                                         fontSize = 38.sp,
                                         modifier = Modifier
+                                            // Match export's top-left normalized canvas origin.
+                                            .align(Alignment.TopStart)
                                             .offset(
                                                 x = maxWidth * stickerX - 20.dp,
                                                 y = maxHeight * stickerY - 20.dp
