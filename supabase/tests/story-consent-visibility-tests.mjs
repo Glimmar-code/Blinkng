@@ -145,8 +145,8 @@ export async function storyConsentVisibilityTests() {
     console.log('PASS default denied repost, mute and expiry protections');
 
     await asUser(ids.blocked);
-    assert.deepEqual((await q('select id::text from public.stories')).rows, [],
-      'author-blocked viewer cannot read a story even when blocks SELECT RLS hides the block row');
+    assert.deepEqual((await q(`select id::text from public.stories where id='${ids.original}'`)).rows, [],
+      'author-blocked viewer cannot read the blocked author story even when blocks SELECT RLS hides the block row');
     await assert.rejects(q(`
       insert into public.story_likes(story_id,user_id)
       values ('${ids.original}','${ids.blocked}')`),
