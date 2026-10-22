@@ -3,6 +3,11 @@ package com.example
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import com.example.ui.components.FeedBottomBar
+import com.example.ui.components.CreatePostFab
+import com.example.viewmodel.MainTab
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -62,7 +67,7 @@ class BlinkFeedAdaptiveVisualTest {
             CompositionLocalProvider(LocalDensity provides Density(1f,fontScale)) {
                 BlinkTheme(darkTheme = true) {
                     Box(
-                        Modifier.width(widthDp.dp).height(190.dp)
+                        Modifier.width(widthDp.dp).height(340.dp)
                             .background(Color.Black).testTag("feed_visual_frame")
                     ) {
                         Column {
@@ -85,10 +90,21 @@ class BlinkFeedAdaptiveVisualTest {
                                 modifier = Modifier.graphicsLayer { translationY = -topMove * 0.4f }
                             )
                         }
-                        // Tiny reference tag only. In production the real bottom bar
-                        // receives this translation from MainActivity.
-                        Box(
-                            Modifier.width(widthDp.dp).height(1.dp)
+                        CreatePostFab(
+                            expanded = postScrollPixels < 80,
+                            onClick = {},
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 67.dp)
+                        )
+                        FeedBottomBar(
+                            currentTab = MainTab.HOME,
+                            feedSubTab = 0,
+                            onHomeClick = {},
+                            onConnectClick = {},
+                            onReelsClick = {},
+                            onMarketClick = {},
+                            onMessageClick = {},
+                            isDark = true,
+                            modifier = Modifier.align(Alignment.BottomCenter)
                                 .graphicsLayer { translationY = navMove }
                                 .testTag("nav_scroll_reference")
                         )
