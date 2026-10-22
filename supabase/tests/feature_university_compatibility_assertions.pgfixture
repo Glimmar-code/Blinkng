@@ -1,0 +1,21 @@
+-- Ensure older BLINK clients can update university text without explicitly
+-- clearing stale university_id, while deliberate mismatches stay prohibited.
+do $test$
+declare v_lagos text;
+begin
+  select id into v_lagos from public.blink_universities
+  where official_name='University of Lagos' and active;
+  update public.profiles set university='University of Lagos'
+    where username='bob';
+  if (select university_id from public.profiles where username='bob')
+     is distinct from v_lagos then
+    raise exception 'Legacy picker failed to reconcile name-only university change';
+  end if;
+  update public.profiles set university='Another Institution Requiring Review'
+    where username='bob';
+  if (select university_id from public.profiles where username='bob') is not null then
+    raise exception 'Unknown school incorrectly retained stale directory ID';
+  end if;
+  raise notice 'Legacy and current school pickers remain compatible';
+end
+$test$;

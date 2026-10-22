@@ -70,6 +70,8 @@ import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.notification.BlinkProfileVisitorClient
+import com.example.ui.components.BlinkProfileVisitorsDialog
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.FacultyBadge
@@ -180,6 +182,8 @@ fun ProfileScreen(
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
+    var showVisitorHistory by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var newVisitors by remember(profile.id) { mutableStateOf<Int?>(null) }
 
     val profileService = remember { SupabaseService() }
     var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
@@ -206,6 +210,12 @@ fun ProfileScreen(
             profileMuted = profileService.isProfileMuted(profile.id)
         } else {
             followerHistory = profileService.fetchProfileFollowerHistory(profile.id, days = 30)
+        }
+        // Only the signed-in owner can see identifiable visitors; both sides opt in.
+        if (isMe) {
+            newVisitors = runCatching { BlinkProfileVisitorClient.newCount() }.getOrNull()
+        } else {
+            runCatching { BlinkProfileVisitorClient.record(profile.id) }
         }
     }
 
@@ -239,6 +249,18 @@ fun ProfileScreen(
             profile = profile,
             onDismiss = { showProgressHub = false },
             onProgressChanged = onRefreshProfile,
+        )
+    }
+
+    if (isMe && showVisitorHistory) {
+        BlinkProfileVisitorsDialog(
+            accountId = profile.id,
+            onDismiss = { showVisitorHistory = false },
+            onOpenProfile = { id ->
+                showVisitorHistory = false
+                onProfileClick(id)
+            },
+            onReadConfirmed = { remaining -> newVisitors = remaining },
         )
     }
 
@@ -1048,6 +1070,21 @@ fun ProfileScreen(
                             onClick = { showProgressHub = true },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
                         )
+                    }
+                }
+
+                if (isMe) {
+                    item(key = "profile_visitors_entry") {
+                        FilledTonalButton(
+                            onClick = { showVisitorHistory = true },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                        ) {
+                            Icon(Icons.Default.Visibility, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Profile visitors")
+                            val count = newVisitors ?: 0
+                            if (count > 0) Text("  ·  $count new")
+                        }
                     }
                 }
 

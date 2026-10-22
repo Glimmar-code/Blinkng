@@ -7,6 +7,7 @@ on:
       - 'supabase/migrations/20261018041000_campus_registration_account_type.sql'
       - 'supabase/migrations/20261018063000_blink_verification_subscription_contract.sql'
       - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/migrations/20261020150000_legacy_university_picker_compatibility.sql'
       - 'supabase/tests/feature_*'
       - 'supabase/tests/stories_universities_fixture.pgfixture'
       - '.github/workflows/blink-feature-backend-production-parity.yml'
@@ -52,6 +53,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018063000_blink_verification_subscription_contract.sql
       - name: Add Nigerian university catalog and pending review queue
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018073500_nigerian_university_directory.sql
+      - name: Keep old university picker writes compatible with the new catalog
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261020150000_legacy_university_picker_compatibility.sql
       - name: Assert visitor consent, privacy, RLS, quote accuracy and directory privileges
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_schema_staging_assertions.pgfixture
       - name: Assert service-only subscription writes and moderated university requests
@@ -70,3 +73,5 @@ jobs:
             end if;
           end $$;
           SQL
+      - name: Assert legacy university picker compatibility
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_university_compatibility_assertions.pgfixture
