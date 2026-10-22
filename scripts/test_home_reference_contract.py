@@ -29,7 +29,7 @@ class HomeReferenceContractTests(unittest.TestCase):
         header = method_body(CHROME, "private fun FeedHeaderActions(", "private fun FeedRadialHeaderAction(")
         self.assertEqual(header.count("FeedRadialHeaderAction("), 4)
         for token in (
-            'Icons.Outlined.Search', 'Icons.Outlined.SportsEsports',
+            'Icons.Outlined.Search', 'Icons.Default.GridView',
             'Icons.Outlined.NotificationsNone', 'Icons.Outlined.Menu',
         ):
             self.assertIn(token, header)

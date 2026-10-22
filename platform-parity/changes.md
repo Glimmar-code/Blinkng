@@ -1,3 +1,10 @@
+## 2026-10-22 — Android Items launcher uses four-square GridView icon
+
+- PARITY-EXCEPTION: android-items-grid-icon-20261022
+- Android: User-approved four-square (2×2) `GridView` icon replaces the game controller in the Home header's **Items** entry; the Items hub still opens its existing Games, Boost, Drops and other utilities. Actual **Game** icon remains a controller.
+- Windows equivalent: The desktop currently shows these modules through explicit sidebar destinations (not a single Android-style Items tray), with the **Games** sidebar destination retaining its gamepad glyph. No desktop route or feature changes are needed for this Android-only Home shortcut icon. A Windows Items hub is outside the scope of a one-glyph correction.
+- Acceptance: structural Home contract explicitly asserts the GridView icon, Android screenshot visual parity with approved 2×2 icon, Home Items route opens the hub, and desktop route/glyphs unchanged.
+
 ## 2026-10-21 — BLINK Message inbox reference redesign (Phase 2 staging candidate)
 
 - **Android inbox only:** Adds a dedicated black-and-white Compose inbox matching the supplied reference structure: BLINK wordmark/profile/search/game/notification header, Messages title with functional “See all,” real uploaded-story rail, flat conversation rows, presence badges, verified badges, previews, timestamps, and black/white unread counters. Existing Supabase conversations, shared filtering/search, archive/request/unread handling, user identity, and chat/call detail components stay intact. “Your note” currently routes to the existing create-story action pending a separate notes contract; it must not be advertised as a shipped notes feature.
