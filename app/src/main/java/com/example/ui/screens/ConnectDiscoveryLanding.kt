@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
 import androidx.compose.material3.ModalBottomSheet
@@ -356,7 +357,14 @@ internal fun ConnectDiscoveryLanding(
                     }
                     if (!circlesLoading && !circlesLoadFailed && campusCircles.isNotEmpty()) {
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
-                            val cardWidth = ((maxWidth - 56.dp) / 4).coerceAtLeast(70.dp)
+                            val scale = LocalDensity.current.fontScale
+                            val columns = when {
+                                scale >= 1.75f -> 2
+                                scale >= 1.25f -> 3
+                                else -> 4
+                            }
+                            val cardWidth = ((maxWidth - 32.dp - 8.dp * (columns - 1)) / columns)
+                                .coerceAtLeast(70.dp)
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -382,7 +390,14 @@ internal fun ConnectDiscoveryLanding(
                         // These are discovery shortcuts, NOT created clubs or member claims.
                         val topics = listOf("Music Club", "Sports", "Study Buddies", "Photography")
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
-                            val cardWidth = ((maxWidth - 56.dp) / 4).coerceAtLeast(70.dp)
+                            val scale = LocalDensity.current.fontScale
+                            val columns = when {
+                                scale >= 1.75f -> 2
+                                scale >= 1.25f -> 3
+                                else -> 4
+                            }
+                            val cardWidth = ((maxWidth - 32.dp - 8.dp * (columns - 1)) / columns)
+                                .coerceAtLeast(70.dp)
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -571,7 +586,9 @@ private fun ConnectRoundAvatar(avatar: String, description: String, modifier: Mo
 @Composable
 private fun ConnectPeerPreview(profile: UserProfile, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.width(66.dp).clickable(onClick = onClick),
+        modifier = Modifier.width(
+            if (LocalDensity.current.fontScale >= 1.5f) 96.dp else 66.dp
+        ).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.size(64.dp)) {
@@ -614,7 +631,8 @@ private fun ConnectCommunityPreview(
 ) {
     val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
-        modifier = Modifier.width(cardWidth).height(130.dp)
+        modifier = Modifier.width(cardWidth)
+            .height(if (LocalDensity.current.fontScale >= 1.5f) 170.dp else 130.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(Brush.verticalGradient(colors))
             .then(clickModifier)
@@ -664,8 +682,16 @@ private fun ConnectCommunityPreview(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .82f))))
                 .padding(horizontal = 9.dp, vertical = 9.dp)
         ) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-            Text(label, color = Color.White.copy(alpha = .83f), fontSize = 10.sp, maxLines = 1)
+            Text(
+                title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                maxLines = if (LocalDensity.current.fontScale >= 1.5f) 2 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                label, color = Color.White.copy(alpha = .83f), fontSize = 10.sp,
+                maxLines = if (LocalDensity.current.fontScale >= 1.5f) 2 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
