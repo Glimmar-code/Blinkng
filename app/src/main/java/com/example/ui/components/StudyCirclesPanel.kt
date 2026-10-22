@@ -61,11 +61,17 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun StudyCirclesPanel(
-    repository: StudyCircleRepository = remember { StudyCircleRepository() }
+    repository: StudyCircleRepository = remember { StudyCircleRepository() },
+    initialQuery: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by rememberPersistentTextState(key = "com/example/ui/components/StudyCirclesPanel.kt:query:1")
+    // Tapping a community card opens the real circle, rather than a generic
+    // unfiltered directory. Other callers retain their saved search state.
+    LaunchedEffect(initialQuery) {
+        if (initialQuery != null) query = initialQuery.take(80)
+    }
     var circles by remember { mutableStateOf<List<StudyCircleSummary>>(emptyList()) }
     var ownerRequests by remember { mutableStateOf<List<StudyCircleJoinRequest>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
