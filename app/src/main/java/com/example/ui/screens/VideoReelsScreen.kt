@@ -843,8 +843,17 @@ private fun ReelPage(
                             interactionScope.launch { FollowStateStore.setFollowing(authorId, false) }
                         },
                         onMessage = { onDirectMessage(reelUsername, authorName, authorAvatar) },
-                        onGiftCoins = {
-                            interactionScope.launch { interactionRepository.giftCoins(authorId, 10) }
+                        onGiftCoins = { amount ->
+                            interactionScope.launch {
+                                val requestId = java.util.UUID.randomUUID().toString()
+                                val sent = interactionRepository.giftCoinsOnce(authorId, amount, requestId)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (sent) "Sent $amount BLINK Coins"
+                                    else "Could not send Coins. No gift confirmed.",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         },
                         onGameChallenge = {
                             connectHubActions.challengeUser(authorId, ChallengeGameType.GENERAL_KNOWLEDGE.apiName)
