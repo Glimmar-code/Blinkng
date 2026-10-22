@@ -28,6 +28,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import android.net.Uri
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import com.blinkng.shared.notification.BlinkStatusVideoTrimPolicy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +67,60 @@ fun CreateStoryScreen(
     var editedPreviewUri by remember(profile.id) { mutableStateOf<String?>(null) }
     var isEditingPhoto by remember(profile.id) { mutableStateOf(false) }
     var photoEditError by remember(profile.id) { mutableStateOf<String?>(null) }
+    var videoDurationMs by remember(profile.id) { mutableStateOf(0L) }
+    var videoStartMs by remember(profile.id) { mutableStateOf(0L) }
+    var videoEndMs by remember(profile.id) { mutableStateOf(0L) }
+    var trimmedVideoUri by remember(profile.id) { mutableStateOf<String?>(null) }
+    var isTrimmingVideo by remember(profile.id) { mutableStateOf(false) }
+    var videoError by remember(profile.id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(selectedUri, isVideo) {
+        videoDurationMs = 0
+        videoStartMs = 0
+        videoEndMs = 0
+        trimmedVideoUri = null
+        videoError = null
+        if (selectedUri != null && isVideo) {
+            try {
+                val source = Uri.parse(selectedUri)
+                val duration = withContext(Dispatchers.IO) {
+                    BlinkStatusVideoTrimmer.durationMs(context, source)
+                }
+                BlinkStatusVideoTrimPolicy.window(duration, 0)
+                videoDurationMs = duration
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                videoError = "This video couldn't be opened for safe trimming."
+            }
+        }
+    }
+
+    LaunchedEffect(selectedUri, isVideo, videoDurationMs, videoStartMs, videoEndMs) {
+        trimmedVideoUri = null
+        isTrimmingVideo = false
+        if (selectedUri != null && isVideo && videoDurationMs > 0) {
+            try {
+                val window = BlinkStatusVideoTrimPolicy.window(
+                    videoDurationMs, videoStartMs, videoEndMs
+                )
+                if (BlinkStatusVideoTrimPolicy.needsExport(videoDurationMs, window)) {
+                    isTrimmingVideo = true
+                    videoError = null
+                    delay(400) // prevent transcoding/muxing for every drag event
+                    trimmedVideoUri = BlinkStatusVideoTrimmer.export(
+                        context, Uri.parse(selectedUri), window
+                    ).toString()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                videoError = "Video trimming failed. Try another section or video."
+            } finally {
+                isTrimmingVideo = false
+            }
+        }
+    }
 
     // Process off the main thread. A key change cancels stale previews.
     LaunchedEffect(selectedUri, isVideo, photoTurns, cropPortrait) {
@@ -115,7 +173,17 @@ fun CreateStoryScreen(
     val canShare = when {
         textMode -> validText != null
         selectedUri == null -> false
-        isVideo -> true
+        isVideo -> {
+            if (videoDurationMs < BlinkStatusVideoTrimPolicy.MIN_CLIP_MS ||
+                videoError != null || isTrimmingVideo) false
+            else {
+                val w = BlinkStatusVideoTrimPolicy.window(
+                    videoDurationMs, videoStartMs, videoEndMs
+                )
+                !BlinkStatusVideoTrimPolicy.needsExport(videoDurationMs, w) ||
+                    trimmedVideoUri != null
+            }
+        }
         photoTurns == 0 && !cropPortrait -> true
         else -> editedPreviewUri != null && !isEditingPhoto
     }
@@ -146,13 +214,18 @@ fun CreateStoryScreen(
                     onClick = {
                         if (textMode) validText?.let { onPublishText(it, background) }
                         else {
-                            val toPublish = if (!isVideo &&
-                                (photoTurns != 0 || cropPortrait)) editedPreviewUri
-                                else selectedUri
+                            val toPublish = if (isVideo) {
+                                val w = BlinkStatusVideoTrimPolicy.window(
+                                    videoDurationMs, videoStartMs, videoEndMs
+                                )
+                                if (BlinkStatusVideoTrimPolicy.needsExport(videoDurationMs, w))
+                                    trimmedVideoUri else selectedUri
+                            } else if (photoTurns != 0 || cropPortrait) editedPreviewUri
+                            else selectedUri
                             toPublish?.let { onPublish(it, caption.trim(), isVideo) }
                         }
                     },
-                    enabled = canShare && !isUploading && !isEditingPhoto,
+                    enabled = canShare && !isUploading && !isEditingPhoto && !isTrimmingVideo,
                     shape = RoundedCornerShape(100.dp)
                 ) {
                     if (isUploading) CircularProgressIndicator(
@@ -276,10 +349,15 @@ fun CreateStoryScreen(
                             )
                             Spacer(Modifier.height(10.dp))
                             Text("Video selected", fontWeight = FontWeight.Bold)
-                            Text(
-                                "You can share this video",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            val durationLabel = if (videoDurationMs > 0) {
+                                "${videoDurationMs / 1000} seconds"
+                            } else "Loading video…"
+                            Text(durationLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (isTrimmingVideo) {
+                                Spacer(Modifier.height(12.dp))
+                                CircularProgressIndicator()
+                                Text("Preparing trimmed video", fontSize = 12.sp)
+                            }
                         }
                         else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
@@ -301,6 +379,54 @@ fun CreateStoryScreen(
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                         ) { Text("Change") }
                     }
+                }
+            }
+            if (selectedUri != null && isVideo && !textMode) {
+                if (videoDurationMs > 0) {
+                    val window = BlinkStatusVideoTrimPolicy.window(
+                        videoDurationMs, videoStartMs, videoEndMs
+                    )
+                    val startMax = (videoDurationMs -
+                        BlinkStatusVideoTrimPolicy.MIN_CLIP_MS).toFloat()
+                    val endMin = (window.startMs +
+                        BlinkStatusVideoTrimPolicy.MIN_CLIP_MS).toFloat()
+                    val endMax = minOf(videoDurationMs,
+                        window.startMs + BlinkStatusVideoTrimPolicy.MAX_CLIP_MS).toFloat()
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+                        Text("Trim video · max 30 seconds",
+                            style = MaterialTheme.typography.labelMedium)
+                        Text("Start: ${window.startMs / 1000}s",
+                            style = MaterialTheme.typography.labelSmall)
+                        Slider(
+                            value = window.startMs.toFloat(),
+                            onValueChange = { videoStartMs = it.toLong() },
+                            valueRange = 0f..startMax,
+                            enabled = !isUploading
+                        )
+                        Text("End: ${window.endMs / 1000}s",
+                            style = MaterialTheme.typography.labelSmall)
+                        Slider(
+                            value = window.endMs.toFloat(),
+                            onValueChange = { videoEndMs = it.toLong() },
+                            valueRange = endMin..endMax,
+                            enabled = !isUploading
+                        )
+                        Text(
+                            "Clip duration: ${window.durationMs / 1000}s (keyframe-aligned)",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        TextButton(
+                            onClick = { videoStartMs = 0; videoEndMs = 0 },
+                            enabled = !isUploading
+                        ) { Text("Reset trim") }
+                    }
+                }
+                videoError?.let { message ->
+                    Text(
+                        message, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
             }
             if (selectedUri != null && !isVideo && !textMode) {
