@@ -1458,6 +1458,16 @@ fun MainAppContent(
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = onOpenCoinPackChooser,
                     isDark = uiState.isDarkMode,
+                    selectedMainTabRoute = when (uiState.selectedTab) {
+                        MainTab.MARKET -> "market"
+                        MainTab.MESSAGES -> "messages"
+                        MainTab.HOME -> when (uiState.feedSubTab) {
+                            1 -> "reels"
+                            2 -> "connect"
+                            else -> "home"
+                        }
+                        else -> "home"
+                    },
                     onNavigateMainTab = { destination ->
                         viewModel.closeProfile()
                         when (destination) {
