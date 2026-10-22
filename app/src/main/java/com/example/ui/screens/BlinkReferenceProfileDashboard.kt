@@ -104,12 +104,21 @@ internal fun BlinkReferenceProfileDashboard(
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = profile.avatarUrl, fallback = painterResource(R.drawable.ic_default_profile),
-                error = painterResource(R.drawable.ic_default_profile), contentDescription = "View avatar",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
-            )
+            Box(Modifier.size(98.dp)) {
+                AsyncImage(
+                    model = profile.avatarUrl, fallback = painterResource(R.drawable.ic_default_profile),
+                    error = painterResource(R.drawable.ic_default_profile), contentDescription = "View avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
+                )
+                if (profile.isBlinkVip) {
+                    Icon(
+                        Icons.Default.EmojiEvents, "BLINK VIP",
+                        tint = Color(0xFFF5B71B),
+                        modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
+                    )
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,8 +128,9 @@ internal fun BlinkReferenceProfileDashboard(
                         modifier = Modifier.weight(1f, fill = false))
                     if (profile.verificationBadge != VerificationBadge.NONE) {
                         Spacer(Modifier.width(5.dp))
-                        Icon(Icons.Default.Verified, contentDescription = "Verified",
-                            tint = Color(0xFF1883F8), modifier = Modifier.size(18.dp))
+                        com.example.ui.components.VerifiedMark(
+                            badge = profile.verificationBadge, size = 18.dp
+                        )
                     }
                 }
                 if (profile.university.isNotBlank())
