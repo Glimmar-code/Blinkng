@@ -2,7 +2,8 @@
 -- Intentionally isolates the expensive private_ranking.get_discovery_feed
 -- temporary-candidate selection phase; not an end-to-end RPC performance test.
 \set ON_ERROR_STOP on
-set statement_timeout='25s';
+begin;
+set local statement_timeout='25s';
 create temporary table discovery_candidates (
     post_id uuid primary key,
     creator_id uuid not null,
@@ -99,3 +100,4 @@ begin
   end if;
   raise notice 'PASS: ranked selection contains 60 unique synthetic posts.';
 end $$;
+commit;
