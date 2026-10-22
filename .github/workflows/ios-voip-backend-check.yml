@@ -1,0 +1,46 @@
+name: iOS VoIP backend security gate
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'supabase/functions/ios-voip-*/**'
+      - 'supabase/functions/send-call-notification/**'
+      - 'supabase/migrations/*ios_voip*'
+      - 'supabase/config.toml'
+      - 'scripts/validate_ios_voip_phase9.py'
+      - '.github/workflows/ios-voip-backend-check.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'supabase/functions/ios-voip-*/**'
+      - 'supabase/functions/send-call-notification/**'
+      - 'supabase/migrations/*ios_voip*'
+      - 'supabase/config.toml'
+      - 'scripts/validate_ios_voip_phase9.py'
+      - '.github/workflows/ios-voip-backend-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check fail-closed iOS/APNs release gates
+        run: python3 scripts/validate_ios_voip_phase9.py
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check registration and Apple dispatcher
+        run: |
+          deno check supabase/functions/ios-voip-register/index.ts
+          deno check supabase/functions/ios-voip-dispatch/index.ts
+      - name: Ensure no live Apple credentials in source
+        run: |
+          if grep -R -E --include='*.ts' -e '-----BEGIN PRIVATE KEY-----' supabase/functions/ios-voip-*; then
+            echo 'Private Apple key found in source.' >&2
+            exit 1
+          fi

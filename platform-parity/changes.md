@@ -1,3 +1,11 @@
+## 2026-10-22 — Full-screen reference profile redesign (feature branch to Testlab)
+
+- **Android:** Replaces the former 95%-width rounded profile drawer with a full-width edge-to-edge profile surface. A screenshot-inspired header, true backend-owned rank and Coin values, XP progression, earned/locked badge indicators, verification rows, and working 5-tab bottom navigation precede the existing posts/growth/liked/saved/market/skills/about tabs. Account data is never copied from the visual reference.
+- **Android compatibility:** All existing Supabase auth, wallet, verification, XP, follower and post APIs remain unchanged. Buttons continue to call established handlers; other-user profile reporting/options remain accessible from its top-right menu. This is a visual/layout stage, not a new student-verification backend or a released APK.
+- **Windows:** Existing profile shows real Coin balance, XP progression, verified identity, and subscription pathways. The profile also shows the five new **achievement categories** with a clear label that earned status is unavailable on the desktop profile response; no awards are fabricated.
+- **Platform exception (mobile viewport):** Phone edge-to-edge status/navigation bars and a fixed 5-icon bottom navigation are Android-specific. Windows retains desktop navigation and window chrome. Earned-badge indicators await safe backend hydration on Windows; categories are visible meanwhile.
+- **Verification needed before main:** Android Kotlin compile/unit checks, Windows compile/parity checks, profile navigation and other-user permission checks, large-font screenshot comparison against the approved image at matching viewport, dark/light contrast, and merge reconciliation against main. Keep the APK unpublished until gates pass; no manual temporary download required.
+
 ## 2026-10-22 — Paystack Phase 3 Android recovery (Testlab only)
 
 - PARITY-EXCEPTION: paystack-android-deep-link — Android receives `blink://payment` from its browser and receives activity foreground callbacks. It reconciles only the account's locally saved Paystack reference through authenticated server verification; successful Coin purchases refresh the authoritative wallet without reloading the Feed. Other purchase kinds still refresh the full account to update verification/boost entitlements.

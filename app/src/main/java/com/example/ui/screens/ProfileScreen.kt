@@ -125,7 +125,10 @@ fun ProfileScreen(
     onBuyBlinkCoins: () -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
-    onRefreshProfile: () -> Unit = {}
+    onRefreshProfile: () -> Unit = {},
+    onNavigateMainTab: (String) -> Unit = {},
+    selectedMainTabRoute: String = "home",
+    onTopAction: (String) -> Unit = {}
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
@@ -259,10 +262,9 @@ fun ProfileScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth()
                 .fillMaxHeight()
                 .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
-                .shadow(24.dp, RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp), clip = false)
                 .pointerInput(profile.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
@@ -294,7 +296,7 @@ fun ProfileScreen(
                     )
                 }
                 .testTag("profile_screen"),
-            shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+            shape = RoundedCornerShape(0.dp),
             color = bgColor
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -302,594 +304,52 @@ fun ProfileScreen(
             LazyColumn(
                 state = scrollState,
                 contentPadding = PaddingValues(bottom = 130.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().statusBarsPadding()
             ) {
 
                 // ============================================================
-                // COVER HEADER — parallax + gradient wash
+                // REFERENCE DASHBOARD — full-screen profile with live account data
                 // ============================================================
-                item(key = "cover") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(210.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(240.dp)
-                                .graphicsLayer {
-                                    translationY = -parallaxOffset * 0.4f
-                                    val scaleFactor = 1f + (parallaxOffset / 900f).coerceIn(0f, 0.25f)
-                                    scaleX = scaleFactor
-                                    scaleY = scaleFactor
-                                }
-                        ) {
-                            if (profile.coverPhotoUrl.isNotBlank()) {
-                                AsyncImage(
-                                    model = profile.coverPhotoUrl,
-                                    contentDescription = "Profile cover photo",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(BlinkPink, BlinkPurple, BlinkBlue)
-                                            )
-                                        )
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.60f),
-                                            Color.Transparent,
-                                            bgColor.copy(alpha = 0.94f)
-                                        )
-                                    )
-                                )
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircleToolbarButton(
-                                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                onClick = onBack,
-                                testTag = "profile_back_btn"
-                            )
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (isMe) {
-                                    Surface(
-                                        shape = RoundedCornerShape(24.dp),
-                                        color = Color.Black.copy(alpha = 0.55f),
-                                        modifier = Modifier.testTag("profile_visitor_badge")
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = { showVisitorHistory = true },
-                                                modifier = Modifier.size(42.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Visibility,
-                                                    contentDescription = "Open profile visitors",
-                                                    tint = Color.White
-                                                )
-                                            }
-                                            Text(
-                                                text = newVisitors?.toString() ?: "—",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                modifier = Modifier.padding(end = 9.dp),
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                CircleToolbarButton(
-                                    icon = Icons.Default.MoreVert,
-                                    contentDescription = "More profile options",
-                                    onClick = { showMoreSheet = true }
-                                )
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = headerCollapsed,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 10.dp),
-                            enter = fadeIn(tween(200)) + slideInVertically(
-                                animationSpec = tween(220),
-                                initialOffsetY = { -10 }
-                            ),
-                            exit = fadeOut(tween(150)) + slideOutVertically(tween(150))
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = Color.Black.copy(alpha = 0.45f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = profile.fullName,
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text("@${profile.username}", color = BlinkPink, fontSize = 10.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ============================================================
-                // IDENTITY — staggered entrance
-                // ============================================================
-                item(key = "identity") {
-                    BlinkPremiumProfileSurface(
-                        identity = premiumIdentity,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp)
-                            .offset(y = (-40).dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 14.dp)
-                        ) {
-
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-
-                            EntranceItem(visible = contentVisible, delayMillis = 0) {
-                                Box(modifier = Modifier.size(100.dp)) {
-                                    val avatarScale by animateFloatAsState(
-                                        targetValue = if (contentVisible) 1f else 0.6f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessLow
-                                        ),
-                                        label = "avatarScale"
-                                    )
-
-                                    BlinkPremiumAvatarFrame(
-                                        identity = premiumIdentity,
-                                        size = 100.dp,
-                                        modifier = Modifier.scale(avatarScale),
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(CircleShape)
-                                                .background(BlinkPink.copy(alpha = glowAlpha))
-                                                .padding(3.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .clip(CircleShape)
-                                                    .background(bgColor)
-                                                    .padding(3.dp)
-                                            ) {
-                                                AsyncImage(
-                                                    model = profile.avatarUrl,
-                                                    error = painterResource(R.drawable.ic_default_profile),
-                                                    fallback = painterResource(R.drawable.ic_default_profile),
-                                                    contentDescription = "Profile picture",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(CircleShape)
-                                                        .clickable { showAvatarViewer = true }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(19.dp)
-                                            .align(Alignment.BottomEnd)
-                                            .background(
-                                                if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
-                                                CircleShape
-                                            )
-                                            .border(3.dp, bgColor, CircleShape)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.weight(1f))
-
-                            EntranceItem(visible = contentVisible, delayMillis = 90, fromRight = true) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    if (isMe) {
-                                        SmallActionButton(
-                                            icon = Icons.Default.Edit,
-                                            title = "Edit",
-                                            tint = textPrimary,
-                                            onClick = onEditProfileClick,
-                                            testTag = "profile_edit_btn"
-                                        )
-
-                                        SmallActionButton(
-                                            icon = Icons.Default.Verified,
-                                            title = when (profile.verificationBadge) {
-                                                VerificationBadge.GOLD -> "VIP Gold"
-                                                VerificationBadge.BLUE -> "Get Gold"
-                                                VerificationBadge.NONE -> "Get Verified"
-                                            },
-                                            tint = when (profile.verificationBadge) {
-                                                VerificationBadge.GOLD -> BlinkGold
-                                                VerificationBadge.BLUE -> BlinkGold
-                                                VerificationBadge.NONE -> BlinkPink
-                                            },
-                                            onClick = onOpenGetVerified,
-                                            testTag = "profile_verify_btn"
-                                        )
-                                    } else {
-                                        SmallActionButton(
-                                            icon = Icons.AutoMirrored.Filled.Chat,
-                                            title = "Message",
-                                            tint = Color.White,
-                                            background = BlinkPurple,
-                                            onClick = { onDirectMessage(profile.username) },
-                                            testTag = "profile_message_btn"
-                                        )
-
-                                        SmallActionButton(
-                                            icon = if (isFollowing) Icons.Default.Check else Icons.Default.PersonAdd,
-                                            title = if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
-                                            tint = if (isFollowing) textPrimary else if (isDark) BlinkBlack else BlinkCream,
-                                            background = if (isFollowing) {
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            } else {
-                                                if (isDark) BlinkCream else BlinkBlack
-                                            },
-                                            onClick = {
-                                                if (!followBusy && profile.id.isNotBlank()) {
-                                                    val desired = !isFollowing
-                                                    followBusy = true
-                                                    overlayScope.launch {
-                                                        val saved = FollowStateStore.setFollowing(profile.id, desired)
-                                                        followBusy = false
-                                                        if (saved) onFollowChanged(desired)
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier.scale(animatedFollowScale),
-                                            testTag = "profile_follow_btn"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        EntranceItem(visible = contentVisible, delayMillis = 60) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = profile.fullName,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = textPrimary
-                                )
-                                if (profile.verificationBadge != VerificationBadge.NONE) {
-                                    Spacer(modifier = Modifier.width(7.dp))
-                                    VerifiedMark(badge = profile.verificationBadge, size = 20.dp)
-                                }
-                                BlinkVipMarkForUsername(
-                                    username = profile.username,
-                                    knownVip = profile.isBlinkVip,
-                                    modifier = Modifier.padding(start = 6.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(100.dp),
-                                    color = BlinkPink.copy(alpha = 0.10f),
-                                    border = BorderStroke(1.dp, BlinkPink.copy(alpha = 0.28f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("🔥", fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = "${profile.dailyStreak}",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = BlinkPink
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Text(
-                            text = "@${profile.username}",
-                            fontSize = 13.sp,
-                            color = BlinkPink,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(7.dp)
-                                    .background(
-                                        if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
-                                        CircleShape
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
-                            )
-                        }
-
-                        if (profile.professionalHeadline.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(7.dp))
-                            Text(
-                                text = profile.professionalHeadline,
-                                fontSize = 13.5.sp,
-                                color = textPrimary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(7.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FacultyBadge(tag = profile.faculty)
-                            Text(
-                                text = "${profile.university} • ${profile.academicLevel}",
-                                fontSize = 11.5.sp,
-                                color = textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        if (profile.department.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.School,
-                                    contentDescription = null,
-                                    tint = textSecondary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(profile.department, fontSize = 11.sp, color = textSecondary)
-                            }
-                        }
-
-                        if (profile.bio.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(11.dp))
-                            Text(
-                                text = profile.bio,
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp,
-                                color = textPrimary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // ==========================================================
-                        // STATS & RANKS
-                        // ==========================================================
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            color = cardBg,
-                            border = BorderStroke(1.dp, borderColor)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                ProfileMetric(value = userPosts.size, label = "Posts", animateCount = true)
-                                DividerMetric()
-                                ProfileMetric(
-                                    value = profile.followerCount,
-                                    label = "Followers",
-                                    animateCount = true
-                                )
-                                DividerMetric()
-                                ProfileMetric(value = profile.followingCount, label = "Following", animateCount = true)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Campus + world rank showcase. The daily streak is now public beside the name.
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            color = cardBg,
-                            border = BorderStroke(1.dp, borderColor)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 12.dp, horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("🏛️", fontSize = 15.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(profileRankLabel(profile.campusRank), fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
-                                    }
-                                    Text("Campus Rank", fontSize = 9.5.sp, color = textSecondary)
-                                }
-
-                                DividerMetric()
-
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("🌐", fontSize = 15.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(profileRankLabel(profile.worldRank), fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
-                                    }
-                                    Text("World Rank", fontSize = 9.5.sp, color = textSecondary)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        ProfileXpProgressCard(
-                            profile = profile,
-                            cardBg = cardBg,
-                            borderColor = borderColor,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Keep the primary profile actions inside the 95%-width profile panel.
-                        // Wrapping them into two balanced rows avoids the clipped third/fourth pill
-                        // seen on narrow phones while preserving every action.
-                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                OutlinePill(
-                                    icon = Icons.Default.Link,
-                                    text = "Share profile",
-                                    onClick = { showShareSheet = true },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinePill(
-                                    icon = Icons.Default.ContentCopy,
-                                    text = "Copy username",
-                                    onClick = {
-                                        clipboard.setText(AnnotatedString("@${profile.username}"))
-                                        Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            if (isMe || profile.links.website.isNotBlank()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                                ) {
-                                    if (isMe) {
-                                        OutlinePill(
-                                            icon = if (profileCompletion >= 100) Icons.Default.CheckCircle else Icons.Default.AutoAwesome,
-                                            text = if (profileCompletion >= 100) "Profile complete" else "Complete profile ${profileCompletion}%",
-                                            onClick = onEditProfileClick,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                    if (profile.links.website.isNotBlank()) {
-                                        OutlinePill(
-                                            icon = Icons.Default.Language,
-                                            text = "Website",
-                                            onClick = { openExternalUrl(context, profile.links.website) },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (isMe) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(18.dp),
-                                color = cardBg,
-                                border = BorderStroke(1.dp, BlinkGold.copy(alpha = 0.42f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(shape = CircleShape, color = BlinkGold.copy(alpha = 0.14f)) {
-                                        Text("🪙", fontSize = 22.sp, modifier = Modifier.padding(9.dp))
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Blink Coin", fontSize = 13.sp, fontWeight = FontWeight.Black, color = textPrimary)
-                                        Text(
-                                            "$blinkCoinBalance coins • Private",
-                                            fontSize = 10.sp,
-                                            color = textSecondary
-                                        )
-                                    }
-                                    FilledTonalButton(
-                                        onClick = { showEarnCoinDialog = true },
-                                        shape = RoundedCornerShape(100.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
-                                    ) {
-                                        Icon(Icons.Default.AddCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(5.dp))
-                                        Text("Earn coin", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    }
-                }
-
-                // ============================================================
-                // PROFILE TRUST
-                // ============================================================
-                item(key = "trust") {
-                    TrustBanner(
+                item(key = "reference_dashboard") {
+                    BlinkReferenceProfileDashboard(
                         profile = profile,
                         isMe = isMe,
-                        cardBg = cardBg,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        borderColor = borderColor,
-                        onVerify = onOpenGetVerified
+                        blinkCoinBalance = blinkCoinBalance,
+                        isDark = isDark,
+                        isFollowing = isFollowing,
+                        followBusy = followBusy,
+                        onAvatarClick = { showAvatarViewer = true },
+                        onBack = onBack,
+                        onEdit = onEditProfileClick,
+                        onMessage = { onDirectMessage(profile.username) },
+                        onFollow = {
+                            if (!followBusy && profile.id.isNotBlank()) {
+                                followBusy = true
+                                overlayScope.launch {
+                                    val desired = !isFollowing
+                                    val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                    followBusy = false
+                                    if (saved) onFollowChanged(desired)
+                                }
+                            }
+                        },
+                        onVerify = onOpenGetVerified,
+                        onEarnCoins = { showEarnCoinDialog = true },
+                        onShowBadges = { selectedTab = if (isMe) 5 else 4 },
+                        onShare = { showShareSheet = true },
+                        onCopyUsername = {
+                            clipboard.setText(AnnotatedString("@" + profile.username))
+                            Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+                        },
+                        onVisitors = { showVisitorHistory = true },
+                        onTopAction = { action ->
+                            if (action == "menu" && !isMe) showMoreSheet = true
+                            else onTopAction(action)
+                        }
                     )
                 }
 
+                // ============================================================
                 // ============================================================
                 // TABS — real sliding pill indicator
                 // ============================================================
@@ -1040,6 +500,13 @@ fun ProfileScreen(
                         modifier = Modifier.graphicsLayer { rotationZ = refreshRotation }
                     )
                 }
+            }
+            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                BlinkReferenceProfileBottomNav(
+                    isDark = isDark,
+                    selectedRoute = selectedMainTabRoute,
+                    onNavigate = onNavigateMainTab
+                )
             }
         }
     }

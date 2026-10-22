@@ -1,0 +1,17 @@
+# XcodeGen outputs
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+build/
+.build/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+*.xcresult
+*.mobileprovision
+*.p12
+*.p8
+*.cer
+*.key
+*.pem
+Local.xcconfig

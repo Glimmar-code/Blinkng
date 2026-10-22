@@ -605,8 +605,15 @@ class MainActivity : ComponentActivity() {
                     // apply statusBarsPadding once; keep the bottom/side safe areas
                     // so the floating navigation stays clear of gesture navigation.
                     contentWindowInsets = if (uiState.destination == AppDestination.MAIN) {
+                        // The reference profile owns its navigation-bar inset so its
+                        // content and bottom bar reach the physical screen edge.
+                        // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            if (uiState.viewingProfile != null) {
+                                WindowInsetsSides.Horizontal
+                            } else {
+                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            }
                         )
                     } else {
                         ScaffoldDefaults.contentWindowInsets
@@ -1539,7 +1546,36 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = onOpenCoinPackChooser,
-                    isDark = uiState.isDarkMode
+                    isDark = uiState.isDarkMode,
+                    selectedMainTabRoute = when (uiState.selectedTab) {
+                        MainTab.MARKET -> "market"
+                        MainTab.MESSAGES -> "messages"
+                        MainTab.HOME -> when (uiState.feedSubTab) {
+                            1 -> "reels"
+                            2 -> "connect"
+                            else -> "home"
+                        }
+                        else -> "home"
+                    },
+                    onNavigateMainTab = { destination ->
+                        viewModel.closeProfile()
+                        when (destination) {
+                            "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                            "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                            "market" -> viewModel.setTab(MainTab.MARKET)
+                            "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                            "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onTopAction = { action ->
+                        viewModel.closeProfile()
+                        when (action) {
+                            "search" -> viewModel.setTab(MainTab.SEARCH)
+                            "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                            "notifications" -> viewModel.openActivity(true)
+                            "menu" -> viewModel.openMenu(true)
+                        }
+                    }
                 )
             }
         }
