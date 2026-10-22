@@ -73,9 +73,14 @@ test('incomplete file list or unmergeable PR fail closed', () => {
 });
 test('Android, web and backend jobs have explicit required gates', () => {
   const android = policy.requiredChecks(['app/src/main/java/Foo.kt']);
-  for (const c of ['validate','guard','migration-safety','parity','windows-build','runtime-smoke','release-smoke']) {
+  for (const c of ['validate','guard','migration-safety','parity','runtime-smoke','release-smoke']) {
     assert.ok(android.includes(c), c);
   }
+  assert.ok(!android.includes('windows-build'), 'Android-only changes skip unrelated Windows installer build');
+  const shared = policy.requiredChecks(['shared/src/Foo.kt']);
+  assert.ok(shared.includes('windows-build'), 'shared code requires Windows packaging');
+  assert.ok(policy.requiredChecks(['desktopApp/src/Windows.kt']).includes('windows-build'));
+  assert.ok(policy.requiredChecks(['scripts/ci_change_scope.py']).includes('windows-build'));
   const web = policy.requiredChecks(['web/app.js']);
   assert.ok(web.includes('web-parity'));
   assert.ok(web.includes('verify'));
