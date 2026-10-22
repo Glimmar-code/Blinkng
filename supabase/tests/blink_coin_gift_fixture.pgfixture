@@ -1,0 +1,50 @@
+-- CI-only, disposable PostgreSQL fixture. No real users, credentials or remote database.
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin;
+create schema auth;
+
+create function auth.uid() returns uuid language sql stable as
+$$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+
+create table public.profiles (
+  id uuid primary key
+);
+create table public.user_balances (
+  user_id uuid primary key references public.profiles(id),
+  spendable_coin_balance numeric not null default 0,
+  updated_at timestamptz not null default now()
+);
+create table public.game_profiles (
+  user_id uuid primary key references public.profiles(id),
+  coins bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+create table public.blink_coin_gifts (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id),
+  receiver_id uuid not null references public.profiles(id),
+  amount bigint not null,
+  created_at timestamptz not null default now()
+);
+create type public.notification_type_enum as enum ('tip','system');
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id),
+  actor_id uuid references public.profiles(id),
+  type public.notification_type_enum not null,
+  text text,
+  sub_text text,
+  target_type text,
+  target_id uuid,
+  metadata jsonb not null default '{}'::jsonb
+);
+
+insert into public.profiles(id) values
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+ ('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+insert into public.user_balances(user_id,spendable_coin_balance) values
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',1000),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',0),
+ ('cccccccc-cccc-4ccc-8ccc-cccccccccccc',0);
