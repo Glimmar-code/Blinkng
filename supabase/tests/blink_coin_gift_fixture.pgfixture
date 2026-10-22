@@ -38,6 +38,29 @@ create table public.blink_coin_gifts (
   amount bigint not null,
   created_at timestamptz not null default now()
 );
+-- Reproduce production's sender-freeze BEFORE INSERT guard in disposable CI.
+create schema private;
+create table private.admin_user_controls (
+  user_id uuid primary key,
+  coin_frozen boolean not null default false
+);
+create function private.guard_coin_transfer_admin_controls() returns trigger
+language plpgsql security definer set search_path to ''
+as $guard$
+begin
+  if new.sender_id is not null and exists (
+    select 1 from private.admin_user_controls c
+    where c.user_id = new.sender_id and c.coin_frozen
+  ) then
+    raise exception 'COIN_BALANCE_FROZEN';
+  end if;
+  return new;
+end;
+$guard$;
+create trigger trg_admin_guard_coin_gifts
+before insert on public.blink_coin_gifts
+for each row execute function private.guard_coin_transfer_admin_controls();
+
 create type public.notification_type_enum as enum ('tip','system');
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
