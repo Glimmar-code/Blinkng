@@ -83,8 +83,24 @@ begin
   exception when sqlstate '42501' then null;
   end;
 
+  -- Production has a BEFORE INSERT sender-freeze trigger. A gift committed
+  -- before a freeze must replay safely, but new gifts must be denied.
+  perform set_config('request.jwt.claim.sub',v_a::text,true);
+  insert into private.admin_user_controls(user_id,coin_frozen) values(v_a,true);
+  select public.gift_blink_coins_once(v_b,20,v_r20) into v_balance;
+  if v_balance <> 830 then raise exception 'Existing gift cannot be replayed after freeze'; end if;
+  begin
+    perform public.gift_blink_coins_once(v_b,20,gen_random_uuid());
+    raise exception 'Security: new gift accepted despite sender freeze';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'COIN_BALANCE_FROZEN' then raise; end if;
+  end;
+
   select count(*) into v_count from public.blink_coin_gifts;
-  if v_count <> 3 then raise exception 'Failed transactions left partial receipts'; end if;
-  raise notice 'PASS: Coin gifts 20/50/100, wallet conservation, replay guard, notification, legacy mirror, auth and insufficient-balance tests.';
+  if v_count <> 3 then raise exception 'Blocked transfers left partial receipts'; end if;
+  select floor(spendable_coin_balance)::bigint into v_sender
+    from public.user_balances where user_id=v_a;
+  if v_sender <> 830 then raise exception 'Blocked transfer changed wallet'; end if;
+  raise notice 'PASS: Coin gifts 20/50/100, conservation, replay, freeze guard, notifications, mirror and auth.';
 end;
 $$;
