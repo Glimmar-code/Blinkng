@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
+import com.blinkng.shared.BlinkFeedScrollMotion
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
@@ -241,6 +242,7 @@ fun PremiumFeedScreen(
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    onBottomBarTravel: (Float) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
     routedReelId: String? = null,
     isReelsDestinationActive: Boolean = true
@@ -333,6 +335,7 @@ fun PremiumFeedScreen(
             onLoadMorePosts = onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            onBottomBarTravel = onBottomBarTravel,
             onGameClick = { onSubTabChanged(3) },
             onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
@@ -485,6 +488,7 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    onBottomBarTravel: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
@@ -550,6 +554,10 @@ private fun PremiumHomeFeed(
     val primaryCollapseThreshold = with(density) { 20.dp.toPx() }
     val immersiveCollapseThreshold = with(density) { 56.dp.toPx() }
     val scrollAccumulator = remember { floatArrayOf(0f) }
+    var topChromeTravelPx by remember(laneResumeKey) { mutableFloatStateOf(0f) }
+    var bottomBarTravelPx by remember(laneResumeKey) { mutableFloatStateOf(0f) }
+    val topTravelMaxPx = with(density) { 96.dp.toPx() }
+    val bottomTravelMaxPx = with(density) { 80.dp.toPx() }
     var chromeStage by remember(laneResumeKey) { mutableIntStateOf(0) }
     var primaryHeaderVisible by remember(laneResumeKey) { mutableStateOf(true) }
     var secondaryChromeVisible by remember(laneResumeKey) { mutableStateOf(true) }
@@ -680,6 +688,16 @@ private fun PremiumHomeFeed(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
+                // Proportional movement: 80px post swipe = 20px header + 50px nav.
+                // Signed delta naturally reverses both offsets while scrolling down.
+                val upDelta = -available.y
+                topChromeTravelPx = BlinkFeedScrollMotion.advance(
+                    topChromeTravelPx, upDelta, BlinkFeedScrollMotion.TOP_PER_POST, topTravelMaxPx
+                )
+                bottomBarTravelPx = BlinkFeedScrollMotion.advance(
+                    bottomBarTravelPx, upDelta, BlinkFeedScrollMotion.NAV_PER_POST, bottomTravelMaxPx
+                )
+                onBottomBarTravel(bottomBarTravelPx)
                 when {
                     available.y < 0f -> {
                         // Moving deeper into the feed. Collapse the primary header first,
@@ -757,6 +775,9 @@ private fun PremiumHomeFeed(
         }
 
         scrollAccumulator[0] = 0f
+        topChromeTravelPx = 0f
+        bottomBarTravelPx = 0f
+        onBottomBarTravel(0f)
         if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 1) {
             chromeStage = 0
             primaryHeaderVisible = true
@@ -790,6 +811,9 @@ private fun PremiumHomeFeed(
                 bottomChromeVisible = true
                 fabExpanded = true
                 scrollAccumulator[0] = 0f
+                topChromeTravelPx = 0f
+                bottomBarTravelPx = 0f
+                onBottomBarTravel(0f)
                 onBottomBarVisibilityChange(true)
             }
         }
@@ -807,6 +831,9 @@ private fun PremiumHomeFeed(
                 onRefresh()
             }
             scrollAccumulator[0] = 0f
+            topChromeTravelPx = 0f
+            bottomBarTravelPx = 0f
+            onBottomBarTravel(0f)
             chromeStage = 0
             primaryHeaderVisible = true
             secondaryChromeVisible = true
@@ -903,6 +930,9 @@ private fun PremiumHomeFeed(
                     exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
                 ) {
                     FeedTopBar(
+                        modifier = Modifier.graphicsLayer {
+                            translationY = -topChromeTravelPx.coerceAtMost(topTravelMaxPx) * 0.6f
+                        },
                         userAvatar = userAvatar,
                         hasUnreadNotifications = hasUnreadNotifications,
                         onSearchClick = onSearchClick,
@@ -915,7 +945,10 @@ private fun PremiumHomeFeed(
                 AnimatedVisibility(
                     visible = secondaryChromeVisible,
                     enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { -it / 3 },
-                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 }
+                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 },
+                    modifier = Modifier.graphicsLayer {
+                        translationY = -topChromeTravelPx.coerceAtMost(topTravelMaxPx) * 0.4f
+                    }
                 ) {
                     Column {
                         Box {
