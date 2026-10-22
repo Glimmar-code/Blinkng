@@ -438,7 +438,7 @@ class MainActivity : ComponentActivity() {
                     if (preferences.getString("reference", null) == reference) {
                         preferences.edit().remove("reference").apply()
                     }
-                    viewModel.refreshProfileRewards()
+                    viewModel.refreshCoinBalanceAfterPayment()
                     viewModel.showToast("Payment confirmed. Your BLINK balance is updating.")
                     return@launch
                 }
@@ -1073,8 +1073,8 @@ fun MainAppContent(
                     v2PendingReference = null
                     v2PendingPrompt = false
                     paystackPrefs.edit().remove("reference").apply()
-                    viewModel.fetchSupabaseData()
-                    viewModel.showToast("Paystack payment confirmed. Purchase delivered.")
+                    viewModel.refreshCoinBalanceAfterPayment()
+                    viewModel.showToast("Payment confirmed. Your BLINK Coins are updating.")
                 } else viewModel.showToast("Payment is still pending. Check again later.")
             } catch (error: Exception) {
                 viewModel.showToast(error.message ?: "Could not verify this payment.")
