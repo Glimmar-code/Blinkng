@@ -399,6 +399,7 @@ fun PremiumFeedScreen(
             onVotePoll = onVotePoll,
             onRefreshFeed = onRefresh,
             isFeedRefreshing = isRefreshing,
+            hasUnreadNotifications = hasUnreadNotifications,
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
@@ -1218,6 +1219,7 @@ private fun PremiumConnectHost(
     onVotePoll: (String, String) -> Unit,
     onRefreshFeed: () -> Unit,
     isFeedRefreshing: Boolean,
+    hasUnreadNotifications: Boolean,
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
@@ -1268,6 +1270,7 @@ private fun PremiumConnectHost(
             onVotePoll = onVotePoll,
             onRefreshFeed = onRefreshFeed,
             isFeedRefreshing = isFeedRefreshing,
+            hasUnreadNotifications = hasUnreadNotifications,
             modifier = Modifier.fillMaxSize()
         )
     }
