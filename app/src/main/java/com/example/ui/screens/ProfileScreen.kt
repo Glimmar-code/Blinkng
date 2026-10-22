@@ -62,8 +62,6 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.ui.components.ProfileFollowInteractButton
-import androidx.compose.ui.platform.LocalConfiguration
-import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.notification.BlinkProfileVisitorClient
 import com.example.ui.components.BlinkProfileVisitorsDialog
 import com.example.ui.components.FacultyBadge
@@ -100,7 +98,7 @@ private object ProfileMotion {
     val TabIndicatorSpec = spring<Dp>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
     profile: UserProfile,
