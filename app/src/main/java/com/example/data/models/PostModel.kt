@@ -143,7 +143,10 @@ data class Story(
     val isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val isVip: Boolean = false,
-    val displayName: String = ""
+    val displayName: String = "",
+    // Server timestamps and media type allow reliable 24-hour expiry and playback.
+    val createdAt: String = "",
+    val isVideo: Boolean = false
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
