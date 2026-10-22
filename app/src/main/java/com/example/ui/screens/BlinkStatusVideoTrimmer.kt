@@ -95,18 +95,24 @@ internal object BlinkStatusVideoTrimmer {
                 if (ptsUs < 0 || ptsUs > endUs) break
                 val outputTrack = tracks[inputTrack]
                 if (outputTrack != null) {
-                    if (extractor.sampleSize > MAX_SAMPLE_BYTES) {
+                    if (android.os.Build.VERSION.SDK_INT >= 28 &&
+                        extractor.sampleSize > MAX_SAMPLE_BYTES) {
                         throw IllegalArgumentException("Video sample exceeds safe memory limit.")
                     }
                     buffer.clear()
                     val count = extractor.readSampleData(buffer, 0)
-                    if (count <= 0) break
+                    if (count <= 0) {
+                        throw IllegalArgumentException("This video contains an unsupported sample.")
+                    }
                     if (firstUs < 0) firstUs = ptsUs
                     val newTime = (ptsUs - firstUs).coerceAtLeast(0)
                     // Muxer requires increasing timestamps for each encoded track.
                     val monotonicTime = maxOf(newTime, (lastByTrack[outputTrack] ?: -1L) + 1L)
                     lastByTrack[outputTrack] = monotonicTime
-                    info.set(0, count, monotonicTime, extractor.sampleFlags)
+                    val codecFlags = if (
+                        extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                    ) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                    info.set(0, count, monotonicTime, codecFlags)
                     writer.writeSampleData(outputTrack, buffer, info)
                     samplesWritten++
                 }
