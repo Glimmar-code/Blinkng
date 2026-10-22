@@ -77,6 +77,7 @@ for (const pack of coinPacks) {
       { amount: pack.naira * 100 + 1 },
       { status: "failed" },
       { status: "abandoned" },
+      { status: "cancelled" },
       { status: "pending" },
       { currency: "USD" },
       { reference: `blink-ps-${"b".repeat(32)}` },
