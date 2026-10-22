@@ -79,6 +79,7 @@ import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
+import com.example.data.repository.UserInteractionRepository
 import com.example.data.repository.FollowStateStore
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
@@ -320,6 +321,7 @@ fun PremiumFeedScreen(
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
             onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
             onOpenCreatePost = onOpenCreatePost,
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
@@ -471,6 +473,7 @@ private fun PremiumHomeFeed(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
@@ -488,6 +491,8 @@ private fun PremiumHomeFeed(
 ) {
     val context = LocalContext.current
     val followScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val giftRequests = remember { mutableStateMapOf<String, String>() }
     val followMutationPending = remember { mutableStateMapOf<String, Boolean>() }
     // Resolve real Supabase profile IDs; never send a username to follow_user.
     val authorIdByKey = remember(profiles) {
@@ -1070,6 +1075,32 @@ private fun PremiumHomeFeed(
                                                                 try { FollowStateStore.setFollowing(id, false) }
                                                                 finally { followMutationPending.remove(id) }
                                                             }
+                                                        }
+                                                    },
+                                                    onMessageAuthor = {
+                                                        onDirectMessage(
+                                                            post.authorUsername.trim().removePrefix("@")
+                                                                .ifBlank { post.author.trim().removePrefix("@") },
+                                                            post.author,
+                                                            post.authorAvatar
+                                                        )
+                                                    },
+                                                    onGiftCoinsAuthor = { recipientId, amount ->
+                                                        val giftKey = "$recipientId:$amount"
+                                                        val requestId = giftRequests.getOrPut(giftKey) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        followScope.launch {
+                                                            val sent = interactionRepository.giftCoinsOnce(
+                                                                recipientId, amount, requestId
+                                                            )
+                                                            if (sent) giftRequests.remove(giftKey)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Coin gift not confirmed. No balance change shown.",
+                                                                android.widget.Toast.LENGTH_SHORT
+                                                            ).show()
                                                         }
                                                     },
                                                     authorOnline = authorPresenceByKey[
