@@ -62,6 +62,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -556,8 +557,8 @@ private fun PremiumHomeFeed(
     val primaryCollapseThreshold = with(density) { 20.dp.toPx() }
     val immersiveCollapseThreshold = with(density) { 56.dp.toPx() }
     val scrollAccumulator = remember { floatArrayOf(0f) }
-    var topChromeTravelPx by remember(laneResumeKey) { mutableFloatStateOf(0f) }
-    var bottomBarTravelPx by remember(laneResumeKey) { mutableFloatStateOf(0f) }
+    var topChromeTravelPx by remember(laneResumeKey) { mutableStateOf(0f) }
+    var bottomBarTravelPx by remember(laneResumeKey) { mutableStateOf(0f) }
     val topTravelMaxPx = with(density) { 96.dp.toPx() }
     val bottomTravelMaxPx = with(density) { 80.dp.toPx() }
     var chromeStage by remember(laneResumeKey) { mutableIntStateOf(0) }
