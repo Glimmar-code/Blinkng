@@ -44,7 +44,9 @@ fun BlinkWebsiteUpdateDialog(
 ) {
     val downloading = downloadState is WebsiteApkDownloadCoordinator.State.Downloading
     var unmeteredOnly by rememberSaveable { mutableStateOf(false) }
-    Dialog(onDismissRequest = onLater) {
+    // Outside taps/back gestures must not silently discard an update. Use the explicit
+    // Later/Continue in background actions so users remain in control.
+    Dialog(onDismissRequest = {}) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = Color(0xFF101010),
