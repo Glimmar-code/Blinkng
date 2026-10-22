@@ -554,7 +554,7 @@ fun FeedTabs(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().heightIn(min = 58.dp)
+        modifier = modifier.fillMaxWidth().height(58.dp)
             .background(MaterialTheme.colorScheme.surface)
             .padding(start = 14.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically
