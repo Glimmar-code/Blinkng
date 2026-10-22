@@ -260,6 +260,7 @@ class MainActivity : ComponentActivity() {
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             intent.data = null
             return
         }
@@ -411,6 +412,40 @@ class MainActivity : ComponentActivity() {
             BlinkInAppNotificationDestination.NOTIFICATIONS -> {
                 viewModel.openActivity(true)
             }
+        }
+    }
+
+    private var pendingPaystackRefreshJob: Job? = null
+
+    /**
+     * Reconcile a returned Paystack checkout without waiting for the next feed sync.
+     * The server alone decides whether a signed payment has been fulfilled.
+     */
+    private fun reconcileReturnedPaystackPayment() {
+        val accountId = viewModel.uiState.value.myProfile.id
+        if (accountId.isBlank() || pendingPaystackRefreshJob?.isActive == true) return
+        val preferences = getSharedPreferences("blink_paystack_v2_" + accountId, MODE_PRIVATE)
+        val reference = preferences.getString("reference", null)?.trim().orEmpty()
+        if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
+
+        pendingPaystackRefreshJob = lifecycleScope.launch {
+            val service = BlinkPaystackCheckoutService()
+            for (attempt in 0 until 5) {
+                if (viewModel.uiState.value.myProfile.id != accountId) return@launch
+                val confirmed = runCatching { service.confirmPayment(reference) }.getOrDefault(false)
+                if (confirmed) {
+                    // Do not let a stale response clear another checkout's reference.
+                    if (preferences.getString("reference", null) == reference) {
+                        preferences.edit().remove("reference").apply()
+                    }
+                    viewModel.refreshProfileRewards()
+                    viewModel.showToast("Payment confirmed. Your BLINK balance is updating.")
+                    return@launch
+                }
+                if (attempt < 4) delay(2000L * (attempt + 1))
+            }
+            // Keep the reference for recovery on the next foreground entry.
+            viewModel.showToast("Payment verification is pending. Please don't pay again.")
         }
     }
 
