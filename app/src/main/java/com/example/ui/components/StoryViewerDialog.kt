@@ -94,6 +94,21 @@ fun StoryViewerDialog(
     var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
+    val viewerLifecycleOwner = LocalLifecycleOwner.current
+    var viewerForeground by remember(viewerLifecycleOwner) {
+        mutableStateOf(viewerLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(viewerLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewerForeground = true
+                Lifecycle.Event.ON_STOP -> viewerForeground = false
+                else -> Unit
+            }
+        }
+        viewerLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { viewerLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Floating reaction animation effect
     LaunchedEffect(floatingReaction) {
@@ -111,7 +126,7 @@ fun StoryViewerDialog(
         val stepMs = 50L
         while (progress < 1f) {
             delay(stepMs)
-            if (!isPaused) elapsedMs += stepMs
+            if (!isPaused && viewerForeground) elapsedMs += stepMs
             val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
             progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
         }
@@ -137,7 +152,7 @@ fun StoryViewerDialog(
             if (displayedStory.isVideo && displayedStory.storyImage.isNotBlank()) {
                 BlinkStoryVideoPlayer(
                     story = displayedStory,
-                    paused = isPaused || displayedStory.id != currentStory.id,
+                    paused = isPaused || !viewerForeground || displayedStory.id != currentStory.id,
                     onDuration = { videoDurationMs = it }
                 )
             } else if (displayedStory.storyImage.isNotBlank()) {
