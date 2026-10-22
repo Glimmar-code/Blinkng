@@ -643,7 +643,7 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchConnectFollowingIds(): Set<String> = withContext(Dispatchers.IO) {
-        val rows = postArray("/rest/v1/rpc/get_my_following_ids", JSONObject())
+        val rows = postArray("/rest/v1/rpc/get_my_following_ids", JSONObject(), prefer = "return=representation")
         (0 until rows.length()).mapNotNull { i ->
             when (val value = rows.opt(i)) {
                 is String -> value.takeIf(String::isNotBlank)
