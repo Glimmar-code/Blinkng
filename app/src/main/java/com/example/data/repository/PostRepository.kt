@@ -288,6 +288,10 @@ class PostRepository(
         supabaseService.createStory(story, isVideo)
     }
 
+    suspend fun createTextStory(story: Story): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.createTextStory(story)
+    }
+
     suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
         supabaseService.markStoryViewed(storyId)
     }
