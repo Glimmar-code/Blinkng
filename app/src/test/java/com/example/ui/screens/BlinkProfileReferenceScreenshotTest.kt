@@ -97,6 +97,16 @@ class BlinkProfileReferenceScreenshotTest {
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-large-fonts.png")
     }
 
+    @Test fun profileReferenceMediumFonts() {
+        render(dark = false, fontScale = 1.3f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-medium-fonts.png")
+    }
+
+    @Test fun profileReferenceExtraLargeFonts() {
+        render(dark = false, fontScale = 2.0f)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-extra-large-fonts.png")
+    }
+
     @Test fun profileReferenceDark() {
         render(dark = true, fontScale = 1.0f)
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-dark.png")
