@@ -31,7 +31,7 @@ For each release PR:
 
 1. The connected agent develops and tests changes in a `Testlab-*` branch targeting protected `main`.
 2. Automated checks, backend staging and independent physical-device tests (if applicable) must complete on the current commit. No paid testing infrastructure is activated without permission.
-3. The agent reviews code, checks that the PR is non-draft with all checklist items completed, confirms the head branch is current with `main`, and applies `auto-promote` to authorize that exact reviewed revision. `staging-verified` and `device-verified` may only be applied with real verification evidence.
+3. The agent reviews the code and successful checks, confirms the PR is non-draft and up to date with `main`, adds exactly one `<!-- BLINK_AGENT_VERIFIED_SHA: <current-40-character-SHA> -->` line to the PR description, completes its checklist and applies `auto-promote` for that exact verified revision. The controller independently verifies the marker against the current SHA. `staging-verified` and `device-verified` may only be applied with real verification evidence.
 4. GitHub's trusted controller applies the remaining fail-closed tests and merges the PR automatically when its checks pass. The owner does not perform a separate manual approval step.
 5. Every new PR code push clears `auto-promote`, `staging-verified`, and `device-verified`, so the connected agent must re-evaluate before promotion; old attestations cannot be carried forward.
 6. The owner can stop a release by asking the connected agent to remove the `auto-promote` label, convert the PR to draft, or close it. Never bypass required branch-protection rules to accelerate a release.
