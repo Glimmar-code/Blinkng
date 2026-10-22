@@ -31,6 +31,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkGold
@@ -61,21 +70,13 @@ fun StoryViewerDialog(
     onReplyStory: (storyUsername: String, replyText: String) -> Unit = { _, _ -> },
     onProfileClick: (String) -> Unit = {}
 ) {
-    if (stories.isEmpty()) {
-        onDismiss()
-        return
-    }
-
+    // Synthetic "Your Story" cards are not media; actual owner stories are viewable.
     val storyList = remember(stories) {
-        stories.filter { !it.isUser }
+        stories.filter { it.id != "story_me" && it.storyImage.isNotBlank() }
     }
+    if (storyList.isEmpty()) return
 
-    if (storyList.isEmpty()) {
-        onDismiss()
-        return
-    }
-
-    var currentIndex by rememberSaveable {
+    var currentIndex by rememberSaveable(initialStory.id) {
         val idx = storyList.indexOfFirst { it.id == initialStory.id || it.username == initialStory.username }
         mutableIntStateOf(if (idx >= 0) idx else 0)
     }
@@ -102,18 +103,17 @@ fun StoryViewerDialog(
         }
     }
 
-    // 5-second automatic progression
-    LaunchedEffect(currentIndex, isPaused) {
+    // Pause/resume must not reset progress. Video duration follows its real runtime.
+    var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
+    LaunchedEffect(currentStory.id) {
         progress = 0f
+        var elapsedMs = 0L
         val stepMs = 50L
-        val totalMs = 5000L
-        val increment = stepMs.toFloat() / totalMs.toFloat()
-
         while (progress < 1f) {
             delay(stepMs)
-            if (!isPaused) {
-                progress = (progress + increment).coerceAtMost(1f)
-            }
+            if (!isPaused) elapsedMs += stepMs
+            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(5_000L) else 5_000L
+            progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
         }
 
         if (!isPaused && progress >= 1f) {
@@ -134,7 +134,13 @@ fun StoryViewerDialog(
         // Story Background Image / Media
         Crossfade(targetState = currentStory.id, animationSpec = tween(180), label = "storyMediaReveal") { storyId ->
             val displayedStory = storyList.firstOrNull { it.id == storyId } ?: currentStory
-            if (displayedStory.storyImage.isNotBlank()) {
+            if (displayedStory.isVideo && displayedStory.storyImage.isNotBlank()) {
+                BlinkStoryVideoPlayer(
+                    story = displayedStory,
+                    paused = isPaused || displayedStory.id != currentStory.id,
+                    onDuration = { videoDurationMs = it }
+                )
+            } else if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(
                 model = displayedStory.storyImage,
                 contentDescription = "Story by ${displayedStory.displayLabel}",
@@ -536,4 +542,67 @@ fun StoryViewerDialog(
             }
         }
     }
+}
+
+/**
+ * The player is scoped to a single status and releases codecs on dismissal.
+ * Backgrounding the app always pauses playback; this is not a looped Reel.
+ */
+@Composable
+private fun BlinkStoryVideoPlayer(
+    story: Story,
+    paused: Boolean,
+    onDuration: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestPaused by rememberUpdatedState(paused)
+    val player = remember(story.id) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(story.storyImage))
+            repeatMode = Player.REPEAT_MODE_OFF
+            prepare()
+        }
+    }
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> player.pause()
+                Lifecycle.Event.ON_START -> if (!latestPaused) player.play()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player.release()
+        }
+    }
+    LaunchedEffect(player, paused, lifecycleOwner) {
+        if (!paused && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            player.play()
+        } else {
+            player.pause()
+        }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            val durationMs = player.duration
+            if (durationMs > 0 && durationMs != androidx.media3.common.C.TIME_UNSET) {
+                onDuration(durationMs)
+                break
+            }
+            delay(200)
+        }
+    }
+    AndroidView(
+        factory = { androidContext ->
+            PlayerView(androidContext).apply {
+                this.player = player
+                useController = false
+            }
+        },
+        update = { it.player = player },
+        modifier = Modifier.fillMaxSize()
+    )
 }
