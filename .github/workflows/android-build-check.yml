@@ -46,13 +46,19 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Capture BLINK profile visual snapshots
+        if: steps.scope.outputs.android == 'true'
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest --no-daemon
+          find . -name 'profile-reference-*.png' -print
+
       - name: Upload BLINK profile visual snapshots
-        if: always() && steps.scope.outputs.android == 'true'
+        if: steps.scope.outputs.android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blink-profile-reference-screenshots-${{ github.sha }}
-          path: app/src/test/screenshots/profile-reference-*.png
-          if-no-files-found: warn
+          path: '**/profile-reference-*.png'
+          if-no-files-found: error
           retention-days: 7
 
       - name: Android lint
