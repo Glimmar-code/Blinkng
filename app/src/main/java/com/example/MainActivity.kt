@@ -805,7 +805,15 @@ class MainActivity : ComponentActivity() {
                                         boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
-                                        onReportBug = { showBugReportSheet = true }
+                                        onReportBug = { showBugReportSheet = true },
+                                        websiteRelease = websiteRelease,
+                                        websiteUpdateChecked = websiteUpdateCheckFinished,
+                                        onCheckForWebsiteUpdate = {
+                                            BlinkWebsiteReleaseAlerts.requestRefresh()
+                                        },
+                                        onOpenWebsiteUpdate = {
+                                            websiteUpdateDismissed = false
+                                        }
                                     )
                                 }
                             }
@@ -912,7 +920,11 @@ fun MainAppContent(
     boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
-    onReportBug: () -> Unit
+    onReportBug: () -> Unit,
+    websiteRelease: BlinkReleaseInfo? = null,
+    websiteUpdateChecked: Boolean = false,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {}
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1845,6 +1857,13 @@ fun MainAppContent(
                                         feedUtilitySheet = "store"
                                     }
                                 }
+                            },
+                            websiteUpdateAvailable = websiteRelease != null,
+                            websiteUpdateChecked = websiteUpdateChecked,
+                            websiteUpdateVersion = websiteRelease?.versionName,
+                            onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                            onOpenWebsiteUpdate = {
+                                dismissUtility { onOpenWebsiteUpdate() }
                             },
                             isAdmin = canOpenAdmin,
                             onOpenAdmin = {
