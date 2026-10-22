@@ -784,6 +784,7 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    var bottomBarTravelPx by remember { mutableFloatStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -818,8 +819,9 @@ fun MainAppContent(
         )
     }
 
-    LaunchedEffect(uiState.selectedTab) {
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
         isBottomBarVisibleByScroll = true
+        bottomBarTravelPx = 0f
     }
 
     // Handle back button presses for sub-views
@@ -1066,6 +1068,9 @@ fun MainAppContent(
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onBottomBarTravel = { pixels ->
+                            if (page == 0 && selectedPage == 0) bottomBarTravelPx = pixels
                         }
                     )
                 }
@@ -1270,7 +1275,9 @@ fun MainAppContent(
             ) + androidx.compose.animation.fadeOut(
                 animationSpec = androidx.compose.animation.core.tween(durationMillis = 180)
             ),
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                translationY = bottomBarTravelPx
+            }
         ) {
             FeedBottomBar(
                 currentTab = uiState.selectedTab,
