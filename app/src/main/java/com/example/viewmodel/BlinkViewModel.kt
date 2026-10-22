@@ -6784,11 +6784,24 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private val sendingStoryReactions = mutableSetOf<String>()
+
     fun reactToStory(storyId: String, emoji: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser || !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status is no longer available for reactions.")
+            return
+        }
+        if (emoji !in setOf("🔥", "❤️", "👏", "😂", "⚡", "🙌")) return
+        if (!sendingStoryReactions.add(storyId)) return
         viewModelScope.launch {
-            val success = runCatching { postRepository.reactToStory(storyId, emoji) }.getOrDefault(false)
-            if (success) showToast("Reacted $emoji")
-            else showToast("Reaction wasn't sent.")
+            try {
+                val success = runCatching { postRepository.reactToStory(storyId, emoji) }.getOrDefault(false)
+                if (success) showToast("Reacted $emoji")
+                else showToast("Reaction wasn't sent.")
+            } finally {
+                sendingStoryReactions.remove(storyId)
+            }
         }
     }
 
