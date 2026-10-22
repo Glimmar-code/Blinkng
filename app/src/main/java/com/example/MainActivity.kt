@@ -530,6 +530,11 @@ class MainActivity : ComponentActivity() {
             // Keying by destination + user id prevents repeated writes during recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    // Never show another signed-in account's saved payment prompt.
+                    val storedOwner = paystackPrefs.getString("account_id", null)
+                    val ownCheckout = storedOwner == null || storedOwner == uiState.myProfile.id
+                    pendingPaymentReference = if (ownCheckout) paystackPrefs.getString("reference", null) else null
+                    showPendingPaymentPrompt = pendingPaymentReference != null
                     // Authentication may finish after onResume: don't miss delayed receipts.
                     reconcilePendingPaystackPayment()
                     AccountSessionStore.recordCurrentSession(
