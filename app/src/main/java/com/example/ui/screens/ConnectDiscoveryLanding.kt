@@ -1,6 +1,21 @@
 package com.example.ui.screens
 
 import com.example.R
+import android.widget.Toast
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.HowToReg
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.repository.FollowStateStore
+import kotlinx.coroutines.launch
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -94,6 +109,8 @@ internal fun ConnectDiscoveryLanding(
     onProfileClick: (String) -> Unit,
     onOpenHub: () -> Unit,
     onOpenCampusFeed: () -> Unit,
+    onMessageStudent: (String, String?, String?) -> Unit = { _, _, _ -> },
+    hasUnreadNotifications: Boolean = false,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
     posts: List<FeedPost> = emptyList(),
@@ -108,6 +125,26 @@ internal fun ConnectDiscoveryLanding(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val followPending = remember { mutableStateMapOf<String, Boolean>() }
+    var selectedCircleName by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentUsername) {
+        if (currentUsername.isNotBlank()) FollowStateStore.refresh()
+    }
+    fun toggleFollow(id: String, follow: Boolean) {
+        if (id.isBlank() || followPending[id] == true) return
+        followPending[id] = true
+        scope.launch {
+            val success = FollowStateStore.setFollowing(id, follow)
+            followPending.remove(id)
+            if (!success) {
+                Toast.makeText(context, "Could not update follow. Try again.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     var circlesRefreshKey by remember { mutableIntStateOf(0) }
     var showStudyCircles by rememberSaveable { mutableStateOf(false) }
     var circles by remember { mutableStateOf<List<StudyCircleSummary>>(emptyList()) }
@@ -196,8 +233,17 @@ internal fun ConnectDiscoveryLanding(
             IconButton(onClick = onOpenGame, modifier = Modifier.size(42.dp)) {
                 Icon(Icons.Default.SportsEsports, contentDescription = "Game", tint = textColor)
             }
-            IconButton(onClick = onOpenNotifications, modifier = Modifier.size(42.dp)) {
-                Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications", tint = textColor)
+            Box(Modifier.size(42.dp)) {
+                IconButton(onClick = onOpenNotifications, modifier = Modifier.fillMaxSize()) {
+                    Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications", tint = textColor)
+                }
+                if (hasUnreadNotifications) {
+                    Box(
+                        Modifier.size(7.dp).align(Alignment.TopEnd)
+                            .offset(x = (-7).dp, y = 7.dp)
+                            .background(Color(0xFFE53935), CircleShape)
+                    )
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -270,7 +316,10 @@ internal fun ConnectDiscoveryLanding(
                 }
                 item {
                     Spacer(Modifier.height(15.dp))
-                    ConnectDiscoveryTitle(title = "Campus Communities", onSeeAll = { showStudyCircles = true })
+                    ConnectDiscoveryTitle(title = "Campus Communities", onSeeAll = {
+                        selectedCircleName = ""
+                        showStudyCircles = true
+                    })
                     if (circlesLoading) {
                         Text(
                             "Loading communities…",
@@ -301,7 +350,10 @@ internal fun ConnectDiscoveryLanding(
                                     icon = Icons.Default.MenuBook,
                                     colors = listOf(Color(0xFF67849E), Color(0xFF182937)),
                                     label = "${circle.memberCount} members",
-                                    onClick = { showStudyCircles = true }
+                                    onClick = {
+                                        selectedCircleName = circle.name
+                                        showStudyCircles = true
+                                    }
                                 )
                             }
                         }
@@ -314,7 +366,10 @@ internal fun ConnectDiscoveryLanding(
                                 ConnectCommunityPreview(
                                     "Study Circles", Icons.Default.MenuBook,
                                     listOf(Color(0xFF67849E), Color(0xFF182937)), "Browse & create",
-                                    onClick = { showStudyCircles = true }
+                                    onClick = {
+                                        selectedCircleName = ""
+                                        showStudyCircles = true
+                                    }
                                 )
                             }
                             item {
@@ -398,7 +453,17 @@ internal fun ConnectDiscoveryLanding(
                         )
                     } else {
                         suggested.take(3).forEach { profile ->
-                            ConnectSuggestedPeer(profile) { onProfileClick(profile.username) }
+                            ConnectSuggestedPeer(
+                                profile = profile,
+                                following = profile.id in followingIds,
+                                pending = followPending[profile.id] == true,
+                                onProfileClick = { onProfileClick(profile.username) },
+                                onFollow = { toggleFollow(profile.id, true) },
+                                onUnfollow = { toggleFollow(profile.id, false) },
+                                onMessage = {
+                                    onMessageStudent(profile.username, profile.fullName, profile.avatarUrl)
+                                }
+                            )
                         }
                     }
                 }
@@ -429,9 +494,11 @@ internal fun ConnectDiscoveryLanding(
         if (showStudyCircles) {
             ModalBottomSheet(onDismissRequest = { showStudyCircles = false }) {
                 Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 25.dp)
+                    Modifier.fillMaxWidth().fillMaxHeight(.85f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 14.dp).padding(bottom = 25.dp)
                 ) {
-                    StudyCirclesPanel()
+                    StudyCirclesPanel(initialQuery = selectedCircleName)
                 }
             }
         }
@@ -551,19 +618,28 @@ private fun ConnectCommunityPreview(
 }
 
 @Composable
-private fun ConnectSuggestedPeer(profile: UserProfile, onClick: () -> Unit) {
+private fun ConnectSuggestedPeer(
+    profile: UserProfile,
+    following: Boolean,
+    pending: Boolean,
+    onProfileClick: () -> Unit,
+    onFollow: () -> Unit,
+    onUnfollow: () -> Unit,
+    onMessage: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ConnectRoundAvatar(
             avatar = profile.avatarUrl,
             description = profile.fullName,
-            modifier = Modifier.size(46.dp)
+            modifier = Modifier.size(46.dp).clickable(onClick = onProfileClick)
         )
         Spacer(Modifier.width(11.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).clickable(onClick = onProfileClick)) {
             Text(
                 profile.fullName.ifBlank { profile.username },
                 fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
@@ -575,12 +651,51 @@ private fun ConnectSuggestedPeer(profile: UserProfile, onClick: () -> Unit) {
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
-        Surface(shape = RoundedCornerShape(9.dp), color = MaterialTheme.colorScheme.onSurface) {
-            Text(
-                "View", modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-                fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.surface
-            )
+        Box {
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.clickable(
+                    enabled = !pending,
+                    onClick = {
+                        when {
+                            profile.id.isBlank() -> onProfileClick()
+                            following -> menuExpanded = true
+                            else -> onFollow()
+                        }
+                    }
+                )
+            ) {
+                Text(
+                    when {
+                        pending -> "..."
+                        profile.id.isBlank() -> "View"
+                        following -> "Interact"
+                        else -> "Follow"
+                    },
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.surface,
+                    maxLines = 1
+                )
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Message") },
+                    leadingIcon = { Icon(Icons.Default.Send, contentDescription = null) },
+                    onClick = { menuExpanded = false; onMessage() }
+                )
+                DropdownMenuItem(
+                    text = { Text("View profile") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    onClick = { menuExpanded = false; onProfileClick() }
+                )
+                DropdownMenuItem(
+                    text = { Text("I follow · Unfollow") },
+                    leadingIcon = { Icon(Icons.Default.HowToReg, contentDescription = null) },
+                    onClick = { menuExpanded = false; onUnfollow() }
+                )
+            }
         }
     }
 }
