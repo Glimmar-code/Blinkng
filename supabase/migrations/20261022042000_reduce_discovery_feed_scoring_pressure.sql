@@ -1,3 +1,6 @@
+-- destructive-change-reviewed
+-- rollback-plan: Restore the prior private_ranking.get_discovery_feed definition from a predeployment pg_get_functiondef backup in a separately reviewed rollback migration. The exact SQL definition must be backed up and audited before staging deployment; do not rollback by dropping this production RPC. No app or wallet tables are dropped.
+-- Safety note: CREATE OR REPLACE alters existing feed behavior. Deploy only after a representative staging EXPLAIN (ANALYZE, BUFFERS) review; preserve existing search_path, ownership, EXECUTE grants, auth checks and RLS behavior. Monitor performance and revert on regression.
 -- 2026-10-22: Stage-only discovery feed runtime reduction.
 -- From current production function signature; preserve auth, audience, block,
 -- mute, spam and monetization behavior. Requires EXPLAIN and sampled two-user
