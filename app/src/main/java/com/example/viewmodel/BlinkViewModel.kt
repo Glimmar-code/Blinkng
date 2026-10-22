@@ -921,6 +921,24 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+    /** Refresh just the authenticated Coin wallet after verified Paystack fulfillment.
+     * No feed reload, client-side credit, or extra checkout is involved.
+     */
+    fun refreshCoinBalanceAfterPayment() {
+        val accountId = _uiState.value.myProfile.id
+        if (accountId.isBlank() || !_uiState.value.isOnline) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                .onFailure { Log.w(TAG, "Payment wallet refresh failed", it) }
+                .getOrNull() ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (_uiState.value.myProfile.id != accountId) return@withContext
+                _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                persistExtendedCache()
+            }
+        }
+    }
+
     fun refreshProfileRewards() {
         val before = _uiState.value
         if (!before.isOnline || before.myProfile.id.isBlank()) return
