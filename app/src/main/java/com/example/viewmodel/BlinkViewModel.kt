@@ -22,6 +22,8 @@ import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
+import com.blinkng.shared.notification.BlinkStoryLifecycle
+import com.blinkng.shared.notification.BlinkStoryReplyReference
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.BlinkEconomyService
@@ -6790,24 +6792,47 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun replyToStory(storyUsername: String, replyText: String) {
-        val cleanText = replyText.trim()
-        val cleanUser = storyUsername.trim().removePrefix("@")
-        if (cleanText.isBlank() || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+    fun replyToStory(story: Story, replyText: String) {
+        val cleanUser = story.username.trim().removePrefix("@")
+        val payload = BlinkStoryReplyReference.encode(story.id, replyText)
+        if (payload == null || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+        if (story.isUser || !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status is no longer available.")
+            return
+        }
         viewModelScope.launch {
-            chatRepository.sendMessage(cleanUser, cleanText).fold(
+            chatRepository.sendMessage(cleanUser, payload).fold(
                 onSuccess = {
-                    showToast("💬 Message sent to @$cleanUser")
+                    showToast("Status reply sent in Messages.")
                     supabaseService.recordActivity(
-                        cleanUser,
-                        "replied to your story",
-                        NotificationFilter.ALL,
+                        cleanUser, "replied to your status", NotificationFilter.ALL,
                         targetUsername = _uiState.value.myProfile.username,
                         targetType = "CHAT"
                     )
                 },
-                onFailure = { showToast("Story reply wasn't sent.") }
+                onFailure = { showToast("Status reply wasn't sent.") }
             )
+        }
+    }
+
+    fun deleteStory(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull {
+            it.id == storyId && it.isUser
+        } ?: return
+        viewModelScope.launch {
+            val result = runCatching {
+                supabaseService.deleteOwnedStory(story.id, story.storyImage)
+            }.getOrNull()
+            if (result?.first == true) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    stories = current.stories.filterNot { it.id == storyId },
+                    activeViewingStory = if (current.activeViewingStory?.id == storyId) null
+                        else current.activeViewingStory
+                )
+                showToast(if (result.second) "Status deleted."
+                    else "Status removed, but its media cleanup is incomplete.")
+            } else showToast("Couldn't delete this status. Please try again.")
         }
     }
 

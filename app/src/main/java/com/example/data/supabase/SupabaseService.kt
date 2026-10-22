@@ -3333,6 +3333,41 @@ suspend fun uploadPostMedia(
         }
     }
 
+    /**
+     * Owner-scoped metadata removal; then best-effort storage cleanup limited
+     * to this account's canonical story-media path. A cached public copy may
+     * remain accessible elsewhere, so this is not secure private archiving.
+     */
+    suspend fun deleteOwnedStory(storyId: String, mediaUrl: String): Pair<Boolean, Boolean> =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId() ?: return@withContext false to false
+            val request = newRequestBuilder(
+                "/rest/v1/stories?id=eq.${encodeValue(storyId)}&user_id=eq.${encodeValue(uid)}&select=id",
+                true
+            ).addHeader("Prefer", "return=representation").delete().build()
+            val removed = executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Status deletion failed."))
+                }
+                JSONArray(if (raw.isBlank()) "[]" else raw).length() > 0
+            }
+            if (!removed) return@withContext false to false
+            if (mediaUrl.isBlank()) return@withContext true to true
+            val prefix = "$baseUrl/storage/v1/object/public/story-media/$uid/"
+            val name = if (mediaUrl.startsWith(prefix)) mediaUrl.removePrefix(prefix) else ""
+            if (name.isBlank() || !name.matches(Regex("[a-zA-Z0-9_-]+\\.(mp4|webm|jpg|png|webp)"))) {
+                return@withContext true to false
+            }
+            val mediaRemoved = runCatching {
+                executeRequest(
+                    newRequestBuilder("/storage/v1/object/story-media/$uid/$name", true)
+                        .delete().build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+            true to mediaRemoved
+        }
+
     suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
         val pollRaw=executeRequest(newRequestBuilder("/rest/v1/polls?post_id=eq.${encodeValue(postId)}&select=id&limit=1",true).get().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Poll lookup failed."));raw}

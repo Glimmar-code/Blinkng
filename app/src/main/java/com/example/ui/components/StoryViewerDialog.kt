@@ -68,7 +68,8 @@ fun StoryViewerDialog(
     onStoryViewed: (String) -> Unit = {},
     onLikeStory: (String) -> Unit = {},
     onReactStory: (storyId: String, emoji: String) -> Unit = { _, _ -> },
-    onReplyStory: (storyUsername: String, replyText: String) -> Unit = { _, _ -> },
+    onReplyStory: (story: Story, replyText: String) -> Unit = { _, _ -> },
+    onDeleteStory: (storyId: String) -> Unit = {},
     onProfileClick: (String) -> Unit = {}
 ) {
     // Synthetic "Your Story" cards are not media; actual owner stories are viewable.
@@ -127,6 +128,7 @@ fun StoryViewerDialog(
     var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
     var videoReady by remember(currentStory.id) { mutableStateOf(!currentStory.isVideo) }
     var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     LaunchedEffect(currentStory.id) {
         progress = 0f
         var elapsedMs = 0L
@@ -459,12 +461,21 @@ fun StoryViewerDialog(
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             if (currentStory.isUser) {
-                OutlinedButton(
-                    onClick = { showInsights = true },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Viewers & Likes")
+                    OutlinedButton(
+                        onClick = { showInsights = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text("Viewers & Likes")
+                    }
+                    OutlinedButton(
+                        onClick = { confirmDelete = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Delete") }
                 }
             } else {
             // Quick Emojis Row (Togglable or permanent)
@@ -538,7 +549,7 @@ fun StoryViewerDialog(
                         if (replyText.isNotBlank()) {
                             IconButton(
                                 onClick = {
-                                    onReplyStory(currentStory.username, replyText.trim())
+                                    onReplyStory(currentStory, replyText.trim())
                                     replyText = ""
                                 },
                                 modifier = Modifier.size(32.dp)
@@ -580,6 +591,22 @@ fun StoryViewerDialog(
             storyId = currentStory.id,
             onDismiss = { showInsights = false },
             onProfileClick = onProfileClick
+        )
+    }
+    if (confirmDelete && currentStory.isUser) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete status?") },
+            text = { Text("This removes the status and its interactions. It cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDeleteStory(currentStory.id)
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
         )
     }
 }
