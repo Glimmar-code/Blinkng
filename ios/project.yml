@@ -1,0 +1,66 @@
+name: BLINKiOS
+
+options:
+  bundleIdPrefix: ng.com.blink
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 153.0.0
+
+targets:
+  BLINKiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: BLINKiOS/Sources
+    dependencies:
+      - package: WebRTC
+        product: WebRTC
+    info:
+      path: BLINKiOS/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: BLINK
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        NSMicrophoneUsageDescription: "BLINK uses the microphone only when you choose a supported voice or video call."
+        NSCameraUsageDescription: "BLINK uses the camera only when you choose a supported video call."
+        BLINK_VOIP_PUSH_ENABLED: "$(BLINK_VOIP_PUSH_ENABLED)"
+        BLINK_APNS_ENVIRONMENT: "$(BLINK_APNS_ENVIRONMENT)"
+        BLINK_SUPABASE_URL: "$(BLINK_SUPABASE_URL)"
+        BLINK_SUPABASE_ANON_KEY: "$(BLINK_SUPABASE_ANON_KEY)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        BLINK_SUPABASE_URL: "https://jhwgifrlxwspoedxjaly.supabase.co"
+        BLINK_SUPABASE_ANON_KEY: "sb_publishable_2lfIyTW9SwiTOvafGXp10Q_I7DwUs-J"
+        BLINK_VOIP_PUSH_ENABLED: "NO"
+        BLINK_APNS_ENVIRONMENT: "unconfigured"
+  BLINKiOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BLINKiOS/Tests
+    dependencies:
+      - target: BLINKiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ng.com.blink.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic

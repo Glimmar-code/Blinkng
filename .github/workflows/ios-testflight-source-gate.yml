@@ -1,0 +1,39 @@
+name: iOS TestFlight release source gate
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/ios_testflight_preflight.py'
+      - 'scripts/tests/test_ios_testflight_preflight.py'
+      - 'scripts/prepare_ios_icon.sh'
+      - '.github/workflows/ios-testflight-*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'scripts/ios_testflight_preflight.py'
+      - 'scripts/tests/test_ios_testflight_preflight.py'
+      - 'scripts/prepare_ios_icon.sh'
+      - '.github/workflows/ios-testflight-*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version, canonical bundle ID, VoIP disabled and no bundled secrets
+        run: python3 scripts/ios_testflight_preflight.py --mode source
+      - name: Run negative safety and versioning tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_ios_testflight_preflight.py' -v
+      - name: Ensure no private iOS signing materials are committed
+        run: |
+          set -euo pipefail
+          if git ls-files 'ios/**' | grep -E '\.(p8|p12|mobileprovision|key)$'; then
+            echo "::error::iOS private signing material must never be committed"
+            exit 1
+          fi
