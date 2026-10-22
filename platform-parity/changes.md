@@ -6,6 +6,13 @@
 - **Platform exception (mobile viewport):** Phone edge-to-edge status/navigation bars and a fixed 5-icon bottom navigation are Android-specific. Windows retains desktop navigation and window chrome. Earned-badge indicators await safe backend hydration on Windows; categories are visible meanwhile.
 - **Verification needed before main:** Android Kotlin compile/unit checks, Windows compile/parity checks, profile navigation and other-user permission checks, large-font screenshot comparison against the approved image at matching viewport, dark/light contrast, and merge reconciliation against main. Keep the APK unpublished until gates pass; no manual temporary download required.
 
+## 2026-10-22 — Paystack Phase 3 Android recovery (Testlab only)
+
+- PARITY-EXCEPTION: paystack-android-deep-link — Android receives `blink://payment` from its browser and receives activity foreground callbacks. It reconciles only the account's locally saved Paystack reference through authenticated server verification; successful Coin purchases refresh the authoritative wallet without reloading the Feed. Other purchase kinds still refresh the full account to update verification/boost entitlements.
+- Windows equivalent (existing main implementation): desktop `initializePaystackCoinCheckout` launches the provider checkout, `verifyPaystackCoinCheckout` verifies the order on "Check payment", and `reload()` fetches server wallet updates. Windows does not use Android's activity-return deep link and has no automatic retry in this staged change.
+- Follow-up parity debt: safely add Windows window-focus retry only after validating its older checkout endpoints and preserving customer-specific pending-order state. Do not label desktop as having automatic recovery until implemented.
+- Release gate: confirm Android compile, account-switch cancellation, replay/idempotency, retained pending references, Windows desktop tests, and no live merchant enablement. Never merge Testlab wholesale into the divergent main branch.
+
 ## 2026-10-21 — Message inbox reference visual upgrade (Testlab-only staging)
 
 - Android: isolated Compose inbox UI with avatar/BLINK/search/game/notification header, Stories and notes-style entry, real story rings, flat rows, previews, verified badges and real unread counts. Chat detail and WebRTC calling remain as-is; no database migrations. The text "Your note" currently triggers existing story creation, not a fabricated notes backend.
