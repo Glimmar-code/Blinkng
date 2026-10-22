@@ -25,6 +25,24 @@ begin
     raise exception 'PROFILE_NOT_FOUND' using errcode='P0002';
   end if;
 
+  -- A confirmed retry can return without refiring BEFORE INSERT moderation
+  -- triggers (for example if the sender's Coin balance was frozen afterwards).
+  -- This is only a fast path: the unique INSERT below remains the definitive
+  -- concurrency-safe exactly-once guard for requests arriving simultaneously.
+  select sender_id,receiver_id,amount into v_existing
+    from public.blink_coin_gifts where id=p_request_id;
+  if found then
+    if v_existing.sender_id is distinct from v_sender
+       or v_existing.receiver_id is distinct from p_receiver_id
+       or v_existing.amount is distinct from p_amount then
+      raise exception 'GIFT_RECEIPT_CONFLICT' using errcode='23505';
+    end if;
+    return coalesce((
+      select floor(spendable_coin_balance)::bigint
+      from public.user_balances where user_id=v_sender
+    ),0);
+  end if;
+
   -- Unique receipt row serializes concurrent/replayed calls for the same UUID.
   insert into public.blink_coin_gifts(id,sender_id,receiver_id,amount)
   values (p_request_id,v_sender,p_receiver_id,p_amount)
