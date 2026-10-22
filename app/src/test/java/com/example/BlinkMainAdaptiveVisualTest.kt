@@ -12,7 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,10 +39,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /** Real current-main composables with deterministic offline data; requires visual review. */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
 class BlinkMainAdaptiveVisualTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun homeNormal320() = renderHome(320, 1f)
     @Test fun home130Compact() = renderHome(320, 1.3f)
@@ -100,7 +101,7 @@ class BlinkMainAdaptiveVisualTest {
         rule.onNodeWithContentDescription("Open Items (includes Game)").assertExists()
         rule.onNodeWithTag("feed_tab_for_you").assertExists()
         rule.onNodeWithTag("feed_add_coins").assertExists()
-        rule.onNodeWithTag("main_home_capture").captureRoboImage(
+        rule.activity.window.decorView.captureRoboImage(
             filePath = "src/test/screenshots/main_home_w${widthDp}_font${scale.toString().replace('.', '_')}.png"
         )
     }
@@ -126,7 +127,7 @@ class BlinkMainAdaptiveVisualTest {
             }
         }
         rule.onNodeWithText("Notifications").assertExists()
-        rule.onNodeWithTag("main_notifications_capture").captureRoboImage(
+        rule.activity.window.decorView.captureRoboImage(
             filePath = "src/test/screenshots/main_notifications_w${widthDp}_font${scale.toString().replace('.', '_')}.png"
         )
     }
