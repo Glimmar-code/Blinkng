@@ -68,6 +68,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019090000_paystack_cash_boosts.sql
       - name: Apply transactional payment email worker queue
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
+      - name: Test all five Coin packs, failed/cancelled isolation and delayed fulfillment
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_phase2_assertions.pgfixture
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
       - name: Install disposable Marketplace schema for Paystack tests

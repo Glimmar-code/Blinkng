@@ -6,6 +6,13 @@
 - Windows: adds honest achievement *categories* next to its established backend-driven XP, Coins and verified status. Category labels do not imply awards have been earned without an authoritative badge response.
 - No database migrations or live payment changes. Main publication requires verified Android and Windows builds, screenshot artifacts at normal and enlarged fonts, visual review and a signed APK from the main commit. Preserve main's newer work; do not wholesale merge divergent Testlab.
 
+## 2026-10-22 — Android Paystack return reconciliation (main-target scoped PR #465)
+
+- PARITY-EXCEPTION: paystack-android-activity-resume — Android receives hosted-checkout returns and foreground callbacks through its own activity lifecycle. It retries only the authenticated user's saved Paystack reference and refreshes the server-confirmed Coin wallet without refreshing the Feed; no client-side Coin minting or merchant flag changes.
+- Windows equivalent: Desktop already launches provider-hosted checkout with `initializePaystackCoinCheckout`, verifies the saved order with `verifyPaystackCoinCheckout` on customer action, then reloads authoritative backend wallet state. It has no Android activity/deep-link resume lifecycle. This PR intentionally changes Android automatic UX only, and does not claim Windows gains background or automatic retry.
+- Residual parity task: implement account-bound automatic pending-order retry upon Windows window-focus/session restoration separately, after verifying the older desktop `paystack-initialize`/`paystack-verify` endpoint compatibility. Preserve the existing Windows manual "Check payment" button until then.
+- Release gate: enforce server-only fulfillment, duplicate/webhook protection, Android/Windows CI, account-switch regression, and no extra real-money test charge.
+
 ## 2026-10-21 — BLINK Message inbox reference redesign (Phase 2 staging candidate)
 
 - **Android inbox only:** Adds a dedicated black-and-white Compose inbox matching the supplied reference structure: BLINK wordmark/profile/search/game/notification header, Messages title with functional “See all,” real uploaded-story rail, flat conversation rows, presence badges, verified badges, previews, timestamps, and black/white unread counters. Existing Supabase conversations, shared filtering/search, archive/request/unread handling, user identity, and chat/call detail components stay intact. “Your note” currently routes to the existing create-story action pending a separate notes contract; it must not be advertised as a shipped notes feature.

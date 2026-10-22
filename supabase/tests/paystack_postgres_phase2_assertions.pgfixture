@@ -1,0 +1,118 @@
+-- BLINK Paystack Phase 2: disposable-only payment assertions.
+-- Run before the legacy assertions; ROLLBACK avoids rate-limit contamination.
+-- NEVER point this file at hosted Supabase.
+BEGIN;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+
+DO $phase2$
+DECLARE
+  pack record;
+  result jsonb;
+  receipt jsonb;
+  pay public.blink_paystack_payments%rowtype;
+  transaction_id text;
+  expected_total integer := 0;
+  quote_count integer := 0;
+  credits integer;
+  failed_ref text;
+  cancelled_ref text;
+BEGIN
+  FOR pack IN
+    SELECT * FROM (VALUES
+      ('coins_100',100,100),
+      ('coins_500',500,550),
+      ('coins_1000',1000,1200),
+      ('coins_2000',2000,2600),
+      ('coins_5000',5000,7000)
+    ) AS packs(id,price,coins)
+  LOOP
+    -- Server, not the client, selects both price and reward.
+    result := public.create_blink_paystack_order_v2('coin_pack',pack.id,1);
+    IF result->>'item_code' <> pack.id
+       OR (result->>'amount_ngn')::integer <> pack.price
+       OR (result->>'coins')::integer <> pack.coins
+       OR result->>'currency' <> 'NGN'
+       OR result->>'status' <> 'pending' THEN
+      RAISE EXCEPTION 'PHASE2_PACK_QUOTE_MISMATCH: %',pack.id;
+    END IF;
+    SELECT * INTO STRICT pay FROM public.blink_paystack_payments
+      WHERE reference=result->>'reference';
+    IF pay.coin_amount <> pack.coins OR pay.amount_ngn <> pack.price
+       OR pay.status <> 'pending' THEN
+      RAISE EXCEPTION 'PHASE2_PACK_ORDER_MISMATCH: %',pack.id;
+    END IF;
+
+    -- Wrong amount or currency must never issue Coins.
+    BEGIN
+      PERFORM public.fulfill_blink_paystack_order(pay.reference,
+        'phase2-under-'||pack.id,pack.price::bigint*100-1,'NGN');
+      RAISE EXCEPTION 'PHASE2_UNDERPAYMENT_ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM <> 'PAYMENT_VERIFICATION_MISMATCH' THEN RAISE; END IF;
+    END;
+    BEGIN
+      PERFORM public.fulfill_blink_paystack_order(pay.reference,
+        'phase2-currency-'||pack.id,pack.price::bigint*100,'USD');
+      RAISE EXCEPTION 'PHASE2_WRONG_CURRENCY_ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM <> 'PAYMENT_VERIFICATION_MISMATCH' THEN RAISE; END IF;
+    END;
+    SELECT coalesce(credited,0) INTO credits FROM public.blink_coin_test_credits
+      WHERE user_id=pay.user_id;
+    IF coalesce(credits,0) <> expected_total THEN
+      RAISE EXCEPTION 'PHASE2_CREDITED_BEFORE_VERIFICATION: %',pack.id;
+    END IF;
+
+    -- Simulate a verified provider success arriving late.
+    IF pack.id='coins_1000' THEN
+      UPDATE public.blink_paystack_payments SET created_at=now()-interval '1 day'
+        WHERE id=pay.id;
+    END IF;
+    transaction_id := 'phase2-verified-'||pack.id;
+    receipt := public.fulfill_blink_paystack_order(pay.reference,
+       transaction_id,pack.price::bigint*100,'NGN');
+    IF receipt->>'status' <> 'fulfilled'
+       OR (receipt->>'already_fulfilled')::boolean IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'PHASE2_FULFILLMENT_MISSING: %',pack.id;
+    END IF;
+    expected_total := expected_total+pack.coins;
+    SELECT credited INTO STRICT credits FROM public.blink_coin_test_credits
+      WHERE user_id=pay.user_id;
+    IF credits <> expected_total THEN
+      RAISE EXCEPTION 'PHASE2_CREDIT_AMOUNT_MISMATCH: %',pack.id;
+    END IF;
+    -- Signed webhook replay or user confirmation must be exactly once.
+    receipt := public.fulfill_blink_paystack_order(pay.reference,
+       transaction_id,pack.price::bigint*100,'NGN');
+    IF (receipt->>'already_fulfilled')::boolean IS DISTINCT FROM true THEN
+      RAISE EXCEPTION 'PHASE2_DUPLICATE_NOT_RECOGNIZED: %',pack.id;
+    END IF;
+    SELECT credited INTO STRICT credits FROM public.blink_coin_test_credits
+      WHERE user_id=pay.user_id;
+    IF credits <> expected_total THEN
+      RAISE EXCEPTION 'PHASE2_REPLAY_CREDITED_TWICE: %',pack.id;
+    END IF;
+    quote_count := quote_count+1;
+  END LOOP;
+  IF quote_count<>5 OR expected_total<>11450 THEN
+    RAISE EXCEPTION 'PHASE2_MISSING_PACKS';
+  END IF;
+
+  -- Failed and cancelled/abandoned checkouts produce pending server orders
+  -- but are NEVER fulfilled unless Paystack confirms a real success.
+  -- Provider status rejection is independently checked by node HMAC tests.
+  result:=public.create_blink_paystack_order('coin_pack','coins_100');
+  failed_ref:=result->>'reference';
+  result:=public.create_blink_paystack_order('coin_pack','coins_500');
+  cancelled_ref:=result->>'reference';
+  IF (SELECT count(*) FROM public.blink_paystack_payments
+      WHERE reference IN (failed_ref,cancelled_ref)
+        AND status='pending') <> 2 THEN
+    RAISE EXCEPTION 'PHASE2_UNSUCCESSFUL_CHECKOUT_STATUS';
+  END IF;
+  IF (SELECT credited FROM public.blink_coin_test_credits
+      WHERE user_id='11111111-1111-4111-8111-111111111111') <> 11450 THEN
+    RAISE EXCEPTION 'PHASE2_UNSUCCESSFUL_CHECKOUT_CREDIT';
+  END IF;
+END $phase2$;
+ROLLBACK;
