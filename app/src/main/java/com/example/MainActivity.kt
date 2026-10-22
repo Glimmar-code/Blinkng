@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
     private val paystack by lazy { BlinkPaystackCheckoutService() }
     private val paystackPrefs by lazy { getSharedPreferences("blink_paystack_checkout", MODE_PRIVATE) }
     private var pendingPaymentReference by mutableStateOf<String?>(null)
+    private var pendingPaystackRefreshJob: Job? = null
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
     private var showPaystackReceipts by mutableStateOf(false)
@@ -98,7 +99,10 @@ class MainActivity : ComponentActivity() {
                 val checkout = paystack.createCheckout(kind, itemCode, months)
                 pendingPaymentReference = checkout.reference
                 showPendingPaymentPrompt = true
-                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                paystackPrefs.edit()
+                    .putString("reference", checkout.reference)
+                    .putString("account_id", viewModel.uiState.value.myProfile.id)
+                    .apply()
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
                 showCoinPackChooser = false
@@ -157,14 +161,17 @@ class MainActivity : ComponentActivity() {
     private fun confirmPendingPaystackPayment() {
         val reference = pendingPaymentReference ?: return
         if (paymentInProgress) return
+        pendingPaystackRefreshJob?.cancel()
         paymentInProgress = true
         lifecycleScope.launch {
             try {
                 if (paystack.confirmPayment(reference)) {
-                    pendingPaymentReference = null
-                    showPendingPaymentPrompt = false
-                    paystackPrefs.edit().remove("reference").apply()
-                    viewModel.fetchSupabaseData()
+                    if (paystackPrefs.getString("reference", null) == reference) {
+                        pendingPaymentReference = null
+                        showPendingPaymentPrompt = false
+                        paystackPrefs.edit().remove("reference").remove("account_id").apply()
+                    }
+                    viewModel.refreshCoinBalanceAfterPayment()
                     viewModel.showToast("Payment confirmed. Your BLINK purchase is active.")
                 } else {
                     viewModel.showToast("Payment is pending. Check again after completing checkout.")
@@ -173,6 +180,47 @@ class MainActivity : ComponentActivity() {
                 viewModel.showToast(error.message ?: "Unable to confirm your payment.")
             } finally {
                 paymentInProgress = false
+            }
+        }
+    }
+
+    /**
+     * Recover a Paystack return (or delayed webhook) without another payment or full Feed reload.
+     * Only a signed-in owner's SAVED checkout reference is sent for server confirmation.
+     * The Supabase backend alone verifies Paystack and grants Coins exactly once.
+     */
+    private fun reconcilePendingPaystackPayment() {
+        if (paymentInProgress || pendingPaystackRefreshJob?.isActive == true) return
+        val state = viewModel.uiState.value
+        val accountId = state.myProfile.id
+        if (state.destination != AppDestination.MAIN || accountId.isBlank()) return
+        val reference = paystackPrefs.getString("reference", null)?.trim().orEmpty()
+        val savedOwner = paystackPrefs.getString("account_id", null)
+        if (savedOwner != null && savedOwner != accountId) return
+        if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
+
+        pendingPaystackRefreshJob = lifecycleScope.launch {
+            for (attempt in 0 until 5) {
+                if (viewModel.uiState.value.myProfile.id != accountId) return@launch
+                if (paystackPrefs.getString("reference", null) != reference) return@launch
+                if (paymentInProgress) return@launch
+                val confirmed = runCatching { paystack.confirmPayment(reference) }.getOrDefault(false)
+                if (confirmed) {
+                    if (paystackPrefs.getString("reference", null) == reference) {
+                        pendingPaymentReference = null
+                        showPendingPaymentPrompt = false
+                        paystackPrefs.edit().remove("reference").remove("account_id").apply()
+                    }
+                    viewModel.refreshCoinBalanceAfterPayment()
+                    viewModel.showToast("Paystack payment confirmed. Your Coins are updating.")
+                    return@launch
+                }
+                if (attempt < 4) delay(2_000L * (attempt + 1))
+            }
+            if (viewModel.uiState.value.myProfile.id == accountId
+                && paystackPrefs.getString("reference", null) == reference) {
+                // Keep the reference; a future app entry can recover a late Paystack success.
+                viewModel.showToast("Payment still pending. BLINK will check it again.")
             }
         }
     }
@@ -254,6 +302,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
+        if (intent?.data?.scheme == "blink" && intent.data?.host == "payment") {
+            // Never trust the callback's claimed reference; use the stored checkout.
+            reconcilePendingPaystackPayment()
+            intent.data = null
+            return
+        }
         if (viewModel.handleAuthDeepLink(intent?.data)) {
             intent?.data = null
             return
@@ -384,6 +438,7 @@ class MainActivity : ComponentActivity() {
         playInAppUpdateCoordinator.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
+            reconcilePendingPaystackPayment()
             startPresenceHeartbeat()
         }
     }
@@ -474,6 +529,8 @@ class MainActivity : ComponentActivity() {
             // Keying by destination + user id prevents repeated writes during recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    // Authentication may finish after onResume: don't miss delayed receipts.
+                    reconcilePendingPaystackPayment()
                     AccountSessionStore.recordCurrentSession(
                         context = this@MainActivity,
                         userId = uiState.myProfile.id,
