@@ -301,6 +301,7 @@ fun PremiumFeedScreen(
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            isDark = isDark,
             resumeUserKey = resumeUserKey,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
@@ -454,6 +455,7 @@ private fun PremiumHomeFeed(
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
+    isDark: Boolean,
     resumeUserKey: String,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
@@ -1082,7 +1084,7 @@ private fun PremiumHomeFeed(
                                             PremiumPostEntrance(index = row.sourceIndex) {
                                                 PostCard(
                                                     post = post,
-                                                    isDark = true,
+                                                    isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
                                                     onBookmark = { onBookmarkPost(post.id) },
