@@ -102,6 +102,14 @@ function preflight(pr, changedFiles) {
   if (requiresDeviceVerification(changedFiles, labels) && !labels.has(DEVICE_VERIFIED)) return 'Independent physical-device verification is not attested';
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') return 'PR is not cleanly mergeable';
   if ((pr.changed_files || 0) > changedFiles.length) return 'Could not examine every changed file';
+  // Labels survive code pushes until the synchronize event clears them.
+  // Bind the connected agent's explicit release authorization to the exact
+  // reviewed SHA so a racing scheduler can never promote a new unreviewed head.
+  const verifiedSha = (pr.body || '').match(/<!--\s*BLINK_AGENT_VERIFIED_SHA:\s*([a-f0-9]{40})\s*-->/g) || [];
+  if (verifiedSha.length !== 1 ||
+      verifiedSha[0] !== '<!-- BLINK_AGENT_VERIFIED_SHA: ' + pr.head.sha + ' -->') {
+    return 'AI release authorization is missing or stale for current SHA';
+  }
   return null;
 }
 
