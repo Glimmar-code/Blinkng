@@ -16,7 +16,7 @@ const ready = (more = {}) => ({
   mergeable_state: 'clean',
   changed_files: 1,
   labels: [{name: 'auto-promote'}],
-  body: '- [x] Build\n- [x] Verify device',
+  body: '- [x] Build\n- [x] Verify device\n<!-- BLINK_AGENT_VERIFIED_SHA: ' + head + ' -->',
   ...more,
 });
 const check = (name, status = 'completed', conclusion = 'success', id = 1, number = 300) => ({
@@ -49,38 +49,6 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     assert.equal(policy.preflight(ready({labels: [{name: 'auto-promote'}, {name: 'staging-verified'}]}), [filename]), null);
   }
 });
-test('routine assets and copy can promote with opt-in and full CI but without owner comment', () => {
-  const routine = [
-    'README.md',
-    'docs/testlab-auto-promotion.md',
-    'web/styles.css',
-    'web/icons/home.png',
-    'app/src/main/res/drawable-hdpi/blink.png',
-  ];
-  for (const filename of routine) {
-    assert.equal(policy.requiresOwnerApproval([filename]), false, filename);
-    assert.equal(policy.preflight(ready(), [filename]), null, filename);
-  }
-  assert.equal(policy.requiresOwnerApproval(['docs/help.md', 'web/styles.css']), false);
-});
-test('sensitive, ambiguous, mixed and executable changes always need owner authorization', () => {
-  for (const filename of [
-    'web/app.js',
-    'web/index.html',
-    'web/blink-icon.svg',
-    'app/src/main/java/com/example/ui/screens/HomeScreen.kt',
-    'app/src/main/AndroidManifest.xml',
-    'supabase/functions/verify/index.ts',
-    'supabase/migrations/20261021.sql',
-    '.github/workflows/publish-latest-apk.yml',
-    '.github/scripts/testlab_auto_promotion.cjs',
-    '.github/scripts/testlab_auto_promotion.test.cjs',
-  ]) {
-    assert.equal(policy.requiresOwnerApproval([filename]), true, filename);
-  }
-  assert.equal(policy.requiresOwnerApproval(['docs/readme.md', 'web/app.js']), true);
-  assert.equal(policy.requiresOwnerApproval([]), true);
-});
 test('hardware and OEM-specific Android changes require independent device evidence', () => {
   for (const path of [
     'app/src/main/java/com/example/call/CallManager.kt',
@@ -105,9 +73,14 @@ test('incomplete file list or unmergeable PR fail closed', () => {
 });
 test('Android, web and backend jobs have explicit required gates', () => {
   const android = policy.requiredChecks(['app/src/main/java/Foo.kt']);
-  for (const c of ['validate','guard','migration-safety','parity','windows-build','runtime-smoke','release-smoke']) {
+  for (const c of ['validate','guard','migration-safety','parity','runtime-smoke','release-smoke']) {
     assert.ok(android.includes(c), c);
   }
+  assert.ok(!android.includes('windows-build'), 'Android-only changes skip unrelated Windows installer build');
+  const shared = policy.requiredChecks(['shared/src/Foo.kt']);
+  assert.ok(shared.includes('windows-build'), 'shared code requires Windows packaging');
+  assert.ok(policy.requiredChecks(['desktopApp/src/Windows.kt']).includes('windows-build'));
+  assert.ok(policy.requiredChecks(['scripts/ci_change_scope.py']).includes('windows-build'));
   const web = policy.requiredChecks(['web/app.js']);
   assert.ok(web.includes('web-parity'));
   assert.ok(web.includes('verify'));
@@ -128,24 +101,109 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['.github/workflows/signed-release.yml']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
-test('explicit owner approval must match the current PR head SHA', () => {
-  const owner = {login: 'Glimmar-code'};
-  const fake = {login: 'untrusted-user'};
-  const oldHead = 'c'.repeat(40);
-  assert.match(policy.approvalGate([], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: fake, body: 'BLINK APPROVE ' + head}], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + oldHead}], head), /missing/);
-  assert.match(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head + ' extra'}], head), /missing/);
-  assert.equal(policy.approvalGate([{id: 1, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
+test('authorized AI opt-in on the latest Testlab revision requires no GitHub owner comment', () => {
+  assert.equal(policy.preflight(ready(), ['web/app.js']), null);
+  assert.equal(policy.preflight(ready({labels: []}), ['web/app.js']), 'No auto-promote opt-in label');
+  assert.equal(policy.preflight(ready({draft: true}), ['web/app.js']),
+    'PR is not open and ready for review');
 });
 
-test('an owner can revoke an approval and reapprove the same exact SHA', () => {
-  const owner = {login: 'Glimmar-code'};
-  const approve = {id: 1, user: owner, body: 'BLINK APPROVE ' + head};
-  const revoke = {id: 2, user: owner, body: 'BLINK REVOKE ' + head};
-  assert.match(policy.approvalGate([revoke, approve], head), /revoked/);
-  assert.equal(policy.approvalGate([revoke, approve, {id: 3, user: owner, body: 'BLINK APPROVE ' + head}], head), null);
-  assert.match(policy.approvalGate([approve], 'not-a-commit-sha'), /Invalid/);
+test('promotion requires a verified marker matching the latest head', () => {
+  assert.equal(policy.preflight(ready(), ['web/app.js']), null);
+  assert.match(policy.preflight(ready({body: '- [x] verified'}), ['web/app.js']), /missing or stale/);
+  assert.match(policy.preflight(ready({head: {...ready().head, sha: 'c'.repeat(40)}}), ['web/app.js']), /missing or stale/);
+});
+
+test('synchronize always revokes stale agent promotion and verification attestations', async () => {
+  const removed = [];
+  const github = {rest: {issues: {removeLabel: async ({name, issue_number}) => {
+    removed.push([name, issue_number]);
+    if (name === 'staging-verified') throw Object.assign(new Error('absent'), {status: 404});
+  }}}};
+  const context = {eventName: 'pull_request_target', payload: {
+    action: 'synchronize',
+    pull_request: {number: 300, base: {ref: 'main'}, head: {
+      repo: {full_name: 'Glimmar-code/Blinkng'},
+    }},
+  }};
+  const msgs = [];
+  const core = {info: msg => msgs.push(msg)};
+  assert.equal(await policy.revokeStaleOptIn(github, context, core), true);
+  assert.deepEqual(removed, [
+    ['auto-promote', 300],
+    ['staging-verified', 300],
+    ['device-verified', 300],
+  ]);
+  assert.equal(await policy.revokeStaleOptIn(github, {
+    ...context, payload: {...context.payload, action: 'labeled'},
+  }, core), false);
+  assert.equal(await policy.revokeStaleOptIn(github, {
+    ...context, payload: {...context.payload,
+      pull_request: {...context.payload.pull_request, head: {
+        repo: {full_name: 'unauthorized/fork'},
+      }}},
+  }, core), false);
+  assert.equal(removed.length, 3);
+});
+
+test('synchronize fails closed if GitHub cannot revoke existing opt-in', async () => {
+  const github = {rest: {issues: {removeLabel: async () => {
+    throw Object.assign(new Error('permission denied'), {status: 403});
+  }}}};
+  await assert.rejects(
+    policy.revokeStaleOptIn(github, {eventName: 'pull_request_target', payload: {
+      action: 'synchronize',
+      pull_request: {number: 300, base: {ref: 'main'}, head: {
+        repo: {full_name: 'Glimmar-code/Blinkng'},
+      }},
+    }}, {info: () => {}}),
+    /permission denied/
+  );
+});
+
+test('end-to-end trusted controller merges fully verified agent-opted Testlab PR without owner comments', async () => {
+  const names = policy.requiredChecks(['README.md']);
+  const labels = [{name: 'auto-promote'}];
+  const pr = ready({labels, changed_files: 1});
+  let merges = 0;
+  let commentsFetched = 0;
+  const rest = {
+    issues: {
+      getLabel: async () => ({data: {}}),
+      createLabel: async () => { throw new Error('should not be creating labels'); },
+      listComments: async () => { commentsFetched++; throw new Error('owner approval must not be requested'); },
+    },
+    pulls: {
+      get: async () => ({data: pr}),
+      listFiles: async () => [{filename: 'README.md'}],
+      listReviews: async () => [],
+      merge: async x => {
+        assert.equal(x.sha, head);
+        merges++;
+        return {data: {merged: true}};
+      },
+    },
+    repos: {
+      getBranch: async () => ({data: {commit: {sha: main}}}),
+      compareCommits: async () => ({data: {behind_by: 0, ahead_by: 1}}),
+    },
+    checks: {
+      listForRef: async () => names.map((name, i) => check(name, 'completed', 'success', i+1)),
+    },
+    actions: {
+      createWorkflowDispatch: async () => { throw new Error('Docs-only PR must not trigger build'); },
+    },
+  };
+  const github = {rest, paginate: async (fn, args) => fn(args)};
+  const logs = [], failed = [];
+  await policy({github, context: {
+    eventName: 'pull_request_target',
+    payload: {action: 'labeled', pull_request: {number: 300}},
+  }, core: {info: m => logs.push(m), setFailed: m => failed.push(m)}});
+  assert.equal(merges, 1);
+  assert.equal(commentsFetched, 0);
+  assert.deepEqual(failed, []);
+  assert.ok(logs.some(m => m.includes('Promoted verified Testlab PR #300')));
 });
 
 test('CI fails closed on missing, pending, failed or stale checks', () => {
