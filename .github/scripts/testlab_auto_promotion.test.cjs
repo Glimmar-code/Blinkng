@@ -103,6 +103,12 @@ test('authorized AI opt-in on the latest Testlab revision requires no GitHub own
     'PR is not open and ready for review');
 });
 
+test('promotion requires a verified marker matching the latest head', () => {
+  assert.equal(policy.preflight(ready(), ['web/app.js']), null);
+  assert.match(policy.preflight(ready({body: '- [x] verified'}), ['web/app.js']), /missing or stale/);
+  assert.match(policy.preflight(ready({head: {...ready().head, sha: 'c'.repeat(40)}}), ['web/app.js']), /missing or stale/);
+});
+
 test('synchronize always revokes stale agent promotion and verification attestations', async () => {
   const removed = [];
   const github = {rest: {issues: {removeLabel: async ({name, issue_number}) => {
