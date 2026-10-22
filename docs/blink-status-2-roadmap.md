@@ -46,3 +46,26 @@ work with compatible old clients; don't publish an APK after every increment.
 Supabase migration, no automatic APK publication, and no temporary phone APK
 downloads without verified sign-off. User-facing feature semantics must retain
 Android/Windows parity or document an explicit platform exception.
+
+## Phase 4 progress — public Status safety and repost consent
+
+- [x] Stage creator opt-in/opt-out per original Status; default is OFF.
+- [x] Stage server-validated reposts: non-self, unblocked, unmuted, unexpired originals only.
+- [x] A repost inherits the original 24-hour lifetime; duplicate taps are idempotent.
+- [x] Revoking consent removes derived repost records; original deletion cascades.
+- [x] Account blocking in either direction and viewer muting are checked by
+      authenticated database SELECT policy (regardless of a local feed cache).
+- [x] Reaction, like, view, and reply INSERT policies reject inaccessible stories.
+- [x] Android viewer: "Allow reposts" toggle for authors; "Repost" with consent
+      and "Mute" with confirmation for viewers.
+- [x] Added disposable PostgreSQL contract tests for visibility, tampering,
+      revocation, expiration, and sharing replay.
+- [ ] Complete Android, Windows, Supabase checks on the **latest** commit.
+- [ ] Staging database proof (no paid Supabase branch available yet). Do not
+      treat successful SQL parsing as production authorization validation.
+- [ ] Full audience-based privacy (Close Friends, campus-only, excluded users):
+      **NOT IMPLEMENTED**. The `story-media` bucket is public. Row filtering,
+      creator opt-in and mute/block controls do not secure URLs already known
+      to other parties. Migrate to a private bucket and signed, per-viewer
+      authorized media delivery before displaying privacy audience controls.
+- [ ] Window desktop's dedicated Story UI and full parity still missing.
