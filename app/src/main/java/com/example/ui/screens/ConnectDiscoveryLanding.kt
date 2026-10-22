@@ -1,6 +1,14 @@
 package com.example.ui.screens
 
 import com.example.R
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import com.example.data.models.FeedPost
+import com.example.data.models.StudyCircleSummary
+import com.example.data.repository.StudyCircleRepository
+import com.example.ui.components.StudyCirclesPanel
+import com.example.ui.components.PostCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -88,9 +96,33 @@ internal fun ConnectDiscoveryLanding(
     onOpenCampusFeed: () -> Unit,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
+    posts: List<FeedPost> = emptyList(),
+    isDark: Boolean = false,
+    onLikePost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit = {},
+    onBookmarkPost: (String) -> Unit = {},
+    onRepostPost: (String) -> Unit = {},
+    onSharePost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    onVotePoll: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showStudyCircles by rememberSaveable { mutableStateOf(false) }
+    var circles by remember { mutableStateOf<List<StudyCircleSummary>>(emptyList()) }
+    var circlesLoading by remember { mutableStateOf(true) }
+    var circlesLoadFailed by remember { mutableStateOf(false) }
+    val circlesRepository = remember { StudyCircleRepository() }
+    LaunchedEffect(currentUsername, isRefreshing) {
+        // Reads existing server-authorized RPC; no new schema or sample data.
+        // Refresh when user deliberately pulls to refresh, but not on every recomposition.
+        circlesLoading = true
+        runCatching { circlesRepository.fetchCircles(limit = 12) }
+            .onSuccess { circles = it; circlesLoadFailed = false }
+            .onFailure { circlesLoadFailed = true }
+        circlesLoading = false
+    }
+
     val campusPeers = remember(profiles, myCampus) {
         if (myCampus.isBlank() || myCampus.equals("null", ignoreCase = true)) emptyList()
         else profiles.filter {
@@ -106,6 +138,26 @@ internal fun ConnectDiscoveryLanding(
     }
     val suggested = remember(profiles, campusPeers) {
         (campusPeers + profiles).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+    }
+    val campusPosts = remember(posts, profiles, myCampus, selectedTab) {
+        val profileByUsername = profiles.associateBy { it.username.trim().removePrefix("@").lowercase() }
+        val campusOnly = posts.asSequence()
+            .filter { !it.isReel && !it.isSponsored }
+            .filter { post ->
+                val key = post.authorUsername.trim().removePrefix("@").lowercase()
+                val author = profileByUsername[key]
+                myCampus.isNotBlank() && author != null &&
+                    com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(author.university, myCampus)
+            }
+            .toList()
+        if (selectedTab == 2) {
+            campusOnly.sortedWith(
+                compareByDescending<FeedPost> { it.likes.toLong() + it.commentsCount * 2L + it.sharesCount * 3L }
+                    .thenByDescending { it.createdAt }
+            ).take(3)
+        } else {
+            campusOnly.sortedByDescending { it.createdAt }.take(3)
+        }
     }
     val textColor = MaterialTheme.colorScheme.onSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -210,64 +262,122 @@ internal fun ConnectDiscoveryLanding(
                 }
                 item {
                     Spacer(Modifier.height(15.dp))
-                    ConnectDiscoveryTitle(title = "Campus Communities", onSeeAll = onOpenHub)
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        item {
-                            ConnectCommunityPreview(
-                                "Music Club", Icons.Default.MusicNote,
-                                listOf(Color(0xFF7034BD), Color(0xFF1E103D)), "Coming soon"
-                            )
+                    ConnectDiscoveryTitle(title = "Campus Communities", onSeeAll = { showStudyCircles = true })
+                    if (circlesLoading) {
+                        Text(
+                            "Loading communities…",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            fontSize = 12.sp, color = muted
+                        )
+                    } else if (circlesLoadFailed) {
+                        Text(
+                            "Communities could not be loaded. Pull down to retry.",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            fontSize = 12.sp, color = muted
+                        )
+                    } else if (circles.isEmpty()) {
+                        Text(
+                            "No study circles have been created yet. Explore the Connect tools below.",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            fontSize = 12.sp, color = muted
+                        )
+                    }
+                    if (!circlesLoading && !circlesLoadFailed && circles.isNotEmpty()) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            items(circles, key = { it.id }) { circle ->
+                                ConnectCommunityPreview(
+                                    title = circle.name,
+                                    icon = Icons.Default.MenuBook,
+                                    colors = listOf(Color(0xFF67849E), Color(0xFF182937)),
+                                    label = "${circle.memberCount} members",
+                                    onClick = { showStudyCircles = true }
+                                )
+                            }
                         }
-                        item {
-                            ConnectCommunityPreview(
-                                "Sports", Icons.Default.SportsBasketball,
-                                listOf(Color(0xFFE0A261), Color(0xFF44301F)), "Coming soon"
-                            )
-                        }
-                        item {
-                            ConnectCommunityPreview(
-                                "Study Buddies", Icons.Default.MenuBook,
-                                listOf(Color(0xFF67849E), Color(0xFF182937)), "Open tools",
-                                onClick = onOpenHub
-                            )
-                        }
-                        item {
-                            ConnectCommunityPreview(
-                                "Photography", Icons.Default.PhotoCamera,
-                                listOf(Color(0xFFBF8B72), Color(0xFF261D28)), "Coming soon"
-                            )
+                    } else if (!circlesLoading) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            item {
+                                ConnectCommunityPreview(
+                                    "Study Circles", Icons.Default.MenuBook,
+                                    listOf(Color(0xFF67849E), Color(0xFF182937)), "Browse & create",
+                                    onClick = { showStudyCircles = true }
+                                )
+                            }
+                            item {
+                                ConnectCommunityPreview(
+                                    "Reading Mates", Icons.Default.MenuBook,
+                                    listOf(Color(0xFF7034BD), Color(0xFF1E103D)), "Explore tools",
+                                    onClick = onOpenHub
+                                )
+                            }
+                            item {
+                                ConnectCommunityPreview(
+                                    "Roommates", Icons.Default.Person,
+                                    listOf(Color(0xFFE0A261), Color(0xFF44301F)), "Explore tools",
+                                    onClick = onOpenHub
+                                )
+                            }
+                            item {
+                                ConnectCommunityPreview(
+                                    "Mentorship", Icons.Default.Person,
+                                    listOf(Color(0xFFBF8B72), Color(0xFF261D28)), "Explore tools",
+                                    onClick = onOpenHub
+                                )
+                            }
                         }
                     }
                 }
                 item {
                     Spacer(Modifier.height(17.dp))
-                    ConnectDiscoveryTitle(title = "What's happening on campus", onSeeAll = onOpenCampusFeed)
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        shape = RoundedCornerShape(15.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 1.dp
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                "Campus moments and events",
-                                fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textColor
-                            )
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                "Campus posts will appear here when the live campus feed is connected. Explore BLINK posts for now.",
-                                fontSize = 12.sp, color = muted, lineHeight = 17.sp
-                            )
-                            Spacer(Modifier.height(9.dp))
-                            TextButton(onClick = onOpenCampusFeed) {
-                                Text("Explore posts")
-                                Icon(Icons.Default.ChevronRight, contentDescription = null)
+                    ConnectDiscoveryTitle(
+                        title = if (selectedTab == 2) "Trending on your campus"
+                            else "What's happening on campus",
+                        onSeeAll = onOpenCampusFeed
+                    )
+                    if (campusPosts.isEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 1.dp
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "No campus posts available yet",
+                                    fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textColor
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    "Posts from students with your university on their BLINK profile will appear here.",
+                                    fontSize = 12.sp, color = muted, lineHeight = 17.sp
+                                )
+                                TextButton(onClick = onOpenCampusFeed) {
+                                    Text("Explore BLINK posts")
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                                }
                             }
                         }
                     }
+                }
+                items(campusPosts, key = { "campus-post-${it.id}" }) { post ->
+                    PostCard(
+                        post = post,
+                        isDark = isDark,
+                        onLike = { onLikePost(post.id) },
+                        onComment = { onCommentPost(post.id) },
+                        onBookmark = { onBookmarkPost(post.id) },
+                        onRepost = { onRepostPost(post.id) },
+                        onShare = { onSharePost(post.id) },
+                        onOptionsClick = { onOptionsClick(post) },
+                        onProfileClick = onProfileClick,
+                        onVotePoll = onVotePoll
+                    )
                 }
                 item {
                     Spacer(Modifier.height(15.dp))
@@ -305,6 +415,15 @@ internal fun ConnectDiscoveryLanding(
                             Icon(Icons.Default.ChevronRight, contentDescription = "Open Connect Hub")
                         }
                     }
+                }
+            }
+        }
+        if (showStudyCircles) {
+            ModalBottomSheet(onDismissRequest = { showStudyCircles = false }) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 25.dp)
+                ) {
+                    StudyCirclesPanel()
                 }
             }
         }
