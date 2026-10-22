@@ -40,6 +40,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.blinkng.shared.notification.BlinkStoryLifecycle
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkGold
@@ -72,7 +73,11 @@ fun StoryViewerDialog(
 ) {
     // Synthetic "Your Story" cards are not media; actual owner stories are viewable.
     val storyList = remember(stories) {
-        stories.filter { it.id != "story_me" && it.storyImage.isNotBlank() }
+        stories.filter {
+            it.id != "story_me" &&
+                (it.storyImage.isNotBlank() || it.caption.isNotBlank()) &&
+                BlinkStoryLifecycle.isActive(it.createdAt, true)
+        }
     }
     if (storyList.isEmpty()) return
 
@@ -154,8 +159,8 @@ fun StoryViewerDialog(
                 BlinkStoryVideoPlayer(
                     story = displayedStory,
                     paused = isPaused || !viewerForeground || displayedStory.id != currentStory.id,
-                    onDuration = { videoDurationMs = it },
-                    onReady = { videoReady = it }
+                    onDuration = { if (displayedStory.id == currentStory.id) videoDurationMs = it },
+                    onReady = { if (displayedStory.id == currentStory.id) videoReady = it }
                 )
             } else if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(
