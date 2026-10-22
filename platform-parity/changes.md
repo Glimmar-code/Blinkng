@@ -1,3 +1,11 @@
+## 2026-10-22 — Full-screen reference profile redesign (feature branch to Testlab)
+
+- **Android:** Replaces the former 95%-width rounded profile drawer with a full-width edge-to-edge profile surface. A screenshot-inspired header, true backend-owned rank and Coin values, XP progression, earned/locked badge indicators, verification rows, and working 5-tab bottom navigation precede the existing posts/growth/liked/saved/market/skills/about tabs. Account data is never copied from the visual reference.
+- **Android compatibility:** All existing Supabase auth, wallet, verification, XP, follower and post APIs remain unchanged. Buttons continue to call established handlers; other-user profile reporting/options remain accessible from its top-right menu. This is a visual/layout stage, not a new student-verification backend or a released APK.
+- **Windows:** Existing profile shows real Coin balance, XP progression, verified identity, and subscription pathways. The profile also shows the five new **achievement categories** with a clear label that earned status is unavailable on the desktop profile response; no awards are fabricated.
+- **Platform exception (mobile viewport):** Phone edge-to-edge status/navigation bars and a fixed 5-icon bottom navigation are Android-specific. Windows retains desktop navigation and window chrome. Earned-badge indicators await safe backend hydration on Windows; categories are visible meanwhile.
+- **Verification needed before main:** Android Kotlin compile/unit checks, Windows compile/parity checks, profile navigation and other-user permission checks, large-font screenshot comparison against the approved image at matching viewport, dark/light contrast, and merge reconciliation against main. Keep the APK unpublished until gates pass; no manual temporary download required.
+
 ## 2026-10-21 — Message inbox reference visual upgrade (Testlab-only staging)
 
 - Android: isolated Compose inbox UI with avatar/BLINK/search/game/notification header, Stories and notes-style entry, real story rings, flat rows, previews, verified badges and real unread counts. Chat detail and WebRTC calling remain as-is; no database migrations. The text "Your note" currently triggers existing story creation, not a fabricated notes backend.

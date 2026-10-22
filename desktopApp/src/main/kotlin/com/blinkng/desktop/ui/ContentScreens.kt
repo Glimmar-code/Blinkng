@@ -1128,6 +1128,49 @@ fun ProfileScreen(state: DesktopAppState) {
                 }
             }
 
+            // Desktop companion to the mobile reference profile dashboard.
+            // This is an achievement-category catalog, NOT a claim that these badges
+            // have been awarded: desktop's profile response currently lacks earned badges.
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Your Badges", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Text(
+                            "Achievement categories — earned status is shown only when verified account badge data is available.",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "Verified Student",
+                                "Social Connector",
+                                "Campus Explorer",
+                                "Event Attendee",
+                                "Top Creator"
+                            ).forEach { category ->
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp, MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                ) {
+                                    Text(
+                                        category, modifier = Modifier.padding(10.dp),
+                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Surface(shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
