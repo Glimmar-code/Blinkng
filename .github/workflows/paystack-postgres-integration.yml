@@ -7,6 +7,7 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/tests/paystack_postgres_*'
       - 'supabase/tests/blink_coin_gift_*'
+      - 'supabase/tests/blink_discovery_perf_*'
       - 'supabase/functions/paystack-*/**'
       - 'supabase/functions/_shared/*paystack*'
       - 'scripts/test_paystack_integrity.mjs'
@@ -17,6 +18,7 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/tests/paystack_postgres_*'
       - 'supabase/tests/blink_coin_gift_*'
+      - 'supabase/tests/blink_discovery_perf_*'
       - 'supabase/functions/paystack-*/**'
       - 'supabase/functions/_shared/*paystack*'
       - 'scripts/test_paystack_integrity.mjs'
@@ -74,6 +76,14 @@ jobs:
         run: PGDATABASE=blink_coin_gift_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261022043000_idempotent_blink_coin_gifts.sql
       - name: Test wallet conservation, replay protection and recipient notifications
         run: PGDATABASE=blink_coin_gift_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_coin_gift_assertions.pgfixture
+      - name: Benchmark synthetic Feed ranking selections in disposable DB
+        run: |
+          createdb blink_discovery_perf_ci
+          PGDATABASE=blink_discovery_perf_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_discovery_perf_fixture.pgfixture
+      - name: Explain benchmark limits
+        run: |
+          echo 'Synthetic isolated candidate phase benchmark only. Does not test live Supabase RPC or production data.'
+          echo 'Supabase staging requires its own branch and cost confirmation before an end-to-end benchmark.'
       - name: Run independent HMAC and transaction forgery tests
         run: node --test scripts/test_paystack_integrity.mjs
       - name: Production-safety affirmation
