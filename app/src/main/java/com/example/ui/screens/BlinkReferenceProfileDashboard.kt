@@ -64,6 +64,7 @@ internal fun BlinkReferenceProfileDashboard(
     onEarnCoins: () -> Unit,
     onShowBadges: () -> Unit,
     onShare: () -> Unit,
+    onCopyUsername: () -> Unit,
     onVisitors: () -> Unit,
     onTopAction: (String) -> Unit
 ) {
@@ -280,6 +281,7 @@ internal fun BlinkReferenceProfileDashboard(
                 Text("Following", color = muted, fontSize = 10.sp)
             }
             TextButton(onClick = onShare) { Text("Share", fontSize = 11.sp) }
+            TextButton(onClick = onCopyUsername) { Text("Copy", fontSize = 11.sp) }
             if (isMe) TextButton(onClick = onVisitors) { Text("Visitors", fontSize = 11.sp) }
         }
     }
@@ -330,7 +332,11 @@ private fun ProfileReferenceVerifyRow(
 }
 
 @Composable
-internal fun BlinkReferenceProfileBottomNav(isDark: Boolean, onNavigate: (String) -> Unit) {
+internal fun BlinkReferenceProfileBottomNav(
+    isDark: Boolean,
+    selectedRoute: String,
+    onNavigate: (String) -> Unit
+) {
     val bg = if (isDark) Color(0xFF111111) else Color.White
     val ink = if (isDark) Color.White else Color.Black
     val muted = if (isDark) Color.LightGray else Color.Gray
@@ -352,9 +358,9 @@ internal fun BlinkReferenceProfileBottomNav(isDark: Boolean, onNavigate: (String
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(icon, contentDescription = label,
-                        tint = if (route == "home") ink else muted, modifier = Modifier.size(22.dp))
+                        tint = if (route == selectedRoute) ink else muted, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.height(2.dp))
-                    Text(label, color = if (route == "home") ink else muted,
+                    Text(label, color = if (route == selectedRoute) ink else muted,
                         fontSize = 10.sp, maxLines = 1)
                 }
             }
