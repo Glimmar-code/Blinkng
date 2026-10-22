@@ -94,7 +94,7 @@ jobs:
         run: |
           gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
           find . -name 'profile-reference-*.png' -print
-          test "$(find . -name 'profile-reference-*.png' | wc -l)" -ge 3
+          test "$(find . -name 'profile-reference-*.png' | wc -l)" -ge 5
 
       - name: Upload full-screen BLINK profile screenshots
         if: steps.scope.outputs.android == 'true'
