@@ -3190,6 +3190,8 @@ suspend fun uploadPostMedia(
     // ============================================================
     suspend fun fetchStories(): List<Story> = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId()
+        // Keep expired stories hidden even before the staged database policy ships.
+        val cutoff = java.time.Instant.now().minusSeconds(24 * 60 * 60L).toString()
         val viewed = if (uid != null) {
             executeRequest(newRequestBuilder("/rest/v1/story_views?user_id=eq.${encodeValue(uid)}&select=story_id", true).get().build()).use { r ->
                 val b = r.body?.string().orEmpty()
@@ -3208,7 +3210,7 @@ suspend fun uploadPostMedia(
                 } else emptySet()
             }
         } else emptySet()
-        val raw = executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&order=created_at.desc&limit=50", uid != null).get().build()).use { r ->
+        val raw = executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&created_at=gte.${encodeValue(cutoff)}&order=created_at.desc&limit=50", uid != null).get().build()).use { r ->
             val b = r.body?.string().orEmpty()
             if (!r.isSuccessful) return@withContext emptyList()
             b
@@ -3220,7 +3222,16 @@ suspend fun uploadPostMedia(
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("id")
                 val u = o.optString("user_id")
-                val prof = if (u.isNotBlank()) fetchProfileById(u)?.also { cache[u] = it } else null
+                val createdAt = o.optString("created_at")
+                if (!com.blinkng.shared.notification.BlinkStoryLifecycle.isActive(createdAt, o.optBoolean("active", true))) continue
+                val mediaType = o.optString("media_type")
+                val urls = if (mediaType.equals("video", true)) {
+                    listOf(o.optString("video_url"), o.optString("media_url"), o.optString("image_url"))
+                } else {
+                    listOf(o.optString("image_url"), o.optString("media_url"), o.optString("video_url"))
+                }
+                val mediaUrl = urls.firstOrNull { it.isNotBlank() && !it.equals("null", true) }.orEmpty()
+                val prof = if (u.isNotBlank()) cache[u] ?: fetchProfileById(u)?.also { cache[u] = it } else null
                 add(
                     Story(
                         id = sid,
@@ -3229,14 +3240,16 @@ suspend fun uploadPostMedia(
                         displayName = prof?.fullName.orEmpty(),
                         hasUnseen = !viewed.contains(sid),
                         isUser = (uid != null && u == uid),
-                        storyImage = o.optString("image_url", o.optString("media_url", o.optString("video_url", ""))),
+                        storyImage = mediaUrl,
                         caption = o.optString("caption", o.optString("text", "")),
                         timeAgo = formatTimeAgo(o.optString("created_at")),
                         faculty = prof?.faculty.orEmpty(),
                         university = prof?.university.orEmpty(),
                         likesCount = o.optInt("likes_count", 0),
                         isLiked = liked.contains(sid),
-                        verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
+                        verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE,
+                        createdAt = createdAt,
+                        isVideo = mediaType.equals("video", true)
                     )
                 )
             }
