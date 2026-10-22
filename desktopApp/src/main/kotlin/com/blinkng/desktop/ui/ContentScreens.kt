@@ -643,6 +643,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
 
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
+    // Desktop keeps its existing listing actions and native layout while matching
+    // the Android Connect / Campus / Trending discovery navigation contract.
+    var discoveryTab by remember { mutableStateOf(0) }
     var inviteFeedback by remember { mutableStateOf<String?>(null) }
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -676,6 +679,17 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
             item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf("Connect", "Campus", "Trending").forEachIndexed { index, tab ->
+                        if (discoveryTab == index) {
+                            Button(onClick = { discoveryTab = index }) { Text(tab) }
+                        } else {
+                            OutlinedButton(onClick = { discoveryTab = index }) { Text(tab) }
+                        }
+                    }
+                }
+            }
+            item {
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -703,7 +717,32 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
             if (loading) item { LoadingRow() }
-            items(listings, key = { it.id }) { listing ->
+            item {
+                Text(
+                    if (discoveryTab == 1) "Your campus communities"
+                    else if (discoveryTab == 2) "Recently active Connect listings"
+                    else "Campus Communities",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+            val scopedListings = when (discoveryTab) {
+                1 -> {
+                    val university = state.profile?.university.orEmpty()
+                    if (university.isBlank()) emptyList()
+                    else listings.filter { it.university?.equals(university, ignoreCase = true) == true }
+                }
+                2 -> listings.sortedByDescending { it.createdAt }
+                else -> listings
+            }
+            if (!loading && scopedListings.isEmpty()) item {
+                Text(
+                    if (discoveryTab == 1) "No Connect listings for your university yet."
+                    else "No Connect listings yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(scopedListings, key = { it.id }) { listing ->
                 Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
