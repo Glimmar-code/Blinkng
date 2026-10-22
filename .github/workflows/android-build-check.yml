@@ -46,6 +46,33 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Record actual Compose accessibility screenshots with Robolectric
+        if: steps.scope.outputs.android == 'true'
+        run: gradle :app:testDebugUnitTest --tests com.example.BlinkFeedAdaptiveVisualTest --tests com.example.BlinkNotificationAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
+
+      - name: Check Robolectric screenshot output and report paths
+        if: steps.scope.outputs.android == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Searching for real rendered UI captures:'
+          find . -type f \( -name 'home_w*_scale*_scroll*.png' -o -name 'notifications_w*_scale*.png' \) -print | sort
+          home_count=$(find . -type f -name 'home_w*_scale*_scroll*.png' | wc -l)
+          notice_count=$(find . -type f -name 'notifications_w*_scale*.png' | wc -l)
+          echo "Home screenshots: $home_count; notification screenshots: $notice_count"
+          test "$home_count" -ge 7
+          test "$notice_count" -ge 5
+
+      - name: Upload adaptive-font and Feed-motion screenshots for visual review
+        if: steps.scope.outputs.android == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-feed-visual-captures-${{ github.sha }}
+          path: |
+            **/test-visuals/*.png
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Android lint
         if: steps.scope.outputs.android == 'true'
         shell: bash

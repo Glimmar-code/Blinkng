@@ -149,7 +149,7 @@ fun PostCard(
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
-    onGiftCoinsAuthor: (String) -> Unit = {},
+    onGiftCoinsAuthor: (String, Int) -> Unit = { _, _ -> },
     onChallengeAuthor: (String) -> Unit = {},
     onMentorRequestAuthor: (String) -> Unit = {},
     onFriendRequestAuthor: (String) -> Unit = {},
@@ -336,24 +336,28 @@ fun PostCard(
                 }
                 if (!isAuthor && authorProfileId.isNotBlank()) {
                     Spacer(Modifier.width(5.dp))
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = 40.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, dividerColor, RoundedCornerShape(16.dp))
-                            .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
-                                if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
-                                else onFollowAuthor(authorProfileId)
-                            }
-                            .padding(horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    if (isFollowMutationPending) {
                         Text(
-                            text = if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
-                            color = primaryText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
+                            "Updating",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = secondaryText
+                        )
+                    } else {
+                        ProfileFollowInteractButton(
+                            isFollowing = isFollowingAuthor,
+                            onFollow = { onFollowAuthor(authorProfileId) },
+                            onUnfollow = { onUnfollowAuthor(authorProfileId) },
+                            onMessage = onMessageAuthor,
+                            onGiftCoins = { amount -> onGiftCoinsAuthor(authorProfileId, amount) },
+                            onGameChallenge = { onChallengeAuthor(authorProfileId) },
+                            onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
+                            onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
+                            onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
+                            onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
+                            onViewProfile = { onProfileClick(profileTarget) },
+                            onOpenConnectHub = onConnectHubAuthor,
+                            darkSurface = isDark,
+                            showExtendedActions = false
                         )
                     }
                 }

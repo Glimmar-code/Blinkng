@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -44,6 +45,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,9 +98,13 @@ internal fun BlinkReferenceInbox(
     val primary = if (isDark) Color.White else Color(0xFF121212)
     val secondary = if (isDark) Color(0xFFACADB0) else Color(0xFF858585)
     val border = if (isDark) Color(0xFF313236) else Color(0xFFEEEEEE)
+    val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp, LocalDensity.current.fontScale
+    )
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp)
+                .padding(horizontal = if (compactToolbar) 10.dp else 20.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -112,7 +120,7 @@ internal fun BlinkReferenceInbox(
                     )
                 }
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(if (compactToolbar) 8.dp else 14.dp))
             Text(
                 "B L I N K",
                 modifier = Modifier.weight(1f),
@@ -120,16 +128,17 @@ internal fun BlinkReferenceInbox(
                 fontWeight = FontWeight.Black,
                 fontFamily = InterFontFamily,
                 color = primary,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            IconButton(onClick = onToggleSearch, modifier = Modifier.size(43.dp).testTag("inbox_search")) {
+            IconButton(onClick = onToggleSearch, modifier = Modifier.size(if (compactToolbar) 40.dp else 43.dp).testTag("inbox_search")) {
                 Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
             }
-            IconButton(onClick = onGameClick, modifier = Modifier.size(43.dp).testTag("inbox_game")) {
+            IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactToolbar) 40.dp else 43.dp).testTag("inbox_game")) {
                 Icon(Icons.Outlined.SportsEsports, contentDescription = "Open BLINK games", tint = primary, modifier = Modifier.size(27.dp))
             }
             Box {
-                IconButton(onClick = onNotificationsClick, modifier = Modifier.size(43.dp).testTag("inbox_notifications")) {
+                IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactToolbar) 40.dp else 43.dp).testTag("inbox_notifications")) {
                     Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
                 }
                 if (hasUnreadNotifications) {
@@ -143,7 +152,11 @@ internal fun BlinkReferenceInbox(
             modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 7.dp, bottom = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary)
+            Text(
+                "Messages", modifier = Modifier.weight(1f), fontSize = 25.sp,
+                fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary,
+                maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
             TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
                 Text(if (showAll) "Close" else "See all", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
@@ -327,16 +340,20 @@ private fun BlinkInboxConversationRow(
     onOpen: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
+    val compactRow = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp, LocalDensity.current.fontScale
+    )
+    val avatarSize = if (compactRow) 48.dp else 58.dp
     Column(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpen)
             .testTag("inbox_chat_${conversation.id}")
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 9.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = if (compactRow) 12.dp else 22.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(58.dp).clickable(role = Role.Button, onClick = onAvatarClick)) {
-                InboxAvatar(conversation.partnerAvatar, conversation.partnerName, 58.dp, bg)
+            Box(Modifier.size(avatarSize).clickable(role = Role.Button, onClick = onAvatarClick)) {
+                InboxAvatar(conversation.partnerAvatar, conversation.partnerName, avatarSize, bg)
                 if (conversation.isOnline) {
                     Box(
                         Modifier.align(Alignment.BottomEnd).size(15.dp)
@@ -345,7 +362,7 @@ private fun BlinkInboxConversationRow(
                     )
                 }
             }
-            Spacer(Modifier.width(18.dp))
+            Spacer(Modifier.width(if (compactRow) 10.dp else 18.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -401,7 +418,7 @@ private fun BlinkInboxConversationRow(
             }
         }
         HorizontalDivider(
-            modifier = Modifier.padding(start = 98.dp, end = 18.dp),
+            modifier = Modifier.padding(start = if (compactRow) 70.dp else 98.dp, end = 18.dp),
             thickness = 1.dp, color = border
         )
     }

@@ -419,6 +419,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            // Resolve Android's live theme without overwriting the stored user preference.
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            LaunchedEffect(uiState.appearanceMode, systemDark) {
+                viewModel.applySystemAppearance(systemDark)
+            }
+            val themedUiState = uiState.copy(
+                isDarkMode = uiState.appearanceMode.isDark(systemDark)
+            )
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
@@ -517,7 +525,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BlinkTheme(darkTheme = uiState.isDarkMode) {
+            BlinkTheme(darkTheme = themedUiState.isDarkMode) {
                 Scaffold(
                     // The main pages paint behind the status bar. Their own headers
                     // apply statusBarsPadding once; keep the bottom/side safe areas
@@ -624,7 +632,7 @@ class MainActivity : ComponentActivity() {
 
                                 AppDestination.MAIN -> {
                                     MainAppContent(
-                                        uiState = uiState,
+                                        uiState = themedUiState,
                                         viewModel = viewModel,
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
@@ -776,6 +784,7 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    var bottomBarTravelPx by remember { mutableFloatStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -810,8 +819,9 @@ fun MainAppContent(
         )
     }
 
-    LaunchedEffect(uiState.selectedTab) {
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
         isBottomBarVisibleByScroll = true
+        bottomBarTravelPx = 0f
     }
 
     // Handle back button presses for sub-views
@@ -1010,6 +1020,11 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
+                        // HorizontalPager keeps neighboring pages composed: selection
+                        // inside Reels alone cannot prove the video is on-screen.
+                        isReelsDestinationActive = page == 1 &&
+                            selectedPage == 1 && pagerState.currentPage == 1 &&
+                            allowMainPageSwipe,
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -1053,6 +1068,9 @@ fun MainAppContent(
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onBottomBarTravel = { pixels ->
+                            if (page == 0 && selectedPage == 0) bottomBarTravelPx = pixels
                         }
                     )
                 }
@@ -1257,7 +1275,9 @@ fun MainAppContent(
             ) + androidx.compose.animation.fadeOut(
                 animationSpec = androidx.compose.animation.core.tween(durationMillis = 180)
             ),
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                translationY = bottomBarTravelPx
+            }
         ) {
             FeedBottomBar(
                 currentTab = uiState.selectedTab,
@@ -1814,6 +1834,8 @@ fun MainAppContent(
                 onFindFriends = onFindFriends,
                 onOpenEarning = { showEarning = true },
                 onToggleTheme = { viewModel.toggleDarkMode() },
+                appearanceMode = uiState.appearanceMode,
+                onAppearanceModeChange = { viewModel.setAppearanceMode(it) },
                 onLogout = { viewModel.logout() },
                 onShowToast = { viewModel.showToast(it) },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,

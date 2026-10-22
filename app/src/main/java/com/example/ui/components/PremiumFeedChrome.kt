@@ -17,6 +17,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -280,13 +283,20 @@ fun FeedTabs(
     onFilterClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Android font scaling can make the tab labels wider than the available
+    // viewport. Scroll the complete rail instead of squeezing/overlapping text.
+    val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(
-        modifier = modifier.fillMaxWidth().background(FeedBackground).height(54.dp)
+        modifier = modifier.fillMaxWidth().background(FeedBackground).heightIn(min = 54.dp)
     ) {
         val availableWidth = maxWidth
         val iconWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
         val filterWidth = if (availableWidth < 360.dp) 40.dp else 44.dp
-        val tabWidth = ((availableWidth - iconWidth * 2 - filterWidth) / 2).coerceAtLeast(72.dp)
+        val minimumLabelWidth = if (fontScale >= 1.7f) 130.dp else if (fontScale >= 1.3f) 110.dp else 80.dp
+        val tabWidth = ((availableWidth - iconWidth * 2 - filterWidth) / 2)
+            .coerceAtLeast(minimumLabelWidth)
+        val contentWidth = (tabWidth * 2 + iconWidth * 2 + filterWidth)
+            .coerceAtLeast(availableWidth)
         val indicatorWidth = (tabWidth - 18.dp).coerceAtLeast(22.dp)
         val labelSelection = selectedIndex.coerceIn(0, 1)
         val indicatorOffset by animateDpAsState(
@@ -297,49 +307,52 @@ fun FeedTabs(
             ),
             label = "feedTabIndicatorOffset"
         )
-
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FeedTabLabel("For You", selectedIndex == 0, Modifier.width(tabWidth), onForYouClick)
-            FeedTabLabel("Following", selectedIndex == 1, Modifier.width(tabWidth), onFollowingClick)
-            FeedIconDestination(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Open Reels",
-                selected = false,
-                width = iconWidth,
-                onClick = onReelClick
-            )
-            FeedIconDestination(
-                imageVector = Icons.Default.SportsEsports,
-                contentDescription = "Open Game",
-                selected = selectedIndex == 2,
-                width = iconWidth,
-                onClick = onGameClick
-            )
-            Box(
-                modifier = Modifier
-                    .width(filterWidth)
-                    .height(52.dp)
-                    .clickable(role = Role.Button, onClick = onFilterClick)
-                    .semantics { contentDescription = "Filter feed" },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Tune,
-                    contentDescription = null,
-                    tint = FeedTextSecondary,
-                    modifier = Modifier.size(21.dp)
-                )
+        Box(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Box(modifier = Modifier.width(contentWidth).heightIn(min = 54.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    FeedTabLabel("For You", selectedIndex == 0, Modifier.width(tabWidth), onForYouClick)
+                    FeedTabLabel("Following", selectedIndex == 1, Modifier.width(tabWidth), onFollowingClick)
+                    FeedIconDestination(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Open Reels",
+                        selected = false,
+                        width = iconWidth,
+                        onClick = onReelClick
+                    )
+                    FeedIconDestination(
+                        imageVector = Icons.Default.SportsEsports,
+                        contentDescription = "Open Game",
+                        selected = selectedIndex == 2,
+                        width = iconWidth,
+                        onClick = onGameClick
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(filterWidth)
+                            .height(52.dp)
+                            .clickable(role = Role.Button, onClick = onFilterClick)
+                            .semantics { contentDescription = "Filter feed" },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = FeedTextSecondary,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
+                if (selectedIndex in 0..1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = indicatorOffset)
+                            .width(indicatorWidth)
+                            .height(3.dp)
+                            .background(feedAccentBrush(), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                    )
+                }
             }
-        }
-        if (selectedIndex in 0..1) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(x = indicatorOffset)
-                    .width(indicatorWidth)
-                    .height(3.dp)
-                    .background(feedAccentBrush(), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-            )
         }
     }
 }

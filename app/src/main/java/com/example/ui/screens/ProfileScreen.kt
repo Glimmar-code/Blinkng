@@ -60,6 +60,8 @@ import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
+import com.example.ui.components.ProfileFollowInteractButton
 import com.example.notification.BlinkProfileVisitorClient
 import com.example.ui.components.BlinkProfileVisitorsDialog
 import com.example.ui.components.FacultyBadge
@@ -96,7 +98,7 @@ private object ProfileMotion {
     val TabIndicatorSpec = spring<Dp>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
     profile: UserProfile,
@@ -131,6 +133,8 @@ fun ProfileScreen(
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
+    val giftRepository = remember { UserInteractionRepository() }
+    val giftRequests = remember { mutableStateMapOf<String, String>() }
     val overlayOffset = remember(profile.id) { Animatable(0f) }
     val overlayScope = rememberCoroutineScope()
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
@@ -524,7 +528,7 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.weight(1f))
 
                             EntranceItem(visible = contentVisible, delayMillis = 90, fromRight = true) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     if (isMe) {
                                         SmallActionButton(
                                             icon = Icons.Default.Edit,
@@ -559,29 +563,64 @@ fun ProfileScreen(
                                             testTag = "profile_message_btn"
                                         )
 
-                                        SmallActionButton(
-                                            icon = if (isFollowing) Icons.Default.Check else Icons.Default.PersonAdd,
-                                            title = if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
-                                            tint = if (isFollowing) textPrimary else if (isDark) BlinkBlack else BlinkCream,
-                                            background = if (isFollowing) {
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            } else {
-                                                if (isDark) BlinkCream else BlinkBlack
-                                            },
-                                            onClick = {
-                                                if (!followBusy && profile.id.isNotBlank()) {
-                                                    val desired = !isFollowing
-                                                    followBusy = true
-                                                    overlayScope.launch {
-                                                        val saved = FollowStateStore.setFollowing(profile.id, desired)
-                                                        followBusy = false
-                                                        if (saved) onFollowChanged(desired)
+                                        if (followBusy) {
+                                            Text("Updating", style = MaterialTheme.typography.labelMedium)
+                                        } else {
+                                            ProfileFollowInteractButton(
+                                                isFollowing = isFollowing,
+                                                onFollow = {
+                                                    if (profile.id.isNotBlank()) {
+                                                        followBusy = true
+                                                        overlayScope.launch {
+                                                            val saved = FollowStateStore.setFollowing(profile.id, true)
+                                                            followBusy = false
+                                                            if (saved) onFollowChanged(true)
+                                                        }
                                                     }
-                                                }
-                                            },
-                                            modifier = Modifier.scale(animatedFollowScale),
-                                            testTag = "profile_follow_btn"
-                                        )
+                                                },
+                                                onUnfollow = {
+                                                    if (profile.id.isNotBlank()) {
+                                                        followBusy = true
+                                                        overlayScope.launch {
+                                                            val saved = FollowStateStore.setFollowing(profile.id, false)
+                                                            followBusy = false
+                                                            if (saved) onFollowChanged(false)
+                                                        }
+                                                    }
+                                                },
+                                                onMessage = { onDirectMessage(profile.username) },
+                                                onGiftCoins = { amount ->
+                                                    if (profile.id.isNotBlank()) {
+                                                        val key = "${profile.id}:$amount"
+                                                        val requestId = giftRequests.getOrPut(key) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        overlayScope.launch {
+                                                            val sent = giftRepository.giftCoinsOnce(
+                                                                profile.id, amount, requestId
+                                                            )
+                                                            if (sent) giftRequests.remove(key)
+                                                            Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Unable to confirm Coin gift.",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    }
+                                                },
+                                                onGameChallenge = {},
+                                                onMentorRequest = {},
+                                                onFriendRequest = {},
+                                                onRoommateRequest = {},
+                                                onStudyMateRequest = {},
+                                                onViewProfile = {},
+                                                onOpenConnectHub = {},
+                                                showExtendedActions = false,
+                                                darkSurface = isDark,
+                                                modifier = Modifier.testTag("profile_follow_btn")
+                                            )
+                                        }
                                     }
                                 }
                             }

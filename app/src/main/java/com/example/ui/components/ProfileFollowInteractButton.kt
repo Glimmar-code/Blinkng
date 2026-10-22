@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -54,7 +57,7 @@ fun ProfileFollowInteractButton(
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
     onMessage: () -> Unit,
-    onGiftCoins: () -> Unit,
+    onGiftCoins: (Int) -> Unit,
     onGameChallenge: () -> Unit,
     onMentorRequest: () -> Unit,
     onFriendRequest: () -> Unit,
@@ -63,9 +66,12 @@ fun ProfileFollowInteractButton(
     onViewProfile: () -> Unit,
     onOpenConnectHub: () -> Unit,
     darkSurface: Boolean = false,
+    showExtendedActions: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var giftDialog by remember { mutableStateOf(false) }
+    var giftAmount by remember { mutableStateOf(20) }
     val labelColor = if (darkSurface) Color.White else MaterialTheme.colorScheme.primary
     val container = if (darkSurface) Color.Black.copy(alpha = 0.34f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
     val border = if (darkSurface) Color.White.copy(alpha = 0.55f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
@@ -102,7 +108,7 @@ fun ProfileFollowInteractButton(
                 .width(236.dp)
                 .heightIn(max = 360.dp)
         ) {
-            InteractionMenuItem(Icons.Default.PersonRemove, "Unfollow") {
+            InteractionMenuItem(Icons.Default.PersonRemove, "I Follow · Unfollow") {
                 menuExpanded = false
                 onUnfollow()
             }
@@ -110,10 +116,11 @@ fun ProfileFollowInteractButton(
                 menuExpanded = false
                 onMessage()
             }
-            InteractionMenuItem(Icons.Default.CardGiftcard, "Gift 10 Blink Coins") {
+            InteractionMenuItem(Icons.Default.CardGiftcard, "Send BLINK Coins") {
                 menuExpanded = false
-                onGiftCoins()
+                giftDialog = true
             }
+            if (showExtendedActions) {
             InteractionMenuItem(Icons.Default.SportsEsports, "Game challenge") {
                 menuExpanded = false
                 onGameChallenge()
@@ -134,14 +141,42 @@ fun ProfileFollowInteractButton(
                 menuExpanded = false
                 onStudyMateRequest()
             }
+            }
             InteractionMenuItem(Icons.Default.AccountCircle, "View profile") {
                 menuExpanded = false
                 onViewProfile()
             }
+            if (showExtendedActions) {
             InteractionMenuItem(Icons.Default.Hub, "Open Connect Hub") {
                 menuExpanded = false
                 onOpenConnectHub()
             }
+            }
+        }
+        if (giftDialog) {
+            AlertDialog(
+                onDismissRequest = { giftDialog = false },
+                title = { Text("Send BLINK Coins") },
+                text = {
+                    Column {
+                        Text("Choose how many Coins to send. The amount will be deducted from your wallet after confirmation.")
+                        listOf(20, 50, 100).forEach { amount ->
+                            TextButton(onClick = { giftAmount = amount }) {
+                                Text(if (giftAmount == amount) "✓ $amount Coins" else "$amount Coins")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        giftDialog = false
+                        onGiftCoins(giftAmount)
+                    }) { Text("Send $giftAmount Coins") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { giftDialog = false }) { Text("Cancel") }
+                }
+            )
         }
     }
 }

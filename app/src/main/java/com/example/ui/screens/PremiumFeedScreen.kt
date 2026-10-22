@@ -62,6 +62,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -73,12 +74,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
+import com.blinkng.shared.BlinkFeedScrollMotion
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
+import com.example.data.repository.UserInteractionRepository
 import com.example.data.repository.FollowStateStore
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
@@ -240,8 +243,10 @@ fun PremiumFeedScreen(
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    onBottomBarTravel: (Float) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
-    routedReelId: String? = null
+    routedReelId: String? = null,
+    isReelsDestinationActive: Boolean = true
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -297,6 +302,7 @@ fun PremiumFeedScreen(
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            isDark = isDark,
             resumeUserKey = resumeUserKey,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
@@ -319,6 +325,7 @@ fun PremiumFeedScreen(
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
             onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
             onOpenCreatePost = onOpenCreatePost,
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
@@ -330,12 +337,16 @@ fun PremiumFeedScreen(
             onLoadMorePosts = onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            onBottomBarTravel = onBottomBarTravel,
             onGameClick = { onSubTabChanged(3) },
             onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
-        1 -> FeedScreen(
+        1 -> androidx.compose.runtime.CompositionLocalProvider(
+            LocalBlinkReelDestinationVisible provides isReelsDestinationActive
+        ) {
+            FeedScreen(
             posts = posts,
             reels = reels,
             stories = stories,
@@ -386,7 +397,8 @@ fun PremiumFeedScreen(
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             initialReelId = routedReelId ?: launchReelId,
             initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
-        )
+            )
+        }
 
         2 -> PremiumConnectHost(
             profiles = profiles,
@@ -444,6 +456,7 @@ private fun PremiumHomeFeed(
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
+    isDark: Boolean,
     resumeUserKey: String,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
@@ -466,6 +479,7 @@ private fun PremiumHomeFeed(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
@@ -477,12 +491,15 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    onBottomBarTravel: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
     val followScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val giftRequests = remember { mutableStateMapOf<String, String>() }
     val followMutationPending = remember { mutableStateMapOf<String, Boolean>() }
     // Resolve real Supabase profile IDs; never send a username to follow_user.
     val authorIdByKey = remember(profiles) {
@@ -540,6 +557,10 @@ private fun PremiumHomeFeed(
     val primaryCollapseThreshold = with(density) { 20.dp.toPx() }
     val immersiveCollapseThreshold = with(density) { 56.dp.toPx() }
     val scrollAccumulator = remember { floatArrayOf(0f) }
+    var topChromeTravelPx by remember(laneResumeKey) { mutableStateOf(0f) }
+    var bottomBarTravelPx by remember(laneResumeKey) { mutableStateOf(0f) }
+    val topTravelMaxPx = with(density) { 96.dp.toPx() }
+    val bottomTravelMaxPx = with(density) { 80.dp.toPx() }
     var chromeStage by remember(laneResumeKey) { mutableIntStateOf(0) }
     var primaryHeaderVisible by remember(laneResumeKey) { mutableStateOf(true) }
     var secondaryChromeVisible by remember(laneResumeKey) { mutableStateOf(true) }
@@ -662,6 +683,7 @@ private fun PremiumHomeFeed(
 
     val scrollConnection = remember(
         onBottomBarVisibilityChange,
+        onBottomBarTravel,
         primaryCollapseThreshold,
         immersiveCollapseThreshold
     ) {
@@ -670,6 +692,16 @@ private fun PremiumHomeFeed(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
+                // Proportional movement: 80px post swipe = 20px header + 50px nav.
+                // Signed delta naturally reverses both offsets while scrolling down.
+                val upDelta = -available.y
+                topChromeTravelPx = BlinkFeedScrollMotion.advance(
+                    topChromeTravelPx, upDelta, BlinkFeedScrollMotion.TOP_PER_POST, topTravelMaxPx
+                )
+                bottomBarTravelPx = BlinkFeedScrollMotion.advance(
+                    bottomBarTravelPx, upDelta, BlinkFeedScrollMotion.NAV_PER_POST, bottomTravelMaxPx
+                )
+                onBottomBarTravel(bottomBarTravelPx)
                 when {
                     available.y < 0f -> {
                         // Moving deeper into the feed. Collapse the primary header first,
@@ -699,17 +731,24 @@ private fun PremiumHomeFeed(
                     }
 
                     available.y > 0f -> {
-                        // Any meaningful reverse scroll leaves immersive mode immediately.
-                        // The primary header intentionally stays hidden until the list is
-                        // genuinely back at the first post.
-                        scrollAccumulator[0] = 0f
+                        // Reverse scrolling progressively reopens the three header
+                        // areas, bottom navigation and Create action; no need to travel
+                        // all the way back to the first post.
                         if (chromeStage == 2) {
                             chromeStage = 1
                             primaryHeaderVisible = false
                             secondaryChromeVisible = true
                             bottomChromeVisible = true
                             fabExpanded = true
+                            scrollAccumulator[0] = 0f
                             onBottomBarVisibilityChange(true)
+                        } else if (chromeStage == 1) {
+                            scrollAccumulator[0] += available.y
+                            if (scrollAccumulator[0] >= primaryCollapseThreshold) {
+                                chromeStage = 0
+                                primaryHeaderVisible = true
+                                scrollAccumulator[0] = 0f
+                            }
                         }
                     }
                 }
@@ -747,6 +786,9 @@ private fun PremiumHomeFeed(
         }
 
         scrollAccumulator[0] = 0f
+        topChromeTravelPx = 0f
+        bottomBarTravelPx = 0f
+        onBottomBarTravel(0f)
         if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 1) {
             chromeStage = 0
             primaryHeaderVisible = true
@@ -780,6 +822,9 @@ private fun PremiumHomeFeed(
                 bottomChromeVisible = true
                 fabExpanded = true
                 scrollAccumulator[0] = 0f
+                topChromeTravelPx = 0f
+                bottomBarTravelPx = 0f
+                onBottomBarTravel(0f)
                 onBottomBarVisibilityChange(true)
             }
         }
@@ -797,6 +842,9 @@ private fun PremiumHomeFeed(
                 onRefresh()
             }
             scrollAccumulator[0] = 0f
+            topChromeTravelPx = 0f
+            bottomBarTravelPx = 0f
+            onBottomBarTravel(0f)
             chromeStage = 0
             primaryHeaderVisible = true
             secondaryChromeVisible = true
@@ -893,6 +941,9 @@ private fun PremiumHomeFeed(
                     exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
                 ) {
                     FeedTopBar(
+                        modifier = Modifier.graphicsLayer {
+                            translationY = -topChromeTravelPx.coerceAtMost(topTravelMaxPx) * 0.6f
+                        },
                         userAvatar = userAvatar,
                         hasUnreadNotifications = hasUnreadNotifications,
                         onSearchClick = onSearchClick,
@@ -905,7 +956,10 @@ private fun PremiumHomeFeed(
                 AnimatedVisibility(
                     visible = secondaryChromeVisible,
                     enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { -it / 3 },
-                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 }
+                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 },
+                    modifier = Modifier.graphicsLayer {
+                        translationY = -topChromeTravelPx.coerceAtMost(topTravelMaxPx) * 0.4f
+                    }
                 ) {
                     Column {
                         Box {
@@ -1031,7 +1085,7 @@ private fun PremiumHomeFeed(
                                             PremiumPostEntrance(index = row.sourceIndex) {
                                                 PostCard(
                                                     post = post,
-                                                    isDark = true,
+                                                    isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
                                                     onBookmark = { onBookmarkPost(post.id) },
@@ -1065,6 +1119,32 @@ private fun PremiumHomeFeed(
                                                                 try { FollowStateStore.setFollowing(id, false) }
                                                                 finally { followMutationPending.remove(id) }
                                                             }
+                                                        }
+                                                    },
+                                                    onMessageAuthor = {
+                                                        onDirectMessage(
+                                                            post.authorUsername.trim().removePrefix("@")
+                                                                .ifBlank { post.author.trim().removePrefix("@") },
+                                                            post.author,
+                                                            post.authorAvatar
+                                                        )
+                                                    },
+                                                    onGiftCoinsAuthor = { recipientId, amount ->
+                                                        val giftKey = "$recipientId:$amount"
+                                                        val requestId = giftRequests.getOrPut(giftKey) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        followScope.launch {
+                                                            val sent = interactionRepository.giftCoinsOnce(
+                                                                recipientId, amount, requestId
+                                                            )
+                                                            if (sent) giftRequests.remove(giftKey)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Coin gift not confirmed. No balance change shown.",
+                                                                android.widget.Toast.LENGTH_SHORT
+                                                            ).show()
                                                         }
                                                     },
                                                     authorOnline = authorPresenceByKey[

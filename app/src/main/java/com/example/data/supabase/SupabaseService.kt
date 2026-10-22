@@ -1852,7 +1852,12 @@ fun getCurrentUserId(): String? {
                 put("p_feed_type", normalizedFeedType)
             }
 
-            val rankedRows = executeRequest(
+            // Do not leave the user with a blank feed when the expensive discovery
+            // function hits Postgres statement_timeout. Fall back to the existing
+            // authenticated, privacy-filtered chronological RPC for the first page.
+            // Auth/permission/network errors are intentionally NOT hidden.
+            val rankedRows = try {
+                executeRequest(
                 newRequestBuilder(
                     "/rest/v1/rpc/get_ranked_feed_page",
                     authenticated = true
@@ -1868,6 +1873,20 @@ fun getCurrentUserId(): String? {
                     )
                 }
                 JSONArray(if (raw.isBlank()) "[]" else raw)
+                }
+            } catch (e: IllegalStateException) {
+                val message = e.message.orEmpty().lowercase(Locale.US)
+                if (isInitialPage &&
+                    (message.contains("statement timeout") ||
+                     message.contains("canceling statement due to statement timeout") ||
+                     message.contains("57014"))) {
+                    Log.w(TAG, "Ranked feed timed out; safely using chronological feed page")
+                    return@withContext fetchFeedPage(
+                        limit = limit,
+                        feedType = normalizedFeedType
+                    )
+                }
+                throw e
             }
 
             val items = JSONArray()

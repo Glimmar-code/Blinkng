@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
@@ -31,6 +32,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.notification.BlinkOfflineAnnouncementCache
 import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
@@ -89,6 +93,7 @@ fun ActivityScreen(
     var filter by remember { mutableStateOf(NotificationFilter.ALL) }
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
     var searchVisible by remember { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
     var savedUpdates by remember(accountId) {
@@ -143,6 +148,10 @@ fun ActivityScreen(
     }
 
     val unread = activities.count { it.isUnread }
+    val compactHeader = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    )
     val filtered = remember(activities, actorProfiles, filter, viewMode, searchQuery) {
         activities.filter { item ->
             val categoryMatches = filter == NotificationFilter.ALL || resolvedNotificationCategory(item) == filter
@@ -176,17 +185,25 @@ fun ActivityScreen(
                         }
                     },
                     title = {
-                        Column {
-                            Text("Notifications", fontWeight = FontWeight.Bold)
-                            Text(
-                                when {
-                                    unread == 0 -> "You're all caught up"
-                                    unread == 1 -> "1 unread"
-                                    else -> "$unread unread"
-                                },
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (!compactHeader) {
+                            Column {
+                                Text(
+                                    "Notifications",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    when {
+                                        unread == 0 -> "You're all caught up"
+                                        unread == 1 -> "1 unread"
+                                        else -> "$unread unread"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -199,21 +216,65 @@ fun ActivityScreen(
                                 if (searchVisible) "Close search" else "Search notifications"
                             )
                         }
-                        if (unread > 0) {
-                            TextButton(onClick = onMarkAllRead) {
-                                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("Read all", fontSize = 12.sp)
+                        Box {
+                            IconButton(onClick = { actionsExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More notification actions")
                             }
-                        }
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, "Refresh")
+                            DropdownMenu(
+                                expanded = actionsExpanded,
+                                onDismissRequest = { actionsExpanded = false }
+                            ) {
+                                if (unread > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("Mark all as read") },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            onMarkAllRead()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Refresh notifications") },
+                                    onClick = {
+                                        actionsExpanded = false
+                                        onRefresh()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
                     )
                 )
+
+                // At large accessibility font or small screen width, a full-width
+                // title row keeps "Notifications" readable instead of squashing it
+                // between Back, Search and More actions.
+                if (compactHeader) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "Notifications",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
+                        )
+                        Text(
+                            when {
+                                unread == 0 -> "You're all caught up"
+                                unread == 1 -> "1 unread"
+                                else -> "$unread unread"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 if (searchVisible) {
                     OutlinedTextField(
@@ -359,15 +420,17 @@ private fun NotificationControls(
     onViewModeChange: (NotificationViewMode) -> Unit
 ) {
     Column {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        // Use a horizontal lazy row, not a fixed Row: large accessibility fonts
+        // and compact devices must never squeeze the three view-mode chips.
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            NotificationViewMode.values().forEach { mode ->
+            items(NotificationViewMode.values()) { mode ->
                 FilterChip(
                     selected = viewMode == mode,
                     onClick = { onViewModeChange(mode) },
-                    label = { Text(mode.label, fontSize = 12.sp) }
+                    label = { Text(mode.label, style = MaterialTheme.typography.labelLarge) }
                 )
             }
         }
@@ -630,6 +693,12 @@ private fun NotificationCard(
     onNotificationClick: (ActivityItem) -> Unit
 ) {
     val category = resolvedNotificationCategory(item)
+    val safeAction = item.action.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    } ?: "New activity"
+    val safePreview = item.previewText?.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    }
     val isOfficial = item.targetType.equals("notification", ignoreCase = true)
     val accent = if (item.vipPriority) Color(0xFFF59E0B) else notificationAccent(category, isOfficial)
 
@@ -768,16 +837,18 @@ private fun NotificationCard(
 
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    item.action,
+                    safeAction,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (!item.previewText.isNullOrBlank()) {
+                if (safePreview != null) {
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        item.previewText!!,
+                        safePreview,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 12.sp,
