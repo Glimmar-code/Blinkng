@@ -605,6 +605,10 @@ private fun ReelPage(
     val interactionRepository = remember { UserInteractionRepository() }
     val reelRecommendationService = remember { ReelRecommendationService() }
     val interactionScope = rememberCoroutineScope()
+    // Retain the same receipt UUID on retries after an unknown network outcome.
+    // Otherwise the recipient could receive two gifts even though the first
+    // request already committed on the server.
+    val pendingGiftReceipts = remember(authorId) { mutableStateMapOf<Int, String>() }
     val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
     val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
     val readingListingId = connectHub.readingMates.firstOrNull { it.userId == authorId }?.id
@@ -844,9 +848,12 @@ private fun ReelPage(
                         },
                         onMessage = { onDirectMessage(reelUsername, authorName, authorAvatar) },
                         onGiftCoins = { amount ->
+                            val requestId = pendingGiftReceipts.getOrPut(amount) {
+                                java.util.UUID.randomUUID().toString()
+                            }
                             interactionScope.launch {
-                                val requestId = java.util.UUID.randomUUID().toString()
                                 val sent = interactionRepository.giftCoinsOnce(authorId, amount, requestId)
+                                if (sent) pendingGiftReceipts.remove(amount)
                                 android.widget.Toast.makeText(
                                     context,
                                     if (sent) "Sent $amount BLINK Coins"
