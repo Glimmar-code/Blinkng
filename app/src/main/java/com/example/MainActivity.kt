@@ -828,6 +828,24 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        // A download that continues after "Continue in background" exposes a
+                        // draggable progress ring; tapping it reopens the verified installer UI.
+                        // It stays inside the app and requires no overlay permissions.
+                        if (
+                            uiState.destination == AppDestination.MAIN &&
+                            websiteUpdateDismissed &&
+                            websiteRelease != null &&
+                            (websiteDownloadState is WebsiteApkDownloadCoordinator.State.Downloading ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Paused ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Ready)
+                        ) {
+                            BlinkUpdateMiniProgress(
+                                downloadState = websiteDownloadState,
+                                onOpen = { websiteUpdateDismissed = false },
+                                modifier = Modifier.fillMaxSize().zIndex(101f)
+                            )
+                        }
+
                         if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
                             BlinkLoginAnnouncementHost(
                                 accountId = uiState.myProfile.id,
