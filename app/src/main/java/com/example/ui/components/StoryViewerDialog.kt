@@ -126,13 +126,14 @@ fun StoryViewerDialog(
     // Pause/resume must not reset progress. Video duration follows its real runtime.
     var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
     var videoReady by remember(currentStory.id) { mutableStateOf(!currentStory.isVideo) }
+    var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     LaunchedEffect(currentStory.id) {
         progress = 0f
         var elapsedMs = 0L
         val stepMs = 50L
         while (progress < 1f) {
             delay(stepMs)
-            if (!isPaused && viewerForeground && videoReady) elapsedMs += stepMs
+            if (!isPaused && viewerForeground && videoReady && !showInsights) elapsedMs += stepMs
             val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(1_000L) else 5_000L
             progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
         }
@@ -158,7 +159,7 @@ fun StoryViewerDialog(
             if (displayedStory.isVideo && displayedStory.storyImage.isNotBlank()) {
                 BlinkStoryVideoPlayer(
                     story = displayedStory,
-                    paused = isPaused || !viewerForeground || displayedStory.id != currentStory.id,
+                    paused = isPaused || !viewerForeground || showInsights || displayedStory.id != currentStory.id,
                     onDuration = { if (displayedStory.id == currentStory.id) videoDurationMs = it },
                     onReady = { if (displayedStory.id == currentStory.id) videoReady = it }
                 )
@@ -457,6 +458,15 @@ fun StoryViewerDialog(
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
+            if (currentStory.isUser) {
+                OutlinedButton(
+                    onClick = { showInsights = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) {
+                    Text("Viewers & Likes")
+                }
+            } else {
             // Quick Emojis Row (Togglable or permanent)
             Row(
                 modifier = Modifier
@@ -562,7 +572,15 @@ fun StoryViewerDialog(
                     )
                 }
             }
+            }
         }
+    }
+    if (showInsights && currentStory.isUser) {
+        BlinkStoryInsightsDialog(
+            storyId = currentStory.id,
+            onDismiss = { showInsights = false },
+            onProfileClick = onProfileClick
+        )
     }
 }
 
