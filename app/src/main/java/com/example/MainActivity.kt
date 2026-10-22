@@ -579,8 +579,9 @@ class MainActivity : ComponentActivity() {
 
             // Update notifications should also be visible while browsing Reels,
             // Market, Connect or Messages, but must not interrupt other overlays.
+            // Loading feed posts must never block an available app update:
+            // people with an offline/failed feed still need access to Update Center.
             val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
-                !uiState.isFeedLoading &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
                 !uiState.isCreatePostOpen &&
@@ -805,7 +806,15 @@ class MainActivity : ComponentActivity() {
                                         boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
-                                        onReportBug = { showBugReportSheet = true }
+                                        onReportBug = { showBugReportSheet = true },
+                                        websiteRelease = websiteRelease,
+                                        websiteUpdateChecked = websiteUpdateCheckFinished,
+                                        onCheckForWebsiteUpdate = {
+                                            BlinkWebsiteReleaseAlerts.requestRefresh()
+                                        },
+                                        onOpenWebsiteUpdate = {
+                                            websiteUpdateDismissed = false
+                                        }
                                     )
                                 }
                             }
@@ -817,6 +826,24 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .zIndex(100f)
+                            )
+                        }
+
+                        // A download that continues after "Continue in background" exposes a
+                        // draggable progress ring; tapping it reopens the verified installer UI.
+                        // It stays inside the app and requires no overlay permissions.
+                        if (
+                            uiState.destination == AppDestination.MAIN &&
+                            websiteUpdateDismissed &&
+                            websiteRelease != null &&
+                            (websiteDownloadState is WebsiteApkDownloadCoordinator.State.Downloading ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Paused ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Ready)
+                        ) {
+                            BlinkUpdateMiniProgress(
+                                downloadState = websiteDownloadState,
+                                onOpen = { websiteUpdateDismissed = false },
+                                modifier = Modifier.fillMaxSize().zIndex(101f)
                             )
                         }
 
@@ -912,7 +939,11 @@ fun MainAppContent(
     boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
-    onReportBug: () -> Unit
+    onReportBug: () -> Unit,
+    websiteRelease: BlinkReleaseInfo? = null,
+    websiteUpdateChecked: Boolean = false,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {}
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1845,6 +1876,13 @@ fun MainAppContent(
                                         feedUtilitySheet = "store"
                                     }
                                 }
+                            },
+                            websiteUpdateAvailable = websiteRelease != null,
+                            websiteUpdateChecked = websiteUpdateChecked,
+                            websiteUpdateVersion = websiteRelease?.versionName,
+                            onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                            onOpenWebsiteUpdate = {
+                                dismissUtility { onOpenWebsiteUpdate() }
                             },
                             isAdmin = canOpenAdmin,
                             onOpenAdmin = {

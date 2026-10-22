@@ -1,3 +1,11 @@
+## 2026-10-22 — Home tab rail + website APK Update Center (Testlab hotfix)
+
+- Android Home: constrained the For You/Following tab rail to its intended 58dp height. A former minimum-height plus fillMaxHeight combination could occupy the entire viewport and leave posts below the visible area. Preserves the existing post ranking, loading, scrolling ratios, ad positions, bottom navigation and Create control.
+- Android Items: adds an explicit Update Center tile, showing “Update available — tap to update” (with the verified release version when known), “No update now, check again later”, or “Checking for updates…”. Tap to re-check or open the existing authenticated-device independent, verified website-APK download/install flow. No extra APKs and no Supabase changes.
+- Android update dialog: accidental outside-tap and Back dismissal no longer suppresses an available update; explicit “Remind me later” and “Continue in background” remain. Background transfers now surface a draggable in-app progress bubble which reopens the updater, and the dialog shows received/total MB when HTTP provides a known size.
+- PARITY-EXCEPTION: android-website-apk-update-tile — The GitHub APK installer applies only to Android website-distributed packages. Windows continues its existing desktop software/update distribution; it must not try to install Android packages. Shared release version comparison in BlinkReleasePolicy remains unchanged.
+- Production hold: test this in the fresh main-based Testlab hotfix branch, verify Android and Windows checks, and only then promote the exact reviewed commit to main. The long-lived Testlab branch is heavily divergent from current main and must not be wholesale merged.
+
 ## 2026-10-22 — Full-screen BLINK profile promotion to current main
 
 - Android: integrated the reference-inspired 100% width profile dashboard into the *current* production baseline, not the divergent Testlab snapshot. Shows real name, avatar, university, verified tier, World Rank, owner-only Coin balance, XP progress, earned/locked badges and verification actions.
