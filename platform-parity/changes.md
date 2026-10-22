@@ -1,3 +1,11 @@
+## 2026-10-22 — Full-screen BLINK profile promotion to current main
+
+- Android: integrated the reference-inspired 100% width profile dashboard into the *current* production baseline, not the divergent Testlab snapshot. Shows real name, avatar, university, verified tier, World Rank, owner-only Coin balance, XP progress, earned/locked badges and verification actions.
+- The advanced production profile identity, connection cards, follower actions, search, reporting, blocking, notification preferences, posts, reels, market items, owner insights and Progress Hub remain accessible through the expandable "More profile details & actions" section. Existing safe data retrieval and privacy policies remain unchanged.
+- Reuses existing BLINK navigation state for Home/Reels/Market/Connect/Messages and header actions. Phone-specific edge-to-edge insets handled by Android; Windows keeps desktop-native navigation. Full-screen bottom bar preserves Android gesture-navigation safety.
+- Windows: adds honest achievement *categories* next to its established backend-driven XP, Coins and verified status. Category labels do not imply awards have been earned without an authoritative badge response.
+- No database migrations or live payment changes. Main publication requires verified Android and Windows builds, screenshot artifacts at normal and enlarged fonts, visual review and a signed APK from the main commit. Preserve main's newer work; do not wholesale merge divergent Testlab.
+
 ## 2026-10-21 — BLINK Message inbox reference redesign (Phase 2 staging candidate)
 
 - **Android inbox only:** Adds a dedicated black-and-white Compose inbox matching the supplied reference structure: BLINK wordmark/profile/search/game/notification header, Messages title with functional “See all,” real uploaded-story rail, flat conversation rows, presence badges, verified badges, previews, timestamps, and black/white unread counters. Existing Supabase conversations, shared filtering/search, archive/request/unread handling, user identity, and chat/call detail components stay intact. “Your note” currently routes to the existing create-story action pending a separate notes contract; it must not be advertised as a shipped notes feature.

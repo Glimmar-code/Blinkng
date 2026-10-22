@@ -620,6 +620,10 @@ class MainActivity : ComponentActivity() {
                     uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
                 Scaffold(
                     contentWindowInsets = when {
+                        // The new profile owns both status and gesture-bar safe
+                        // areas; don't reserve another inset in the host scaffold.
+                        uiState.destination == AppDestination.MAIN &&
+                            uiState.viewingProfile != null -> WindowInsets(0, 0, 0, 0)
                         homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
                         routeManagesTopInset -> WindowInsets.safeDrawing.only(
                             WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
@@ -2150,6 +2154,34 @@ fun MainAppContent(
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
+                    selectedMainTabRoute = when (uiState.selectedTab) {
+                        MainTab.MARKET -> "market"
+                        MainTab.MESSAGES -> "messages"
+                        MainTab.HOME -> when (uiState.feedSubTab) {
+                            1 -> "reels"
+                            2 -> "connect"
+                            else -> "home"
+                        }
+                        else -> "home"
+                    },
+                    onNavigateMainTab = { tab ->
+                        viewModel.closeProfile()
+                        when (tab) {
+                            "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                            "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                            "market" -> viewModel.setTab(MainTab.MARKET)
+                            "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                            "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onTopAction = { action ->
+                        viewModel.closeProfile()
+                        when (action) {
+                            "search" -> viewModel.setTab(MainTab.SEARCH)
+                            "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                            "notifications" -> viewModel.openActivity(true)
+                        }
+                    },
                     isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
                     onFollowChanged = { viewModel.refreshViewedProfile() },
                     onRefreshProfile = {

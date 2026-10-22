@@ -3025,6 +3025,51 @@ fun ProfileScreen(state: DesktopAppState) {
                 }
             }
 
+            // Profile reference parity: these are category previews only.
+            // This desktop response does not yet expose verified award ownership.
+            item {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Your Badges", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Text(
+                            "Achievement categories • locked until the server confirms an award",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        listOf(
+                            "Verified Student",
+                            "Social Connector",
+                            "Campus Explorer",
+                            "Event Attendee",
+                            "Top Creator"
+                        ).chunked(3).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { title ->
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                    ) {
+                                        Text(
+                                            title, modifier = Modifier.padding(10.dp),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Surface(
                     shape = RoundedCornerShape(22.dp),
