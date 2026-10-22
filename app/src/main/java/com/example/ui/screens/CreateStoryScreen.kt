@@ -6,6 +6,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -262,6 +264,28 @@ fun CreateStoryScreen(
                                 .background(Color(android.graphics.Color.parseColor(choice)))
                                 .clickable(enabled = !isUploading) { background = choice }
                         )
+                    }
+                }
+                // Lightweight text stamps: inserted into the status text itself,
+                // not a misleading visual-only sticker overlay.
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    listOf("🔥", "❤️", "🎉", "😂", "⭐", "📚", "🎓", "🏆").forEach { stamp ->
+                        TextButton(
+                            onClick = {
+                                val appended = statusText + stamp
+                                if (appended.length <= BlinkStatusTextPolicy.MAX_LENGTH) {
+                                    statusText = appended
+                                }
+                            },
+                            enabled = !isUploading
+                        ) {
+                            Text(stamp, fontSize = 23.sp)
+                        }
                     }
                 }
                 Row(
