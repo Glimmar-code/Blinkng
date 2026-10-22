@@ -72,13 +72,13 @@ class ConnectDiscoveryLayoutTest {
         authorUsername = "aisha"
     )
 
-    private fun capture(fontScale: Float, filename: String) {
+    private fun capture(fontScale: Float, filename: String, dark: Boolean = false) {
         rule.setContent {
             val original = LocalDensity.current
             CompositionLocalProvider(
                 LocalDensity provides Density(original.density, fontScale)
             ) {
-                BlinkTheme(darkTheme = false) {
+                BlinkTheme(darkTheme = dark) {
                     ConnectDiscoveryLanding(
                         profiles = students,
                         currentUsername = "",
@@ -105,5 +105,11 @@ class ConnectDiscoveryLayoutTest {
 
     @Test fun referenceSizeLayout() = capture(1f, "connect-reference-100.png")
 
+    @Test fun font130Layout() = capture(1.3f, "connect-reference-130.png")
+
+    @Test fun font150Layout() = capture(1.5f, "connect-reference-150.png")
+
     @Test fun accessibilityLargeFontLayout() = capture(2f, "connect-reference-200.png")
+
+    @Test fun darkModeLayout() = capture(1f, "connect-reference-dark-100.png", dark = true)
 }
