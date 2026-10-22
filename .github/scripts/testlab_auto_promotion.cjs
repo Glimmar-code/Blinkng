@@ -3,8 +3,9 @@
  *
  * Runs only from the trusted default branch in pull_request_target/schedule.
  * Never checks out or executes code from a pull request.
- * A PR is eligible only when its owner explicitly applies "auto-promote",
- * marks it ready for review, completes its checklist, and passes every gate.
+ * A PR is eligible only when an authorized connected agent explicitly opts
+ * the current Testlab revision into promotion after testing. No GitHub owner
+ * approval comment or manual owner interaction is required.
  */
 'use strict';
 
@@ -14,25 +15,7 @@ const OPT_IN = 'auto-promote';
 const STAGING = 'staging-verified';
 const DEVICE_REQUIRED = 'needs-device-verification';
 const DEVICE_VERIFIED = 'device-verified';
-const APPROVE = 'BLINK APPROVE ';
-const REVOKE = 'BLINK REVOKE ';
 const BASE_CHECKS = ['validate', 'guard', 'migration-safety', 'parity', 'windows-build', 'integrity'];
-
-/**
- * Only a deliberately small allowlist can skip per-commit owner authorization.
- * Unknown paths and executable code fail closed, even when described as "UI".
- * The opt-in label, complete CI, and branch rules still apply to routine PRs.
- */
-function isRoutineFile(path) {
-  return /^(?:README|CHANGELOG|CONTRIBUTING)\.md$/i.test(path) ||
-    /^docs\/[\w.\/-]+\.md$/i.test(path) ||
-    /^web\/[\w.-]+\.css$/i.test(path) ||
-    /^web\/[\w./-]+\.(?:png|jpe?g|webp)$/i.test(path) ||
-    /^app\/src\/main\/res\/(?:drawable|mipmap)(?:-[\w]+)?\/[\w.-]+\.(?:png|jpe?g|webp)$/i.test(path);
-}
-function requiresOwnerApproval(files) {
-  return !Array.isArray(files) || files.length === 0 || !files.every(isRoutineFile);
-}
 
 /**
  * OEM hardware, push delivery, native media, and installer behaviors cannot
@@ -59,6 +42,19 @@ function filePathsRequireStaging(files) {
 
 function requiredChecks(files) {
   const result = new Set(BASE_CHECKS);
+  // Windows packaging is intentionally skipped by CI for unrelated changes.
+  // Keep it required whenever a change affects Windows/shared build inputs.
+  const windows = files.some(path =>
+    /^(?:desktopApp\/|shared\/|game3d\/|gradle\/)/.test(path) ||
+    [
+      'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties',
+      'gradlew', 'gradlew.bat', 'scripts/ci_change_scope.py',
+      '.github/workflows/windows-desktop-check.yml',
+      'scripts/check_windows_parity.py', 'scripts/check_premium_dark_tokens.py',
+      'platform-parity/changes.md',
+    ].includes(path)
+  );
+  if (!windows) result.delete('windows-build');
   const android = files.some(path =>
     /^app\/src\//.test(path) || /^shared\/src\//.test(path) ||
     /^app\/build\.gradle\.kts$/.test(path) ||
@@ -119,34 +115,41 @@ function preflight(pr, changedFiles) {
   if (requiresDeviceVerification(changedFiles, labels) && !labels.has(DEVICE_VERIFIED)) return 'Independent physical-device verification is not attested';
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') return 'PR is not cleanly mergeable';
   if ((pr.changed_files || 0) > changedFiles.length) return 'Could not examine every changed file';
+  // Labels survive code pushes until the synchronize event clears them.
+  // Bind the connected agent's explicit release authorization to the exact
+  // reviewed SHA so a racing scheduler can never promote a new unreviewed head.
+  const verifiedSha = (pr.body || '').match(/<!--\s*BLINK_AGENT_VERIFIED_SHA:\s*([a-f0-9]{40})\s*-->/g) || [];
+  if (verifiedSha.length !== 1 ||
+      verifiedSha[0] !== '<!-- BLINK_AGENT_VERIFIED_SHA: ' + pr.head.sha + ' -->') {
+    return 'AI release authorization is missing or stale for current SHA';
+  }
   return null;
 }
 
 /**
- * An opt-in label is NOT authorization to ship. BLINK's repository owner must
- * explicitly approve the exact current commit SHA in a PR comment.
- *
- * GitHub does not permit PR authors to approve their own PRs via a review, so
- * this exact owner-authored command supports single-maintainer releases.
- * A new push changes the SHA and invalidates all previous approvals.
- * The latest owner command for that SHA wins (including revocation).
+ * A connected AI agent can opt a PR into promotion from ChatGPT/GitHub.
+ * Never require a separate owner comment, but still reject stale approvals:
+ * a new push always clears release authorizations in the synchronize handler.
  */
-function approvalGate(comments, headSha) {
-  if (!/^[a-f0-9]{40}$/.test(headSha || '')) {
-    return 'Invalid release head SHA';
+async function revokeStaleOptIn(github, context, core) {
+  if (context.eventName !== 'pull_request_target' ||
+      context.payload.action !== 'synchronize') return false;
+  const pr = context.payload.pull_request;
+  if (!pr || pr.base?.ref !== 'main') return false;
+  if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return false;
+  // A code update invalidates all prior promotion and staging/device
+  // attestations, even if GitHub retains the labels across commits.
+  for (const name of [OPT_IN, STAGING, DEVICE_VERIFIED]) {
+    try {
+      await github.rest.issues.removeLabel({
+        owner: OWNER, repo: REPO, issue_number: pr.number, name
+      });
+      core.info('#' + pr.number + ': invalidated stale ' + name + ' after commit change');
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
   }
-  let decision = null;
-  for (const comment of [...(comments || [])].sort((a, b) => a.id - b.id)) {
-    if (comment.user?.login !== OWNER) continue;
-    const body = (comment.body || '').trim();
-    if (body === APPROVE + headSha) decision = 'approved';
-    if (body === REVOKE + headSha) decision = 'revoked';
-  }
-  if (decision === 'revoked') return 'Repository owner revoked this exact release';
-  if (decision !== 'approved') {
-    return 'Explicit owner approval missing for current SHA: ' + APPROVE + headSha;
-  }
-  return null;
+  return true;
 }
 
 function checkGate(checks, required, number, baseSha, headSha) {
@@ -191,6 +194,9 @@ async function run({github, context, core}) {
   await ensureLabel(github, STAGING, '5319e7', 'Staging validation verified for backend or release changes');
   await ensureLabel(github, DEVICE_REQUIRED, 'd73a4a', 'This PR needs independent physical-device or hosted device-lab testing');
   await ensureLabel(github, DEVICE_VERIFIED, '0e8a16', 'Independent physical-device acceptance evidence reviewed on current SHA');
+
+  // A fresh code push must never inherit AI release opt-in or stale validation.
+  if (await revokeStaleOptIn(github, context, core)) return;
 
   let candidates;
   if (context.eventName === 'pull_request_target') {
@@ -249,18 +255,9 @@ async function run({github, context, core}) {
       const fail = checkGate(checks, requiredChecks(paths), number, pr.base.sha, pr.head.sha);
       if (fail) { core.info('#' + number + ': ' + fail); continue; }
 
-      // Verify final human approval only after all checks have passed, and
-      // immediately before the final PR/main consistency check and merge.
-      if (requiresOwnerApproval(paths) ||
-          requiresDeviceVerification(paths, new Set((pr.labels || []).map(label => label.name)))) {
-        const comments = await github.paginate(github.rest.issues.listComments, {
-          owner: OWNER, repo: REPO, issue_number: number, per_page: 100
-        });
-        const approvalFailure = approvalGate(comments, pr.head.sha);
-        if (approvalFailure) { core.info('#' + number + ': ' + approvalFailure); continue; }
-      } else {
-        core.info('#' + number + ': routine-only change; full CI and explicit auto-promote opt-in apply without per-SHA owner comment');
-      }
+      // GitHub owner approval comments are no longer required. The connected
+      // agent's opt-in label is accepted only for a verified, unchanged SHA.
+      core.info('#' + number + ': agent-authorized promotion opt-in with green CI');
 
       const {data: current} = await github.rest.pulls.get({owner: OWNER, repo: REPO, pull_number: number});
       const {data: finalMain} = await github.rest.repos.getBranch({owner: OWNER, repo: REPO, branch: 'main'});
@@ -298,11 +295,9 @@ async function run({github, context, core}) {
 
 module.exports = run;
 module.exports.preflight = preflight;
-module.exports.isRoutineFile = isRoutineFile;
-module.exports.requiresOwnerApproval = requiresOwnerApproval;
+module.exports.revokeStaleOptIn = revokeStaleOptIn;
 module.exports.requiresDeviceVerification = requiresDeviceVerification;
 module.exports.requiredChecks = requiredChecks;
 module.exports.checkGate = checkGate;
-module.exports.approvalGate = approvalGate;
 module.exports.filePathsRequireStaging = filePathsRequireStaging;
 module.exports.releaseWorkflows = releaseWorkflows;

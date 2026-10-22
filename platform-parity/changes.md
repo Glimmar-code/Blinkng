@@ -1,3 +1,11 @@
+## 2026-10-22 — Full-screen BLINK profile promotion to current main
+
+- Android: integrated the reference-inspired 100% width profile dashboard into the *current* production baseline, not the divergent Testlab snapshot. Shows real name, avatar, university, verified tier, World Rank, owner-only Coin balance, XP progress, earned/locked badges and verification actions.
+- The advanced production profile identity, connection cards, follower actions, search, reporting, blocking, notification preferences, posts, reels, market items, owner insights and Progress Hub remain accessible through the expandable "More profile details & actions" section. Existing safe data retrieval and privacy policies remain unchanged.
+- Reuses existing BLINK navigation state for Home/Reels/Market/Connect/Messages and header actions. Phone-specific edge-to-edge insets handled by Android; Windows keeps desktop-native navigation. Full-screen bottom bar preserves Android gesture-navigation safety.
+- Windows: adds honest achievement *categories* next to its established backend-driven XP, Coins and verified status. Category labels do not imply awards have been earned without an authoritative badge response.
+- No database migrations or live payment changes. Main publication requires verified Android and Windows builds, screenshot artifacts at normal and enlarged fonts, visual review and a signed APK from the main commit. Preserve main's newer work; do not wholesale merge divergent Testlab.
+
 ## 2026-10-22 — Android Paystack return reconciliation (main-target scoped PR #465)
 
 - PARITY-EXCEPTION: paystack-android-activity-resume — Android receives hosted-checkout returns and foreground callbacks through its own activity lifecycle. It retries only the authenticated user's saved Paystack reference and refreshes the server-confirmed Coin wallet without refreshing the Feed; no client-side Coin minting or merchant flag changes.

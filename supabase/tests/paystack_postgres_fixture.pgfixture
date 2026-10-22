@@ -80,7 +80,7 @@ insert into private.blink_economy_config(key,json_value) values
  ('coin_packs', '[{"id":"coins_100","price_ngn":100,"coins":100},{"id":"coins_500","price_ngn":500,"coins":550},{"id":"coins_1000","price_ngn":1000,"coins":1200},{"id":"coins_2000","price_ngn":2000,"coins":2600},{"id":"coins_5000","price_ngn":5000,"coins":7000}]'::jsonb);
 create or replace function public.fulfill_blink_coin_purchase_order(
  p_order_id uuid, p_provider_reference text
-) returns jsonb language plpgsql security definer set search_path = '' as $$
+) returns jsonb language plpgsql security definer set search_path = '' as $
 declare v_order public.blink_coin_purchase_orders%rowtype;
 begin
  select * into v_order from public.blink_coin_purchase_orders where id=p_order_id for update;
