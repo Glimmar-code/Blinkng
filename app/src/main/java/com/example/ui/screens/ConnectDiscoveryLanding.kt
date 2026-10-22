@@ -124,6 +124,9 @@ internal fun ConnectDiscoveryLanding(
     onSharePost: (String) -> Unit = {},
     onOptionsClick: (FeedPost) -> Unit = {},
     onVotePoll: (String, String) -> Unit = { _, _ -> },
+    // Preview-only deterministic fixtures for offline Roborazzi screenshot checks.
+    previewCircles: List<StudyCircleSummary>? = null,
+    showIllustrativePhotos: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -153,13 +156,18 @@ internal fun ConnectDiscoveryLanding(
     var circlesLoading by remember { mutableStateOf(true) }
     var circlesLoadFailed by remember { mutableStateOf(false) }
     val circlesRepository = remember { StudyCircleRepository() }
-    LaunchedEffect(currentUsername, circlesRefreshKey) {
+    LaunchedEffect(currentUsername, circlesRefreshKey, previewCircles) {
         // Reads existing server-authorized RPC; no new schema or sample data.
         // Refresh when user deliberately pulls to refresh, but not on every recomposition.
         circlesLoading = true
-        runCatching { circlesRepository.fetchCircles(limit = 12) }
-            .onSuccess { circles = it; circlesLoadFailed = false }
-            .onFailure { circlesLoadFailed = true }
+        if (previewCircles != null) {
+            circles = previewCircles
+            circlesLoadFailed = false
+        } else {
+            runCatching { circlesRepository.fetchCircles(limit = 12) }
+                .onSuccess { circles = it; circlesLoadFailed = false }
+                .onFailure { circlesLoadFailed = true }
+        }
         circlesLoading = false
     }
 
@@ -360,7 +368,7 @@ internal fun ConnectDiscoveryLanding(
                                     icon = communityIcon(circle.name),
                                     colors = communityColors(circle.name),
                                     label = "${circle.memberCount} members",
-                                    photoUrl = illustrativeCoverForTopic(circle.name),
+                                    photoUrl = if (showIllustrativePhotos) illustrativeCoverForTopic(circle.name) else null,
                                     onClick = {
                                         selectedCircleName = circle.name
                                         showStudyCircles = true
@@ -386,7 +394,7 @@ internal fun ConnectDiscoveryLanding(
                                     icon = communityIcon(topic),
                                     colors = communityColors(topic),
                                     label = "Explore topic",
-                                    photoUrl = illustrativeCoverForTopic(topic),
+                                    photoUrl = if (showIllustrativePhotos) illustrativeCoverForTopic(topic) else null,
                                     onClick = {
                                         selectedCircleName = when (topic) {
                                             "Music Club" -> "Music"
