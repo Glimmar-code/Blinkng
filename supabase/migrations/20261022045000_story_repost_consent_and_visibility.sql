@@ -1,3 +1,11 @@
+-- destructive-change-reviewed
+-- Review: turning OFF repost consent deletes only derivative repost records
+-- from public.stories, preserving their original parent status and media object.
+-- This revocation is intentional and irreversible for derivative interactions.
+-- rollback-plan: Before production promotion, snapshot public.stories and its
+-- interaction tables; on rollback disable the feature and restore authorized
+-- derivative rows from that snapshot only after validating parent consent.
+-- Do not automatically resurrect revoked reposts or bypass owner permissions.
 -- BLINK Status 2.0 Phase 4, staging only.
 -- This enhances visibility rules for already PUBLIC stories, NOT private audiences.
 -- story-media is a public bucket. Close Friends and campus-only stories must
