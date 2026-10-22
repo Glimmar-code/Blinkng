@@ -42,6 +42,19 @@ function filePathsRequireStaging(files) {
 
 function requiredChecks(files) {
   const result = new Set(BASE_CHECKS);
+  // Windows packaging is intentionally skipped by CI for unrelated changes.
+  // Keep it required whenever a change affects Windows/shared build inputs.
+  const windows = files.some(path =>
+    /^(?:desktopApp\/|shared\/|game3d\/|gradle\/)/.test(path) ||
+    [
+      'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties',
+      'gradlew', 'gradlew.bat', 'scripts/ci_change_scope.py',
+      '.github/workflows/windows-desktop-check.yml',
+      'scripts/check_windows_parity.py', 'scripts/check_premium_dark_tokens.py',
+      'platform-parity/changes.md',
+    ].includes(path)
+  );
+  if (!windows) result.delete('windows-build');
   const android = files.some(path =>
     /^app\/src\//.test(path) || /^shared\/src\//.test(path) ||
     /^app\/build\.gradle\.kts$/.test(path) ||
