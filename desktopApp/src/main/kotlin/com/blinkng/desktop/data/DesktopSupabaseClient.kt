@@ -896,6 +896,7 @@ class DesktopSupabaseClient(
         authorVerified = profile?.isVerified == true,
         authorVerificationTier = profile?.verificationTier.orEmpty(),
         authorOnline = profile?.isOnline == true,
+        authorUniversity = profile?.university,
         text = row.optNullableString("text"),
         caption = row.optNullableString("caption"),
         imageUrl = row.optNullableString("image_url"),
