@@ -1,3 +1,10 @@
+## 2026-10-22 — Connect reference redesign, Phase 1 (Testlab staging only)
+
+- **Android:** Replaces the default Connect landing with the reference-inspired BLINK header, Connect/Campus/Trending tabs, horizontally scrolling real student avatars and truthful online status, community preview cards, a non-fabricated campus-feed placeholder, real profile suggestions, and a direct path back to every existing Connect Hub tool. Campus matching uses registered university, not precise GPS location. The main app owns the existing five-tab navigation.
+- **Windows:** Adds Connect/Campus/Trending selectors to its established desktop Connect page. Campus filters real listings by the signed-in user's university; Trending displays the newest existing listings and does not claim to implement trend scores. Existing create/listing and invitation actions remain intact. Wide-screen desktop layout intentionally differs from the phone reference.
+- **Shared/backend:** No new Supabase tables, media, feed posts, fabricated community memberships, location tracking or migration. Community artwork/member counts and a real campus-events feed require future backend-connected work. Phase 1 must not claim screenshot identity until side-by-side emulator captures are examined.
+- **Release gate:** Android compile/build, Windows compile, relevant navigation/large-font/dark-mode checks, and visual comparison against the supplied reference in Testlab. Do not merge to main or publish an APK until verified.
+
 ## 2026-10-21 — Message inbox reference visual upgrade (Testlab-only staging)
 
 - Android: isolated Compose inbox UI with avatar/BLINK/search/game/notification header, Stories and notes-style entry, real story rings, flat rows, previews, verified badges and real unread counts. Chat detail and WebRTC calling remain as-is; no database migrations. The text "Your note" currently triggers existing story creation, not a fabricated notes backend.
