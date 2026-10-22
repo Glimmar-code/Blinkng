@@ -901,6 +901,7 @@ private fun ReelPage(
     val interactionRepository = remember { UserInteractionRepository() }
     val reelRecommendationService = remember { ReelRecommendationService() }
     val interactionScope = rememberCoroutineScope()
+    val pendingGiftRequests = remember(authorId) { mutableStateMapOf<Int, String>() }
     val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
     val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
     val readingListingId = connectHub.readingMates.firstOrNull { it.userId == authorId }?.id
@@ -1232,8 +1233,22 @@ private fun ReelPage(
                             interactionScope.launch { FollowStateStore.setFollowing(authorId, false) }
                         },
                         onMessage = { onDirectMessage(reelUsername, authorName, authorAvatar) },
-                        onGiftCoins = {
-                            interactionScope.launch { interactionRepository.giftCoins(authorId, 10) }
+                        onGiftCoins = { amount ->
+                            val requestId = pendingGiftRequests.getOrPut(amount) {
+                                java.util.UUID.randomUUID().toString()
+                            }
+                            interactionScope.launch {
+                                val sent = interactionRepository.giftCoinsOnce(
+                                    authorId, amount, requestId
+                                )
+                                if (sent) pendingGiftRequests.remove(amount)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (sent) "Sent $amount BLINK Coins"
+                                    else "Coin gift not confirmed. No transfer shown.",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         },
                         onGameChallenge = {
                             connectHubActions.challengeUser(authorId, ChallengeGameType.GENERAL_KNOWLEDGE.apiName)

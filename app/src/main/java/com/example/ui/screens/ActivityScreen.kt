@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
@@ -37,6 +38,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.notification.BlinkOfflineAnnouncementCache
 import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
@@ -112,6 +116,7 @@ fun ActivityScreen(
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
     var newestFirst by remember { mutableStateOf(true) }
     var searchVisible by remember { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showSavedUpdates by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -170,6 +175,10 @@ fun ActivityScreen(
         activities.filterNot { it.targetType.equals("CHAT", ignoreCase = true) }
     }
     val unread = timelineActivities.count { it.isUnread }
+    val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    )
     val filtered = remember(timelineActivities, actorProfiles, filter, viewMode, searchQuery) {
         timelineActivities.filter { item ->
             val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
@@ -209,17 +218,26 @@ fun ActivityScreen(
                         }
                     },
                     title = {
-                        Column {
-                            Text("Notifications", fontWeight = FontWeight.Bold)
-                            Text(
-                                when {
-                                    unread == 0 -> "You're all caught up"
-                                    unread == 1 -> "1 unread"
-                                    else -> "$unread unread"
-                                },
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (!compactToolbar) {
+                            Column {
+                                Text(
+                                    "Notifications",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    when {
+                                        unread == 0 -> "You're all caught up"
+                                        unread == 1 -> "1 unread"
+                                        else -> "$unread unread"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -232,24 +250,87 @@ fun ActivityScreen(
                                 if (searchVisible) "Close search" else "Search notifications"
                             )
                         }
-                        if (unread > 0) {
-                            TextButton(onClick = onMarkAllRead) {
-                                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("Read all", fontSize = 12.sp)
+                        if (compactToolbar) {
+                            Box {
+                                IconButton(onClick = { actionsExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, "More notification actions")
+                                }
+                                DropdownMenu(
+                                    expanded = actionsExpanded,
+                                    onDismissRequest = { actionsExpanded = false }
+                                ) {
+                                    if (unread > 0) {
+                                        DropdownMenuItem(
+                                            text = { Text("Mark all as read") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onMarkAllRead()
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.DoneAll, null) }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(if (newestFirst) "Sort oldest first" else "Sort newest first")
+                                        },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            newestFirst = !newestFirst
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Sort, null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Refresh") },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            onRefresh()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Refresh, null) }
+                                    )
+                                }
                             }
-                        }
-                        IconButton(onClick = { newestFirst = !newestFirst }) {
-                            Icon(Icons.Default.Sort, if (newestFirst) "Sort oldest first" else "Sort newest first")
-                        }
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, "Refresh")
+                        } else {
+                            if (unread > 0) {
+                                TextButton(onClick = onMarkAllRead) {
+                                    Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Read all", fontSize = 12.sp)
+                                }
+                            }
+                            IconButton(onClick = { newestFirst = !newestFirst }) {
+                                Icon(Icons.Default.Sort, if (newestFirst) "Sort oldest first" else "Sort newest first")
+                            }
+                            IconButton(onClick = onRefresh) {
+                                Icon(Icons.Default.Refresh, "Refresh")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
                     )
                 )
+
+                if (compactToolbar) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "Notifications",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
+                        )
+                        Text(
+                            when {
+                                unread == 0 -> "You're all caught up"
+                                unread == 1 -> "1 unread"
+                                else -> "$unread unread"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 if (searchVisible) {
                     OutlinedTextField(
@@ -743,6 +824,12 @@ private fun NotificationCard(
     onNotificationClick: (ActivityItem) -> Unit
 ) {
     val isOfficial = item.targetType.equals("notification", ignoreCase = true)
+    val safeAction = item.action.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    } ?: "New activity"
+    val safePreview = item.previewText?.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    }
     val accent = MaterialTheme.colorScheme.onSurface
 
     val rawUser = item.user.trim().removePrefix("@")
@@ -873,16 +960,18 @@ private fun NotificationCard(
 
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    item.action,
+                    safeAction,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (!item.previewText.isNullOrBlank()) {
+                if (safePreview != null) {
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        item.previewText.orEmpty(),
+                        safePreview,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 12.sp,

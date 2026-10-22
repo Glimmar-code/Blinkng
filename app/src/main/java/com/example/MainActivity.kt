@@ -916,6 +916,7 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    var bottomBarTravelPx by remember { mutableStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
@@ -1444,6 +1445,11 @@ fun MainAppContent(
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onBottomBarTravelChange = { pixels ->
+                            bottomBarTravelPx = if (
+                                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
+                            ) pixels.coerceIn(0f, 50f) else 0f
                         }
                     )
                 }
@@ -1910,6 +1916,14 @@ fun MainAppContent(
                 .zIndex(30f)
         )
 
+        // The Home feed moves its nav rail 50px for every 80px of post scroll.
+        // Prevent a translated bar from leaking onto Reels, Market or Messages.
+        LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
+            if (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0) {
+                bottomBarTravelPx = 0f
+            }
+        }
+
         // Floating bottom navigation follows the feed chrome state. Its transition is
         // deliberately non-bouncy so a restored bar glides in instead of springing back.
         val shouldShowBottomBar = feedUtilitySheet == null &&
@@ -2030,7 +2044,10 @@ fun MainAppContent(
                     isBottomBarVisibleByScroll = true
                     viewModel.openMenu(true)
                 },
-                isMenuOpen = uiState.isMenuOpen
+                isMenuOpen = uiState.isMenuOpen,
+                modifier = Modifier.graphicsLayer {
+                    translationY = bottomBarTravelPx
+                }
             )
         }
 

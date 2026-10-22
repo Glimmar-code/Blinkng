@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Search
@@ -80,6 +81,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -123,31 +126,68 @@ fun FeedTopBar(
     ) {
         // Keep exactly four 44dp header actions, including on admin accounts.
         // Admin moves to Items so the header never hides BLINK or inserts a fifth icon.
-        val showBrand = maxWidth >= 310.dp
-        val compactAdmin = false
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp)
-                .height(50.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FeedBrandBlock(
-                userAvatar = userAvatar,
-                userIsOnline = userIsOnline,
-                onProfileClick = onProfileClick,
-                showTitle = showBrand,
-                compact = compactAdmin,
-                modifier = Modifier.weight(1f)
-            )
-            FeedHeaderActions(
-                compact = compactAdmin,
-                hasUnreadNotifications = hasUnreadNotifications,
-                unreadNotificationCount = unreadNotificationCount,
-                onSearchClick = onSearchClick,
-                onItemsClick = onItemsClick,
-                onNotificationClick = onNotificationClick,
-                onMenuClick = onMenuClick
-            )
+        val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
+            maxWidth.value.toInt(), LocalDensity.current.fontScale
+        )
+        // At large font scales the brand and four existing actions need
+        // separate rails: never hide Search, Items, Notifications or Menu.
+        if (compactToolbar) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = 12.dp, end = 8.dp, top = 8.dp, bottom = 6.dp
+                )
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    FeedBrandBlock(
+                        userAvatar = userAvatar,
+                        userIsOnline = userIsOnline,
+                        onProfileClick = onProfileClick,
+                        showTitle = true,
+                        compact = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FeedHeaderActions(
+                        compact = false,
+                        hasUnreadNotifications = hasUnreadNotifications,
+                        unreadNotificationCount = unreadNotificationCount,
+                        onSearchClick = onSearchClick,
+                        onItemsClick = onItemsClick,
+                        onNotificationClick = onNotificationClick,
+                        onMenuClick = onMenuClick
+                    )
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp)
+                    .height(50.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FeedBrandBlock(
+                    userAvatar = userAvatar,
+                    userIsOnline = userIsOnline,
+                    onProfileClick = onProfileClick,
+                    showTitle = true,
+                    compact = false,
+                    modifier = Modifier.weight(1f)
+                )
+                FeedHeaderActions(
+                    compact = false,
+                    hasUnreadNotifications = hasUnreadNotifications,
+                    unreadNotificationCount = unreadNotificationCount,
+                    onSearchClick = onSearchClick,
+                    onItemsClick = onItemsClick,
+                    onNotificationClick = onNotificationClick,
+                    onMenuClick = onMenuClick
+                )
+            }
         }
     }
 }
@@ -245,7 +285,7 @@ private fun FeedHeaderActions(
         )
         FeedRadialHeaderAction(
             compact = compact,
-            imageVector = Icons.Outlined.SportsEsports,
+            imageVector = Icons.Default.GridView,
             contentDescription = "Open Items (includes Game)",
             onClick = onItemsClick,
             modifier = Modifier.testTag("feed_items_action")
@@ -514,7 +554,7 @@ fun FeedTabs(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().height(58.dp)
+        modifier = modifier.fillMaxWidth().heightIn(min = 58.dp)
             .background(MaterialTheme.colorScheme.surface)
             .padding(start = 14.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -541,7 +581,7 @@ private fun FeedTabLabel(label: String, selected: Boolean, modifier: Modifier, o
                 label, color = if (selected) ink else lightInk,
                 fontSize = 15.sp, lineHeight = 19.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
+                maxLines = 2, overflow = TextOverflow.Ellipsis
             )
         }
         Box(

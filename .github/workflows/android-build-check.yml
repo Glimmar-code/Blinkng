@@ -88,6 +88,31 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Record actual Compose accessibility screenshots with Robolectric
+        if: steps.scope.outputs.android == 'true'
+        run: gradle :app:testDebugUnitTest --tests com.example.BlinkMainAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
+
+      - name: Require real Home and Notifications visual captures
+        if: steps.scope.outputs.android == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type f \( -name 'main_home_w*_font*.png' -o -name 'main_notifications_w*_font*.png' \) -print | sort
+          home_count=$(find . -type f -name 'main_home_w*_font*.png' | wc -l)
+          notices=$(find . -type f -name 'main_notifications_w*_font*.png' | wc -l)
+          echo "Home captures: $home_count, Notifications captures: $notices"
+          test "$home_count" -ge 5
+          test "$notices" -ge 5
+
+      - name: Upload font-scale captures for review
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-main-visual-captures-${{ github.sha }}
+          path: '**/src/test/screenshots/main_*.png'
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Capture full-screen BLINK profile screenshots
         if: steps.scope.outputs.android == 'true'
         shell: bash
