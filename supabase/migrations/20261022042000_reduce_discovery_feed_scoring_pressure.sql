@@ -5,6 +5,7 @@
 -- From current production function signature; preserve auth, audience, block,
 -- mute, spam and monetization behavior. Requires EXPLAIN and sampled two-user
 -- QA in staging before any production deployment.
+-- Keep the prior 10,000-row ceiling and avoid truncating deep pagination; bound extra scoring work for common first pages.
 -- Reduce scoring/selection candidate upper bound without ever going below
 -- v_offset + v_limit; maintain existing pagination and diversity rules.
 -- Add temp indexes for the repeated ranked/creator exclusion selections.
@@ -44,7 +45,7 @@ begin
   if v_feed_type not in ('all','posts','reels') then v_feed_type := 'all'; end if;
 
   v_target_count := least(5100,v_offset + v_limit);
-  v_candidate_cap := least(5600, greatest(200, v_target_count, v_target_count * 4));
+  v_candidate_cap := least(10000, greatest(v_target_count, least(5600, greatest(200, v_target_count * 4))));
 
   select g.location into v_viewer_location
   from private_ranking.discovery_user_geo g
