@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 paystackPrefs.edit()
                     .putString("reference", checkout.reference)
                     .putString("account_id", viewModel.uiState.value.myProfile.id)
+                    .putString("kind", kind)
                     .apply()
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
@@ -160,18 +161,22 @@ class MainActivity : ComponentActivity() {
 
     private fun confirmPendingPaystackPayment() {
         val reference = pendingPaymentReference ?: return
-        if (paymentInProgress) return
+        val accountId = viewModel.uiState.value.myProfile.id
+        if (paymentInProgress || accountId.isBlank()) return
+        val storedOwner = paystackPrefs.getString("account_id", null)
+        if (storedOwner != null && storedOwner != accountId) return
         pendingPaystackRefreshJob?.cancel()
         paymentInProgress = true
         lifecycleScope.launch {
             try {
                 if (paystack.confirmPayment(reference)) {
+                    if (viewModel.uiState.value.myProfile.id != accountId) return@launch
+                    refreshAfterPaystackFulfillment()
                     if (paystackPrefs.getString("reference", null) == reference) {
                         pendingPaymentReference = null
                         showPendingPaymentPrompt = false
-                        paystackPrefs.edit().remove("reference").remove("account_id").apply()
+                        paystackPrefs.edit().remove("reference").remove("account_id").remove("kind").apply()
                     }
-                    viewModel.refreshCoinBalanceAfterPayment()
                     viewModel.showToast("Payment confirmed. Your BLINK purchase is active.")
                 } else {
                     viewModel.showToast("Payment is pending. Check again after completing checkout.")
@@ -181,6 +186,17 @@ class MainActivity : ComponentActivity() {
             } finally {
                 paymentInProgress = false
             }
+        }
+    }
+
+    /** Refresh only the Coins wallet for coin packs; full account sync is needed
+     * for verification badges, boosts, gifts and older checkouts without stored kind.
+     */
+    private fun refreshAfterPaystackFulfillment() {
+        if (paystackPrefs.getString("kind", null) == "coin_pack") {
+            viewModel.refreshCoinBalanceAfterPayment()
+        } else {
+            viewModel.fetchSupabaseData()
         }
     }
 
@@ -206,13 +222,13 @@ class MainActivity : ComponentActivity() {
                 if (paymentInProgress) return@launch
                 val confirmed = runCatching { paystack.confirmPayment(reference) }.getOrDefault(false)
                 if (confirmed) {
+                    refreshAfterPaystackFulfillment()
                     if (paystackPrefs.getString("reference", null) == reference) {
                         pendingPaymentReference = null
                         showPendingPaymentPrompt = false
-                        paystackPrefs.edit().remove("reference").remove("account_id").apply()
+                        paystackPrefs.edit().remove("reference").remove("account_id").remove("kind").apply()
                     }
-                    viewModel.refreshCoinBalanceAfterPayment()
-                    viewModel.showToast("Paystack payment confirmed. Your Coins are updating.")
+                    viewModel.showToast("Paystack payment confirmed. Your purchase is updating.")
                     return@launch
                 }
                 if (attempt < 4) delay(2_000L * (attempt + 1))
