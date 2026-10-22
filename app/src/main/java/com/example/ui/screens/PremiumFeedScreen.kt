@@ -389,6 +389,16 @@ fun PremiumFeedScreen(
         )
 
         2 -> PremiumConnectHost(
+            posts = posts,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onSharePost = onSharePost,
+            onOptionsClick = onOptionsClick,
+            onVotePoll = onVotePoll,
+            onRefreshFeed = onRefresh,
+            isFeedRefreshing = isRefreshing,
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
@@ -1198,6 +1208,16 @@ private fun PremiumGameHost(
 
 @Composable
 private fun PremiumConnectHost(
+    posts: List<FeedPost>,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onRepostPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onRefreshFeed: () -> Unit,
+    isFeedRefreshing: Boolean,
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
@@ -1238,6 +1258,16 @@ private fun PremiumConnectHost(
             onReelClick = onReelClick,
             onConnectClick = {},
             onGameClick = onGameClick,
+            posts = posts,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onSharePost = onSharePost,
+            onOptionsClick = onOptionsClick,
+            onVotePoll = onVotePoll,
+            onRefreshFeed = onRefreshFeed,
+            isFeedRefreshing = isFeedRefreshing,
             modifier = Modifier.fillMaxSize()
         )
     }
