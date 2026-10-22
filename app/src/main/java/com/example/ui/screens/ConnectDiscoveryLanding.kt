@@ -108,12 +108,13 @@ internal fun ConnectDiscoveryLanding(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var circlesRefreshKey by remember { mutableIntStateOf(0) }
     var showStudyCircles by rememberSaveable { mutableStateOf(false) }
     var circles by remember { mutableStateOf<List<StudyCircleSummary>>(emptyList()) }
     var circlesLoading by remember { mutableStateOf(true) }
     var circlesLoadFailed by remember { mutableStateOf(false) }
     val circlesRepository = remember { StudyCircleRepository() }
-    LaunchedEffect(currentUsername, isRefreshing) {
+    LaunchedEffect(currentUsername, circlesRefreshKey) {
         // Reads existing server-authorized RPC; no new schema or sample data.
         // Refresh when user deliberately pulls to refresh, but not on every recomposition.
         circlesLoading = true
@@ -126,7 +127,7 @@ internal fun ConnectDiscoveryLanding(
     val campusPeers = remember(profiles, myCampus) {
         if (myCampus.isBlank() || myCampus.equals("null", ignoreCase = true)) emptyList()
         else profiles.filter {
-            com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, myCampus)
+            com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(it.university, myCampus)
         }
     }
     val people = remember(profiles, campusPeers, selectedTab) {
@@ -147,12 +148,12 @@ internal fun ConnectDiscoveryLanding(
                 val key = post.authorUsername.trim().removePrefix("@").lowercase()
                 val author = profileByUsername[key]
                 myCampus.isNotBlank() && author != null &&
-                    com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(author.university, myCampus)
+                    com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(author.university, myCampus)
             }
             .toList()
         if (selectedTab == 2) {
             campusOnly.sortedWith(
-                compareByDescending<FeedPost> { it.likes.toLong() + it.commentsCount * 2L + it.sharesCount * 3L }
+                compareByDescending<FeedPost> { com.blinkng.shared.discovery.BlinkCampusFeedPolicy.previewScore(it.likes, it.commentsCount, it.sharesCount) }
                     .thenByDescending { it.createdAt }
             ).take(3)
         } else {
@@ -223,7 +224,7 @@ internal fun ConnectDiscoveryLanding(
 
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = onRefresh,
+            onRefresh = { circlesRefreshKey++; onRefresh() },
             modifier = Modifier.fillMaxSize()
         ) {
             LazyColumn(
