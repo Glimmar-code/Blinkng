@@ -88,6 +88,23 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Capture full-screen BLINK profile screenshots
+        if: steps.scope.outputs.android == 'true'
+        shell: bash
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          find . -name 'profile-reference-*.png' -print
+          test "$(find . -name 'profile-reference-*.png' | wc -l)" -ge 3
+
+      - name: Upload full-screen BLINK profile screenshots
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-profile-screenshots-${{ github.sha }}
+          path: '**/profile-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Android lint
         if: steps.scope.outputs.android == 'true'
         shell: bash
