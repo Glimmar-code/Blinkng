@@ -493,10 +493,12 @@ fun ProfileScreen(
                     )
                 }
             }
-            BlinkReferenceProfileBottomNav(
-                isDark = isDark,
-                onNavigate = onNavigateMainTab
-            )
+            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                BlinkReferenceProfileBottomNav(
+                    isDark = isDark,
+                    onNavigate = onNavigateMainTab
+                )
+            }
         }
     }
     }
