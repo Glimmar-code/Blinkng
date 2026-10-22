@@ -101,6 +101,10 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('No update now, check again later', ITEMS)
         self.assertIn('onCheckForWebsiteUpdate = onCheckForWebsiteUpdate', MAIN)
         self.assertIn('onOpenWebsiteUpdate = {', MAIN)
+        popup = (ROOT / "app/src/main/java/com/example/ui/components/BlinkWebsiteUpdateDialog.kt").read_text()
+        self.assertIn("fun BlinkUpdateMiniProgress(", popup)
+        self.assertIn('Dialog(onDismissRequest = {})', popup)
+        self.assertIn('BlinkUpdateMiniProgress(', MAIN)
 
 
 if __name__ == "__main__":
