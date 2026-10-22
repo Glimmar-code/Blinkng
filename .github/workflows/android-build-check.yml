@@ -49,7 +49,7 @@ jobs:
       - name: Capture BLINK profile visual snapshots
         if: steps.scope.outputs.android == 'true'
         run: |
-          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest --no-daemon
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
           find . -name 'profile-reference-*.png' -print
 
       - name: Upload BLINK profile visual snapshots
