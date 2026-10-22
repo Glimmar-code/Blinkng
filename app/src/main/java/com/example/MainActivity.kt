@@ -1457,7 +1457,26 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = onOpenCoinPackChooser,
-                    isDark = uiState.isDarkMode
+                    isDark = uiState.isDarkMode,
+                    onNavigateMainTab = { destination ->
+                        viewModel.closeProfile()
+                        when (destination) {
+                            "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                            "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                            "market" -> viewModel.setTab(MainTab.MARKET)
+                            "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                            "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onTopAction = { action ->
+                        viewModel.closeProfile()
+                        when (action) {
+                            "search" -> viewModel.setTab(MainTab.SEARCH)
+                            "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                            "notifications" -> viewModel.openActivity(true)
+                            "menu" -> viewModel.openMenu(true)
+                        }
+                    }
                 )
             }
         }
