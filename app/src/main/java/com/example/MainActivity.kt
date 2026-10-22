@@ -302,10 +302,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
-        if (intent?.data?.scheme == "blink" && intent.data?.host == "payment") {
+        val paymentReturn = intent?.data
+        if (paymentReturn?.scheme == "blink" && paymentReturn.host == "payment") {
             // Never trust the callback's claimed reference; use the stored checkout.
             reconcilePendingPaystackPayment()
-            intent.data = null
+            intent?.data = null
             return
         }
         if (viewModel.handleAuthDeepLink(intent?.data)) {
