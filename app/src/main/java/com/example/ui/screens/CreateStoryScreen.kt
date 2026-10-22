@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -56,16 +58,50 @@ fun CreateStoryScreen(
     var textMode by remember(profile.id) { mutableStateOf(stored.textMode) }
     var selectedUri by remember(profile.id) { mutableStateOf<String?>(null) }
     var isVideo by remember(profile.id) { mutableStateOf(false) }
+    var photoTurns by remember(profile.id) { mutableStateOf(0) }
+    var cropPortrait by remember(profile.id) { mutableStateOf(false) }
+    var editedPreviewUri by remember(profile.id) { mutableStateOf<String?>(null) }
+    var isEditingPhoto by remember(profile.id) { mutableStateOf(false) }
+    var photoEditError by remember(profile.id) { mutableStateOf<String?>(null) }
+
+    // Process off the main thread. A key change cancels stale previews.
+    LaunchedEffect(selectedUri, isVideo, photoTurns, cropPortrait) {
+        editedPreviewUri = null
+        photoEditError = null
+        if (isVideo || selectedUri == null ||
+            (photoTurns == 0 && !cropPortrait)) {
+            isEditingPhoto = false
+        } else {
+            isEditingPhoto = true
+            try {
+                editedPreviewUri = BlinkStatusPhotoEditor.edit(
+                    context, Uri.parse(selectedUri!!), photoTurns, cropPortrait
+                ).toString()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                photoEditError = "Photo editing failed. Reset edits or choose another photo."
+            } finally {
+                isEditingPhoto = false
+            }
+        }
+    }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        uri?.let { selectedUri = it.toString(); textMode = false; isVideo = false }
+        uri?.let {
+            selectedUri = it.toString(); textMode = false; isVideo = false
+            photoTurns = 0; cropPortrait = false
+        }
     }
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        uri?.let { selectedUri = it.toString(); textMode = false; isVideo = true }
+        uri?.let {
+            selectedUri = it.toString(); textMode = false; isVideo = true
+            photoTurns = 0; cropPortrait = false
+        }
     }
 
     LaunchedEffect(profile.id, caption, statusText, background, textMode) {
@@ -76,7 +112,13 @@ fun CreateStoryScreen(
     }
 
     val validText = BlinkStatusTextPolicy.text(statusText)
-    val canShare = if (textMode) validText != null else selectedUri != null
+    val canShare = when {
+        textMode -> validText != null
+        selectedUri == null -> false
+        isVideo -> true
+        photoTurns == 0 && !cropPortrait -> true
+        else -> editedPreviewUri != null && !isEditingPhoto
+    }
     Box(
         Modifier.fillMaxSize().background(
             Brush.verticalGradient(
@@ -103,9 +145,14 @@ fun CreateStoryScreen(
                 Button(
                     onClick = {
                         if (textMode) validText?.let { onPublishText(it, background) }
-                        else selectedUri?.let { onPublish(it, caption.trim(), isVideo) }
+                        else {
+                            val toPublish = if (!isVideo &&
+                                (photoTurns != 0 || cropPortrait)) editedPreviewUri
+                                else selectedUri
+                            toPublish?.let { onPublish(it, caption.trim(), isVideo) }
+                        }
                     },
-                    enabled = canShare && !isUploading,
+                    enabled = canShare && !isUploading && !isEditingPhoto,
                     shape = RoundedCornerShape(100.dp)
                 ) {
                     if (isUploading) CircularProgressIndicator(
@@ -209,12 +256,17 @@ fun CreateStoryScreen(
                                 )
                             }
                         }
-                        selectedUri != null && !isVideo -> AsyncImage(
-                            model = selectedUri,
-                            contentDescription = "Status photo preview",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        selectedUri != null && !isVideo -> {
+                            AsyncImage(
+                                model = editedPreviewUri ?: selectedUri,
+                                contentDescription = "Status photo preview",
+                                contentScale = if (cropPortrait) ContentScale.Crop else ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (isEditingPhoto) {
+                                CircularProgressIndicator()
+                            }
+                        }
                         selectedUri != null && isVideo -> Column(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
@@ -249,6 +301,35 @@ fun CreateStoryScreen(
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                         ) { Text("Change") }
                     }
+                }
+            }
+            if (selectedUri != null && !isVideo && !textMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { photoTurns = (photoTurns + 1) % 4 },
+                        enabled = !isUploading && !isEditingPhoto,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Rotate 90°") }
+                    OutlinedButton(
+                        onClick = { cropPortrait = !cropPortrait },
+                        enabled = !isUploading && !isEditingPhoto,
+                        modifier = Modifier.weight(1f)
+                    ) { Text(if (cropPortrait) "Fit photo" else "Crop 9:16") }
+                    TextButton(
+                        onClick = { photoTurns = 0; cropPortrait = false },
+                        enabled = !isUploading && !isEditingPhoto
+                    ) { Text("Reset") }
+                }
+                photoEditError?.let { message ->
+                    Text(
+                        message, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
             }
             if (textMode) {
