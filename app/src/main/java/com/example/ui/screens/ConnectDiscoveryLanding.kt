@@ -350,6 +350,7 @@ internal fun ConnectDiscoveryLanding(
                                     icon = communityIcon(circle.name),
                                     colors = communityColors(circle.name),
                                     label = "${circle.memberCount} members",
+                                    photoUrl = illustrativeCoverForTopic(circle.name),
                                     onClick = {
                                         selectedCircleName = circle.name
                                         showStudyCircles = true
@@ -358,39 +359,28 @@ internal fun ConnectDiscoveryLanding(
                             }
                         }
                     } else if (!circlesLoading) {
+                        // Topic cards reproduce the reference's photo-led visual layout.
+                        // These are discovery shortcuts, NOT created clubs or member claims.
+                        val topics = listOf("Music Club", "Sports", "Study Buddies", "Photography")
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
-                            item {
+                            items(topics) { topic ->
                                 ConnectCommunityPreview(
-                                    "Study Circles", Icons.Default.MenuBook,
-                                    listOf(Color(0xFF67849E), Color(0xFF182937)), "Browse & create",
+                                    title = topic,
+                                    icon = communityIcon(topic),
+                                    colors = communityColors(topic),
+                                    label = "Explore topic",
+                                    photoUrl = illustrativeCoverForTopic(topic),
                                     onClick = {
-                                        selectedCircleName = ""
+                                        selectedCircleName = when (topic) {
+                                            "Music Club" -> "Music"
+                                            "Study Buddies" -> "Study"
+                                            else -> topic
+                                        }
                                         showStudyCircles = true
                                     }
-                                )
-                            }
-                            item {
-                                ConnectCommunityPreview(
-                                    "Reading Mates", Icons.Default.MenuBook,
-                                    listOf(Color(0xFF7034BD), Color(0xFF1E103D)), "Explore tools",
-                                    onClick = onOpenHub
-                                )
-                            }
-                            item {
-                                ConnectCommunityPreview(
-                                    "Roommates", Icons.Default.Person,
-                                    listOf(Color(0xFFE0A261), Color(0xFF44301F)), "Explore tools",
-                                    onClick = onOpenHub
-                                )
-                            }
-                            item {
-                                ConnectCommunityPreview(
-                                    "Mentorship", Icons.Default.Person,
-                                    listOf(Color(0xFFBF8B72), Color(0xFF261D28)), "Explore tools",
-                                    onClick = onOpenHub
                                 )
                             }
                         }
@@ -595,6 +585,7 @@ private fun ConnectCommunityPreview(
     icon: ImageVector,
     colors: List<Color>,
     label: String,
+    photoUrl: String? = null,
     onClick: (() -> Unit)? = null
 ) {
     val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
@@ -627,6 +618,23 @@ private fun ConnectCommunityPreview(
                 tint = Color.White
             )
         }
+        if (photoUrl != null) {
+            // Small, resized licensed illustrations: never claim these show actual
+            // members or events from the user's university. Coil handles caching.
+            AsyncImage(
+                model = photoUrl,
+                contentDescription = "Illustrative community topic photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = .04f), Color.Transparent, Color.Black.copy(alpha = .62f))
+                )
+            )
+        )
         Column(
             modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .82f))))
@@ -636,6 +644,26 @@ private fun ConnectCommunityPreview(
             Text(label, color = Color.White.copy(alpha = .83f), fontSize = 10.sp, maxLines = 1)
         }
     }
+}
+
+/**
+ * Display-only stock photography for unowned category previews; these are not
+ * community covers and must never imply a club has members. URLs use small crops
+ * (about 260x320) to conserve mobile data; Coil caches files automatically.
+ * See docs/connect-community-photo-credits.md for license/source.
+ */
+private fun illustrativeCoverForTopic(topic: String): String? {
+    val source = when {
+        topic.contains("music", ignoreCase = true) -> "photo-1648160091944-54aab390a7ae"
+        topic.contains("sport", ignoreCase = true) || topic.contains("basket", ignoreCase = true) ->
+            "photo-1651680550893-f676f4801b64"
+        topic.contains("study", ignoreCase = true) || topic.contains("reading", ignoreCase = true) ->
+            "photo-1522202176988-66273c2fd55f"
+        topic.contains("photo", ignoreCase = true) || topic.contains("media", ignoreCase = true) ->
+            "photo-1492691527719-9d1e07e534b4"
+        else -> return null
+    }
+    return "https://images.unsplash.com/$source?auto=format&fit=crop&w=260&h=320&q=65"
 }
 
 private fun communityIcon(name: String): ImageVector = when {
