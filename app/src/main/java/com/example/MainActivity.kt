@@ -2558,6 +2558,9 @@ fun MainAppContent(
                 onBack = { viewModel.openCreateStory(false) },
                 onPublish = { uri, caption, isVideo ->
                     viewModel.publishStory(uri, caption, isVideo)
+                },
+                onPublishText = { statusText, background ->
+                    viewModel.publishTextStory(statusText, background)
                 }
             )
         }
