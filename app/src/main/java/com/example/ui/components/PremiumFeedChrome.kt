@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Widgets
@@ -245,7 +246,7 @@ private fun FeedHeaderActions(
         )
         FeedRadialHeaderAction(
             compact = compact,
-            imageVector = Icons.Outlined.SportsEsports,
+            imageVector = Icons.Default.GridView,
             contentDescription = "Open Items (includes Game)",
             onClick = onItemsClick,
             modifier = Modifier.testTag("feed_items_action")
