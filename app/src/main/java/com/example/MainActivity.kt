@@ -1539,6 +1539,8 @@ fun MainAppContent(
                             viewModel.updateChatPrivacySettings(settings)
                         },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
+                        onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
+                        onGameClick = { feedUtilitySheet = "game" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
                         isLoading = uiState.isConversationsLoading

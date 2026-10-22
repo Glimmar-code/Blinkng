@@ -84,6 +84,8 @@ jobs:
             adb pull /sdcard/Pictures/BLINK-Visual-Audit/home-reference-with-create.png app/build/visual-audit/home-reference-with-create.png
             test -s app/build/visual-audit/home-reference-staging-light.png
             test -s app/build/visual-audit/home-reference-with-create.png
+            adb pull /sdcard/Pictures/BLINK-Visual-Audit/inbox-reference-staging-light.png app/build/visual-audit/inbox-reference-staging-light.png
+            test -s app/build/visual-audit/inbox-reference-staging-light.png
 
       - name: Upload instrumentation reports
         if: always()

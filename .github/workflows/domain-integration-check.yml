@@ -55,6 +55,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect Android-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+      - name: Explain web-only validation
+        if: steps.scope.outputs.android != 'true'
+        run: echo "Web/domain static tests ran; no Android build inputs changed."
 
       - name: Validate official domain URL and evergreen APK downloads
         shell: bash
@@ -161,13 +171,16 @@ jobs:
           PY
 
       - name: Set up Java
+        if: steps.scope.outputs.android == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.scope.outputs.android == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Compile, test, lint and build Android debug APK
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace --no-daemon
