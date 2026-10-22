@@ -32,6 +32,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.notification.BlinkOfflineAnnouncementCache
 import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
@@ -145,6 +148,10 @@ fun ActivityScreen(
     }
 
     val unread = activities.count { it.isUnread }
+    val compactHeader = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    )
     val filtered = remember(activities, actorProfiles, filter, viewMode, searchQuery) {
         activities.filter { item ->
             val categoryMatches = filter == NotificationFilter.ALL || resolvedNotificationCategory(item) == filter
@@ -178,25 +185,25 @@ fun ActivityScreen(
                         }
                     },
                     title = {
-                        Column {
-                            Text(
-                                "Notifications",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                when {
-                                    unread == 0 -> "You're all caught up"
-                                    unread == 1 -> "1 unread"
-                                    else -> "$unread unread"
-                                },
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        if (!compactHeader) {
+                            Column {
+                                Text(
+                                    "Notifications",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    when {
+                                        unread == 0 -> "You're all caught up"
+                                        unread == 1 -> "1 unread"
+                                        else -> "$unread unread"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -242,6 +249,32 @@ fun ActivityScreen(
                         containerColor = MaterialTheme.colorScheme.background
                     )
                 )
+
+                // At large accessibility font or small screen width, a full-width
+                // title row keeps "Notifications" readable instead of squashing it
+                // between Back, Search and More actions.
+                if (compactHeader) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "Notifications",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
+                        )
+                        Text(
+                            when {
+                                unread == 0 -> "You're all caught up"
+                                unread == 1 -> "1 unread"
+                                else -> "$unread unread"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 if (searchVisible) {
                     OutlinedTextField(
