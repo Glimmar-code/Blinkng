@@ -85,3 +85,16 @@ for (const pack of coinPacks) {
     assert.ok(pack.coins >= pack.naira, "configured bonus must not reduce coin credit");
   });
 }
+
+// Public checkout is deliberately NOT owner-only, but must keep authenticated
+// verified email eligibility and the independent merchant kill switch.
+test("public checkout preserves verified customer and merchant controls", () => {
+  const checkout = readFileSync(new URL("../supabase/functions/paystack-checkout/index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(checkout, /CHECKOUT_OWNER_PILOT_ONLY|golowosile@gmail\.com/i);
+  const signIn = checkout.indexOf('if(!user) return json({error:"SIGN_IN_REQUIRED"},401)');
+  const confirmedEmail = checkout.indexOf('if(!user.email_confirmed_at)');
+  const killSwitch = checkout.indexOf('BLINK_PAYSTACK_CHECKOUT_ENABLED');
+  const paymentInitialize = checkout.indexOf('await paystackApi("transaction/initialize"');
+  assert.ok(signIn >= 0 && confirmedEmail > signIn);
+  assert.ok(killSwitch > confirmedEmail && paymentInitialize > killSwitch);
+});
