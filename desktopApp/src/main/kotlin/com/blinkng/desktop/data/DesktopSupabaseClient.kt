@@ -629,6 +629,36 @@ class DesktopSupabaseClient(
         parseMarketItem(created)
     }
 
+    /** Campus people are actual public profile rows, filtered further by the shared
+     * university policy in the desktop UI. No GPS, synthetic peers or auto-follow.
+     */
+    suspend fun fetchConnectPeers(limit: Int = 32): List<DesktopProfile> = withContext(Dispatchers.IO) {
+        val sessionId = requireSession().userId
+        val rows = getArray(
+            "/rest/v1/profiles?select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=${limit.coerceIn(1, 60)}"
+        )
+        (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let(::parseProfile)
+        }.filter { it.id != sessionId && it.username.isNotBlank() }
+    }
+
+    suspend fun fetchConnectFollowingIds(): Set<String> = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/get_my_following_ids", JSONObject())
+        (0 until rows.length()).mapNotNull { i ->
+            when (val value = rows.opt(i)) {
+                is String -> value.takeIf(String::isNotBlank)
+                is JSONObject -> value.optString("following_id").takeIf(String::isNotBlank)
+                else -> null
+            }
+        }.toSet()
+    }
+
+    suspend fun unfollowConnectPeer(profileId: String) = withContext(Dispatchers.IO) {
+        require(com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(profileId))
+        require(profileId != requireSession().userId) { "You cannot unfollow yourself." }
+        postObject("/rest/v1/rpc/unfollow_user", JSONObject().put("p_following_id", profileId))
+    }
+
     suspend fun fetchConnectListings(): List<DesktopConnectListing> = withContext(Dispatchers.IO) {
         val rows = getArray(
             "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at&order=created_at.desc&limit=100",
