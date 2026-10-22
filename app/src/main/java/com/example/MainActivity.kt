@@ -523,8 +523,15 @@ class MainActivity : ComponentActivity() {
                     // apply statusBarsPadding once; keep the bottom/side safe areas
                     // so the floating navigation stays clear of gesture navigation.
                     contentWindowInsets = if (uiState.destination == AppDestination.MAIN) {
+                        // The reference profile owns its navigation-bar inset so its
+                        // content and bottom bar reach the physical screen edge.
+                        // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            if (uiState.viewingProfile != null) {
+                                WindowInsetsSides.Horizontal
+                            } else {
+                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            }
                         )
                     } else {
                         ScaffoldDefaults.contentWindowInsets
