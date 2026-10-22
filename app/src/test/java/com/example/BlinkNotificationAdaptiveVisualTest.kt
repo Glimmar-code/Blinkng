@@ -8,7 +8,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -30,10 +31,10 @@ import org.robolectric.annotation.GraphicsMode
  * Fake in-memory notifications are disconnected from Supabase and personal data.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
 class BlinkNotificationAdaptiveVisualTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun notification320dpAtNormalFont() = render(320,1f)
     @Test fun notification320dpAt130Percent() = render(320,1.3f)
@@ -76,7 +77,7 @@ class BlinkNotificationAdaptiveVisualTest {
         rule.onNodeWithContentDescription("More notification actions").assertExists()
         rule.onNodeWithText("New activity").assertExists()
         val scaleName=scale.toString().replace('.', '_')
-        rule.onNodeWithTag("notification_visual_frame").captureRoboImage(
+        rule.activity.window.decorView.captureRoboImage(
             filePath="build/test-visuals/notifications_w${widthDp}_scale${scaleName}.png"
         )
     }
