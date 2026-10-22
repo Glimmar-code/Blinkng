@@ -127,6 +127,7 @@ fun ProfileScreen(
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
     onNavigateMainTab: (String) -> Unit = {},
+    selectedMainTabRoute: String = "home",
     onTopAction: (String) -> Unit = {}
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -336,6 +337,10 @@ fun ProfileScreen(
                         onEarnCoins = { showEarnCoinDialog = true },
                         onShowBadges = { selectedTab = if (isMe) 5 else 4 },
                         onShare = { showShareSheet = true },
+                        onCopyUsername = {
+                            clipboard.setText(AnnotatedString("@" + profile.username))
+                            Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+                        },
                         onVisitors = { showVisitorHistory = true },
                         onTopAction = { action ->
                             if (action == "menu" && !isMe) showMoreSheet = true
@@ -499,6 +504,7 @@ fun ProfileScreen(
             Box(modifier = Modifier.align(Alignment.BottomCenter)) {
                 BlinkReferenceProfileBottomNav(
                     isDark = isDark,
+                    selectedRoute = selectedMainTabRoute,
                     onNavigate = onNavigateMainTab
                 )
             }
