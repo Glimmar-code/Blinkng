@@ -6,6 +6,9 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.notification.BlinkStatusTextPolicy
+import com.blinkng.shared.notification.BlinkStatusPhotoDecorPolicy
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
@@ -64,6 +68,14 @@ fun CreateStoryScreen(
     var isVideo by remember(profile.id) { mutableStateOf(false) }
     var photoTurns by remember(profile.id) { mutableStateOf(0) }
     var cropPortrait by remember(profile.id) { mutableStateOf(false) }
+    var photoFilter by remember(profile.id) {
+        mutableStateOf(BlinkStatusPhotoDecorPolicy.ORIGINAL)
+    }
+    var photoSticker by remember(profile.id) { mutableStateOf("") }
+    var stickerX by remember(profile.id) { mutableFloatStateOf(0.5f) }
+    var stickerY by remember(profile.id) { mutableFloatStateOf(0.5f) }
+    var stampedPhotoUri by remember(profile.id) { mutableStateOf<String?>(null) }
+    var isStampingPhoto by remember(profile.id) { mutableStateOf(false) }
     var editedPreviewUri by remember(profile.id) { mutableStateOf<String?>(null) }
     var isEditingPhoto by remember(profile.id) { mutableStateOf(false) }
     var photoEditError by remember(profile.id) { mutableStateOf<String?>(null) }
@@ -123,17 +135,19 @@ fun CreateStoryScreen(
     }
 
     // Process off the main thread. A key change cancels stale previews.
-    LaunchedEffect(selectedUri, isVideo, photoTurns, cropPortrait) {
+    LaunchedEffect(selectedUri, isVideo, photoTurns, cropPortrait, photoFilter) {
         editedPreviewUri = null
         photoEditError = null
         if (isVideo || selectedUri == null ||
-            (photoTurns == 0 && !cropPortrait)) {
+            (photoTurns == 0 && !cropPortrait &&
+                photoFilter == BlinkStatusPhotoDecorPolicy.ORIGINAL)) {
             isEditingPhoto = false
         } else {
             isEditingPhoto = true
             try {
                 editedPreviewUri = BlinkStatusPhotoEditor.edit(
-                    context, Uri.parse(selectedUri!!), photoTurns, cropPortrait
+                    context, Uri.parse(selectedUri!!), photoTurns, cropPortrait,
+                    photoFilter
                 ).toString()
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -145,12 +159,37 @@ fun CreateStoryScreen(
         }
     }
 
+
+    // Stamps are rendered only from a filtered/cropped base JPEG.
+    // Debouncing drag movement saves CPU and prevents repeated uploads.
+    LaunchedEffect(editedPreviewUri, photoSticker, stickerX, stickerY, isVideo) {
+        stampedPhotoUri = null
+        isStampingPhoto = false
+        if (photoSticker.isNotBlank() && !isVideo && editedPreviewUri != null) {
+            try {
+                isStampingPhoto = true
+                delay(350)
+                stampedPhotoUri = BlinkStatusPhotoEditor.stamp(
+                    context, Uri.parse(editedPreviewUri), photoSticker, stickerX, stickerY
+                ).toString()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                photoEditError = "Sticker export failed. Remove the sticker or retry."
+            } finally {
+                isStampingPhoto = false
+            }
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let {
             selectedUri = it.toString(); textMode = false; isVideo = false
             photoTurns = 0; cropPortrait = false
+            photoFilter = BlinkStatusPhotoDecorPolicy.ORIGINAL
+            photoSticker = ""; stickerX = .5f; stickerY = .5f
         }
     }
     val videoPicker = rememberLauncherForActivityResult(
@@ -159,6 +198,8 @@ fun CreateStoryScreen(
         uri?.let {
             selectedUri = it.toString(); textMode = false; isVideo = true
             photoTurns = 0; cropPortrait = false
+            photoFilter = BlinkStatusPhotoDecorPolicy.ORIGINAL
+            photoSticker = ""
         }
     }
 
@@ -184,8 +225,11 @@ fun CreateStoryScreen(
                     trimmedVideoUri != null
             }
         }
-        photoTurns == 0 && !cropPortrait -> true
-        else -> editedPreviewUri != null && !isEditingPhoto
+        photoSticker.isNotBlank() -> stampedPhotoUri != null &&
+            !isStampingPhoto && !isEditingPhoto && photoEditError == null
+        photoTurns == 0 && !cropPortrait &&
+            photoFilter == BlinkStatusPhotoDecorPolicy.ORIGINAL -> true
+        else -> editedPreviewUri != null && !isEditingPhoto && photoEditError == null
     }
     Box(
         Modifier.fillMaxSize().background(
@@ -220,12 +264,16 @@ fun CreateStoryScreen(
                                 )
                                 if (BlinkStatusVideoTrimPolicy.needsExport(videoDurationMs, w))
                                     trimmedVideoUri else selectedUri
-                            } else if (photoTurns != 0 || cropPortrait) editedPreviewUri
+                            } else if (photoSticker.isNotBlank()) stampedPhotoUri
+                            else if (photoTurns != 0 || cropPortrait ||
+                                photoFilter != BlinkStatusPhotoDecorPolicy.ORIGINAL)
+                                editedPreviewUri
                             else selectedUri
                             toPublish?.let { onPublish(it, caption.trim(), isVideo) }
                         }
                     },
-                    enabled = canShare && !isUploading && !isEditingPhoto && !isTrimmingVideo,
+                    enabled = canShare && !isUploading && !isEditingPhoto &&
+                        !isStampingPhoto && !isTrimmingVideo,
                     shape = RoundedCornerShape(100.dp)
                 ) {
                     if (isUploading) CircularProgressIndicator(
@@ -330,14 +378,50 @@ fun CreateStoryScreen(
                             }
                         }
                         selectedUri != null && !isVideo -> {
-                            AsyncImage(
-                                model = editedPreviewUri ?: selectedUri,
-                                contentDescription = "Status photo preview",
-                                contentScale = if (cropPortrait) ContentScale.Crop else ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            if (isEditingPhoto) {
-                                CircularProgressIndicator()
+                            if (photoSticker.isNotBlank()) {
+                                BoxWithConstraints(
+                                    Modifier.fillMaxHeight().aspectRatio(9f / 16f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = editedPreviewUri ?: selectedUri,
+                                        contentDescription = "Status photo preview",
+                                        contentScale = ContentScale.FillBounds,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    val boxWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                                    val boxHeight = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                                    Text(
+                                        photoSticker,
+                                        fontSize = 38.sp,
+                                        modifier = Modifier
+                                            .offset(
+                                                x = maxWidth * stickerX - 20.dp,
+                                                y = maxHeight * stickerY - 20.dp
+                                            )
+                                            .pointerInput(boxWidth, boxHeight, photoSticker) {
+                                                detectDragGestures { change, drag ->
+                                                    change.consume()
+                                                    val pos = BlinkStatusPhotoDecorPolicy.position(
+                                                        stickerX + drag.x / boxWidth,
+                                                        stickerY + drag.y / boxHeight
+                                                    )
+                                                    stickerX = pos.x
+                                                    stickerY = pos.y
+                                                }
+                                            }
+                                    )
+                                    if (isEditingPhoto) CircularProgressIndicator()
+                                }
+                            } else {
+                                AsyncImage(
+                                    model = editedPreviewUri ?: selectedUri,
+                                    contentDescription = "Status photo preview",
+                                    contentScale = if (cropPortrait)
+                                        ContentScale.Crop else ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (isEditingPhoto) CircularProgressIndicator()
                             }
                         }
                         selectedUri != null && isVideo -> Column(
@@ -446,9 +530,58 @@ fun CreateStoryScreen(
                         modifier = Modifier.weight(1f)
                     ) { Text(if (cropPortrait) "Fit photo" else "Crop 9:16") }
                     TextButton(
-                        onClick = { photoTurns = 0; cropPortrait = false },
+                        onClick = {
+                            photoTurns = 0; cropPortrait = false
+                            photoFilter = BlinkStatusPhotoDecorPolicy.ORIGINAL
+                            photoSticker = ""
+                            stickerX = .5f; stickerY = .5f
+                        },
                         enabled = !isUploading && !isEditingPhoto
                     ) { Text("Reset") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BlinkStatusPhotoDecorPolicy.filters.forEach { choice ->
+                        OutlinedButton(
+                            onClick = { photoFilter = choice },
+                            enabled = !isUploading,
+                            colors = if (photoFilter == choice)
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ) else ButtonDefaults.outlinedButtonColors()
+                        ) { Text(choice) }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Sticker:", style = MaterialTheme.typography.labelSmall)
+                    BlinkStatusPhotoDecorPolicy.stickers.forEach { emoji ->
+                        TextButton(
+                            onClick = {
+                                photoSticker = emoji
+                                if (emoji.isNotBlank()) {
+                                    cropPortrait = true
+                                    stickerX = 0.5f
+                                    stickerY = 0.5f
+                                }
+                            },
+                            enabled = !isUploading
+                        ) { Text(if (emoji.isBlank()) "None" else emoji, fontSize = 18.sp) }
+                    }
+                }
+                if (photoSticker.isNotBlank()) {
+                    Text(
+                        "Drag sticker to position it. The exported photo includes the sticker.",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
                 }
                 photoEditError?.let { message ->
                     Text(

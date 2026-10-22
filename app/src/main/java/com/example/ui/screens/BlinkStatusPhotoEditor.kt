@@ -6,6 +6,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import com.blinkng.shared.notification.BlinkStatusPhotoDecorPolicy
 import android.media.ExifInterface
 import android.net.Uri
 import com.blinkng.shared.notification.BlinkStatusPhotoEditPolicy
@@ -25,7 +29,8 @@ internal object BlinkStatusPhotoEditor {
         context: Context,
         source: Uri,
         quarterTurns: Int,
-        portraitCrop: Boolean
+        portraitCrop: Boolean,
+        filter: String = BlinkStatusPhotoDecorPolicy.ORIGINAL
     ): Uri = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -99,7 +104,35 @@ internal object BlinkStatusPhotoEditor {
         )
         val canvas = Canvas(flattened)
         canvas.drawColor(Color.WHITE)
-        canvas.drawBitmap(cropped, 0f, 0f, null)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        when (BlinkStatusPhotoDecorPolicy.filter(filter)) {
+            BlinkStatusPhotoDecorPolicy.MONO -> {
+                paint.colorFilter = ColorMatrixColorFilter(
+                    ColorMatrix().apply { setSaturation(0f) }
+                )
+            }
+            BlinkStatusPhotoDecorPolicy.WARM -> {
+                paint.colorFilter = ColorMatrixColorFilter(
+                    ColorMatrix(floatArrayOf(
+                        1.06f, 0f, 0f, 0f, 6f,
+                        0f, 1.00f, 0f, 0f, 2f,
+                        0f, 0f, .87f, 0f, 0f,
+                        0f, 0f, 0f, 1f, 0f
+                    ))
+                )
+            }
+            BlinkStatusPhotoDecorPolicy.COOL -> {
+                paint.colorFilter = ColorMatrixColorFilter(
+                    ColorMatrix(floatArrayOf(
+                        .91f, 0f, 0f, 0f, 0f,
+                        0f, 1.00f, 0f, 0f, 2f,
+                        0f, 0f, 1.10f, 0f, 4f,
+                        0f, 0f, 0f, 1f, 0f
+                    ))
+                )
+            }
+        }
+        canvas.drawBitmap(cropped, 0f, 0f, paint)
         cropped.recycle()
 
         val dir = File(context.cacheDir, "blink-status-edits").apply { mkdirs() }
@@ -124,4 +157,56 @@ internal object BlinkStatusPhotoEditor {
             flattened.recycle()
         }
     }
+
+    /**
+     * Stamp one allowlisted emoji onto an already edited, app-private JPEG.
+     * The preview shows the un-stamped image plus the same positioned Compose
+     * overlay; Share only enables after this composited file exists.
+     */
+    suspend fun stamp(context: Context, baseUri: Uri, sticker: String, x: Float, y: Float): Uri =
+        withContext(Dispatchers.IO) {
+            val emoji = BlinkStatusPhotoDecorPolicy.sticker(sticker)
+            require(emoji.isNotBlank()) { "Choose a supported sticker." }
+            val folder = File(context.cacheDir, "blink-status-edits").canonicalFile
+            val source = File(requireNotNull(baseUri.path)).canonicalFile
+            require(source.parentFile == folder && source.extension == "jpg") {
+                "Only locally edited photo files may be stamped."
+            }
+            val photo = BitmapFactory.decodeFile(source.absolutePath)
+                ?: throw IllegalArgumentException("Edited photo cannot be opened.")
+            val output = File(folder, "${UUID.randomUUID()}.jpg")
+            val pos = BlinkStatusPhotoDecorPolicy.position(x, y)
+            try {
+                val image = photo.copy(Bitmap.Config.ARGB_8888, true)
+                    ?: throw IllegalArgumentException("Can't prepare sticker canvas.")
+                try {
+                    val canvas = Canvas(image)
+                    val brush = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                        color = Color.WHITE
+                        textAlign = Paint.Align.CENTER
+                        textSize = image.width * 0.115f
+                    }
+                    val centerX = image.width.toFloat() * pos.x
+                    val centerY = image.height.toFloat() * pos.y
+                    // Baseline offset approximates visual centring across emoji fonts.
+                    canvas.drawText(emoji, centerX, centerY + brush.textSize * .33f, brush)
+                    FileOutputStream(output).use { stream ->
+                        check(image.compress(Bitmap.CompressFormat.JPEG, 87, stream)) {
+                            "Could not export sticker photo."
+                        }
+                    }
+                } finally {
+                    image.recycle()
+                }
+                require(output.length() in 1..(15L * 1024L * 1024L)) {
+                    "Sticker image is too large."
+                }
+                Uri.fromFile(output)
+            } catch (failure: Exception) {
+                output.delete()
+                throw failure
+            } finally {
+                photo.recycle()
+            }
+        }
 }
