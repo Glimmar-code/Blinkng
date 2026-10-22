@@ -105,6 +105,7 @@ fun ConnectSection(
     onVotePoll: (String, String) -> Unit = { _, _ -> },
     onRefreshFeed: () -> Unit = {},
     isFeedRefreshing: Boolean = false,
+    hasUnreadNotifications: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
@@ -165,6 +166,8 @@ fun ConnectSection(
             onProfileClick = onProfileClick,
             onOpenHub = { showLegacyTools = true },
             onOpenCampusFeed = onHomeClick,
+            onMessageStudent = onDirectMessage,
+            hasUnreadNotifications = hasUnreadNotifications,
             onRefresh = { connectHubActions.refresh(); onRefreshFeed() },
             isRefreshing = isConnectHubLoading || isFeedRefreshing,
             posts = posts,
