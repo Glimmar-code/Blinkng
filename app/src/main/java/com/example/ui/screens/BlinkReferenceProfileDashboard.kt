@@ -282,7 +282,7 @@ internal fun BlinkReferenceProfileDashboard(
             }
             TextButton(onClick = onShare) { Text("Share", fontSize = 11.sp) }
             TextButton(onClick = onCopyUsername) { Text("Copy", fontSize = 11.sp) }
-            if (isMe) TextButton(onClick = onVisitors) { Text("Visitors", fontSize = 11.sp) }
+            if (isMe) TextButton(onClick = onVisitors) { Text("Options", fontSize = 11.sp) }
         }
     }
 }
