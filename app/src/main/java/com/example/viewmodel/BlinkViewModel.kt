@@ -6705,7 +6705,29 @@ private suspend fun restoreSupabaseSession() {
                 val uid=supabaseService.getCurrentUserId()?:throw IllegalStateException("Please sign in again.")
                 val uri=Uri.parse(uriString)
                 val mime=appContext.contentResolver.getType(uri)?:if(isVideo)"video/mp4" else "image/jpeg"
-                val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
+                if (isVideo && !mime.startsWith("video/") || !isVideo && !mime.startsWith("image/")) {
+                    throw IllegalArgumentException("Please select a supported photo or video.")
+                }
+                // Bounded buffering stops large camera files from exhausting memory.
+                // The upload service will later use streaming/resumable transport.
+                val maxBytes = if (isVideo) 50L * 1024 * 1024 else 15L * 1024 * 1024
+                val bytes=withContext(Dispatchers.IO){
+                    appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(64 * 1024)
+                        var length = 0L
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n == -1) break
+                            length += n
+                            if (length > maxBytes) {
+                                throw IllegalArgumentException("Media is too large for a status. Choose a shorter video or smaller image.")
+                            }
+                            output.write(buffer, 0, n)
+                        }
+                        output.toByteArray().takeIf { it.isNotEmpty() }
+                    }
+                }?:throw IllegalStateException("Unable to read selected media.")
                 val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
                 val p=_uiState.value.myProfile
                 val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString(),isVideo=isVideo)
@@ -6714,7 +6736,8 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
-                showToast("Unable to share your story. Please try again.")
+                showToast(if (e is IllegalArgumentException) e.message.orEmpty()
+                          else "Unable to share your story. Please try again.")
             }finally{
                 _uiState.value=_uiState.value.copy(isCreatingStory=false)
             }
