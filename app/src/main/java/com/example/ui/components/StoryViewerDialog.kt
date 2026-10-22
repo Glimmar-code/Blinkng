@@ -581,6 +581,8 @@ private fun BlinkStoryVideoPlayer(
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestPaused by rememberUpdatedState(paused)
     val latestOnReady by rememberUpdatedState(onReady)
+    val latestOnDuration by rememberUpdatedState(onDuration)
+    var mediaError by remember(story.id) { mutableStateOf(false) }
     val player = remember(story.id) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(story.storyImage))
@@ -591,7 +593,13 @@ private fun BlinkStoryVideoPlayer(
     DisposableEffect(player, lifecycleOwner) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                latestOnReady(playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED)
+                latestOnReady(mediaError ||
+                    playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED)
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                mediaError = true
+                latestOnDuration(5_000L)
+                latestOnReady(true)
             }
         }
         player.addListener(listener)
@@ -627,14 +635,24 @@ private fun BlinkStoryVideoPlayer(
             delay(200)
         }
     }
-    AndroidView(
-        factory = { androidContext ->
-            PlayerView(androidContext).apply {
-                this.player = player
-                useController = false
-            }
-        },
-        update = { it.player = player },
-        modifier = Modifier.fillMaxSize()
-    )
+    if (mediaError) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("This video couldn't load. Moving to the next story.",
+                color = Color.White, modifier = Modifier.padding(20.dp))
+        }
+    } else {
+        AndroidView(
+            factory = { androidContext ->
+                PlayerView(androidContext).apply {
+                    this.player = player
+                    useController = false
+                }
+            },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
 }
