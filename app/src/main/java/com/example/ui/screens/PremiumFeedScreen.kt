@@ -667,7 +667,6 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
-    val navScrollTravelPx = remember(laneResumeKey) { mutableStateOf(0f) }
     val interactionRepository = remember { UserInteractionRepository() }
     val pendingCoinGiftRequests = remember { mutableStateMapOf<String, String>() }
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
@@ -704,6 +703,7 @@ private fun PremiumHomeFeed(
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
     val laneResumeKey = "$resumeUserKey:$laneIndex"
+    val navScrollTravelPx = remember(laneResumeKey) { mutableStateOf(0f) }
     // The first visit in a fresh process opens at the top with the full feed.
     // Returning from another in-app screen may recover the saved scroll/filter.
     val restoreWithinProcess = remember(laneResumeKey) {
