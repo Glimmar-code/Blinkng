@@ -221,6 +221,9 @@ class MainActivity : ComponentActivity() {
                 if (paystackPrefs.getString("reference", null) != reference) return@launch
                 if (paymentInProgress) return@launch
                 val confirmed = runCatching { paystack.confirmPayment(reference) }.getOrDefault(false)
+                // The account or pending reference could change while the network call runs.
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    paystackPrefs.getString("reference", null) != reference) return@launch
                 if (confirmed) {
                     refreshAfterPaystackFulfillment()
                     if (paystackPrefs.getString("reference", null) == reference) {
