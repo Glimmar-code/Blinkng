@@ -46,6 +46,9 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import java.text.NumberFormat
 import java.util.Locale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +88,11 @@ fun MarketScreen(
         }
     }
 
-    val marketRows = remember(filteredItems) { filteredItems.chunked(2) }
+    val deviceWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val compactLayout = BlinkAdaptiveLayoutPolicy.compactToolbar(deviceWidthDp, fontScale)
+    val gridColumns = BlinkAdaptiveLayoutPolicy.marketColumns(deviceWidthDp, fontScale)
+    val marketRows = remember(filteredItems, gridColumns) { filteredItems.chunked(gridColumns) }
     val isVerified = verificationBadge != VerificationBadge.NONE
 
     LazyColumn(
@@ -107,7 +114,7 @@ fun MarketScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -120,6 +127,8 @@ fun MarketScreen(
                             )
                             Text(
                                 text = "ALUTA MARKET",
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp,
@@ -133,50 +142,15 @@ fun MarketScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    if (!compactLayout) Spacer(modifier = Modifier.width(8.dp))
 
-                    // Primary Action Button: "Become a Seller" (if not active) or "Create a Post" (if active)
-                    if (!isSellerActive) {
-                        Button(
-                            onClick = onOpenBecomeSeller,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BlinkGold,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(100.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.testTag("market_become_seller_btn")
-                        ) {
-                            Icon(
-                                Icons.Default.Storefront,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text("Become a Seller", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        Button(
-                            onClick = onOpenPostItem,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BlinkPink,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(100.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.testTag("market_create_post_btn")
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text("Create a Post", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                        }
+                    if (!compactLayout) {
+                        MarketHeaderSellerAction(isSellerActive, onOpenBecomeSeller, onOpenPostItem)
                     }
+                }
+                if (compactLayout) {
+                    Spacer(Modifier.height(10.dp))
+                    MarketHeaderSellerAction(isSellerActive, onOpenBecomeSeller, onOpenPostItem)
                 }
             }
         }
@@ -468,7 +442,7 @@ fun MarketScreen(
                         )
                     }
                 }
-                if (rowItems.size == 1) {
+                if (rowItems.size == 1 && gridColumns == 2) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
@@ -541,6 +515,56 @@ fun MarketScreen(
             }
         )
     }
+}
+
+/** Retain the original seller action on regular phones; wrap below the title on compact layouts. */
+@Composable
+private fun MarketHeaderSellerAction(
+    isSellerActive: Boolean,
+    onOpenBecomeSeller: () -> Unit,
+    onOpenPostItem: () -> Unit
+) {
+    if (!isSellerActive) {
+            Button(
+                onClick = onOpenBecomeSeller,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BlinkGold,
+                    contentColor = Color.Black
+                ),
+                shape = RoundedCornerShape(100.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("market_become_seller_btn")
+            ) {
+                Icon(
+                    Icons.Default.Storefront,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.Black
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text("Become a Seller", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Button(
+                onClick = onOpenPostItem,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BlinkPink,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(100.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("market_create_post_btn")
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.White
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text("Create a Post", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+            }
+        }
 }
 
 @Composable
