@@ -139,6 +139,28 @@ fun ConnectSection(
     }
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
 
+    // Keep every existing Connect Hub tool and filter available while the
+    // screenshot-inspired discovery page is rolled out in Testlab.
+    var showLegacyTools by rememberSaveable { mutableStateOf(false) }
+    if (!showLegacyTools) {
+        ConnectDiscoveryLanding(
+            profiles = liveProfiles,
+            currentUsername = currentUsername,
+            myCampus = current?.university.orEmpty(),
+            userAvatar = userAvatar,
+            onSearchClick = onFindFriends,
+            onOpenGame = onGameClick,
+            onOpenNotifications = onOpenActivity,
+            onProfileClick = onProfileClick,
+            onOpenHub = { showLegacyTools = true },
+            onOpenCampusFeed = onHomeClick,
+            onRefresh = connectHubActions.refresh,
+            isRefreshing = isConnectHubLoading,
+            modifier = modifier
+        )
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -162,6 +184,14 @@ fun ConnectSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
+            item {
+                OutlinedButton(
+                    onClick = { showLegacyTools = false },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("← Back to Connect") }
+            }
+
             item {
                 Row(
                     modifier = Modifier
