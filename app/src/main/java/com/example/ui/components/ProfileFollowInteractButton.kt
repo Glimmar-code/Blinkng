@@ -66,6 +66,7 @@ fun ProfileFollowInteractButton(
     onViewProfile: () -> Unit,
     onOpenConnectHub: () -> Unit,
     darkSurface: Boolean = false,
+    showExtendedActions: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -119,6 +120,7 @@ fun ProfileFollowInteractButton(
                 menuExpanded = false
                 giftDialog = true
             }
+            if (showExtendedActions) {
             InteractionMenuItem(Icons.Default.SportsEsports, "Game challenge") {
                 menuExpanded = false
                 onGameChallenge()
@@ -139,13 +141,16 @@ fun ProfileFollowInteractButton(
                 menuExpanded = false
                 onStudyMateRequest()
             }
+            }
             InteractionMenuItem(Icons.Default.AccountCircle, "View profile") {
                 menuExpanded = false
                 onViewProfile()
             }
+            if (showExtendedActions) {
             InteractionMenuItem(Icons.Default.Hub, "Open Connect Hub") {
                 menuExpanded = false
                 onOpenConnectHub()
+            }
             }
         }
         if (giftDialog) {
