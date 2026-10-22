@@ -124,21 +124,24 @@ internal fun ConnectDiscoveryLanding(
         circlesLoading = false
     }
 
-    val campusPeers = remember(profiles, myCampus) {
-        if (myCampus.isBlank() || myCampus.equals("null", ignoreCase = true)) emptyList()
-        else profiles.filter {
-            com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(it.university, myCampus)
-        }
+    val peers = remember(profiles, currentUsername) {
+        profiles.filter { profile ->
+            profile.username.isNotBlank() &&
+                !profile.username.equals(currentUsername, ignoreCase = true)
+        }.distinctBy { it.id.ifBlank { it.username.lowercase() } }
     }
-    val people = remember(profiles, campusPeers, selectedTab) {
+    val campusPeers = remember(peers, myCampus) {
+        peers.filter { com.blinkng.shared.discovery.BlinkCampusFeedPolicy.isSameCampus(it.university, myCampus) }
+    }
+    val people = remember(peers, campusPeers, selectedTab) {
         when (selectedTab) {
             1 -> campusPeers
-            2 -> profiles.filter { it.onlineNow }
-            else -> campusPeers.ifEmpty { profiles }
+            2 -> peers.sortedByDescending { it.followerCount }
+            else -> campusPeers.ifEmpty { peers }
         }
     }
-    val suggested = remember(profiles, campusPeers) {
-        (campusPeers + profiles).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+    val suggested = remember(peers, campusPeers) {
+        (campusPeers + peers).distinctBy { it.id.ifBlank { it.username.lowercase() } }
     }
     val campusPosts = remember(posts, profiles, myCampus, selectedTab) {
         val profileByUsername = profiles.associateBy { it.username.trim().removePrefix("@").lowercase() }
@@ -233,7 +236,11 @@ internal fun ConnectDiscoveryLanding(
             ) {
                 item {
                     ConnectDiscoveryTitle(
-                        title = if (selectedTab == 1) "Students on your campus" else "People near you",
+                        title = when (selectedTab) {
+                            1 -> "Students on your campus"
+                            2 -> "Popular students"
+                            else -> "People near you"
+                        },
                         onSeeAll = onSearchClick
                     )
                     Text(
