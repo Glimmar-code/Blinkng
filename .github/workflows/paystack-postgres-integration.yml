@@ -66,6 +66,12 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
+      - name: Create isolated BLINK gifting wallet accounts
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_coin_gift_fixture.pgfixture
+      - name: Deploy gift RPC into disposable PostgreSQL only
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261022043000_idempotent_blink_coin_gifts.sql
+      - name: Test wallet conservation, replay protection and recipient notifications
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_coin_gift_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
         run: node --test scripts/test_paystack_integrity.mjs
       - name: Production-safety affirmation
