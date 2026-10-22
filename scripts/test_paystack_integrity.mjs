@@ -11,6 +11,8 @@ test("Paystack kobo receipt matches server-created NGN order",()=>{
 for(const [title,change] of [
   ["pending",{status:"pending"}],
   ["failed",{status:"failed"}],
+  ["abandoned or cancelled by customer",{status:"abandoned"}],
+  ["provider-cancelled",{status:"cancelled"}],
   ["reversed",{status:"reversed"}],
   ["claimed callback reference",{reference:"forged"}],
   ["undercount 1 kobo",{amount:79999}],
