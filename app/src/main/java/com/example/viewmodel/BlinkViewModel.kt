@@ -6699,6 +6699,56 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun publishTextStory(text: String, background: String) {
+        if (_uiState.value.isCreatingStory) return
+        val safeText = com.blinkng.shared.notification.BlinkStatusTextPolicy.text(text)
+        if (safeText == null) {
+            showToast("Write something before sharing your status.")
+            return
+        }
+        val safeBackground =
+            com.blinkng.shared.notification.BlinkStatusTextPolicy.background(background)
+        _uiState.value = _uiState.value.copy(isCreatingStory = true)
+        viewModelScope.launch {
+            try {
+                val uid = supabaseService.getCurrentUserId()
+                    ?: throw IllegalStateException("Sign in to publish.")
+                val profile = _uiState.value.myProfile
+                val story = Story(
+                    id = UUID.randomUUID().toString(),
+                    username = profile.username,
+                    avatar = profile.avatarUrl,
+                    hasUnseen = false,
+                    isUser = true,
+                    caption = safeText,
+                    timeAgo = "Just now",
+                    faculty = profile.faculty,
+                    university = profile.university,
+                    verificationBadge = profile.verificationBadge,
+                    createdAt = Instant.now().toString(),
+                    background = safeBackground
+                )
+                if (!postRepository.createTextStory(story)) {
+                    throw IllegalStateException("Status creation failed.")
+                }
+                com.example.ui.screens.BlinkStatusDraftStore.clear(appContext, uid)
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    stories = listOf(story) + current.stories.filterNot {
+                        it.id == "story_me" || it.id == story.id
+                    },
+                    isCreateStoryOpen = false
+                )
+                showToast("Text status shared.")
+            } catch (e: Exception) {
+                Log.e(TAG, "publishTextStory failed", e)
+                showToast("Couldn't share your status. Please try again.")
+            } finally {
+                _uiState.value = _uiState.value.copy(isCreatingStory = false)
+            }
+        }
+    }
+
     fun publishStory(uriString:String,caption:String,isVideo:Boolean){
         if(_uiState.value.isCreatingStory)return
         _uiState.value=_uiState.value.copy(isCreatingStory=true)
@@ -6735,6 +6785,7 @@ private suspend fun restoreSupabaseSession() {
                 val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString(),isVideo=isVideo)
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
                 _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
+                com.example.ui.screens.BlinkStatusDraftStore.clear(appContext, uid)
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
