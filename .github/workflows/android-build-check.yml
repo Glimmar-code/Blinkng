@@ -46,6 +46,10 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Record actual Compose accessibility screenshots with Robolectric
+        if: steps.scope.outputs.android == 'true'
+        run: gradle :app:testDebugUnitTest --tests com.example.BlinkFeedAdaptiveVisualTest --tests com.example.BlinkNotificationAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
+
       - name: Check Robolectric screenshot output and report paths
         if: steps.scope.outputs.android == 'true'
         shell: bash
