@@ -3458,12 +3458,16 @@ suspend fun uploadPostMedia(
         try {
             val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=world_rank.asc&limit=50", true).get().build()).use { resp ->
                 val body = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@withContext emptyList()
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "Leaderboard HTTP status: " + resp.code)
+                    return@withContext emptyList()
+                }
                 body
             }
             val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
             buildList { for (i in 0 until arr.length()) parseLeaderboardUser(arr.getJSONObject(i), i + 1)?.let { add(it) } }
         } catch (e: Exception) {
+            Log.e(TAG, "Leaderboard fetch failed", e)
             emptyList()
         }
     }
