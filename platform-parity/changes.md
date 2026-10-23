@@ -1,3 +1,19 @@
+## 2026-10-23 — Restore all ranked BLINK students without weakening private profiles
+
+- **Root cause:** `public.game_leaderboard` was a `security_invoker` view directly over `profiles`, whose authenticated SELECT policy allows only `auth.uid() = profiles.id`. The ranking query therefore returned just the signed-in account despite the underlying database containing 21 profiles (12 with positive points). This was a public-data visibility issue, not missing scoring data.
+- **Backend:** A narrowly projected, authenticated-only, read-only SECURITY DEFINER function returns leaderboard-safe fields. The `game_leaderboard` security-invoker view retains its existing 12-column ABI and appends verification and campus rank. `profiles` RLS remains owner-only. No email, phone, birthday, balance or private profile columns are returned. Explicit REVOKE for PUBLIC/anon and auth.uid() guard apply. Campus ranking uses normalized university punctuation. This is live from current points, not hourly snapshots.
+- **Android:** Existing published clients continue to query `game_leaderboard` without an APK requirement; log non-success responses for diagnostics. Existing shared university canonicalization already handles FUTA aliases.
+- **Windows:** Switch from history snapshot results (which duplicate users across hours) to the same authenticated live `game_leaderboard` source. Normalize campus matching via existing shared university directory.
+- **Validation:** Simulate authenticated and anonymous SQL roles after deploying migration: authenticated sees all expected users, anonymous sees none; assert no private columns are exposed, scoring and campus grouping are unchanged, desktop unique user count matches Android, and owner-only `profiles` SELECT policy remains. No staging database purchased.
+- **Promotion:** Merge this feature into Testlab after CI, then port only scoped commits to latest main. Deploy migration and verify in production before claiming the published Android APK is fixed.
+
+## 2026-10-23 — Promote screenshot-inspired leaderboard to production safely
+
+- **Android:** New reference-styled composable uses existing live rank data, global/campus scope, personal world/campus rank cards, earned XP level, real student podium and ranking rows. Existing **Top 20** rule, profile navigation, verified filter, Faculty and Academic Level scopes, manual refresh, event tracking, rank-up tracking and the live Rank Pulse card are preserved. Rank Pulse is placed below ranking rows to keep the reference's priority layout. No sample data is substituted for live values.
+- **Windows:** Changes only leaderboard presentation and preserves server ranking fetches, recurring rank-change refresh, activity pulse/impressions, Top 20 and existing account semantics. Profile initials are shown where the desktop leaderboard API does not expose avatar images.
+- **Scope limitations:** Friends has a disabled tab until a server-authoritative friend-only ranking query is available. Desktop rank change is left unavailable rather than invented, while Android shows observed movements. XP displayed in the personal card and activity score in ranking rows are different quantities.
+- **Production gate:** Safe promotion from PR #475 into Testlab is not permission to merge the heavily divergent Testlab branch into main. Apply this scoped feature only on a current-main-based PR, require Android compile, Windows build/parity, release smoke and final UI comparisons; do not publish an APK unless released workflow succeeds.
+
 ## 2026-10-22 — Home tab rail + website APK Update Center (Testlab hotfix)
 
 - Android Home: constrained the For You/Following tab rail to its intended 58dp height. A former minimum-height plus fillMaxHeight combination could occupy the entire viewport and leave posts below the visible area. Preserves the existing post ranking, loading, scrolling ratios, ad positions, bottom navigation and Create control.
