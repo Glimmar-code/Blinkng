@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.shared.BlinkDeliveryReceipt
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -253,11 +254,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                 Text(conversation.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 val latest = lastInboxReceipts[conversation.id]
                                 if (latest != null && latest.senderId == myUserId) {
-                                    val statusText = when {
-                                        latest.readAt != null || latest.isRead -> "✓✓ Read"
-                                        latest.deliveredAt != null -> "✓✓ Delivered"
-                                        else -> "✓ Sent"
+                                    val status = when {
+                                        latest.readAt != null || latest.isRead -> "READ"
+                                        latest.deliveredAt != null -> "DELIVERED"
+                                        else -> "SENT"
                                     }
+                                    val statusText = BlinkDeliveryReceipt.ticks(status) + " " +
+                                        status.lowercase().replaceFirstChar { it.uppercase() }
                                     Text(
                                         statusText,
                                         fontSize = 11.sp,
