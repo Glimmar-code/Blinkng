@@ -2,143 +2,154 @@ package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Login
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import kotlinx.coroutines.launch
 
 private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
+private val authInk = Color(0xFF080808)
+private val authHint = Color(0xFF777777)
+private val authLine = Color(0xFFDFDFDF)
 
+/**
+ * Desktop equivalent of the Android BLINK reference: white form, bold BLINK
+ * wordmark, black submit button and the same real Supabase auth handlers.
+ * Uses a centered desktop card instead of stretching the phone mock-up.
+ */
 @Composable
 fun BlinkAuthScreen(state: DesktopAppState) {
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val authFieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedLabelColor = Color.White,
-        unfocusedLabelColor = Color(0xFFB8B8B8),
-        cursorColor = Color.White,
-        focusedBorderColor = Color.White,
-        unfocusedBorderColor = Color(0xFF454545),
-        focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
+    val textColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = authInk,
+        unfocusedTextColor = authInk,
+        focusedLabelColor = authInk,
+        unfocusedLabelColor = authHint,
+        cursorColor = authInk,
+        focusedBorderColor = authInk,
+        unfocusedBorderColor = authLine,
+        focusedContainerColor = Color.White,
+        unfocusedContainerColor = Color.White,
     )
-    val authOutline = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF1F1F1))
+            .verticalScroll(rememberScrollState()).padding(vertical = 32.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 520.dp).padding(24.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = Color(0xFF080808),
-            contentColor = Color.White,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+            modifier = Modifier.widthIn(max = 520.dp).padding(horizontal = 18.dp),
+            shape = RoundedCornerShape(25.dp),
+            color = Color.White,
+            contentColor = authInk,
+            border = BorderStroke(1.dp, authLine),
             tonalElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier.padding(32.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(13.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    BlinkDesktopLogo(size = 54.dp, showText = false)
-                    Text(
-                        "BLINK",
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                    )
-                }
+                Text("B L I N K", color = authInk,
+                    fontSize = 31.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(4.dp))
                 Text(
                     when (mode) {
-                        AuthMode.SIGN_IN -> "Sign in to your Blink account"
-                        AuthMode.SIGN_UP -> "Create your Blink account"
-                        AuthMode.RESET -> "Reset your password"
+                        AuthMode.SIGN_IN -> "Welcome Back"
+                        AuthMode.SIGN_UP -> "Create Your Student Account"
+                        AuthMode.RESET -> "Reset Your Password"
                     },
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 26.sp, fontWeight = FontWeight.Black,
+                )
+                Text(
+                    when (mode) {
+                        AuthMode.SIGN_IN -> "Log in to your BLINK account"
+                        AuthMode.SIGN_UP -> "Join a brighter campus community of real students."
+                        AuthMode.RESET -> "Enter the email linked to your BLINK account."
+                    },
+                    color = authHint, fontSize = 13.sp,
                 )
 
+                Spacer(Modifier.height(8.dp))
                 if (mode == AuthMode.SIGN_UP) {
                     OutlinedTextField(
-                        value = fullName,
-                        onValueChange = { fullName = it },
+                        value = fullName, onValueChange = { fullName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = authFieldColors,
-                        label = { Text("Full name") },
+                        singleLine = true, colors = textColors,
+                        shape = RoundedCornerShape(12.dp),
+                        placeholder = { Text("Full Name", color = authHint) },
                     )
                 }
 
                 OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
+                    value = email, onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = authFieldColors,
-                    label = { Text(if (mode == AuthMode.SIGN_IN) "Email or username" else "Email") },
+                    singleLine = true, colors = textColors,
+                    shape = RoundedCornerShape(12.dp),
+                    placeholder = {
+                        Text(if (mode == AuthMode.SIGN_IN) "Email or Username" else "Email", color = authHint)
+                    },
                 )
 
                 if (mode != AuthMode.RESET) {
                     OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
+                        value = password, onValueChange = { password = it },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = authFieldColors,
-                        label = { Text("Password") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true, colors = textColors,
+                        shape = RoundedCornerShape(12.dp),
+                        placeholder = { Text("Password", color = authHint) },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Text(if (passwordVisible) "Hide" else "Show", color = authInk)
+                            }
+                        },
                     )
+                }
+                if (mode == AuthMode.SIGN_UP) {
+                    Text(
+                        "Choose your university when completing your campus profile.",
+                        color = authHint, fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (mode == AuthMode.SIGN_IN) {
+                    TextButton(
+                        onClick = { mode = AuthMode.RESET; notice = null; state.clearError() },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("Forgot Password?", color = authInk,
+                            textDecoration = TextDecoration.Underline)
+                    }
                 }
 
                 state.errorMessage?.let {
-                    Text(it, color = Color(0xFFFF7A7A), fontSize = 13.sp)
+                    Text(it, color = Color(0xFFB3261E), fontSize = 13.sp)
                 }
                 notice?.let {
-                    Text(it, color = Color(0xFFD0D0D0), fontSize = 13.sp)
+                    Text(it, color = Color(0xFF3B3B3B), fontSize = 13.sp)
                 }
 
                 Button(
@@ -160,85 +171,77 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     },
                     enabled = !state.busy,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                        disabledContainerColor = Color(0xFF333333),
-                        disabledContentColor = Color(0xFF8A8A8A),
+                        containerColor = authInk, contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF6E6E6E),
+                        disabledContentColor = Color.White,
                     ),
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
                 ) {
                     if (state.busy) {
-                        CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White, strokeWidth = 2.dp
+                        )
                     } else {
                         Text(
                             when (mode) {
-                                AuthMode.SIGN_IN -> "Sign in"
-                                AuthMode.SIGN_UP -> "Create account"
-                                AuthMode.RESET -> "Send reset email"
-                            },
+                                AuthMode.SIGN_IN -> "Log In"
+                                AuthMode.SIGN_UP -> "Create Account"
+                                AuthMode.RESET -> "Send Reset Email"
+                            }, fontWeight = FontWeight.Bold, fontSize = 16.sp,
                         )
+                        Spacer(Modifier.width(10.dp))
+                        Icon(Icons.Rounded.ArrowForward, contentDescription = null)
                     }
                 }
 
                 if (mode != AuthMode.RESET) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        OutlinedButton(
-                            onClick = {
-                                state.clearError()
-                                scope.launch { runCatching { state.signInWithGoogle() } }
-                            },
-                            enabled = !state.busy,
-                            border = authOutline,
-                        ) {
-                            Text("Continue with Google", color = Color.White)
-                        }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        HorizontalDivider(Modifier.weight(1f), color = authLine)
+                        Text("OR", color = authHint, modifier = Modifier.padding(horizontal = 15.dp))
+                        HorizontalDivider(Modifier.weight(1f), color = authLine)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            state.clearError()
+                            scope.launch { runCatching { state.signInWithGoogle() } }
+                        },
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, authInk),
+                    ) {
+                        Text("Continue with Google", color = authInk)
                     }
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    when (mode) {
-                        AuthMode.SIGN_IN -> {
-                            OutlinedButton(
-                                onClick = { mode = AuthMode.SIGN_UP; state.clearError() },
-                                border = authOutline,
-                            ) {
-                                Text("Create account", color = Color.White)
-                            }
-                            OutlinedButton(
-                                onClick = { mode = AuthMode.RESET; state.clearError() },
-                                border = authOutline,
-                            ) {
-                                Text("Forgot password", color = Color.White)
+                when (mode) {
+                    AuthMode.SIGN_IN -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Don't have an account?", color = authHint, fontSize = 12.sp)
+                            TextButton(onClick = { mode = AuthMode.SIGN_UP; state.clearError() }) {
+                                Text("Sign Up", color = authInk,
+                                    textDecoration = TextDecoration.Underline)
                             }
                         }
-                        AuthMode.SIGN_UP -> {
-                            OutlinedButton(
-                                onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
-                                border = authOutline,
-                            ) {
-                                Text("Back to sign in", color = Color.White)
+                    }
+                    AuthMode.SIGN_UP -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Already have an account?", color = authHint, fontSize = 12.sp)
+                            TextButton(onClick = { mode = AuthMode.SIGN_IN; state.clearError() }) {
+                                Text("Log In", color = authInk,
+                                    textDecoration = TextDecoration.Underline)
                             }
-                            Spacer(Modifier.weight(1f))
                         }
-                        AuthMode.RESET -> {
-                            OutlinedButton(
-                                onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
-                                border = authOutline,
-                            ) {
-                                Text("Back to sign in", color = Color.White)
-                            }
-                            Spacer(Modifier.weight(1f))
+                    }
+                    AuthMode.RESET -> {
+                        TextButton(onClick = { mode = AuthMode.SIGN_IN; state.clearError() }) {
+                            Text("Back to Log In", color = authInk,
+                                textDecoration = TextDecoration.Underline)
                         }
                     }
                 }
-
-                Text(
-                    "Blinkng for Windows uses the same account, posts, messages and Supabase backend as the Android app.",
-                    color = Color(0xFF9A9A9A),
-                    fontSize = 12.sp,
-                )
             }
         }
     }
