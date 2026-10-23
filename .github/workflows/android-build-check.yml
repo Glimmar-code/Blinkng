@@ -88,6 +88,15 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Upload responsive BLINK authentication reference captures
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-auth-reference-screens-${{ github.sha }}
+          path: '**/blink-auth-*.png'
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Record actual Compose accessibility screenshots with Robolectric
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --tests com.example.BlinkMainAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
