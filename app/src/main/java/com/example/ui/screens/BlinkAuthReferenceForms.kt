@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
@@ -220,14 +221,33 @@ private fun AuthAdaptiveShell(
                 modifier = Modifier.fillMaxSize().background(Color(0xFF0B0B0B)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 36.dp, end = 22.dp, top = 45.dp, bottom = 32.dp),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(posterTitle, color = Color.White, fontWeight = FontWeight.Black,
-                        fontSize = 42.sp, lineHeight = 43.sp)
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Image(
+                        painter = painterResource(R.drawable.blink_auth_reference_poster_people),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alpha = 0.46f,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .fillMaxWidth().fillMaxHeight(0.66f)
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.0f to Color(0xFF0B0B0B),
+                                0.40f to Color(0xE60B0B0B),
+                                1.0f to Color.Transparent
+                            )
+                        )
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 36.dp, end = 22.dp, top = 45.dp, bottom = 32.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(posterTitle, color = Color.White, fontWeight = FontWeight.Black,
+                            fontSize = if (maxWidth < 850.dp) 30.sp else 42.sp,
+                            lineHeight = if (maxWidth < 850.dp) 33.sp else 43.sp)
                     Spacer(Modifier.height(24.dp))
                     Text("B L I N K", color = Color.White,
                         fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -237,6 +257,7 @@ private fun AuthAdaptiveShell(
                     Spacer(Modifier.height(45.dp))
                     Text("REAL STUDENTS  ✦  NEW FRIENDS  ✦  START NOW",
                         color = Color(0xFFB7B7B7), fontSize = 13.sp)
+                    }
                 }
                 Surface(
                     modifier = Modifier.widthIn(min = 330.dp, max = 450.dp)
