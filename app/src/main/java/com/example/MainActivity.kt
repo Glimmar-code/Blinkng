@@ -609,7 +609,12 @@ class MainActivity : ComponentActivity() {
                         // content and bottom bar reach the physical screen edge.
                         // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
-                            if (uiState.viewingProfile != null) {
+                            if (uiState.viewingProfile != null ||
+                                (uiState.selectedTab == MainTab.MESSAGES && uiState.activeConversationPartner != null)
+                            ) {
+                                // The active conversation owns its bottom system + keyboard
+                                // insets. Reserving this area in Scaffold as well leaves a
+                                // blank strip between the composer and the IME.
                                 WindowInsetsSides.Horizontal
                             } else {
                                 WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
