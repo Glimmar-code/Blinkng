@@ -294,17 +294,34 @@ internal fun BlinkReferenceProfileDashboard(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
+                    if (accessibilityProfile) {
+                        // At 200% fonts even a 320dp phone cannot display
+                        // "Current Rank" next to Level and XP without wrapping
+                        // the title into disconnected columns.
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("Current Rank", color = muted, fontSize = 11.sp)
                             Text(xp.tierLabel, color = ink, fontSize = 17.sp, fontWeight = FontWeight.Black)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
                             Text("Level " + xp.level, color = ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(if (xp.level >= 100) "MAX LEVEL" else
-                                NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
-                                    NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
-                                color = muted, fontSize = 10.sp)
+                            Text(
+                                if (xp.level >= 100) "MAX LEVEL" else
+                                    NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
+                                        NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
+                                color = muted, fontSize = 10.sp
+                            )
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Current Rank", color = muted, fontSize = 11.sp)
+                                Text(xp.tierLabel, color = ink, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Level " + xp.level, color = ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text(if (xp.level >= 100) "MAX LEVEL" else
+                                    NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
+                                        NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
+                                    color = muted, fontSize = 10.sp)
+                            }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
