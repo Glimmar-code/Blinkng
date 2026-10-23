@@ -35,6 +35,7 @@ private val authLine = Color(0xFFDFDFDF)
 @Composable
 fun BlinkAuthScreen(state: DesktopAppState) {
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
+    var showWelcome by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
@@ -71,6 +72,50 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 verticalArrangement = Arrangement.spacedBy(13.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                if (showWelcome) {
+                    Text("B L I N K", color = authInk,
+                        fontSize = 31.sp, fontWeight = FontWeight.Black)
+                    Text("Welcome to BLINK", color = authInk,
+                        fontSize = 30.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        "Connect, discover and grow Beyond LINK",
+                        color = authHint, fontSize = 15.sp
+                    )
+                    Text(
+                        "Meet Students • Join Communities • Attend Events • Buy & Sell on Campus",
+                        color = authHint, fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_IN; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = authInk, contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Log In") }
+                    OutlinedButton(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_UP; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        border = BorderStroke(1.dp, authInk),
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Create Account", color = authInk) }
+                    OutlinedButton(
+                        onClick = {
+                            state.clearError()
+                            scope.launch { runCatching { state.signInWithGoogle() } }
+                        },
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        border = BorderStroke(1.dp, authLine),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold)
+                        Text("  Continue with Google", color = authInk)
+                    }
+                    Text("Already a student? Join your campus community today.",
+                        color = authHint, fontSize = 12.sp)
+                } else {
                 Text("B L I N K", color = authInk,
                     fontSize = 31.sp, fontWeight = FontWeight.Black)
                 Spacer(Modifier.height(4.dp))
@@ -241,6 +286,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                                 textDecoration = TextDecoration.Underline)
                         }
                     }
+                }
                 }
             }
         }
