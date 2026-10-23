@@ -552,6 +552,7 @@ class DesktopSupabaseClient(
                 summaryRows.optJSONObject(i)?.let { row ->
                     DesktopConversation(
                         id = row.optString("conversation_id"),
+                        partnerUsername = row.optString("partner_username"),
                         title = row.optString("partner_name").ifBlank {
                             row.optString("partner_username").ifBlank { "Conversation" }
                         },
@@ -579,6 +580,32 @@ class DesktopSupabaseClient(
                 )
             }
         }
+    }
+
+    /** Latest visible inbox row only, restricted by existing messages RLS. */
+    suspend fun fetchLatestMessage(conversationId: String): DesktopMessage? = withContext(Dispatchers.IO) {
+        require(conversationId.matches(Regex("^[0-9a-fA-F-]{36}$")))
+        val rows = getArray(
+            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.desc,id.desc&limit=1",
+        )
+        rows.optJSONObject(0)?.let(::parseMessage)
+    }
+
+    /** A recipient online in the desktop inbox can confirm delivery without opening a chat. */
+    suspend fun acknowledgePendingMessages(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            postObject("/rest/v1/rpc/ack_pending_message_deliveries", JSONObject())
+            true
+        }.getOrDefault(false)
+    }
+
+    suspend fun markConversationReadReceipt(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        if (partnerUsername.isBlank()) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/mark_conversation_read",
+                JSONObject().put("p_partner_username", partnerUsername.trim()))
+            true
+        }.getOrDefault(false)
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
