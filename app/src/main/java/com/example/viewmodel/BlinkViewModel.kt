@@ -57,6 +57,7 @@ import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -5362,13 +5363,25 @@ private suspend fun restoreSupabaseSession() {
                         hiddenFeedPostIds = current.hiddenFeedPostIds + event.postId
                     )
                     persistCurrentFeed()
-                    return@launch
+                     // Separate failures must never cancel the realtime event coroutine.
+                // Preserve cached For You/Following/Reels when a database RPC times out.
+                val fresh = try {
+                    postRepository.fetchFeed()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime ranked feed refresh failed; preserving cached feed", error)
+                    emptyList()
                 }
-
-                val freshRequest = async { postRepository.fetchFeed() }
-                val followingRequest = async { postRepository.fetchFollowingFeed(limit = 30) }
-                val fresh = freshRequest.await()
-                val following = followingRequest.await()
+                val following = try {
+                    postRepository.fetchFollowingFeed(limit = 30)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime Following refresh failed; preserving cached feed", error)
+                    emptyList()
+                }
+       val following = followingRequest.await()
                 val latest = _uiState.value
                 val muted = latest.mutedUsers
 
