@@ -97,10 +97,11 @@ object InstantChatNotification {
             it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
                 ?.trim()?.takeIf(String::isNotBlank)
         }.distinct().take(5)
-        val inboxStyle = NotificationCompat.InboxStyle().apply {
-            senderNames.forEach { addLine(it) }
-            setSummaryText("${children.size} conversations")
-        }
+        // InboxStyle has a Java member named apply(...), which shadows Kotlin's
+        // apply { } scope extension. Configure it explicitly to keep the Style type.
+        val inboxStyle = NotificationCompat.InboxStyle()
+        senderNames.forEach { inboxStyle.addLine(it) }
+        inboxStyle.setSummaryText("${children.size} conversations")
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse("blink://notification/messages/${Uri.encode(account)}")
