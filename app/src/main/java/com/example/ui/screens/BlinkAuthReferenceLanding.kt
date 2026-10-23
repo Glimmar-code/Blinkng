@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.auth.GoogleAuthLaunchGate
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 
 /** The real, clickable welcome screen from the approved BLINK authentication reference.
  * The surrounding promotional poster / phone bezel are not part of the in-app UI.
@@ -55,7 +57,14 @@ internal fun BlinkAuthReferenceLanding(
         modifier = Modifier.fillMaxSize().background(Color.White).statusBarsPadding(),
     ) {
         // Keep the same photo/card proportions on normal phones; scroll on short/large-font screens.
-        val heroHeight = (maxHeight * 0.43f).coerceIn(220.dp, 370.dp)
+        val heroHeight = if (maxHeight < 520.dp) {
+            (maxHeight * 0.32f).coerceIn(150.dp, 230.dp)
+        } else {
+            (maxHeight * 0.43f).coerceIn(220.dp, 370.dp)
+        }
+        val compactFeatures = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+            maxWidth.value, LocalDensity.current.fontScale
+        )
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         ) {
@@ -103,38 +112,48 @@ internal fun BlinkAuthReferenceLanding(
                 )
 
                 Spacer(Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    BlinkAuthFeature(
-                        title = "Meet\nStudents",
-                        icon = Icons.Default.People,
-                        color = Color(0xFF8738F5),
-                        background = Color(0xFFF4ECFE),
-                        modifier = Modifier.weight(1f),
-                    )
-                    BlinkAuthFeature(
-                        title = "Join\nCommunities",
-                        icon = Icons.Default.Groups,
-                        color = Color(0xFF1676FF),
-                        background = Color(0xFFEDF5FF),
-                        modifier = Modifier.weight(1f),
-                    )
-                    BlinkAuthFeature(
-                        title = "Attend\nEvents",
-                        icon = Icons.Default.CalendarMonth,
-                        color = Color(0xFF16BC72),
-                        background = Color(0xFFE9FAF1),
-                        modifier = Modifier.weight(1f),
-                    )
-                    BlinkAuthFeature(
-                        title = "Buy & Sell\non Campus",
-                        icon = Icons.Default.ShoppingBag,
-                        color = Color(0xFFF5A400),
-                        background = Color(0xFFFFF5E7),
-                        modifier = Modifier.weight(1f),
-                    )
+                // Four narrow feature columns clip badly at large Android text scales.
+                // Present the same four approved actions in two balanced rows instead.
+                val features = listOf(
+                    AuthLandingFeature("Meet\nStudents", Icons.Default.People, Color(0xFF8738F5), Color(0xFFF4ECFE)),
+                    AuthLandingFeature("Join\nCommunities", Icons.Default.Groups, Color(0xFF1676FF), Color(0xFFEDF5FF)),
+                    AuthLandingFeature("Attend\nEvents", Icons.Default.CalendarMonth, Color(0xFF16BC72), Color(0xFFE9FAF1)),
+                    AuthLandingFeature("Buy & Sell\non Campus", Icons.Default.ShoppingBag, Color(0xFFF5A400), Color(0xFFFFF5E7)),
+                )
+                if (compactFeatures) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        features.chunked(2).forEach { pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                pair.forEach { feature ->
+                                    BlinkAuthFeature(
+                                        title = feature.title,
+                                        icon = feature.icon,
+                                        color = feature.color,
+                                        background = feature.background,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        features.forEach { feature ->
+                            BlinkAuthFeature(
+                                title = feature.title,
+                                icon = feature.icon,
+                                color = feature.color,
+                                background = feature.background,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -194,6 +213,13 @@ internal fun BlinkAuthReferenceLanding(
     }
 }
 
+private data class AuthLandingFeature(
+    val title: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val color: Color,
+    val background: Color
+)
+
 @Composable
 private fun BlinkAuthFeature(
     title: String,
@@ -233,18 +259,18 @@ private fun BlinkAuthLandingButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(54.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 54.dp),
         shape = RoundedCornerShape(11.dp),
         color = background,
         border = if (outlined) androidx.compose.foundation.BorderStroke(1.4.dp, Color.Black) else null,
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 21.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 21.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.width(27.dp), contentAlignment = Alignment.CenterStart) { icon() }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = foreground)
+                Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = foreground, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             }
             Icon(
                 Icons.Default.ChevronRight,
