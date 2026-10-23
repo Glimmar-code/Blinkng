@@ -85,3 +85,16 @@ for (const pack of coinPacks) {
     assert.ok(pack.coins >= pack.naira, "configured bonus must not reduce coin credit");
   });
 }
+
+// Confirm public cash checkout keeps authenticated customer eligibility and merchant gates.
+test("public checkout preserves verified customer and merchant controls", () => {
+  const checkout = readFileSync(new URL("../supabase/functions/paystack-checkout/index.ts", import.meta.url), "utf8");
+  const signIn = checkout.indexOf('if(!user) return json({error:"SIGN_IN_REQUIRED"},401)');
+  const confirmed = checkout.indexOf('if(!user.email_confirmed_at)');
+  const killSwitch = checkout.indexOf('BLINK_PAYSTACK_CHECKOUT_ENABLED');
+  const provider = checkout.indexOf('await paystackApi("transaction/initialize"');
+  assert.ok(signIn >= 0 && confirmed > signIn && killSwitch > confirmed && provider > killSwitch);
+  assert.match(checkout, /BLINK_PAYSTACK_BOOST_ENABLED/);
+  assert.match(checkout, /BLINK_PAYSTACK_MARKET_ENABLED/);
+  assert.match(checkout, /BLINK_PAYSTACK_GIFTS_ENABLED/);
+});
