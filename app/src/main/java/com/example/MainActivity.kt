@@ -649,9 +649,11 @@ class MainActivity : ComponentActivity() {
             BlinkTheme(darkTheme = uiState.isDarkMode) {
                 // Keep system icons readable when the selected app theme differs from Android's.
                 SideEffect {
+                    val whiteAuthScreen = uiState.destination == AppDestination.SIGN_IN ||
+                        uiState.destination == AppDestination.SIGN_UP
                     WindowCompat.getInsetsController(window, window.decorView).apply {
-                        isAppearanceLightStatusBars = !uiState.isDarkMode
-                        isAppearanceLightNavigationBars = !uiState.isDarkMode
+                        isAppearanceLightStatusBars = whiteAuthScreen || !uiState.isDarkMode
+                        isAppearanceLightNavigationBars = whiteAuthScreen || !uiState.isDarkMode
                     }
                 }
                 val homeManagesSystemInsets =
@@ -729,7 +731,7 @@ class MainActivity : ComponentActivity() {
                                             recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
                                         }
                                     }
-                                    SignInScreen(
+                                    BlinkReferenceSignInScreen(
                                         initialIdentifier = initialIdentifier,
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onSignInWithCredentials = { emailOrUser, password, onResult ->
@@ -744,7 +746,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.SIGN_UP -> {
-                                    CreateAccountScreen(
+                                    BlinkReferenceCreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onCreateAccount = { name, email, password ->
                                             viewModel.signUp(name, email, password)

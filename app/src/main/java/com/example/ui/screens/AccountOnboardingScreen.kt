@@ -133,7 +133,9 @@ fun AccountOnboardingScreen(
     var usernameAvailable by remember { mutableStateOf<Boolean?>(null) }
     var usernameMessage by remember { mutableStateOf<String?>(null) }
 
-    var university by rememberSaveable(profile.id) { mutableStateOf(profile.university) }
+    var university by rememberSaveable(profile.id) {
+        mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) })
+    }
     var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
@@ -521,6 +523,7 @@ fun AccountOnboardingScreen(
                                 ) { ok, message ->
                                     saving = false
                                     if (ok) {
+                                        SignupCampusPreference.clear(context)
                                         avatarUrl = finalAvatar
                                         pendingAvatarUri = null
                                         step = 2
