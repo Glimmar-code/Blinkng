@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ChatConversation
 import com.example.data.models.MessageStatus
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -386,12 +387,7 @@ private fun BlinkInboxConversationRow(
                 val preview = conversation.lastMessage.ifBlank { "Start the conversation" }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     conversation.lastOutgoingStatus?.let { status ->
-                        val ticks = when (status) {
-                            MessageStatus.SENDING -> "◷"
-                            MessageStatus.SENT -> "✓"
-                            MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
-                            MessageStatus.FAILED -> "!"
-                        }
+                        val ticks = BlinkDeliveryReceipt.ticks(status.name)
                         Text(
                             text = ticks,
                             color = when (status) {
