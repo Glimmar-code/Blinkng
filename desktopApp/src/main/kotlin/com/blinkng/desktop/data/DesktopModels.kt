@@ -33,7 +33,11 @@ data class DesktopProfile(
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
-    val accountType: String? = null
+    val accountType: String? = null,
+    val coverPhotoUrl: String? = null,
+    val professionalHeadline: String? = null,
+    val academicLevel: String? = null,
+    val dailyStreak: Int = 0,
 )
 
 data class DesktopFeedPost(
