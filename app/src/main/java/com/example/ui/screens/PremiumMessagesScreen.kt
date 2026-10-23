@@ -1303,6 +1303,7 @@ private fun PremiumChatDetail(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -2220,7 +2221,7 @@ private fun MessageComposer(
         shadowElevation = 8.dp,
         // PremiumChatDetail owns the safe/IME insets. The composer must not add
         // a second navigation-bar gap between the typing field and keyboard.
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().testTag("chat_message_composer")
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -2273,6 +2274,7 @@ private fun MessageComposer(
                     .weight(1f)
                     .heightIn(min = 44.dp, max = 112.dp)
                     .border(1.dp, palette.border, RoundedCornerShape(24.dp))
+                    .testTag("chat_typing_field")
             )
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = if (value.isBlank()) onQuickLike else onSubmit) {
