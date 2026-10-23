@@ -98,7 +98,7 @@ object InstantChatNotification {
                 ?.trim()?.takeIf(String::isNotBlank)
         }.distinct().take(5)
         val inboxStyle = NotificationCompat.InboxStyle().apply {
-            senderNames.forEach(::addLine)
+            senderNames.forEach { addLine(it) }
             setSummaryText("${children.size} conversations")
         }
         val intent = Intent(context, MainActivity::class.java).apply {
