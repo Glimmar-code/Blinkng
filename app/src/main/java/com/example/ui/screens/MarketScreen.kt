@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.MarketCategoryItem
 import com.example.data.models.MarketItem
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import com.example.data.models.VerificationBadge
 import com.example.data.models.kMarketCategoriesList
 import com.example.ui.components.VerifiedMark
@@ -85,7 +88,15 @@ fun MarketScreen(
         }
     }
 
-    val marketRows = remember(filteredItems) { filteredItems.chunked(2) }
+    // Market cards must not compress two product images/text into a narrow width.
+    // Window width tracks resizes/split-screen; font scale catches large-text layouts.
+    val compactMarketGrid = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+        LocalConfiguration.current.screenWidthDp.toFloat(),
+        LocalDensity.current.fontScale
+    )
+    val marketRows = remember(filteredItems, compactMarketGrid) {
+        filteredItems.chunked(if (compactMarketGrid) 1 else 2)
+    }
     val isVerified = verificationBadge != VerificationBadge.NONE
 
     LazyColumn(
@@ -468,7 +479,7 @@ fun MarketScreen(
                         )
                     }
                 }
-                if (rowItems.size == 1) {
+                if (rowItems.size == 1 && !compactMarketGrid) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }

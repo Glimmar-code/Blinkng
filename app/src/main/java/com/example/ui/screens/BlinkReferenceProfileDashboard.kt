@@ -20,6 +20,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +76,14 @@ internal fun BlinkReferenceProfileDashboard(
     val ink = if (isDark) Color.White else Color.Black
     val muted = if (isDark) Color(0xFFBBBBBB) else Color(0xFF777777)
     val border = if (isDark) Color(0xFF333333) else Color(0xFFEEEEEE)
+    val compactProfile = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+        LocalConfiguration.current.screenWidthDp.toFloat(),
+        LocalDensity.current.fontScale
+    )
+    // At 200% font scale a 320dp phone cannot keep the avatar, name, metadata,
+    // button and two rank cards in their ordinary side-by-side arrangement.
+    val accessibilityProfile = LocalConfiguration.current.screenWidthDp < 340 ||
+        LocalDensity.current.fontScale >= 1.6f
     val xp = xpProgress(profile.totalXp, profile.xpLevel)
     val studentVerified = profile.badges.any {
         val text = (it.id + " " + it.title).lowercase().replace('_', ' ')
@@ -91,8 +102,9 @@ internal fun BlinkReferenceProfileDashboard(
                 modifier = Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onBack)
             )
             Spacer(Modifier.width(10.dp))
-            Text("B L I N K", color = ink, fontWeight = FontWeight.Black,
-                fontSize = 20.sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(if (compactProfile) "BLINK" else "B L I N K", color = ink, fontWeight = FontWeight.Black,
+                fontSize = if (compactProfile) 17.sp else 20.sp,
+                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             listOf(
                 Triple(Icons.Default.Search, "Search", "search"),
                 Triple(Icons.Default.SportsEsports, "Games", "games"),
@@ -104,73 +116,141 @@ internal fun BlinkReferenceProfileDashboard(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(98.dp)) {
-                AsyncImage(
-                    model = profile.avatarUrl, fallback = painterResource(R.drawable.ic_default_profile),
-                    error = painterResource(R.drawable.ic_default_profile), contentDescription = "View avatar",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
-                )
-                if (profile.isBlinkVip) {
-                    Icon(
-                        Icons.Default.EmojiEvents, "BLINK VIP",
-                        tint = Color(0xFFF5B71B),
-                        modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
+        if (accessibilityProfile) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = profile.avatarUrl,
+                        fallback = painterResource(R.drawable.ic_default_profile),
+                        error = painterResource(R.drawable.ic_default_profile),
+                        contentDescription = "View avatar",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(64.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
                     )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(profile.fullName.ifBlank { profile.username },
-                        color = ink, fontWeight = FontWeight.Black, fontSize = 19.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false))
-                    if (profile.verificationBadge != VerificationBadge.NONE) {
-                        Spacer(Modifier.width(5.dp))
-                        com.example.ui.components.VerifiedMark(
-                            badge = profile.verificationBadge, size = 18.dp
-                        )
+                    if (profile.isBlinkVip) {
+                        Icon(Icons.Default.EmojiEvents, "BLINK VIP",
+                            tint = Color(0xFFF5B71B), modifier = Modifier.align(Alignment.TopEnd).size(19.dp))
                     }
                 }
-                if (profile.university.isNotBlank())
-                    Text(profile.university, color = muted, fontSize = 12.sp, maxLines = 2)
-                if (profile.bio.isNotBlank())
-                    Text(profile.bio, color = muted, fontSize = 12.sp, maxLines = 2)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            profile.fullName.ifBlank { profile.username },
+                            modifier = Modifier.weight(1f, fill = false),
+                            color = ink, fontWeight = FontWeight.Black, fontSize = 17.sp,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis
+                        )
+                        if (profile.verificationBadge != VerificationBadge.NONE) {
+                            Spacer(Modifier.width(5.dp))
+                            com.example.ui.components.VerifiedMark(
+                                badge = profile.verificationBadge, size = 18.dp
+                            )
+                        }
+                    }
+                    if (profile.university.isNotBlank()) {
+                        Text(profile.university, color = muted, fontSize = 12.sp,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            if (profile.bio.isNotBlank()) {
+                Text(profile.bio, color = muted, fontSize = 12.sp,
+                    maxLines = 4, overflow = TextOverflow.Ellipsis)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = if (isMe) onEdit else onMessage,
                     colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = bg),
-                    shape = RoundedCornerShape(9.dp), contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.heightIn(min = 36.dp)
+                    shape = RoundedCornerShape(9.dp),
+                    modifier = Modifier.heightIn(min = 42.dp)
                 ) {
                     Text(if (isMe) "Edit Profile" else "Message", fontSize = 11.sp)
                     Spacer(Modifier.width(6.dp))
-                    Icon(if (isMe) Icons.Default.Edit else Icons.Default.Chat, null, modifier = Modifier.size(14.dp))
+                    Icon(if (isMe) Icons.Default.Edit else Icons.Default.Chat,
+                        null, modifier = Modifier.size(14.dp))
                 }
                 if (!isMe) {
                     TextButton(onClick = onFollow, enabled = !followBusy) {
-                        Text(if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow", fontSize = 11.sp)
+                        Text(if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
+                            fontSize = 11.sp)
+                    }
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(if (compactProfile) 82.dp else 98.dp)) {
+                    AsyncImage(
+                        model = profile.avatarUrl, fallback = painterResource(R.drawable.ic_default_profile),
+                        error = painterResource(R.drawable.ic_default_profile), contentDescription = "View avatar",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(if (compactProfile) 80.dp else 96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
+                    )
+                    if (profile.isBlinkVip) {
+                        Icon(
+                            Icons.Default.EmojiEvents, "BLINK VIP",
+                            tint = Color(0xFFF5B71B),
+                            modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(profile.fullName.ifBlank { profile.username },
+                            color = ink, fontWeight = FontWeight.Black, fontSize = if (compactProfile) 17.sp else 19.sp,
+                            maxLines = if (compactProfile) 2 else 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false))
+                        if (profile.verificationBadge != VerificationBadge.NONE) {
+                            Spacer(Modifier.width(5.dp))
+                            com.example.ui.components.VerifiedMark(
+                                badge = profile.verificationBadge, size = 18.dp
+                            )
+                        }
+                    }
+                    if (profile.university.isNotBlank())
+                        Text(profile.university, color = muted, fontSize = 12.sp, maxLines = 2)
+                    if (profile.bio.isNotBlank())
+                        Text(profile.bio, color = muted, fontSize = 12.sp, maxLines = 2)
+                    Button(
+                        onClick = if (isMe) onEdit else onMessage,
+                        colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = bg),
+                        shape = RoundedCornerShape(9.dp), contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.heightIn(min = 36.dp)
+                    ) {
+                        Text(if (isMe) "Edit Profile" else "Message", fontSize = 11.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Icon(if (isMe) Icons.Default.Edit else Icons.Default.Chat, null, modifier = Modifier.size(14.dp))
+                    }
+                    if (!isMe) {
+                        TextButton(onClick = onFollow, enabled = !followBusy) {
+                            Text(if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow", fontSize = 11.sp)
+                        }
                     }
                 }
             }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ProfileReferenceCard(card, border, Modifier.weight(1f)) {
+        val worldRankCard: @Composable (Modifier) -> Unit = { cardModifier ->
+            ProfileReferenceCard(card, border, cardModifier) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Public, null, tint = ink, modifier = Modifier.size(30.dp))
+                    Icon(Icons.Default.Public, null, tint = ink, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(8.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("World Rank", color = ink, fontSize = 12.sp)
                         Text(profileRankLabel(profile.worldRank), color = ink,
                             fontSize = 20.sp, fontWeight = FontWeight.Black)
-                        Text(if (profile.campusRank > 0) "Campus " + profileRankLabel(profile.campusRank)
-                            else "BLINK leaderboard", color = muted, fontSize = 9.sp, maxLines = 1)
+                        Text(
+                            if (profile.campusRank > 0) "Campus " + profileRankLabel(profile.campusRank)
+                            else "BLINK leaderboard",
+                            color = muted, fontSize = 9.sp, maxLines = 2
+                        )
                     }
                 }
             }
-            ProfileReferenceCard(card, border, Modifier.weight(1f),
+        }
+        val coinsCard: @Composable (Modifier) -> Unit = { cardModifier ->
+            ProfileReferenceCard(card, border, cardModifier,
                 onClick = if (isMe) onEarnCoins else null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(31.dp).clip(CircleShape).background(Color(0xFFFBBE17)),
@@ -180,14 +260,28 @@ internal fun BlinkReferenceProfileDashboard(
                     Spacer(Modifier.width(7.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Coins", color = ink, fontSize = 12.sp)
-                        Text(if (isMe) NumberFormat.getIntegerInstance().format(blinkCoinBalance) else "Private",
+                        Text(
+                            if (isMe) NumberFormat.getIntegerInstance().format(blinkCoinBalance) else "Private",
                             color = ink, fontSize = if (isMe) 18.sp else 13.sp,
-                            fontWeight = FontWeight.Black, maxLines = 1)
+                            fontWeight = FontWeight.Black, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text(if (isMe) "Earn more coins" else "Owner only",
-                            color = muted, fontSize = 9.sp, maxLines = 1)
+                            color = muted, fontSize = 9.sp, maxLines = 2)
                     }
                     if (isMe) Icon(Icons.Default.AddBox, "Earn coins", tint = ink, modifier = Modifier.size(21.dp))
                 }
+            }
+        }
+        if (accessibilityProfile) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                worldRankCard(Modifier.fillMaxWidth())
+                coinsCard(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                worldRankCard(Modifier.weight(1f))
+                coinsCard(Modifier.weight(1f))
             }
         }
 
@@ -200,17 +294,34 @@ internal fun BlinkReferenceProfileDashboard(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
+                    if (accessibilityProfile) {
+                        // At 200% fonts even a 320dp phone cannot display
+                        // "Current Rank" next to Level and XP without wrapping
+                        // the title into disconnected columns.
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("Current Rank", color = muted, fontSize = 11.sp)
                             Text(xp.tierLabel, color = ink, fontSize = 17.sp, fontWeight = FontWeight.Black)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
                             Text("Level " + xp.level, color = ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(if (xp.level >= 100) "MAX LEVEL" else
-                                NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
-                                    NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
-                                color = muted, fontSize = 10.sp)
+                            Text(
+                                if (xp.level >= 100) "MAX LEVEL" else
+                                    NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
+                                        NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
+                                color = muted, fontSize = 10.sp
+                            )
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Current Rank", color = muted, fontSize = 11.sp)
+                                Text(xp.tierLabel, color = ink, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Level " + xp.level, color = ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text(if (xp.level >= 100) "MAX LEVEL" else
+                                    NumberFormat.getIntegerInstance().format(xp.xpIntoLevel) + " / " +
+                                        NumberFormat.getIntegerInstance().format(xp.xpForLevel) + " XP",
+                                    color = muted, fontSize = 10.sp)
+                            }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -340,6 +451,10 @@ internal fun BlinkReferenceProfileBottomNav(
     val bg = if (isDark) Color(0xFF111111) else Color.White
     val ink = if (isDark) Color.White else Color.Black
     val muted = if (isDark) Color.LightGray else Color.Gray
+    // Five full text labels cannot fit within 320dp at 200% font scaling.
+    // Retain accessible descriptions on every icon-only tab instead of
+    // clipping neighboring labels into each other.
+    val iconOnly = LocalDensity.current.fontScale >= 1.6f
     Surface(color = bg, modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp) {
         Row(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 2.dp, vertical = 5.dp),
@@ -360,8 +475,10 @@ internal fun BlinkReferenceProfileBottomNav(
                     Icon(icon, contentDescription = label,
                         tint = if (route == selectedRoute) ink else muted, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.height(2.dp))
-                    Text(label, color = if (route == selectedRoute) ink else muted,
-                        fontSize = 10.sp, maxLines = 1)
+                    if (!iconOnly) {
+                        Text(label, color = if (route == selectedRoute) ink else muted,
+                            fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
