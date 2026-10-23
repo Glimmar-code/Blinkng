@@ -197,6 +197,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val messageOutboxMutex = Mutex()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private var chatUiForeground = false
     private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var syncJob: Job? = null
@@ -2711,6 +2712,19 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Mark as read only while the chat is genuinely visible in the foreground. */
+    fun setChatUiForeground(isForeground: Boolean) {
+        chatUiForeground = isForeground
+        val current = _uiState.value
+        val partner = current.activeConversationPartner
+        if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
+            (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
+            viewModelScope.launch {
+                runCatching { chatRepository.markConversationRead(partner) }
+            }
+        }
+    }
+
     fun openChatWithUser(username: String, sellerName: String? = null, sellerAvatar: String? = null) {
         val clean = username.trim().removePrefix("@")
         if (clean.isBlank() || clean.equals("null", true)) {
@@ -2882,7 +2896,13 @@ private suspend fun restoreSupabaseSession() {
                     // Server rows win for matching IDs so delivery/read status is refreshed.
                     page.forEach { message ->
                         val key = message.id.ifBlank { "server:${message.rawTimestamp}:${message.text}" }
-                        merged[key] = message.copy(conversationId = resolvedConversationId)
+                        val cached = merged[key]
+                        merged[key] = message.copy(
+                            conversationId = resolvedConversationId,
+                            status = cached?.let { strongestReceipt(it.status, message.status) }
+                                ?: message.status,
+                            isRead = message.isRead || cached?.isRead == true
+                        )
                     }
                     val messages = merged.values
                         .sortedWith(compareBy<ChatMessage> { it.rawTimestamp.ifBlank { "9999" } }.thenBy { it.id })
@@ -2907,7 +2927,9 @@ private suspend fun restoreSupabaseSession() {
             runCatching { chatRepository.ackPendingDeliveries() }
             // A loading chat might have been closed before the RPC returned. Only
             // an actively viewed conversation may turn its messages blue.
-            if (!older &&
+            if (!older && chatUiForeground &&
+                (_uiState.value.selectedTab == MainTab.MESSAGES ||
+                    _uiState.value.isConversationFullScreen) &&
                 _uiState.value.activeConversationPartner.equals(partnerUsername, true)) {
                 runCatching { chatRepository.markConversationRead(partnerUsername) }
             }
@@ -3674,7 +3696,9 @@ private suspend fun restoreSupabaseSession() {
             )
 
             val latest = _uiState.value
-            val active = latest.activeConversationPartner?.equals(partner, true) == true
+            val active = chatUiForeground &&
+                (latest.selectedTab == MainTab.MESSAGES || latest.isConversationFullScreen) &&
+                latest.activeConversationPartner?.equals(partner, true) == true
             val conversations = latest.conversations.toMutableList()
             val index = conversations.indexOfFirst {
                 it.id == conversationId || it.partnerUsername.equals(partner, true)
