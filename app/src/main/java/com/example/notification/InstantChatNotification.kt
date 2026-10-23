@@ -2,6 +2,8 @@ package com.example.notification
 
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationManager
+import android.os.Build
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -34,7 +36,95 @@ object InstantChatNotification {
 
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
     private const val MESSAGE_ID_BASE = 1000
+    private const val SUMMARY_ID_BASE = 1800
     private const val GROUP_KEY_MESSAGES = "blink_group_messages"
+
+    // Only keep a few previews in RAM while an alert is active, never in disk preferences.
+    // Account-switching, dismissal and process death all invalidate this transient history.
+    private data class Preview(val text: String, val atMillis: Long)
+    private val historyLock = Any()
+    private val activeHistory = LinkedHashMap<String, MutableList<Preview>>()
+    private var historyAccount: String? = null
+
+    private fun recentPreviews(
+        account: String, conversation: String, notificationWasActive: Boolean,
+        text: String, now: Long
+    ): List<Preview> {
+        if (!BlinkNotificationQuickActionPolicy.isId(account)) return listOf(Preview(text, now))
+        synchronized(historyLock) {
+            if (historyAccount != account) {
+                activeHistory.clear()
+                historyAccount = account
+            }
+            val key = conversation
+            if (!notificationWasActive) activeHistory.remove(key)
+            val previews = activeHistory.getOrPut(key) { mutableListOf() }
+            previews.add(Preview(text, now))
+            while (previews.size > 4) previews.removeAt(0)
+            while (activeHistory.size > 16) {
+                activeHistory.remove(activeHistory.keys.first())
+            }
+            return previews.toList()
+        }
+    }
+
+    private fun messageGroup(account: String): String =
+        if (BlinkNotificationQuickActionPolicy.isId(account)) "$GROUP_KEY_MESSAGES:$account"
+        else GROUP_KEY_MESSAGES
+
+    private fun activeMessageNotifications(context: Context, group: String): List<android.service.notification.StatusBarNotification> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return emptyList()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return emptyList()
+        return runCatching {
+            manager.activeNotifications.filter {
+                it.id in MESSAGE_ID_BASE until MESSAGE_ID_BASE + 700 &&
+                    it.notification.group == group &&
+                    it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun updateGroupSummary(context: Context, account: String, group: String) {
+        if (!BlinkNotificationQuickActionPolicy.isId(account)) return
+        val summaryId = SUMMARY_ID_BASE + positiveHash(account) % 100
+        val children = activeMessageNotifications(context, group)
+        if (children.size < 2) {
+            NotificationManagerCompat.from(context).cancel(summaryId)
+            return
+        }
+        val senderNames = children.mapNotNull {
+            it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+                ?.trim()?.takeIf(String::isNotBlank)
+        }.distinct().take(5)
+        val inboxStyle = NotificationCompat.InboxStyle().apply {
+            senderNames.forEach(::addLine)
+            setSummaryText("${children.size} conversations")
+        }
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            data = Uri.parse("blink://notification/messages/${Uri.encode(account)}")
+            putExtra(BlinkNotificationHelper.EXTRA_ACTION, BlinkNotificationHelper.ACTION_OPEN_MESSAGES)
+        }
+        val openInbox = PendingIntent.getActivity(
+            context, summaryId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val summary = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+            .setContentTitle("BLINK Messages (${children.size})")
+            .setContentText("${children.size} conversations")
+            .setStyle(inboxStyle)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setGroup(group)
+            .setGroupSummary(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openInbox)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .build()
+        postNotification(context, summaryId, summary)
+    }
 
     fun show(
         context: Context,
@@ -52,6 +142,10 @@ object InstantChatNotification {
 
         val stableConversationKey = conversationId.ifBlank { senderUsername }
         val notificationId = MESSAGE_ID_BASE + positiveHash(stableConversationKey) % 700
+        val group = messageGroup(expectedAccount)
+        val previousAlertActive = activeMessageNotifications(context, group).any { it.id == notificationId }
+        val now = System.currentTimeMillis()
+        val previews = recentPreviews(expectedAccount, stableConversationKey, previousAlertActive, messageText, now)
         val sender = Person.Builder()
             .setName(senderName.ifBlank { senderUsername.ifBlank { "Blink user" } })
             .setKey(senderUsername.ifBlank { stableConversationKey })
@@ -59,9 +153,11 @@ object InstantChatNotification {
         val me = Person.Builder().setName("You").setKey("blink_self").build()
 
         val messagingStyle = NotificationCompat.MessagingStyle(me)
-            .addMessage(messageText, System.currentTimeMillis(), sender)
             .setConversationTitle(sender.name)
             .setGroupConversation(false)
+        previews.forEach { preview ->
+            messagingStyle.addMessage(preview.text, preview.atMillis, sender)
+        }
 
         val contentIntent = buildChatPendingIntent(
             context = context,
@@ -92,7 +188,7 @@ object InstantChatNotification {
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             .setContentIntent(contentIntent)
-            .setGroup(GROUP_KEY_MESSAGES)
+            .setGroup(group)
             .setGroupSummary(false)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         val allowedActions = BlinkNotificationQuickActionPolicy.available(
@@ -107,6 +203,9 @@ object InstantChatNotification {
             )?.let(builder::addAction)
         }
         postNotification(context, notificationId, builder.build())
+        // Android manages the collapsed view; a silent summary makes multiple
+        // independent conversations easier to expand without duplicate alerts.
+        updateGroupSummary(context, expectedAccount, group)
     }
 
     fun showReplyQueued(
