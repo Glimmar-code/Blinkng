@@ -864,8 +864,14 @@ fun LeaderboardScreen(state: DesktopAppState) {
         }.take(10)
     }
     val current = entries.firstOrNull { it.userId == state.profile?.id }
-    val topThree = ranked.take(3)
-    val otherStudents = ranked.drop(3)
+    val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
+        it.university?.trim()?.equals(campus, ignoreCase = true) == true
+    }
+    val campusChampions = entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
+        .sortedWith(compareBy<DesktopLeaderboardEntry> { it.campusRank ?: Int.MAX_VALUE }
+            .thenByDescending { it.campusScore }).take(3)
+    val topThree = if (featuredCampus) campusChampions else ranked.take(3)
+    val otherStudents = if (featuredCampus) ranked else ranked.drop(3)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -998,7 +1004,7 @@ fun LeaderboardScreen(state: DesktopAppState) {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(
-                            if (selectedScope == "Campus") "Top 3 on Campus" else "Top 3 on BLINK",
+                            if (selectedScope == "Campus" || featuredCampus) "Top 3 on Campus" else "Top 3 on BLINK",
                             fontSize = 16.sp, fontWeight = FontWeight.Black
                         )
                         Spacer(Modifier.height(14.dp))
@@ -1024,12 +1030,12 @@ fun LeaderboardScreen(state: DesktopAppState) {
                                                 )
                                             }
                                             Text(
-                                                "#" + (if (selectedScope == "Campus") student.campusRank else student.worldRank).toString(),
+                                                "#" + (if (selectedScope == "Campus" || featuredCampus) student.campusRank else student.worldRank)?.toString() ?: "—",
                                                 color = accent, fontWeight = FontWeight.Bold
                                             )
                                             Text(student.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                                             Text(
-                                                (if (selectedScope == "Campus") student.campusScore else student.worldScore).toString() + " points",
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusScore else student.worldScore).toString() + " points",
                                                 fontSize = 12.sp, color = muted
                                             )
                                         }
