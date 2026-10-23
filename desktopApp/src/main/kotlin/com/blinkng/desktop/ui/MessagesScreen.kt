@@ -354,15 +354,20 @@ fun MessagesScreen(state: DesktopAppState) {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
                                 Text(message.content)
                                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text(
-                                        when {
-                                            message.readAt != null -> "Read"
-                                            message.deliveredAt != null -> "Delivered"
-                                            else -> "Sent"
-                                        },
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    if (mine) {
+                                        val receipt = when {
+                                            message.readAt != null || message.isRead -> "READ"
+                                            message.deliveredAt != null -> "DELIVERED"
+                                            else -> "SENT"
+                                        }
+                                        Text(
+                                            BlinkDeliveryReceipt.ticks(receipt),
+                                            fontSize = 11.sp,
+                                            color = if (BlinkDeliveryReceipt.isRead(receipt))
+                                                Color(0xFF3B82F6)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                     if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
                                 }
                             }
