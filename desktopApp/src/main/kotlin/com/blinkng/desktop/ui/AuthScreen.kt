@@ -33,7 +33,9 @@ private val authLine = Color(0xFFDFDFDF)
 /**
  * Desktop equivalent of the Android BLINK reference: white form, bold BLINK
  * wordmark, black submit button and the same real Supabase auth handlers.
- * Uses a centered desktop card instead of stretching the phone mock-up.
+ * Uses a centered width-capped desktop card instead of stretching the phone mock-up.
+ * Narrow windows keep native-sized readable inputs and a scrollable content card,
+ * matching Android's compact rather than the promotional frame.
  */
 @Composable
 fun BlinkAuthScreen(state: DesktopAppState) {
@@ -63,7 +65,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
         contentAlignment = Alignment.TopCenter,
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 520.dp).padding(horizontal = 18.dp),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).padding(horizontal = 12.dp),
             shape = RoundedCornerShape(25.dp),
             color = Color.White,
             contentColor = authInk,
@@ -71,7 +73,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
             tonalElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
