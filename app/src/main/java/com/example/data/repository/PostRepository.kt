@@ -6,6 +6,7 @@ import com.example.data.models.Comment
 import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,22 +16,60 @@ internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
+/**
+ * SQLSTATE 57014 is also used for user cancellations, so require the database's
+ * specific statement-timeout message rather than classifying every cancellation
+ * or unrelated network failure as a ranked-feed timeout.
+ */
+internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }
+        .any { cause -> cause.message.orEmpty().contains("statement timeout", ignoreCase = true) }
+
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
     private val likeMutationMutexGuard = Mutex()
     private val likeMutationMutexes = mutableMapOf<String, Mutex>()
 
+    /**
+     * On a PostgreSQL statement timeout, try one lighter, authenticated/RLS-protected
+     * chronological page on initial load. Do not retry expensive ranked RPCs in a
+     * tight loop. Preserve ranked cursors on load-more failures: chronological and
+     * ranked pagination cannot be mixed safely.
+     *
+     * If both requests fail, propagate the error so BlinkViewModel can preserve its
+     * last successful/cached feed and display the existing refresh error state.
+     */
+    private suspend fun fetchRankedPageSafely(
+        limit: Int,
+        feedType: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null
+    ): List<FeedPost> {
+        return try {
+            supabaseService.fetchFeedPage(
+                limit = limit,
+                beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId,
+                feedType = "ranked_$feedType"
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (!isRecoverableRankedFeedTimeout(error)) throw error
+            val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+            if (!firstPage) throw error
+
+            Log.w("PostRepository", "Ranked $feedType timed out; using one safe initial-page fallback", error)
+            supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+        }
+    }
+
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
-        try {
-            when (isReel) {
-                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
-                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
-                null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFeed error: ${e.message}")
-            emptyList()
+        when (isReel) {
+            true -> fetchRankedPageSafely(30, "reels")
+            false -> fetchRankedPageSafely(30, "posts")
+            null -> fetchRankedPageSafely(60, "all")
         }
     }
 
@@ -44,11 +83,11 @@ class PostRepository(
         beforeId: String? = null,
         limit: Int = 30
     ): List<FeedPost> = withContext(Dispatchers.IO) {
-        supabaseService.fetchFeedPage(
+        fetchRankedPageSafely(
             limit = limit,
+            feedType = if (isReel) "reels" else "posts",
             beforeCreatedAt = beforeCreatedAt,
-            beforeId = beforeId,
-            feedType = if (isReel) "ranked_reels" else "ranked_posts"
+            beforeId = beforeId
         )
     }
 
