@@ -48,7 +48,9 @@ import com.example.data.models.NigerianUniversities
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
- * Reference hero and three different student portrait crops ship in offline WebP;\n * no more sharing a tiny low-quality campus JPEG across all subjects.\n * Compact Android shows the functional phone-screen content; wide screens add
+ * Reference hero and three different student portrait crops ship in offline WebP;
+ * no more sharing a tiny low-quality campus JPEG across all subjects.
+ * Compact Android shows the functional phone-screen content; wide screens add
  * poster framing without turning interactive controls into a static picture.
  * All authentication is handled by the existing callbacks / Supabase flow.
  */
