@@ -853,7 +853,7 @@ fun LeaderboardScreen(state: DesktopAppState) {
 
     val ranked = remember(entries, selectedScope, campus) {
         val sorted = if (selectedScope == "Campus") {
-            entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
+            entries.filter { com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus) }
                 .sortedWith(compareBy<DesktopLeaderboardEntry> {
                     it.campusRank ?: Int.MAX_VALUE
                 }.thenByDescending { it.campusScore })
@@ -866,9 +866,9 @@ fun LeaderboardScreen(state: DesktopAppState) {
     }
     val current = entries.firstOrNull { it.userId == state.profile?.id }
     val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
-        it.university?.trim()?.equals(campus, ignoreCase = true) == true
+        com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus)
     }
-    val campusChampions = entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
+    val campusChampions = entries.filter { com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus) }
         .sortedWith(compareBy<DesktopLeaderboardEntry> { it.campusRank ?: Int.MAX_VALUE }
             .thenByDescending { it.campusScore }).take(3)
     val topThree = if (featuredCampus) campusChampions else ranked.take(3)
