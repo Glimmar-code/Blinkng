@@ -1,3 +1,13 @@
+## 2026-10-23 — Responsive reference-form repair (staging)
+
+- **Problem found:** The previous Android auth update used one heavily compressed campus photo for both login and three sign-up portraits, added unapproved visible controls, and had fixed-size image crops that did not adapt to narrow phones.
+- **Android fix (first integration):** Split decorative tablet poster framing from functional compact-phone form; use dp/sp instead of compressing entire phone mockups. Make login reset the only secondary row action. Restore circular Google/Apple/email layout (Apple disabled until genuine OAuth is supported), searchable campus picker, real Google login, secure password visibility toggle, and explicit terms confirmation before signup.
+- **Windows equivalent:** Keep the white branded Windows auth card width-capped to 520dp with narrower padding for small windows. No fake Apple OAuth button is enabled on Android or Windows.
+- **Responsive:** 320–480dp compact width uses screen space for reachable native inputs; >=700dp tablets show black poster headline alongside a width-bounded white auth phone. Both forms remain vertically scrollable for landscape, short displays, keyboard and 130–200% font settings.
+- **Visual fidelity:** Replace the previously repeated 6.6KB campus image with four bundled offline WebP crops extracted from the user-provided approved screenshots: the real login hero scene and three distinct signup student portraits. These source crops cannot recover detail beyond the supplied poster resolution; final pixel-level identity and surrounding monochrome marketing artwork remain unverified until native-mode emulator captures are reviewed side-by-side. The actual interactive form is intentionally prioritized over a shrunken noninteractive marketing poster on narrow phones.
+- **Safety:** Preserve Supabase account creation, password rules, Google login gate, encrypted remembered-login preferences, password recovery and signup campus hand-off. No database migration or change to checkout.
+- **Verification:** Add 320dp and 800dp Robolectric tests, run CI/Android compilation and review screenshot differences before promoting to main. Keep existing signed APK live until checks pass.
+
 ## 2026-10-23 — Reference-style BLINK login and student sign-up
 
 - **Android:** The real login and create-account routes now use a white, rounded-card layout with the approved BLINK wordmark, campus photography, accessible fields, password visibility, Google auth, forgot-password recovery and working navigation. The promotional poster and device frame are excluded from the in-app screen. Existing Supabase sign-in/sign-up handlers and encrypted opt-in remembered-login storage remain in place.

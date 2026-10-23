@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,9 +23,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +49,10 @@ import com.example.data.models.NigerianUniversities
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
- * The promotional poster, outer phone frame and doodles are not app UI.
+ * Reference hero and three different student portrait crops ship in offline WebP;
+ * no more sharing a tiny low-quality campus JPEG across all subjects.
+ * Compact Android shows the functional phone-screen content; wide screens add
+ * poster framing without turning interactive controls into a static picture.
  * All authentication is handled by the existing callbacks / Supabase flow.
  */
 private val Ink = Color(0xFF080808)
@@ -74,7 +83,7 @@ private fun Wordmark(modifier: Modifier = Modifier, color: Color = Ink) {
     Text(
         text = "B L I N K",
         color = color,
-        fontSize = 27.sp,
+        fontSize = if (LocalDensity.current.fontScale > 1.35f) 22.sp else 27.sp,
         fontWeight = FontWeight.Black,
         modifier = modifier,
         maxLines = 1
@@ -170,7 +179,7 @@ private fun OrSeparator() {
 private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: String) {
     OutlinedButton(
         onClick = onClick, enabled = !loading,
-        modifier = Modifier.fillMaxWidth().height(54.dp).testTag(tag),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag(tag),
         border = BorderStroke(1.2.dp, Ink),
         shape = RoundedCornerShape(11.dp),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Ink)
@@ -182,8 +191,137 @@ private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: Stri
         }
         Spacer(Modifier.width(14.dp))
         Text(if (loading) "Opening Google..." else "Continue with Google",
-            fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2, textAlign = TextAlign.Center)
     }
+}
+
+
+/**
+ * Compact Android phones render the exact usable UI INSIDE the reference phone,
+ * rather than shrinking a marketing poster (and its input targets) to illegibility.
+ * Tablets/desktop-width Android screens include the poster headline and monochrome
+ * framing outside a centered, 430dp-wide interactive screen.
+ *
+ * Never scale touch targets or font sizes down based on pixel density: Material's
+ * dp/sp sizing, natural wrapping and independent vertical scrolling remain intact.
+ */
+@Composable
+private fun AuthAdaptiveShell(
+    posterTitle: String,
+    posterSubtitle: String,
+    content: @Composable () -> Unit
+) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(Color.White)
+            .testTag("auth_adaptive_stage")
+    ) {
+        val posterCanvasWidth = maxWidth
+        val expanded = posterCanvasWidth >= 700.dp
+        if (expanded) {
+            Row(
+                modifier = Modifier.fillMaxSize().background(Color(0xFF0B0B0B)),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Image(
+                        painter = painterResource(R.drawable.blink_auth_reference_poster_people),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alpha = 0.46f,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .fillMaxWidth().fillMaxHeight(0.66f)
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.0f to Color(0xFF0B0B0B),
+                                0.40f to Color(0xE60B0B0B),
+                                1.0f to Color.Transparent
+                            )
+                        )
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 36.dp, end = 22.dp, top = 45.dp, bottom = 32.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(posterTitle, color = Color.White, fontWeight = FontWeight.Black,
+                            fontSize = if (posterCanvasWidth < 850.dp) 30.sp else 42.sp,
+                            lineHeight = if (posterCanvasWidth < 850.dp) 33.sp else 43.sp)
+                    Spacer(Modifier.height(24.dp))
+                    Text("B L I N K", color = Color.White,
+                        fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(posterSubtitle, color = Color(0xFFE5E5E5),
+                        fontSize = 17.sp, lineHeight = 25.sp)
+                    Spacer(Modifier.height(45.dp))
+                    Text("REAL STUDENTS  ✦  NEW FRIENDS  ✦  START NOW",
+                        color = Color(0xFFB7B7B7), fontSize = 13.sp)
+                    }
+                }
+                Surface(
+                    modifier = Modifier.widthIn(min = 330.dp, max = 450.dp)
+                        .fillMaxHeight().padding(end = 20.dp, top = 12.dp, bottom = 12.dp)
+                        .testTag("auth_reference_phone"),
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color.White, contentColor = Ink,
+                    border = BorderStroke(3.dp, Color(0xFF575757))
+                ) {
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(25.dp))) { content() }
+                }
+            }
+        } else {
+            Box(Modifier.fillMaxSize().testTag("auth_compact_phone")) { content() }
+        }
+    }
+}
+
+
+/** Preserve readable account navigation at 130-200% font scaling. */
+@Composable
+private fun AuthAccountSwitcher(prompt: String, link: String, onClick: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val stacked = maxWidth < 350.dp || LocalDensity.current.fontScale >= 1.3f
+        if (stacked) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(prompt, color = Hint, fontSize = 12.sp, textAlign = TextAlign.Center)
+                TextButton(onClick = onClick) {
+                    Text(link, color = Ink, fontWeight = FontWeight.Bold,
+                        textDecoration = TextDecoration.Underline)
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(prompt, color = Hint, fontSize = 12.sp)
+                TextButton(onClick = onClick) {
+                    Text(link, color = Ink, fontWeight = FontWeight.Bold,
+                        textDecoration = TextDecoration.Underline)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthSocialCircle(
+    tag: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit
+) {
+    OutlinedButton(
+        modifier = Modifier.size(65.dp).testTag(tag),
+        shape = CircleShape,
+        onClick = onClick, enabled = enabled,
+        contentPadding = PaddingValues(0.dp),
+        border = BorderStroke(1.dp, Line),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.White, contentColor = Ink,
+            disabledContainerColor = Color.White, disabledContentColor = Hint
+        ),
+        content = content
+    )
 }
 
 @Composable
@@ -199,41 +337,37 @@ fun BlinkReferenceSignInScreen(
     val stored = remember { RememberedLoginStore.load(context) }
     var identifier by rememberSaveable { mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier) }
     var password by remember { mutableStateOf(stored?.password.orEmpty()) }
-    var rememberCredentials by rememberSaveable { mutableStateOf(stored != null) }
+    val rememberCredentials = stored != null
     var visible by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var forgot by remember { mutableStateOf(false) }
     val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
 
+    AuthAdaptiveShell(
+        posterTitle = "Log In And\nJump Back In",
+        posterSubtitle = "Secure access to your profile, messages, coins and campus activity."
+    ) {
+    val screenHeight = LocalConfiguration.current.screenHeightDp
     Column(
         modifier = Modifier.fillMaxSize().background(Color.White)
-            .navigationBarsPadding().verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()).navigationBarsPadding()
     ) {
-        Box(Modifier.fillMaxWidth().height(310.dp)) {
+        Box(Modifier.fillMaxWidth().height(
+            (screenHeight * 0.36f).coerceIn(210f, 315f).dp
+        )) {
             Image(
-                painter = painterResource(R.drawable.blink_auth_campus_hero),
+                painter = painterResource(R.drawable.blink_auth_reference_login_photo),
                 contentDescription = "Students together on campus",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.statusBarsPadding().padding(8.dp)
-                    .background(Color.White.copy(alpha = .86f), CircleShape)
-            ) {
-                Icon(Icons.Default.ArrowBack, "Back", tint = Ink)
-            }
             Wordmark(
-                modifier = Modifier.statusBarsPadding().align(Alignment.TopCenter).padding(top = 26.dp),
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
                 color = Ink
             )
-            Text(
-                "Good People\nBrighter Days ♡", color = Color.White,
-                fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.End,
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 22.dp, top = 42.dp)
-            )
+            // The extracted reference scene already includes its hand-lettered art.
+            // Do not paint a duplicate phrase over the original photograph.
         }
         Column(
             modifier = Modifier.fillMaxWidth().offset(y = (-28).dp)
@@ -262,23 +396,7 @@ fun BlinkReferenceSignInScreen(
                 Modifier.testTag("signin_password_field"), password = true,
                 visible = visible, onToggle = { visible = !visible }
             )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = rememberCredentials,
-                        onCheckedChange = {
-                            rememberCredentials = it
-                            if (!it) RememberedLoginStore.clear(context)
-                        },
-                        modifier = Modifier.size(34.dp),
-                        colors = CheckboxDefaults.colors(checkedColor = Ink)
-                    )
-                    Text("Remember me", fontSize = 11.sp, color = Hint)
-                }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                 TextButton(onClick = { forgot = true }) {
                     Text("Forgot Password?", color = Ink, textDecoration = TextDecoration.Underline,
                         fontSize = 12.sp)
@@ -307,14 +425,9 @@ fun BlinkReferenceSignInScreen(
             OrSeparator()
             GoogleOutlineButton(googleLoading, { onGoogleSignIn("") }, "signin_google_btn")
             Spacer(Modifier.height(21.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Don't have an account?", color = Hint, fontSize = 12.sp)
-                TextButton(onClick = onSwitchToSignUp) {
-                    Text("Sign Up", color = Ink, textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Bold)
-                }
-            }
+            AuthAccountSwitcher("Don't have an account?", "Sign Up", onSwitchToSignUp)
         }
+    }
     }
     if (forgot) {
         ForgotPasswordDialog(
@@ -377,23 +490,23 @@ fun BlinkReferenceCreateAccountScreen(
     var university by rememberSaveable { mutableStateOf("") }
     var pickingUniversity by remember { mutableStateOf(false) }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
+    var confirmTerms by remember { mutableStateOf(false) }
+    val emailFocus = remember { FocusRequester() }
     var error by remember { mutableStateOf<String?>(null) }
     val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
-    val ready = fullName.trim().length >= 2 && email.contains("@") &&
-        isStrongBlinkPassword(password) && university.isNotBlank() && acceptedTerms
 
-    Box(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding()) {
+    AuthAdaptiveShell(
+        posterTitle = "Create Your\nStudent Account",
+        posterSubtitle = "Sign up in moments and unlock your campus community, market and messages."
+    ) {
+    Box(Modifier.fillMaxSize().background(Color.White)) {
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .statusBarsPadding().padding(horizontal = 22.dp).padding(top = 12.dp, bottom = 26.dp),
+                .statusBarsPadding().navigationBarsPadding()
+                .padding(horizontal = 22.dp).padding(top = 12.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(Modifier.fillMaxWidth()) {
-                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = Ink)
-                }
-                Wordmark(Modifier.align(Alignment.Center))
-            }
+            Wordmark()
             Spacer(Modifier.height(6.dp))
             Text(
                 "Join a brighter campus community\nof real students.",
@@ -401,29 +514,38 @@ fun BlinkReferenceCreateAccountScreen(
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(12.dp))
-            // The three campus circles match the reference without stretching on narrow phones.
-            Row(
-                modifier = Modifier.fillMaxWidth().height(132.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf(Color(0xFFF1E5FF), Color(0xFFFFE8AE), Color(0xFFD7E9FF)).forEachIndexed { i, color ->
-                    Box(
-                        Modifier.padding(horizontal = 2.dp)
-                            .size(if (i == 1) 126.dp else 96.dp)
-                            .background(color, CircleShape).clip(CircleShape)
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.blink_auth_campus_hero),
-                            contentDescription = if (i == 1) "Students at BLINK" else null,
-                            contentScale = ContentScale.Crop,
-                            alignment = when (i) {
-                                0 -> Alignment.CenterStart
-                                1 -> Alignment.Center
-                                else -> Alignment.CenterEnd
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+            // Size against actual available width: no clipping at 320dp or 200% fonts.
+            BoxWithConstraints(Modifier.fillMaxWidth().height(142.dp)) {
+                val side = (maxWidth.value * 0.27f).coerceIn(66f, 94f).dp
+                val center = (maxWidth.value * 0.34f).coerceIn(82f, 124f).dp
+                Row(
+                    Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy((-10).dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val colors = listOf(Color(0xFFE8D7FA), Color(0xFFFFE4A9), Color(0xFFDCEEFF))
+                    repeat(3) { i ->
+                        Box(
+                            Modifier.size(if (i == 1) center else side)
+                                .background(colors[i], CircleShape)
+                                .clip(CircleShape).border(1.dp, Color.White, CircleShape)
+                        ) {
+                            Image(
+                                painter = painterResource(listOf(
+                                    R.drawable.blink_auth_reference_student_left,
+                                    R.drawable.blink_auth_reference_student_center,
+                                    R.drawable.blink_auth_reference_student_right
+                                )[i]),
+                                contentDescription = if (i == 1) "Campus students" else null,
+                                contentScale = ContentScale.Crop,
+                                alignment = when (i) {
+                                    0 -> Alignment.CenterStart
+                                    1 -> Alignment.Center
+                                    else -> Alignment.CenterEnd
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }
@@ -436,7 +558,7 @@ fun BlinkReferenceCreateAccountScreen(
                 Icons.Default.Person, Modifier.testTag("create_account_name"))
             Spacer(Modifier.height(10.dp))
             ReferenceInput(email, { email = it.take(120); error = null }, "Email",
-                Icons.Default.Email, Modifier.testTag("create_account_email"), KeyboardType.Email)
+                Icons.Default.Email, Modifier.testTag("create_account_email").focusRequester(emailFocus), KeyboardType.Email)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { pickingUniversity = true },
@@ -459,29 +581,19 @@ fun BlinkReferenceCreateAccountScreen(
             ReferenceInput(password, { password = it; error = null }, "Password",
                 Icons.Default.Lock, Modifier.testTag("create_account_password"), password = true,
                 visible = visible, onToggle = { visible = !visible })
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    acceptedTerms, { acceptedTerms = it },
-                    colors = CheckboxDefaults.colors(checkedColor = Ink)
-                )
-                Text("I agree to BLINK's terms and community guidelines.",
-                    color = Hint, fontSize = 11.sp, lineHeight = 15.sp)
-            }
             Spacer(Modifier.height(6.dp))
-            SolidAuthButton("Create Account", enabled = ready,
+            SolidAuthButton("Create Account", enabled = true,
                 tag = "create_account_submit") {
                 error = when {
                     fullName.trim().length < 2 -> "Enter your full name."
                     !email.contains("@") -> "Enter a valid email address."
                     university.isBlank() -> "Select your university."
                     !isStrongBlinkPassword(password) -> "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
-                    !acceptedTerms -> "Please accept BLINK's terms to continue."
-                    else -> null
+                     else -> null
                 }
-                if (error == null) {
+                if (error == null && !acceptedTerms) {
+                    confirmTerms = true
+                } else if (error == null) {
                     // Save only this campus choice for the existing onboarding screen;
                     // passwords stay with the current Supabase sign-up callback.
                     SignupCampusPreference.set(context, university)
@@ -489,16 +601,54 @@ fun BlinkReferenceCreateAccountScreen(
                 }
             }
             OrSeparator()
-            GoogleOutlineButton(googleLoading, { onGoogle("") }, "create_account_google")
-            Spacer(Modifier.height(13.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Already have an account?", color = Hint, fontSize = 12.sp)
-                TextButton(onClick = onLogin) {
-                    Text("Log In", fontWeight = FontWeight.Bold, color = Ink,
-                        textDecoration = TextDecoration.Underline)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AuthSocialCircle(
+                    tag = "create_account_google",
+                    enabled = !googleLoading,
+                    onClick = { onGoogle("") }
+                ) {
+                    if (googleLoading) CircularProgressIndicator(Modifier.size(22.dp), color = Ink, strokeWidth = 2.dp)
+                    else GoogleLogoVector(Modifier.size(23.dp))
                 }
+                Spacer(Modifier.width(24.dp))
+                // Apple login must remain disabled until a real provider is configured.
+                AuthSocialCircle(
+                    tag = "create_account_apple_unavailable",
+                    enabled = false, onClick = {}
+                ) { Text("Apple", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(24.dp))
+                AuthSocialCircle(
+                    tag = "create_account_email_focus",
+                    onClick = { emailFocus.requestFocus() }
+                ) { Icon(Icons.Default.MailOutline, contentDescription = "Sign up with email") }
             }
+            Spacer(Modifier.height(13.dp))
+            AuthAccountSwitcher("Already have an account?", "Log In", onLogin)
         }
+    }
+    }
+    if (confirmTerms) {
+        AlertDialog(
+            onDismissRequest = { confirmTerms = false },
+            title = { Text("BLINK terms and community guidelines", color = Ink) },
+            text = { Text("By creating an account you agree to follow BLINK's terms and community guidelines.", color = Ink) },
+            confirmButton = {
+                TextButton(onClick = {
+                    acceptedTerms = true
+                    confirmTerms = false
+                    SignupCampusPreference.set(context, university)
+                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password)
+                }) { Text("Agree & Create Account", color = Ink) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmTerms = false }) { Text("Cancel", color = Ink) }
+            },
+            containerColor = Color.White
+        )
     }
     if (pickingUniversity) {
         CampusDialog(

@@ -88,6 +88,29 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Record real responsive authentication screenshots
+        if: steps.scope.outputs.android == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest \
+            --tests com.example.ui.screens.BlinkAuthNarrowScreenTest \
+            --tests com.example.ui.screens.BlinkAuthExpandedScreenTest \
+            -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          find . -type f -name 'blink-auth-*.png' -print | sort
+          count=$(find . -type f -name 'blink-auth-*.png' | wc -l)
+          echo "Captured auth reference screenshots: $count"
+          test "$count" -ge 7
+
+      - name: Upload responsive BLINK authentication reference captures
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-auth-reference-screens-${{ github.sha }}
+          path: '**/blink-auth-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Record actual Compose accessibility screenshots with Robolectric
         if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --tests com.example.BlinkMainAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
