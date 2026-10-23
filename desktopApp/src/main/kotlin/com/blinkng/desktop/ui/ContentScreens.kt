@@ -2716,6 +2716,19 @@ fun StoreScreen(state: DesktopAppState) {
     }
 }
 
+/** Match punctuation variants and existing FUTA aliases without merging unknown campuses. */
+private fun sameRankCampus(first: String?, second: String?): Boolean {
+    fun key(value: String?): String {
+        val normalized = value.orEmpty().trim().lowercase().replace(Regex("[^a-z0-9]"), "")
+        return when (normalized) {
+            "futa", "futakure" -> "federaluniversityoftechnologyakure"
+            else -> normalized
+        }
+    }
+    val a = key(first)
+    return a.isNotBlank() && a == key(second)
+}
+
 @Composable
 fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
@@ -2807,7 +2820,7 @@ fun LeaderboardScreen(state: DesktopAppState) {
 
     val ranked = remember(entries, selectedScope, campus) {
         val sorted = if (selectedScope == "Campus") {
-            entries.filter { com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus) }
+            entries.filter { sameRankCampus(it.university, campus) }
                 .sortedWith(compareBy<DesktopLeaderboardEntry> {
                     it.campusRank ?: Int.MAX_VALUE
                 }.thenByDescending { it.campusScore })
@@ -2820,9 +2833,9 @@ fun LeaderboardScreen(state: DesktopAppState) {
     }
     val current = entries.firstOrNull { it.userId == state.profile?.id }
     val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
-        com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus)
+        sameRankCampus(it.university, campus)
     }
-    val campusChampions = entries.filter { com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campus) }
+    val campusChampions = entries.filter { sameRankCampus(it.university, campus) }
         .sortedWith(compareBy<DesktopLeaderboardEntry> { it.campusRank ?: Int.MAX_VALUE }
             .thenByDescending { it.campusScore }).take(3)
     val topThree = if (featuredCampus) campusChampions else ranked.take(3)
