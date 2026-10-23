@@ -835,27 +835,257 @@ fun StoreScreen(state: DesktopAppState) {
 fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        entries = runCatching { state.client.fetchLeaderboard() }.getOrDefault(emptyList())
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedScope by remember { mutableStateOf("Global") }
+    val scope = rememberCoroutineScope()
+    val campus = state.profile?.university?.trim().orEmpty()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = Color(0xFF7548E8)
+
+    suspend fun reload() {
+        loading = true
+        runCatching { state.client.fetchLeaderboard() }
+            .onSuccess { entries = it; error = null }
+            .onFailure { error = it.message ?: "Unable to load rankings" }
         loading = false
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { ScreenHeader("Leaderboard", "World and campus ranking") }
-        if (loading) item { LoadingRow() }
-        items(entries, key = { it.userId }) { entry ->
-            Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
-                Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("#${entry.worldRank ?: "–"}", modifier = Modifier.width(64.dp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                    Column(modifier = Modifier.weight(1f)) {
-                        VerifiedName(entry.name, entry.verificationTier.lowercase() != "none" && entry.verificationTier.isNotBlank())
-                        Text("@${entry.handle} • ${entry.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("${entry.worldScore} pts", fontWeight = FontWeight.Bold)
-                        Text("Campus #${entry.campusRank ?: "–"}", fontSize = 11.sp)
+    LaunchedEffect(state.profile?.id) { reload() }
+
+    val ranked = remember(entries, selectedScope, campus) {
+        val sorted = if (selectedScope == "Campus") {
+            entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
+                .sortedWith(compareBy<DesktopLeaderboardEntry> {
+                    it.campusRank ?: Int.MAX_VALUE
+                }.thenByDescending { it.campusScore })
+        } else {
+            entries.sortedWith(compareBy<DesktopLeaderboardEntry> {
+                it.worldRank ?: Int.MAX_VALUE
+            }.thenByDescending { it.worldScore })
+        }
+        sorted.take(10)
+    }
+    val current = entries.firstOrNull { it.userId == state.profile?.id }
+    val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
+        it.university?.trim()?.equals(campus, ignoreCase = true) == true
+    }
+    val campusChampions = entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
+        .sortedWith(compareBy<DesktopLeaderboardEntry> { it.campusRank ?: Int.MAX_VALUE }
+            .thenByDescending { it.campusScore }).take(3)
+    val topThree = if (featuredCampus) campusChampions else ranked.take(3)
+    val otherStudents = if (featuredCampus) ranked else ranked.drop(3)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🏆", fontSize = 31.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Leaderboard", fontSize = 28.sp, fontWeight = FontWeight.Black)
+                    Text("See top students and climb your rank", fontSize = 12.sp, color = muted)
+                }
+                OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("Refresh")
+                }
+            }
+        }
+        item {
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(50.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Global", "Campus", "Friends").forEach { tab ->
+                        val available = tab == "Global" || (tab == "Campus" && campus.isNotBlank())
+                        val active = selectedScope == tab
+                        Surface(
+                            modifier = Modifier.weight(1f).then(
+                                if (available) Modifier.clickable { selectedScope = tab } else Modifier
+                            ),
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (active) MaterialTheme.colorScheme.onSurface else Color.Transparent
+                        ) {
+                            Box(
+                                Modifier.height(39.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    tab,
+                                    color = if (active) MaterialTheme.colorScheme.surface
+                                        else muted.copy(alpha = if (available) 1f else .45f),
+                                    fontWeight = if (active) FontWeight.Black else FontWeight.Normal
+                                )
+                            }
+                        }
                     }
                 }
             }
+        }
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = accent.copy(alpha = .14f), shape = CircleShape) {
+                            Text(
+                                state.profile?.fullName?.firstOrNull()?.uppercaseChar()?.toString() ?: "B",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                fontWeight = FontWeight.Black, fontSize = 26.sp,
+                                color = accent
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                state.profile?.fullName?.ifBlank { state.profile?.username ?: "" }
+                                    ?: "Your profile",
+                                fontWeight = FontWeight.Black, fontSize = 18.sp
+                            )
+                            Text(
+                                campus.ifBlank { "BLINK community" },
+                                color = muted, fontSize = 12.sp
+                            )
+                            val profile = state.profile
+                            if (profile != null) {
+                                Text(
+                                    "Level " + xpProgress(profile.totalXp, profile.xpLevel).level,
+                                    color = accent, fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Text("♛", color = accent, fontSize = 32.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(
+                            ("🌐 World Rank" to current?.worldRank),
+                            ("🏛 Campus Rank" to current?.campusRank)
+                        ).forEach { (label, rank) ->
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(15.dp)
+                            ) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(rank?.let { "#" + it } ?: "—", fontWeight = FontWeight.Black, fontSize = 19.sp)
+                                    Text(label, color = muted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (loading) item { LoadingRow() }
+        error?.let { item { InlineError(it) } }
+        if (!loading && ranked.isEmpty()) {
+            item {
+                EmptyState(
+                    if (selectedScope == "Campus") "No campus rankings are available yet."
+                    else "No live leaderboard results are available yet."
+                )
+            }
+        }
+        if (topThree.isNotEmpty()) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            if (selectedScope == "Campus" || featuredCampus) "Top 3 on Campus" else "Top 3 on BLINK",
+                            fontSize = 16.sp, fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            listOf(1, 0, 2).forEach { position ->
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    topThree.getOrNull(position)?.let { student ->
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            if (position == 0) Text("♛", fontSize = 29.sp, color = Color(0xFFF2B93B))
+                                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
+                                                Text(
+                                                    student.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                                    modifier = Modifier.padding(18.dp),
+                                                    fontSize = if (position == 0) 26.sp else 21.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                            Text(
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusRank else student.worldRank)?.let { "#" + it } ?: "—",
+                                                color = accent, fontWeight = FontWeight.Bold
+                                            )
+                                            Text(student.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusScore else student.worldScore).toString() + " points",
+                                                fontSize = 12.sp, color = muted
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (otherStudents.isNotEmpty()) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+                    Text("#", modifier = Modifier.width(55.dp), color = muted)
+                    Text("Student", modifier = Modifier.weight(1f), color = muted)
+                    Text("Points", modifier = Modifier.width(110.dp), color = muted)
+                    Text("Change", color = muted)
+                }
+            }
+        }
+        items(otherStudents, key = { it.userId }) { student ->
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
+                Row(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        (if (selectedScope == "Campus") student.campusRank else student.worldRank)?.toString() ?: "—",
+                        modifier = Modifier.width(55.dp), fontWeight = FontWeight.Bold
+                    )
+                    Column(Modifier.weight(1f)) {
+                        VerifiedName(student.name, student.verificationTier.lowercase() != "none" && student.verificationTier.isNotBlank())
+                        Text("@" + student.handle, color = muted, fontSize = 12.sp)
+                    }
+                    Text(
+                        (if (selectedScope == "Campus") student.campusScore else student.worldScore).toString(),
+                        modifier = Modifier.width(110.dp), color = muted
+                    )
+                    Text("—", color = muted) // No rank-change snapshots supplied by desktop API.
+                }
+            }
+        }
+        item {
+            Text(
+                "BLINK ranks are server-generated activity scores, not fabricated XP. " +
+                    "Friends rankings are unavailable until a connection-backed feed exists.",
+                fontSize = 11.sp, color = muted
+            )
         }
     }
 }

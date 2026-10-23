@@ -1,3 +1,10 @@
+## 2026-10-23 — Reference-inspired leaderboard (feature branch → Testlab)
+
+- **Android:** Uses the supplied BLINK leaderboard reference for the title, three-segment switch, current account card, real world/campus ranks, earned XP level, featured Top 3 campus podium, and ranking table. Keeps the existing 10-student cap, Top 10 search, verified filtering, Faculty and Academic Level scope, refresh, help, share menu and profile navigation; values are bound to live Supabase rather than sample names in the picture. The Global table contains its full Top 10 when the campus podium is featured so no global student is silently hidden.
+- **Windows:** Equivalent reference-inspired responsive layout with live current-user ranks, campus podium and global table, while retaining its existing fetch/refresh and verified-name behavior. Avatar initials replace profile photos because the existing desktop leaderboard DTO does not expose avatars.
+- **Backend:** No migration, new permission, fabricated rank movement or coin/verification changes. Points are labelled as points, not incorrectly called XP. Friends remains visibly disabled until a follow-relationship-filtered leaderboard can be obtained securely on both platforms.
+- **Release hold:** This is a visual candidate, not proof of a screenshot-perfect match or a published APK. Require Android compile, Windows compile, 100/130/150/200% font screenshot comparisons (including navigation shell) and live-data verification before promotion to main. Testlab/main branches diverge heavily; do not merge Testlab wholesale to main.
+
 ## 2026-10-22 — Full-screen reference profile redesign (feature branch to Testlab)
 
 - **Android:** Replaces the former 95%-width rounded profile drawer with a full-width edge-to-edge profile surface. A screenshot-inspired header, true backend-owned rank and Coin values, XP progression, earned/locked badge indicators, verification rows, and working 5-tab bottom navigation precede the existing posts/growth/liked/saved/market/skills/about tabs. Account data is never copied from the visual reference.
