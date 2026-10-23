@@ -87,7 +87,7 @@ internal fun BlinkReferenceLeaderboard(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
