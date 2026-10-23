@@ -1,3 +1,12 @@
+## 2026-10-23 — Responsive reference-form repair (staging)
+
+- **Problem found:** The previous Android auth update used one heavily compressed campus photo for both login and three sign-up portraits, added unapproved visible controls, and had fixed-size image crops that did not adapt to narrow phones.
+- **Android fix (first integration):** Split decorative tablet poster framing from functional compact-phone form; use dp/sp instead of compressing entire phone mockups. Make login reset the only secondary row action. Restore circular Google/Apple/email layout (Apple disabled until genuine OAuth is supported), searchable campus picker, real Google login, secure password visibility toggle, and explicit terms confirmation before signup.
+- **Responsive:** 320–480dp compact width uses screen space for reachable native inputs; >=700dp tablets show black poster headline alongside a width-bounded white auth phone. Both forms remain vertically scrollable for landscape, short displays, keyboard and 130–200% font settings.
+- **Visual fidelity:** This code prepares the geometry but **does not claim pixel-level identity**: the old 6.6KB campus asset and repeated cropped photos remain pending replacement with properly licensed, sharp assets from the supplied references. Do not publish a claim of exact image fidelity until device screenshots are compared.
+- **Safety:** Preserve Supabase account creation, password rules, Google login gate, encrypted remembered-login preferences, password recovery and signup campus hand-off. No database migration or change to checkout.
+- **Verification:** Add 320dp and 800dp Robolectric tests, run CI/Android compilation and review screenshot differences before promoting to main. Keep existing signed APK live until checks pass.
+
 ## 2026-10-23 — Reference-style BLINK login and student sign-up
 
 - **Android:** The real login and create-account routes now use a white, rounded-card layout with the approved BLINK wordmark, campus photography, accessible fields, password visibility, Google auth, forgot-password recovery and working navigation. The promotional poster and device frame are excluded from the in-app screen. Existing Supabase sign-in/sign-up handlers and encrypted opt-in remembered-login storage remain in place.
