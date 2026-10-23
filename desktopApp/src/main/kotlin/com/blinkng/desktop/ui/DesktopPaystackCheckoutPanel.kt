@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.blinkng.desktop.data.DesktopSupabaseClient
+import com.blinkng.shared.BlinkCheckoutVerificationState
 import java.awt.Desktop
 import java.net.URI
 import java.util.prefs.Preferences
@@ -110,13 +111,34 @@ fun DesktopPaystackCheckoutPanel(
                 status = "Checking with Paystack…"
                 scope.launch {
                     try {
-                        if (client.confirmPaystackCheckout(pending)) {
-                            prefs.remove(key)
-                            pending = ""
-                            status = "Payment confirmed and purchase activated."
-                            onPaymentConfirmed()
-                        } else {
-                            status = "Payment is not confirmed yet. Do not pay twice."
+                        val reference = pending
+                        when (client.getPaystackCheckoutStatus(reference)) {
+                            BlinkCheckoutVerificationState.FULFILLED -> {
+                                if (pending == reference) {
+                                    prefs.remove(key)
+                                    pending = ""
+                                }
+                                status = "Payment confirmed and purchase activated."
+                                onPaymentConfirmed()
+                            }
+                            BlinkCheckoutVerificationState.ABANDONED,
+                            BlinkCheckoutVerificationState.FAILED -> {
+                                if (pending == reference) {
+                                    prefs.remove(key)
+                                    pending = ""
+                                }
+                                status = "Payment not completed. You can start a new checkout."
+                            }
+                            BlinkCheckoutVerificationState.REVERSED -> {
+                                if (pending == reference) {
+                                    prefs.remove(key)
+                                    pending = ""
+                                }
+                                status = "Payment was reversed. Check your payment history."
+                            }
+                            else -> {
+                                status = "Payment has not been confirmed. You can check again later."
+                            }
                         }
                     } catch (e: Exception) {
                         status = e.message ?: "Payment verification is unavailable."
@@ -124,7 +146,14 @@ fun DesktopPaystackCheckoutPanel(
                         working = false
                     }
                 }
-            }) { Text("Confirm pending payment") }
+            }) { Text("Check payment status") }
+            OutlinedButton(enabled = !working, onClick = {
+                // Dismiss the local reminder only. The server retains the order and
+                // its signed webhook can still fulfil a late successful payment.
+                prefs.remove(key)
+                pending = ""
+                status = "Checkout reminder dismissed. Any completed purchase remains recorded."
+            }) { Text("Dismiss checkout reminder") }
         }
         Text(
             text = status.ifBlank { "Charges are processed by Paystack, never inside BLINK." },
