@@ -44,6 +44,7 @@ import com.example.ui.components.VerifiedMark
 @Composable
 internal fun BlinkReferenceLeaderboard(
     visibleTopTen: List<LeaderboardUser>,
+    campusPodiumUsers: List<LeaderboardUser>,
     userProfile: UserProfile,
     currentUser: LeaderboardUser?,
     currentWorldRank: Int?,
@@ -68,9 +69,14 @@ internal fun BlinkReferenceLeaderboard(
     val soft = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF7F6FC)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val purple = Color(0xFF7548E8)
-    val topThree = if (searchQuery.isBlank()) visibleTopTen.take(3) else emptyList()
-    val tableUsers = if (searchQuery.isBlank()) visibleTopTen.drop(3) else visibleTopTen
-    val title = when (scope) {
+    val featuredCampus = scope == "World" && campusPodiumUsers.isNotEmpty() && searchQuery.isBlank()
+    val topThree = if (searchQuery.isNotBlank()) emptyList()
+        else if (featuredCampus) campusPodiumUsers else visibleTopTen.take(3)
+    val tableUsers = when {
+        searchQuery.isNotBlank() || featuredCampus -> visibleTopTen
+        else -> visibleTopTen.drop(3)
+    }
+    val title = if (featuredCampus) "Top 3 on Campus" else when (scope) {
         "Campus" -> "Top 3 on Campus"
         "Faculty" -> "Top 3 in Faculty"
         "Academic Level" -> "Top 3 in Your Level"
@@ -269,7 +275,7 @@ internal fun BlinkReferenceLeaderboard(
                     Column(Modifier.padding(horizontal = 10.dp, vertical = 13.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(title, fontWeight = FontWeight.Black, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("Top 10 only ›", fontSize = 11.sp, color = purple)
+                            Text("View rankings ›", fontSize = 11.sp, color = purple)
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(
