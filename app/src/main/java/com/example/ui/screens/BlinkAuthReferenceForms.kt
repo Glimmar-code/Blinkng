@@ -215,7 +215,8 @@ private fun AuthAdaptiveShell(
         modifier = Modifier.fillMaxSize().background(Color.White)
             .testTag("auth_adaptive_stage")
     ) {
-        val expanded = maxWidth >= 700.dp
+        val posterCanvasWidth = maxWidth
+        val expanded = posterCanvasWidth >= 700.dp
         if (expanded) {
             Row(
                 modifier = Modifier.fillMaxSize().background(Color(0xFF0B0B0B)),
@@ -246,8 +247,8 @@ private fun AuthAdaptiveShell(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(posterTitle, color = Color.White, fontWeight = FontWeight.Black,
-                            fontSize = if (maxWidth < 850.dp) 30.sp else 42.sp,
-                            lineHeight = if (maxWidth < 850.dp) 33.sp else 43.sp)
+                            fontSize = if (posterCanvasWidth < 850.dp) 30.sp else 42.sp,
+                            lineHeight = if (posterCanvasWidth < 850.dp) 33.sp else 43.sp)
                     Spacer(Modifier.height(24.dp))
                     Text("B L I N K", color = Color.White,
                         fontSize = 24.sp, fontWeight = FontWeight.Bold)
