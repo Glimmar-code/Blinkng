@@ -31,37 +31,55 @@ class PostRepository(
     private val likeMutationMutexGuard = Mutex()
     private val likeMutationMutexes = mutableMapOf<String, Mutex>()
 
+    // Ranked Home/Reels/realtime requests can arrive together; avoid hammering
+    // the expensive discovery RPC concurrently from this repository instance.
+    private val rankedFeedMutex = Mutex()
+    private val chronologicalFallbackTypes = mutableSetOf<String>()
+
     /**
-     * On a PostgreSQL statement timeout, try one lighter, authenticated/RLS-protected
-     * chronological page on initial load. Do not retry expensive ranked RPCs in a
-     * tight loop. Preserve ranked cursors on load-more failures: chronological and
-     * ranked pagination cannot be mixed safely.
+     * If the first ranked page times out, switch this lane to the existing,
+     * authenticated chronological RPC for the rest of its pagination session.
+     * Switching back to ranked happens only when a NEW first ranked page succeeds.
+     * This prevents cursor mismatches, duplicates and missing posts.
      *
-     * If both requests fail, propagate the error so BlinkViewModel can preserve its
-     * last successful/cached feed and display the existing refresh error state.
+     * All initial Home/Reels/realtime ranked loads share a mutex, preventing
+     * simultaneous heavy ranking requests from this repository instance.
+     * A second failed RPC is allowed to propagate so the ViewModel keeps the
+     * last available cached feed; SQLSTATE 57014 alone is not sufficient to retry.
      */
     private suspend fun fetchRankedPageSafely(
         limit: Int,
         feedType: String,
         beforeCreatedAt: String? = null,
         beforeId: String? = null
-    ): List<FeedPost> {
-        return try {
-            supabaseService.fetchFeedPage(
+    ): List<FeedPost> = rankedFeedMutex.withLock {
+        val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+        if (!firstPage && feedType in chronologicalFallbackTypes) {
+            return@withLock supabaseService.fetchFeedPage(
+                limit = limit,
+                beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId,
+                feedType = feedType
+            )
+        }
+
+        try {
+            val rankedPage = supabaseService.fetchFeedPage(
                 limit = limit,
                 beforeCreatedAt = beforeCreatedAt,
                 beforeId = beforeId,
                 feedType = "ranked_$feedType"
             )
+            if (firstPage) chronologicalFallbackTypes.remove(feedType)
+            rankedPage
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            if (!isRecoverableRankedFeedTimeout(error)) throw error
-            val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
-            if (!firstPage) throw error
-
-            Log.w("PostRepository", "Ranked $feedType timed out; using one safe initial-page fallback", error)
-            supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+            if (!firstPage || !isRecoverableRankedFeedTimeout(error)) throw error
+            Log.w("PostRepository", "Ranked $feedType timed out; using one authenticated chronological fallback", error)
+            val page = supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+            chronologicalFallbackTypes.add(feedType)
+            page
         }
     }
 
