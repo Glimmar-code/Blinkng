@@ -326,46 +326,6 @@ fun BlinkReferenceSignInScreen(
 }
 
 @Composable
-private fun SignupHero() {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Wordmark()
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Join a brighter campus community\nof real students.",
-            color = Hint, fontSize = 14.sp, lineHeight = 19.sp,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(19.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().height(140.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
-                Color(0xFFF1E5FF),
-                Color(0xFFFFE8AE),
-                Color(0xFFD7E9FF)
-            ).forEachIndexed { index, color ->
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 2.dp)
-                        .size(if (index == 1) 128.dp else 98.dp)
-                        .background(color, CircleShape).clip(CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.blink_auth_campus_hero),
-                        contentDescription = if (index == 1) "BLINK campus community" else null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun CampusDialog(selected: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     var search by remember { mutableStateOf("") }
     val results = remember(search) {
@@ -456,7 +416,13 @@ fun BlinkReferenceCreateAccountScreen(
                         Image(
                             painter = painterResource(R.drawable.blink_auth_campus_hero),
                             contentDescription = if (i == 1) "Students at BLINK" else null,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                            contentScale = ContentScale.Crop,
+                            alignment = when (i) {
+                                0 -> Alignment.CenterStart
+                                1 -> Alignment.Center
+                                else -> Alignment.CenterEnd
+                            },
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
