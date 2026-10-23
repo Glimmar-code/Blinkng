@@ -1,3 +1,10 @@
+## 2026-10-23 — Reference-style BLINK login and student sign-up
+
+- **Android:** The real login and create-account routes now use a white, rounded-card layout with the approved BLINK wordmark, campus photography, accessible fields, password visibility, Google auth, forgot-password recovery and working navigation. The promotional poster and device frame are excluded from the in-app screen. Existing Supabase sign-in/sign-up handlers and encrypted opt-in remembered-login storage remain in place.
+- **University:** New accounts select a searchable university from the existing Nigerian directory; the selected campus is carried into the existing post-signup onboarding flow, then cleared after successful profile save. The database/auth contract is unchanged.
+- **Windows:** Uses matching black-on-white form styling, branding, Google sign-in, password reset and existing auth handlers; desktop continues to collect campus during its existing profile completion flow rather than introducing a second signup API.
+- **Safety:** Staged on a fresh branch from the latest main commit because the long-lived Testlab branch has diverged from main. Merge only after Android and Windows CI checks pass on the candidate head and visual checks show appropriate small-screen and large-font behavior.
+
 ## 2026-10-23 — Restore all ranked BLINK students without weakening private profiles
 
 - **Root cause:** `public.game_leaderboard` was a `security_invoker` view directly over `profiles`, whose authenticated SELECT policy allows only `auth.uid() = profiles.id`. The ranking query therefore returned just the signed-in account despite the underlying database containing 21 profiles (12 with positive points). This was a public-data visibility issue, not missing scoring data.
