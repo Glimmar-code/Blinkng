@@ -351,7 +351,7 @@ fun BlinkReferenceSignInScreen(
     val screenHeight = LocalConfiguration.current.screenHeightDp
     Column(
         modifier = Modifier.fillMaxSize().background(Color.White)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()).navigationBarsPadding()
     ) {
         Box(Modifier.fillMaxWidth().height(
             (screenHeight * 0.36f).coerceIn(210f, 315f).dp
@@ -363,7 +363,7 @@ fun BlinkReferenceSignInScreen(
                 modifier = Modifier.fillMaxSize()
             )
             Wordmark(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 26.dp),
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
                 color = Ink
             )
             // The extracted reference scene already includes its hand-lettered art.
@@ -502,6 +502,7 @@ fun BlinkReferenceCreateAccountScreen(
     Box(Modifier.fillMaxSize().background(Color.White)) {
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .statusBarsPadding().navigationBarsPadding()
                 .padding(horizontal = 22.dp).padding(top = 12.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
