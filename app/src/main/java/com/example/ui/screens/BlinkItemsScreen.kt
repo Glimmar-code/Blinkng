@@ -124,6 +124,11 @@ fun BlinkItemsScreen(
     onOpenStore: () -> Unit = {},
     isAdmin: Boolean = false,
     onOpenAdmin: () -> Unit = {},
+    websiteUpdateAvailable: Boolean = false,
+    websiteUpdateChecked: Boolean = false,
+    websiteUpdateVersion: String? = null,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by remember { mutableStateOf(BlinkItemsPage.HOME) }
@@ -156,7 +161,12 @@ fun BlinkItemsScreen(
                 onDrops = onOpenDrops,
                 onStore = onOpenStore,
                 isAdmin = isAdmin,
-                onAdmin = onOpenAdmin
+                onAdmin = onOpenAdmin,
+                websiteUpdateAvailable = websiteUpdateAvailable,
+                websiteUpdateChecked = websiteUpdateChecked,
+                websiteUpdateVersion = websiteUpdateVersion,
+                onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                onOpenWebsiteUpdate = onOpenWebsiteUpdate
             )
             BlinkItemsPage.STEPS -> BlinkStepsItem()
             BlinkItemsPage.WEATHER -> BlinkWeatherItem()
@@ -220,7 +230,12 @@ private fun BlinkItemsHome(
     onDrops: () -> Unit,
     onStore: () -> Unit,
     isAdmin: Boolean,
-    onAdmin: () -> Unit
+    onAdmin: () -> Unit,
+    websiteUpdateAvailable: Boolean,
+    websiteUpdateChecked: Boolean,
+    websiteUpdateVersion: String?,
+    onCheckForWebsiteUpdate: () -> Unit,
+    onOpenWebsiteUpdate: () -> Unit
 ) {
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
@@ -380,6 +395,28 @@ private fun BlinkItemsHome(
                     modifier = Modifier.weight(1f)
                 )
             }
+        }
+
+        item {
+            BlinkItemsGroupLabel("APP & UPDATES")
+            BlinkCompactItemTile(
+                icon = Icons.Default.Refresh,
+                title = "Update Center",
+                subtitle = when {
+                    !websiteUpdateChecked -> "Checking for updates…"
+                    websiteUpdateAvailable -> "Update available — tap to update" +
+                        (websiteUpdateVersion?.let { " • v$it" } ?: "")
+                    else -> "No update now, check again later"
+                },
+                enabled = true,
+                showSwitch = false,
+                onToggle = {},
+                onClick = {
+                    if (websiteUpdateAvailable) onOpenWebsiteUpdate()
+                    else onCheckForWebsiteUpdate()
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (isAdmin) {

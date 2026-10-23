@@ -156,7 +156,10 @@ fun ProfileScreen(
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
     isProfileRefreshing: Boolean = false,
-    currentUserId: String = ""
+    currentUserId: String = "",
+    selectedMainTabRoute: String = "home",
+    onNavigateMainTab: (String) -> Unit = {},
+    onTopAction: (String) -> Unit = {}
 ) {
     var selectedTab by rememberSaveable(profile.id) { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
@@ -165,6 +168,9 @@ fun ProfileScreen(
     val overlayOffset = remember(profile.id) { Animatable(0f) }
     val overlayScope = rememberCoroutineScope()
     val interactionRepository = remember { UserInteractionRepository() }
+    // Preserve request UUID across retries so an unknown network outcome
+    // cannot charge the sender a second time.
+    val pendingGiftRequests = remember(profile.id) { mutableStateMapOf<Int, String>() }
     val mentorListingId = remember(connectHub.mentors, profile.id) {
         connectHub.mentors.firstOrNull { it.userId == profile.id }?.id
     }
@@ -180,6 +186,7 @@ fun ProfileScreen(
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
+    var showLegacyDetails by rememberSaveable(profile.id) { mutableStateOf(false) }
 
     val profileService = remember { SupabaseService() }
     var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
@@ -353,10 +360,9 @@ fun ProfileScreen(
         Surface(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth()
                 .fillMaxHeight()
                 .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
-                .shadow(24.dp, RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp), clip = false)
                 .pointerInput(profile.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
@@ -388,7 +394,7 @@ fun ProfileScreen(
                     )
                 }
                 .testTag("profile_screen"),
-            shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+            shape = RoundedCornerShape(0.dp),
             color = bgColor
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -396,12 +402,67 @@ fun ProfileScreen(
             LazyColumn(
                 state = scrollState,
                 contentPadding = PaddingValues(bottom = 130.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().statusBarsPadding()
             ) {
 
                 // ============================================================
                 // COVER HEADER — parallax + gradient wash
                 // ============================================================
+                item(key = "reference_dashboard") {
+                    BlinkReferenceProfileDashboard(
+                        profile = profile,
+                        isMe = isMe,
+                        blinkCoinBalance = blinkCoinBalance,
+                        isDark = isDark,
+                        isFollowing = isFollowing,
+                        followBusy = followBusy,
+                        onAvatarClick = { showAvatarViewer = true },
+                        onBack = onBack,
+                        onEdit = onEditProfileClick,
+                        onMessage = { onDirectMessage(profile.username) },
+                        onFollow = {
+                            if (!followBusy && profile.id.isNotBlank()) {
+                                followBusy = true
+                                overlayScope.launch {
+                                    val desired = !isFollowing
+                                    val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                    followBusy = false
+                                    if (saved) onFollowChanged(desired)
+                                }
+                            }
+                        },
+                        onVerify = onOpenGetVerified,
+                        onEarnCoins = { showEarnCoinDialog = true },
+                        onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
+                        onShare = { showShareSheet = true },
+                        onCopyUsername = {
+                            clipboard.setText(AnnotatedString("@" + profile.username))
+                            Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+                        },
+                        onVisitors = { showMoreSheet = true },
+                        onTopAction = { action ->
+                            if (action == "menu") showMoreSheet = true
+                            else onTopAction(action)
+                        }
+                    )
+                }
+                // Preserve every advanced profile action from production:
+                // keep original expanded identity, cover, rank, interaction and
+                // trust surfaces available on demand rather than discarding them.
+                item(key = "reference_more_details") {
+                    TextButton(
+                        onClick = { showLegacyDetails = !showLegacyDetails },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    ) {
+                        Icon(
+                            if (showLegacyDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(if (showLegacyDetails) "Hide additional profile details" else "More profile details & actions")
+                    }
+                }
+                if (showLegacyDetails) {
                 item(key = "cover") {
                     Box(
                         modifier = Modifier
@@ -659,13 +720,20 @@ fun ProfileScreen(
                                                 }
                                             },
                                             onMessage = { onDirectMessage(profile.username) },
-                                            onGiftCoins = {
+                                            onGiftCoins = { amount ->
                                                 if (profile.id.isNotBlank()) {
+                                                    val requestId = pendingGiftRequests.getOrPut(amount) {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
                                                     overlayScope.launch {
-                                                        val sent = interactionRepository.giftCoins(profile.id, 10)
+                                                        val sent = interactionRepository.giftCoinsOnce(
+                                                            profile.id, amount, requestId
+                                                        )
+                                                        if (sent) pendingGiftRequests.remove(amount)
                                                         Toast.makeText(
                                                             context,
-                                                            if (sent) "10 Blink Coins sent" else "Unable to send Blink Coins",
+                                                            if (sent) "Sent $amount BLINK Coins"
+                                                            else "Coin gift not confirmed. No transfer shown.",
                                                             Toast.LENGTH_SHORT
                                                         ).show()
                                                     }
@@ -1041,6 +1109,8 @@ fun ProfileScreen(
                     )
                 }
 
+                } // End expandable production details; all features retained.
+
                 if (isMe) {
                     item(key = "progress_hub_entry") {
                         ProgressHubEntryCard(
@@ -1272,6 +1342,13 @@ fun ProfileScreen(
                         modifier = Modifier.graphicsLayer { rotationZ = refreshRotation }
                     )
                 }
+            }
+            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                BlinkReferenceProfileBottomNav(
+                    isDark = isDark,
+                    selectedRoute = selectedMainTabRoute,
+                    onNavigate = onNavigateMainTab
+                )
             }
         }
     }

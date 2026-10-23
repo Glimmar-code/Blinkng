@@ -29,11 +29,12 @@ class HomeReferenceContractTests(unittest.TestCase):
         header = method_body(CHROME, "private fun FeedHeaderActions(", "private fun FeedRadialHeaderAction(")
         self.assertEqual(header.count("FeedRadialHeaderAction("), 4)
         for token in (
-            'Icons.Outlined.Search', 'Icons.Outlined.SportsEsports',
+            'Icons.Outlined.Search', 'Icons.Default.GridView',
             'Icons.Outlined.NotificationsNone', 'Icons.Outlined.Menu',
         ):
             self.assertIn(token, header)
         self.assertNotIn("Icons.Outlined.Security", header)
+        self.assertNotIn("Icons.Outlined.SportsEsports", header)
         self.assertIn('text = "BLINK"', CHROME)
         self.assertIn('contentDescription = "Open Items (includes Game)"', header)
 
@@ -61,6 +62,10 @@ class HomeReferenceContractTests(unittest.TestCase):
             self.assertIn(text, tabs)
         self.assertNotIn('feed_refresh_action', tabs)
         self.assertNotIn('feed_filter_action', tabs)
+        # A minimum height leaves the tab's fillMaxHeight child free to
+        # consume the viewport and pushes every post offscreen.
+        self.assertIn('height(58.dp)', tabs)
+        self.assertNotIn('heightIn(min = 58.dp)', tabs)
 
     def test_posts_show_true_identity_and_reference_actions(self):
         self.assertIn('authorUniversity: String', POST)
@@ -91,6 +96,15 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('onOpenAdmin = {', MAIN)
         self.assertIn('onItemsClick = { feedUtilitySheet = "items" }', MAIN)
         self.assertIn('onOpenGame = { dismissUtility { feedUtilitySheet = "game" } }', MAIN)
+        self.assertIn('title = "Update Center"', ITEMS)
+        self.assertIn('Update available — tap to update', ITEMS)
+        self.assertIn('No update now, check again later', ITEMS)
+        self.assertIn('onCheckForWebsiteUpdate = onCheckForWebsiteUpdate', MAIN)
+        self.assertIn('onOpenWebsiteUpdate = {', MAIN)
+        popup = (ROOT / "app/src/main/java/com/example/ui/components/BlinkWebsiteUpdateDialog.kt").read_text()
+        self.assertIn("fun BlinkUpdateMiniProgress(", popup)
+        self.assertIn('Dialog(onDismissRequest = {})', popup)
+        self.assertIn('BlinkUpdateMiniProgress(', MAIN)
 
 
 if __name__ == "__main__":

@@ -260,6 +260,7 @@ class MainActivity : ComponentActivity() {
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             intent.data = null
             return
         }
@@ -414,6 +415,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var pendingPaystackRefreshJob: Job? = null
+
+    /** A verified Coin pack updates its wallet only; other purchases also change
+     * badges, campaign status, purchase history or third-party delivery.
+     */
+    private fun refreshVerifiedPaystackPurchase(kind: String?) {
+        if (kind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+        else viewModel.fetchSupabaseData()
+    }
+
+    /**
+     * Reconcile a returned Paystack checkout without waiting for the next feed sync.
+     * The server alone decides whether a signed payment has been fulfilled.
+     */
+    private fun reconcileReturnedPaystackPayment() {
+        val accountId = viewModel.uiState.value.myProfile.id
+        if (accountId.isBlank() || pendingPaystackRefreshJob?.isActive == true) return
+        val preferences = getSharedPreferences("blink_paystack_v2_" + accountId, MODE_PRIVATE)
+        val reference = preferences.getString("reference", null)?.trim().orEmpty()
+        if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
+
+        pendingPaystackRefreshJob = lifecycleScope.launch {
+            val service = BlinkPaystackCheckoutService()
+            for (attempt in 0 until 5) {
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    preferences.getString("reference", null) != reference) return@launch
+                val confirmed = runCatching { service.confirmPayment(reference) }.getOrDefault(false)
+                // Payment confirmation is asynchronous; never update a switched account.
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    preferences.getString("reference", null) != reference) return@launch
+                if (confirmed) {
+                    val kind = preferences.getString("kind", null)
+                    preferences.edit().remove("reference").remove("kind").apply()
+                    refreshVerifiedPaystackPurchase(kind)
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
+                    return@launch
+                }
+                if (attempt < 4) delay(2000L * (attempt + 1))
+            }
+            // Keep the reference for recovery on the next foreground entry.
+            viewModel.showToast("Payment verification is pending. Please don't pay again.")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         playInAppUpdateCoordinator.onResume()
@@ -421,6 +466,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            reconcileReturnedPaystackPayment()
             viewModel.retryPendingRewardedAdClaim()
             if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
@@ -533,8 +579,9 @@ class MainActivity : ComponentActivity() {
 
             // Update notifications should also be visible while browsing Reels,
             // Market, Connect or Messages, but must not interrupt other overlays.
+            // Loading feed posts must never block an available app update:
+            // people with an offline/failed feed still need access to Update Center.
             val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
-                !uiState.isFeedLoading &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
                 !uiState.isCreatePostOpen &&
@@ -620,6 +667,10 @@ class MainActivity : ComponentActivity() {
                     uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
                 Scaffold(
                     contentWindowInsets = when {
+                        // The new profile owns both status and gesture-bar safe
+                        // areas; don't reserve another inset in the host scaffold.
+                        uiState.destination == AppDestination.MAIN &&
+                            uiState.viewingProfile != null -> WindowInsets(0, 0, 0, 0)
                         homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
                         routeManagesTopInset -> WindowInsets.safeDrawing.only(
                             WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
@@ -755,7 +806,15 @@ class MainActivity : ComponentActivity() {
                                         boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
-                                        onReportBug = { showBugReportSheet = true }
+                                        onReportBug = { showBugReportSheet = true },
+                                        websiteRelease = websiteRelease,
+                                        websiteUpdateChecked = websiteUpdateCheckFinished,
+                                        onCheckForWebsiteUpdate = {
+                                            BlinkWebsiteReleaseAlerts.requestRefresh()
+                                        },
+                                        onOpenWebsiteUpdate = {
+                                            websiteUpdateDismissed = false
+                                        }
                                     )
                                 }
                             }
@@ -767,6 +826,24 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .zIndex(100f)
+                            )
+                        }
+
+                        // A download that continues after "Continue in background" exposes a
+                        // draggable progress ring; tapping it reopens the verified installer UI.
+                        // It stays inside the app and requires no overlay permissions.
+                        if (
+                            uiState.destination == AppDestination.MAIN &&
+                            websiteUpdateDismissed &&
+                            websiteRelease != null &&
+                            (websiteDownloadState is WebsiteApkDownloadCoordinator.State.Downloading ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Paused ||
+                                websiteDownloadState is WebsiteApkDownloadCoordinator.State.Ready)
+                        ) {
+                            BlinkUpdateMiniProgress(
+                                downloadState = websiteDownloadState,
+                                onOpen = { websiteUpdateDismissed = false },
+                                modifier = Modifier.fillMaxSize().zIndex(101f)
                             )
                         }
 
@@ -862,10 +939,15 @@ fun MainAppContent(
     boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
-    onReportBug: () -> Unit
+    onReportBug: () -> Unit,
+    websiteRelease: BlinkReleaseInfo? = null,
+    websiteUpdateChecked: Boolean = false,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {}
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    var bottomBarTravelPx by remember { mutableStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
@@ -940,7 +1022,7 @@ fun MainAppContent(
                 val checkout = paystackV2.createCheckout(kind, item, months)
                 v2PendingReference = checkout.reference
                 v2PendingPrompt = true
-                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", kind).apply()
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                         .addCategory(Intent.CATEGORY_BROWSABLE)
@@ -971,7 +1053,7 @@ fun MainAppContent(
                 )
                 v2PendingReference = checkout.reference
                 v2PendingPrompt = true
-                paystackPrefs.edit().putString("reference", checkout.reference).apply()
+                paystackPrefs.edit().putString("reference", checkout.reference).putString("kind", "boost").apply()
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                         .addCategory(Intent.CATEGORY_BROWSABLE)
@@ -995,7 +1077,7 @@ fun MainAppContent(
                 val checkout=paystackV2.createMarketCheckout(listingId)
                 v2PendingReference=checkout.reference
                 v2PendingPrompt=true
-                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","market").apply()
                 context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
                 viewModel.showToast("Pay on Paystack, then return to BLINK to verify.")
@@ -1017,7 +1099,7 @@ fun MainAppContent(
                 val checkout=paystackV2.createGiftCheckout(recipient,packId,note)
                 v2PendingReference=checkout.reference
                 v2PendingPrompt=true
-                paystackPrefs.edit().putString("reference",checkout.reference).apply()
+                paystackPrefs.edit().putString("reference",checkout.reference).putString("kind","gift").apply()
                 showGiftPurchase=false
                 context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
@@ -1035,11 +1117,13 @@ fun MainAppContent(
         paymentScope.launch {
             try {
                 if (paystackV2.confirmPayment(reference)) {
+                    val purchaseKind = paystackPrefs.getString("kind", null)
                     v2PendingReference = null
                     v2PendingPrompt = false
-                    paystackPrefs.edit().remove("reference").apply()
-                    viewModel.fetchSupabaseData()
-                    viewModel.showToast("Paystack payment confirmed. Purchase delivered.")
+                    paystackPrefs.edit().remove("reference").remove("kind").apply()
+                    if (purchaseKind == "coin_pack") viewModel.refreshCoinBalanceAfterPayment()
+                    else viewModel.fetchSupabaseData()
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
                 } else viewModel.showToast("Payment is still pending. Check again later.")
             } catch (error: Exception) {
                 viewModel.showToast(error.message ?: "Could not verify this payment.")
@@ -1392,6 +1476,11 @@ fun MainAppContent(
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onBottomBarTravelChange = { pixels ->
+                            bottomBarTravelPx = if (
+                                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
+                            ) pixels.coerceIn(0f, 50f) else 0f
                         }
                     )
                 }
@@ -1788,6 +1877,13 @@ fun MainAppContent(
                                     }
                                 }
                             },
+                            websiteUpdateAvailable = websiteRelease != null,
+                            websiteUpdateChecked = websiteUpdateChecked,
+                            websiteUpdateVersion = websiteRelease?.versionName,
+                            onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                            onOpenWebsiteUpdate = {
+                                dismissUtility { onOpenWebsiteUpdate() }
+                            },
                             isAdmin = canOpenAdmin,
                             onOpenAdmin = {
                                 if (canOpenAdmin) {
@@ -1857,6 +1953,14 @@ fun MainAppContent(
                 .align(Alignment.TopCenter)
                 .zIndex(30f)
         )
+
+        // The Home feed moves its nav rail 50px for every 80px of post scroll.
+        // Prevent a translated bar from leaking onto Reels, Market or Messages.
+        LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
+            if (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0) {
+                bottomBarTravelPx = 0f
+            }
+        }
 
         // Floating bottom navigation follows the feed chrome state. Its transition is
         // deliberately non-bouncy so a restored bar glides in instead of springing back.
@@ -1978,7 +2082,10 @@ fun MainAppContent(
                     isBottomBarVisibleByScroll = true
                     viewModel.openMenu(true)
                 },
-                isMenuOpen = uiState.isMenuOpen
+                isMenuOpen = uiState.isMenuOpen,
+                modifier = Modifier.graphicsLayer {
+                    translationY = bottomBarTravelPx
+                }
             )
         }
 
@@ -2150,6 +2257,34 @@ fun MainAppContent(
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
+                    selectedMainTabRoute = when (uiState.selectedTab) {
+                        MainTab.MARKET -> "market"
+                        MainTab.MESSAGES -> "messages"
+                        MainTab.HOME -> when (uiState.feedSubTab) {
+                            1 -> "reels"
+                            2 -> "connect"
+                            else -> "home"
+                        }
+                        else -> "home"
+                    },
+                    onNavigateMainTab = { tab ->
+                        viewModel.closeProfile()
+                        when (tab) {
+                            "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                            "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                            "market" -> viewModel.setTab(MainTab.MARKET)
+                            "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                            "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onTopAction = { action ->
+                        viewModel.closeProfile()
+                        when (action) {
+                            "search" -> viewModel.setTab(MainTab.SEARCH)
+                            "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
+                            "notifications" -> viewModel.openActivity(true)
+                        }
+                    },
                     isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
                     onFollowChanged = { viewModel.refreshViewedProfile() },
                     onRefreshProfile = {
