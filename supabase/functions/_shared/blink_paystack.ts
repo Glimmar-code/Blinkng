@@ -67,7 +67,16 @@ export async function reconcile(reference: string, expectedUser?: string) {
 
   // Never trust the browser return URL or claimed webhook payload.
   const payment = await paystackApi(`transaction/verify/${encodeURIComponent(reference)}`);
-  if (!payment || payment.status !== "success") return { status:"pending" };
+  // Report actual provider status to the signed-in owner. A checkout left unfinished is
+  // not an endless "pending" reminder, but its DB order is intentionally unchanged:
+  // late authenticated webhooks/verification must still be able to fulfil exactly once.
+  // Unknown statuses are not interpreted as success or failure.
+  const providerStatus = String(payment?.status || "").toLowerCase();
+  if (providerStatus !== "success") {
+    const safeStatus = new Set(["abandoned", "failed", "ongoing", "pending", "processing", "reversed"])
+      .has(providerStatus) ? providerStatus : "pending";
+    return { status:safeStatus, kind:order.purchase_kind };
+  }
 
   const expectedMode = Deno.env.get("PAYSTACK_EXPECTED_DOMAIN") || "test";
   if (!["test","live"].includes(expectedMode) || payment.domain !== expectedMode) {

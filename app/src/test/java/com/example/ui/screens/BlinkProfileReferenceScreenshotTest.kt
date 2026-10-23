@@ -82,6 +82,8 @@ class BlinkProfileReferenceScreenshotTest {
                                     isDark = dark,
                                     isFollowing = false,
                                     followBusy = false,
+                                    postCount = 24,
+                                    profileCompletion = 82,
                                     onAvatarClick = {}, onBack = {}, onEdit = {},
                                     onMessage = {}, onFollow = {}, onVerify = {},
                                     onEarnCoins = {}, onShowBadges = {}, onShare = {},

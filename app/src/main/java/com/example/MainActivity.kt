@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.snapshotFlow
+import com.blinkng.shared.BlinkCheckoutVerificationState
 import com.blinkng.shared.BlinkSwipeNavigation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -83,7 +84,7 @@ class MainActivity : ComponentActivity() {
     private var loadingPaystackReceipts by mutableStateOf(false)
     private var paystackReceiptError by mutableStateOf<String?>(null)
     private var paystackReceipts by mutableStateOf<List<BlinkPaystackReceipt>>(emptyList())
-    private var showPendingPaymentPrompt by mutableStateOf(true)
+    private var showPendingPaymentPrompt by mutableStateOf(false)
     private var paystackRenewalStatus by mutableStateOf("none")
     private var paystackRenewalBusy by mutableStateOf(false)
 
@@ -98,11 +99,14 @@ class MainActivity : ComponentActivity() {
             try {
                 val checkout = paystack.createCheckout(kind, itemCode, months)
                 pendingPaymentReference = checkout.reference
-                showPendingPaymentPrompt = true
+                // Checkout returns are verified silently. Never trap users in a persistent modal.
+                showPendingPaymentPrompt = false
                 paystackPrefs.edit()
                     .putString("reference", checkout.reference)
                     .putString("account_id", viewModel.uiState.value.myProfile.id)
                     .putString("kind", kind)
+                    .remove("last_silent_reference")
+                    .remove("last_silent_attempt_ms")
                     .apply()
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkout.url))
                     .addCategory(Intent.CATEGORY_BROWSABLE))
@@ -159,6 +163,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun clearPendingPaystackReference(reference: String) {
+        // Clear only the same account's current reference: a newer checkout can start
+        // while a previous verification request is still in flight.
+        if (paystackPrefs.getString("reference", null) != reference) return
+        pendingPaymentReference = null
+        showPendingPaymentPrompt = false
+        paystackPrefs.edit()
+            .remove("reference").remove("account_id").remove("kind")
+            .remove("last_silent_reference").remove("last_silent_attempt_ms")
+            .apply()
+    }
+
     private fun confirmPendingPaystackPayment() {
         val reference = pendingPaymentReference ?: return
         val accountId = viewModel.uiState.value.myProfile.id
@@ -169,20 +185,28 @@ class MainActivity : ComponentActivity() {
         paymentInProgress = true
         lifecycleScope.launch {
             try {
-                if (paystack.confirmPayment(reference)) {
-                    if (viewModel.uiState.value.myProfile.id != accountId) return@launch
-                    refreshAfterPaystackFulfillment()
-                    if (paystackPrefs.getString("reference", null) == reference) {
-                        pendingPaymentReference = null
-                        showPendingPaymentPrompt = false
-                        paystackPrefs.edit().remove("reference").remove("account_id").remove("kind").apply()
+                val status = paystack.paymentStatus(reference)
+                if (viewModel.uiState.value.myProfile.id != accountId ||
+                    paystackPrefs.getString("reference", null) != reference) return@launch
+                when (status) {
+                    BlinkCheckoutVerificationState.FULFILLED -> {
+                        refreshAfterPaystackFulfillment()
+                        clearPendingPaystackReference(reference)
+                        viewModel.showToast("Payment confirmed. Your BLINK purchase is active.")
                     }
-                    viewModel.showToast("Payment confirmed. Your BLINK purchase is active.")
-                } else {
-                    viewModel.showToast("Payment is pending. Check again after completing checkout.")
+                    BlinkCheckoutVerificationState.ABANDONED,
+                    BlinkCheckoutVerificationState.FAILED -> {
+                        clearPendingPaystackReference(reference)
+                        viewModel.showToast("Payment not completed. You can start a new checkout.")
+                    }
+                    BlinkCheckoutVerificationState.REVERSED -> {
+                        clearPendingPaystackReference(reference)
+                        viewModel.showToast("Payment was reversed. Check your payment history.")
+                    }
+                    else -> viewModel.showToast("Payment is not confirmed. BLINK will check quietly.")
                 }
-            } catch (error: Exception) {
-                viewModel.showToast(error.message ?: "Unable to confirm your payment.")
+            } catch (_: Exception) {
+                viewModel.showToast("Payment status is temporarily unavailable. Your payment record is safe.")
             } finally {
                 paymentInProgress = false
             }
@@ -215,31 +239,34 @@ class MainActivity : ComponentActivity() {
         if (savedOwner != null && savedOwner != accountId) return
         if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
 
+        // Android may call onResume repeatedly during browser return/navigation. Check
+        // at most once per minute for an unresolved checkout and never show a modal.
+        val now = System.currentTimeMillis()
+        val lastReference = paystackPrefs.getString("last_silent_reference", null)
+        val lastTime = paystackPrefs.getLong("last_silent_attempt_ms", 0L)
+        if (lastReference == reference && now >= lastTime && now - lastTime < 60_000L) return
+        paystackPrefs.edit().putString("last_silent_reference", reference)
+            .putLong("last_silent_attempt_ms", now).apply()
+
         pendingPaystackRefreshJob = lifecycleScope.launch {
-            for (attempt in 0 until 5) {
-                if (viewModel.uiState.value.myProfile.id != accountId) return@launch
-                if (paystackPrefs.getString("reference", null) != reference) return@launch
-                if (paymentInProgress) return@launch
-                val confirmed = runCatching { paystack.confirmPayment(reference) }.getOrDefault(false)
-                // The account or pending reference could change while the network call runs.
-                if (viewModel.uiState.value.myProfile.id != accountId ||
-                    paystackPrefs.getString("reference", null) != reference) return@launch
-                if (confirmed) {
+            val status = runCatching { paystack.paymentStatus(reference) }.getOrNull()
+                ?: return@launch // Network/API failure: retain reference for later silent recovery.
+            if (viewModel.uiState.value.myProfile.id != accountId ||
+                paystackPrefs.getString("reference", null) != reference) return@launch
+            when (status) {
+                BlinkCheckoutVerificationState.FULFILLED -> {
                     refreshAfterPaystackFulfillment()
-                    if (paystackPrefs.getString("reference", null) == reference) {
-                        pendingPaymentReference = null
-                        showPendingPaymentPrompt = false
-                        paystackPrefs.edit().remove("reference").remove("account_id").remove("kind").apply()
-                    }
-                    viewModel.showToast("Paystack payment confirmed. Your purchase is updating.")
-                    return@launch
+                    clearPendingPaystackReference(reference)
+                    viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
                 }
-                if (attempt < 4) delay(2_000L * (attempt + 1))
-            }
-            if (viewModel.uiState.value.myProfile.id == accountId
-                && paystackPrefs.getString("reference", null) == reference) {
-                // Keep the reference; a future app entry can recover a late Paystack success.
-                viewModel.showToast("Payment still pending. BLINK will check it again.")
+                BlinkCheckoutVerificationState.ABANDONED,
+                BlinkCheckoutVerificationState.FAILED,
+                BlinkCheckoutVerificationState.REVERSED -> {
+                    // Only a server-verified provider outcome clears the local reminder;
+                    // the backend order stays intact for a late signed webhook.
+                    clearPendingPaystackReference(reference)
+                }
+                else -> Unit // pending, ongoing, processing or unknown: wait silently.
             }
         }
     }
@@ -342,6 +369,11 @@ class MainActivity : ComponentActivity() {
         val action = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_ACTION) ?: return
 
         when (action) {
+            BlinkNotificationHelper.ACTION_OPEN_MESSAGES -> {
+                viewModel.setTab(MainTab.MESSAGES)
+                viewModel.closeConversation()
+            }
+
             BlinkNotificationHelper.ACTION_OPEN_CHAT -> {
                 val username = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_USERNAME).orEmpty()
                 val name = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_NAME)
@@ -455,6 +487,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.setChatUiForeground(true)
         playInAppUpdateCoordinator.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
@@ -470,6 +503,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        viewModel.setChatUiForeground(false)
         // Save the exact navigation surface before Android backgrounds or kills the task.
         viewModel.persistResumePoint()
         stopPresenceHeartbeat(markOffline = true)
@@ -553,7 +587,8 @@ class MainActivity : ComponentActivity() {
                     val storedOwner = paystackPrefs.getString("account_id", null)
                     val ownCheckout = storedOwner == null || storedOwner == uiState.myProfile.id
                     pendingPaymentReference = if (ownCheckout) paystackPrefs.getString("reference", null) else null
-                    showPendingPaymentPrompt = pendingPaymentReference != null
+                    // Previously saved pending references must not recreate a modal after login.
+                    showPendingPaymentPrompt = false
                     // Authentication may finish after onResume: don't miss delayed receipts.
                     reconcilePendingPaystackPayment()
                     AccountSessionStore.recordCurrentSession(
@@ -609,7 +644,13 @@ class MainActivity : ComponentActivity() {
                         // content and bottom bar reach the physical screen edge.
                         // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
-                            if (uiState.viewingProfile != null) {
+                            if (uiState.viewingProfile != null ||
+                                (uiState.activeConversationPartner != null &&
+                                    (uiState.selectedTab == MainTab.MESSAGES || uiState.isConversationFullScreen))
+                            ) {
+                                // The active conversation owns its bottom system + keyboard
+                                // insets. Reserving this area in Scaffold as well leaves a
+                                // blank strip between the composer and the IME.
                                 WindowInsetsSides.Horizontal
                             } else {
                                 WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
@@ -1247,7 +1288,10 @@ fun MainAppContent(
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
-                        isLoading = uiState.isConversationsLoading
+                        isLoading = uiState.isConversationsLoading,
+                        onVisibleInboxReceipt = { id, timestamp ->
+                            viewModel.refreshVisibleInboxReceipt(id, timestamp)
+                        }
                     )
                 }
             }

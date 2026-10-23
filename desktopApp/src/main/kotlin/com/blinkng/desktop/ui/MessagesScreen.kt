@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.shared.BlinkDeliveryReceipt
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -71,6 +72,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
+    var lastInboxReceipts by remember { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
+    var inboxRefreshEpoch by remember { mutableStateOf(0) }
     var draft by remember { mutableStateOf("") }
     var inboxSearch by remember { mutableStateOf("") }
     var showInboxSearch by remember { mutableStateOf(false) }
@@ -86,7 +89,10 @@ fun MessagesScreen(state: DesktopAppState) {
         runCatching { state.client.fetchConversations() }
             .onSuccess {
                 conversations = it
+                inboxRefreshEpoch++
                 error = null
+                // Opening the desktop app/inbox confirms transport delivery, not reading.
+                scope.launch { runCatching { state.client.acknowledgePendingMessages() } }
             }
             .onFailure { error = it.message }
         loading = false
@@ -98,11 +104,26 @@ fun MessagesScreen(state: DesktopAppState) {
             return
         }
         runCatching { state.client.fetchMessages(target.id) }
-            .onSuccess { messages = it; error = null }
+            .onSuccess {
+                messages = it
+                error = null
+                // A read receipt is sent only after the selected conversation is visible.
+                if (!target.isGroup && target.partnerUsername.isNotBlank() &&
+                    selected?.id == target.id) {
+                    scope.launch {
+                        runCatching { state.client.markConversationReadReceipt(target.partnerUsername) }
+                    }
+                }
+            }
             .onFailure { error = it.message }
     }
 
-    LaunchedEffect(Unit) { loadConversations() }
+    LaunchedEffect(myUserId) {
+        selected = null
+        messages = emptyList()
+        lastInboxReceipts = emptyMap()
+        loadConversations()
+    }
     LaunchedEffect(selected?.id) { loadMessages(selected) }
 
     AnimatedContent(
@@ -198,6 +219,18 @@ fun MessagesScreen(state: DesktopAppState) {
                     }
                 }
                 items(conversations.filter { inboxSearch.isBlank() || it.title.contains(inboxSearch, ignoreCase = true) }, key = { it.id }) { conversation ->
+                    LaunchedEffect(conversation.id, conversation.lastMessageAt, myUserId, inboxRefreshEpoch) {
+                        if (myUserId.isNotBlank()) {
+                            val newest = runCatching { state.client.fetchLatestMessage(conversation.id) }.getOrNull()
+                            if (state.session?.userId == myUserId) {
+                                lastInboxReceipts = if (newest != null) {
+                                    lastInboxReceipts + (conversation.id to newest)
+                                } else {
+                                    lastInboxReceipts - conversation.id
+                                }
+                            }
+                        }
+                    }
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             error = null
@@ -219,6 +252,23 @@ fun MessagesScreen(state: DesktopAppState) {
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(conversation.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                val latest = lastInboxReceipts[conversation.id]
+                                if (latest != null && latest.senderId == myUserId) {
+                                    val status = when {
+                                        latest.readAt != null || latest.isRead -> "READ"
+                                        latest.deliveredAt != null -> "DELIVERED"
+                                        else -> "SENT"
+                                    }
+                                    val statusText = BlinkDeliveryReceipt.ticks(status) + " " +
+                                        status.lowercase().replaceFirstChar { it.uppercase() }
+                                    Text(
+                                        statusText,
+                                        fontSize = 11.sp,
+                                        color = if (latest.readAt != null || latest.isRead)
+                                            Color(0xFF3B82F6)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                                 Text(
                                     if (conversation.isGroup) "Group conversation" else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
                                     fontSize = 11.sp,
@@ -304,15 +354,20 @@ fun MessagesScreen(state: DesktopAppState) {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
                                 Text(message.content)
                                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text(
-                                        when {
-                                            message.readAt != null -> "Read"
-                                            message.deliveredAt != null -> "Delivered"
-                                            else -> "Sent"
-                                        },
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    if (mine) {
+                                        val receipt = when {
+                                            message.readAt != null || message.isRead -> "READ"
+                                            message.deliveredAt != null -> "DELIVERED"
+                                            else -> "SENT"
+                                        }
+                                        Text(
+                                            BlinkDeliveryReceipt.ticks(receipt),
+                                            fontSize = 11.sp,
+                                            color = if (BlinkDeliveryReceipt.isRead(receipt))
+                                                Color(0xFF3B82F6)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                     if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
                                 }
                             }
