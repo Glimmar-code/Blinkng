@@ -1,3 +1,10 @@
+## 2026-10-23 — Reference-matched authentication welcome screen (Testlab candidate)
+
+- **Android:** Replace the animated purple onboarding illustration with a real, clickable welcome layout matching the approved BLINK auth reference: campus-student hero image, full-width rounded white card, four colored campus benefits, black Log In button, outlined Create Account, light Continue with Google and branded G icon, plus the subtitle "Connect, discover and grow Beyond LINK" with "Beyond LINK" underlined.
+- **Behavior:** Preserve the existing sign-in, registration and Google auth callbacks, including the in-flight Google launch guard; no Supabase or credential changes. Keep the real buttons interactive; this is not a flat screenshot used as a login screen.
+- **Windows:** Introduce an equivalent welcome/action state before the existing login form. Preserve native desktop email, sign-up, reset-password and Supabase Google authentication flows. Desktop does not include the promotional phone bezel or surrounding ad collage.
+- **Tests:** Scope changes to auth; verify Android Compose buttons, 100–200% font sizes and screenshots, Android debug compilation, Windows desktop compilation. Compare rendered Android screen with the provided phone-screen reference. Do not merge into main until required CI passes.
+
 ## 2026-10-23 — Restore all ranked BLINK students without weakening private profiles
 
 - **Root cause:** `public.game_leaderboard` was a `security_invoker` view directly over `profiles`, whose authenticated SELECT policy allows only `auth.uid() = profiles.id`. The ranking query therefore returned just the signed-in account despite the underlying database containing 21 profiles (12 with positive points). This was a public-data visibility issue, not missing scoring data.
