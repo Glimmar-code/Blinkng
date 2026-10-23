@@ -729,7 +729,7 @@ class MainActivity : ComponentActivity() {
                                             recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
                                         }
                                     }
-                                    SignInScreen(
+                                    BlinkReferenceSignInScreen(
                                         initialIdentifier = initialIdentifier,
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onSignInWithCredentials = { emailOrUser, password, onResult ->
@@ -744,7 +744,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.SIGN_UP -> {
-                                    CreateAccountScreen(
+                                    BlinkReferenceCreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onCreateAccount = { name, email, password ->
                                             viewModel.signUp(name, email, password)
