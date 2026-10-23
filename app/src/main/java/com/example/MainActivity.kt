@@ -649,9 +649,11 @@ class MainActivity : ComponentActivity() {
             BlinkTheme(darkTheme = uiState.isDarkMode) {
                 // Keep system icons readable when the selected app theme differs from Android's.
                 SideEffect {
+                    val whiteAuthScreen = uiState.destination == AppDestination.SIGN_IN ||
+                        uiState.destination == AppDestination.SIGN_UP
                     WindowCompat.getInsetsController(window, window.decorView).apply {
-                        isAppearanceLightStatusBars = !uiState.isDarkMode
-                        isAppearanceLightNavigationBars = !uiState.isDarkMode
+                        isAppearanceLightStatusBars = whiteAuthScreen || !uiState.isDarkMode
+                        isAppearanceLightNavigationBars = whiteAuthScreen || !uiState.isDarkMode
                     }
                 }
                 val homeManagesSystemInsets =
