@@ -175,166 +175,36 @@ fun LeaderboardScreen(
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(bottom = 110.dp)
-    ) {
-        item(key = "leaderboard_header", contentType = "header") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = BlinkGold.copy(alpha = .14f)) {
-                    Icon(
-                        Icons.Default.EmojiEvents,
-                        null,
-                        tint = BlinkGold,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Leaderboard", fontSize = 24.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        "Top 10 from live Blink activity",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { showInfo = true }) {
-                    Icon(Icons.Default.Info, "How leaderboard works")
-                }
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, "Refresh live leaderboard")
-                }
-            }
-        }
-
-        item(key = "leaderboard_scope", contentType = "filters") {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                LeaderboardScope.entries.forEach { option ->
-                    val enabled = when (option) {
-                        LeaderboardScope.WORLD -> true
-                        LeaderboardScope.CAMPUS -> campusName.isNotBlank()
-                        LeaderboardScope.FACULTY -> facultyName.isNotBlank()
-                        LeaderboardScope.LEVEL -> levelName.isNotBlank()
-                    }
-                    FilterChip(
-                        selected = scope == option,
-                        enabled = enabled,
-                        onClick = { scope = option },
-                        label = { Text(option.label) }
-                    )
-                }
-                FilterChip(
-                    selected = verifiedOnly,
-                    onClick = { verifiedOnly = !verifiedOnly },
-                    leadingIcon = {
-                        Icon(Icons.Default.Verified, null, modifier = Modifier.size(16.dp))
-                    },
-                    label = { Text("Verified") }
-                )
-            }
-        }
-
-        item(key = "leaderboard_search", contentType = "search") {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                placeholder = { Text("Search the Top 10") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                shape = RoundedCornerShape(18.dp)
-            )
-        }
-
-        item(key = "leaderboard_summary", contentType = "summary") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SummaryPill("Top 10", "${topTen.size}/10", Modifier.weight(1f))
-                SummaryPill("Scope", scope.label, Modifier.weight(1f))
-                SummaryPill(
-                    "Leader",
-                    topTen.firstOrNull()?.points?.let { "$it pts" } ?: "—",
-                    Modifier.weight(1f)
-                )
-            }
-        }
-
-        item(key = "my_rank", contentType = "my_rank") {
-            MyRankCard(
-                currentUser = currentUser,
-                nextUser = nextUser,
-                pointsToNext = pointsToNext,
-                onProfileClick = onProfileClick
-            )
-        }
-
-        if (visibleTopTen.isEmpty()) {
-            item(key = "leaderboard_empty", contentType = "empty") {
-                Box(
-                    Modifier.fillMaxWidth().padding(50.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No Top 10 result matches this view.", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Try another scope or clear the search.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = {
-                            searchQuery = ""
-                            verifiedOnly = false
-                            scope = LeaderboardScope.WORLD
-                        }) { Text("Reset filters") }
-                    }
-                }
-            }
-        } else {
-            if (searchQuery.isBlank()) {
-                item(key = "leaderboard_podium", contentType = "podium") {
-                    Podium(
-                        topThree = visibleTopTen.take(3),
-                        isDark = isDark,
-                        onProfileClick = onProfileClick,
-                        onShare = { shareLeaderboardUser(context, it) }
-                    )
-                }
-            }
-
-            val listUsers = if (searchQuery.isBlank()) visibleTopTen.drop(3) else visibleTopTen
-            itemsIndexed(
-                items = listUsers,
-                key = { _, user -> user.username },
-                contentType = { _, _ -> "leaderboard_user" }
-            ) { _, user ->
-                LeaderboardRow(
-                    user = user,
-                    isCurrentUser = user.username.equals(userProfile.username, ignoreCase = true),
-                    movement = if (scope == LeaderboardScope.WORLD) {
-                        worldRankMovement[user.username.lowercase()] ?: 0
-                    } else {
-                        0
-                    },
-                    onProfileClick = onProfileClick,
-                    onShare = { shareLeaderboardUser(context, it) }
-                )
-            }
-        }
-    }
+    BlinkReferenceLeaderboard(
+        visibleTopTen = visibleTopTen,
+        userProfile = userProfile,
+        currentUser = currentUser,
+        currentWorldRank = world.firstOrNull {
+            it.username.equals(userProfile.username, ignoreCase = true)
+        }?.rank,
+        scope = scope.label,
+        campusEnabled = campusName.isNotBlank(),
+        facultyEnabled = facultyName.isNotBlank(),
+        levelEnabled = levelName.isNotBlank(),
+        verifiedOnly = verifiedOnly,
+        searchQuery = searchQuery,
+        worldRankMovement = worldRankMovement,
+        isDark = isDark,
+        onScopeChange = { requested ->
+            LeaderboardScope.entries.firstOrNull { it.label == requested }?.let { scope = it }
+        },
+        onVerifiedChange = { verifiedOnly = !verifiedOnly },
+        onSearchChange = { searchQuery = it },
+        onResetFilters = {
+            scope = LeaderboardScope.WORLD
+            verifiedOnly = false
+            searchQuery = ""
+        },
+        onProfileClick = onProfileClick,
+        onShare = { shareLeaderboardUser(context, it) },
+        onInfo = { showInfo = true },
+        onRefresh = onRefresh,
+    )
 }
 
 @Composable
