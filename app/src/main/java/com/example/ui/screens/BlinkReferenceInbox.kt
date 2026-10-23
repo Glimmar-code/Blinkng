@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ChatConversation
+import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -88,6 +90,7 @@ internal fun BlinkReferenceInbox(
     onOpenSettings: () -> Unit,
     isConnected: Boolean,
     isLoading: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit,
     filterContent: @Composable () -> Unit,
 ) {
     val bg = if (isDark) Color(0xFF0C0D0E) else Color.White
@@ -222,7 +225,9 @@ internal fun BlinkReferenceInbox(
                         secondary = secondary,
                         border = border,
                         onOpen = { onOpenConversation(conversation.partnerUsername) },
-                        onAvatarClick = { onProfileClick(conversation.partnerUsername) }
+                        onAvatarClick = { onProfileClick(conversation.partnerUsername) },
+                        onVisibleReceipt = onVisibleInboxReceipt,
+                        isConnected = isConnected
                     )
                 }
             }
@@ -325,8 +330,17 @@ private fun BlinkInboxConversationRow(
     secondary: Color,
     border: Color,
     onOpen: () -> Unit,
-    onAvatarClick: () -> Unit
+    onAvatarClick: () -> Unit,
+    onVisibleReceipt: (String, String) -> Unit,
+    isConnected: Boolean
 ) {
+    // LazyColumn composes only visible inbox rows. Fetch metadata without
+    // opening the conversation or marking anything as read.
+    LaunchedEffect(conversation.id, conversation.lastMessageRawTime, isConnected) {
+        if (isConnected && conversation.lastMessageRawTime.isNotBlank()) {
+            onVisibleReceipt(conversation.id, conversation.lastMessageRawTime)
+        }
+    }
     Column(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpen)
             .testTag("inbox_chat_${conversation.id}")
@@ -370,12 +384,34 @@ private fun BlinkInboxConversationRow(
                 }
                 Spacer(Modifier.height(3.dp))
                 val preview = conversation.lastMessage.ifBlank { "Start the conversation" }
-                Text(
-                    preview, color = secondary,
-                    fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
-                    lineHeight = 17.sp,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    conversation.lastOutgoingStatus?.let { status ->
+                        val ticks = when (status) {
+                            MessageStatus.SENDING -> "◷"
+                            MessageStatus.SENT -> "✓"
+                            MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
+                            MessageStatus.FAILED -> "!"
+                        }
+                        Text(
+                            text = ticks,
+                            color = when (status) {
+                                MessageStatus.READ -> Color(0xFF3B82F6)
+                                MessageStatus.FAILED -> Color(0xFFFF5252)
+                                else -> secondary
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 5.dp)
+                                .testTag("inbox_receipt_${conversation.id}")
+                        )
+                    }
+                    Text(
+                        preview, color = secondary,
+                        fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
+                        lineHeight = 17.sp, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
             }
             Spacer(Modifier.width(7.dp))
             Column(
