@@ -344,12 +344,8 @@ fun BlinkReferenceSignInScreen(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 26.dp),
                 color = Ink
             )
-            Text(
-                "Good People\nBrighter Days ♡", color = Color.White,
-                fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.End,
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 22.dp, top = 42.dp)
-            )
+            // The extracted reference scene already includes its hand-lettered art.
+            // Do not paint a duplicate phrase over the original photograph.
         }
         Column(
             modifier = Modifier.fillMaxWidth().offset(y = (-28).dp)
@@ -501,14 +497,13 @@ fun BlinkReferenceCreateAccountScreen(
                 val center = (maxWidth.value * 0.34f).coerceIn(82f, 124f).dp
                 Row(
                     Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalArrangement = Arrangement.spacedBy((-10).dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val colors = listOf(Color(0xFFE8D7FA), Color(0xFFFFE4A9), Color(0xFFDCEEFF))
                     repeat(3) { i ->
                         Box(
-                            Modifier.padding(horizontal = 2.dp)
-                                .size(if (i == 1) center else side)
+                            Modifier.size(if (i == 1) center else side)
                                 .background(colors[i], CircleShape)
                                 .clip(CircleShape).border(1.dp, Color.White, CircleShape)
                         ) {
