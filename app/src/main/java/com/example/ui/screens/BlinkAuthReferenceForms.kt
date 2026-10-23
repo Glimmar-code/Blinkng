@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -47,7 +48,8 @@ import com.example.data.models.NigerianUniversities
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
- * The promotional poster, outer phone frame and doodles are not app UI.
+ * Compact Android shows the functional phone-screen content; wide screens add
+ * poster framing without turning interactive controls into a static picture.
  * All authentication is handled by the existing callbacks / Supabase flow.
  */
 private val Ink = Color(0xFF080808)
@@ -78,7 +80,7 @@ private fun Wordmark(modifier: Modifier = Modifier, color: Color = Ink) {
     Text(
         text = "B L I N K",
         color = color,
-        fontSize = 27.sp,
+        fontSize = if (LocalDensity.current.fontScale > 1.35f) 22.sp else 27.sp,
         fontWeight = FontWeight.Black,
         modifier = modifier,
         maxLines = 1
@@ -174,7 +176,7 @@ private fun OrSeparator() {
 private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: String) {
     OutlinedButton(
         onClick = onClick, enabled = !loading,
-        modifier = Modifier.fillMaxWidth().height(54.dp).testTag(tag),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag(tag),
         border = BorderStroke(1.2.dp, Ink),
         shape = RoundedCornerShape(11.dp),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Ink)
@@ -186,7 +188,7 @@ private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: Stri
         }
         Spacer(Modifier.width(14.dp))
         Text(if (loading) "Opening Google..." else "Continue with Google",
-            fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2, textAlign = TextAlign.Center)
     }
 }
 
@@ -251,6 +253,32 @@ private fun AuthAdaptiveShell(
     }
 }
 
+
+/** Preserve readable account navigation at 130-200% font scaling. */
+@Composable
+private fun AuthAccountSwitcher(prompt: String, link: String, onClick: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val stacked = maxWidth < 350.dp || LocalDensity.current.fontScale >= 1.3f
+        if (stacked) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(prompt, color = Hint, fontSize = 12.sp, textAlign = TextAlign.Center)
+                TextButton(onClick = onClick) {
+                    Text(link, color = Ink, fontWeight = FontWeight.Bold,
+                        textDecoration = TextDecoration.Underline)
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(prompt, color = Hint, fontSize = 12.sp)
+                TextButton(onClick = onClick) {
+                    Text(link, color = Ink, fontWeight = FontWeight.Bold,
+                        textDecoration = TextDecoration.Underline)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AuthSocialCircle(
     tag: String,
@@ -285,7 +313,7 @@ fun BlinkReferenceSignInScreen(
     val stored = remember { RememberedLoginStore.load(context) }
     var identifier by rememberSaveable { mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier) }
     var password by remember { mutableStateOf(stored?.password.orEmpty()) }
-    var rememberCredentials by rememberSaveable { mutableStateOf(stored != null) }
+    val rememberCredentials = stored != null
     var visible by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -299,7 +327,7 @@ fun BlinkReferenceSignInScreen(
     val screenHeight = LocalConfiguration.current.screenHeightDp
     Column(
         modifier = Modifier.fillMaxSize().background(Color.White)
-            .navigationBarsPadding().verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState())
     ) {
         Box(Modifier.fillMaxWidth().height(
             (screenHeight * 0.36f).coerceIn(210f, 315f).dp
@@ -377,13 +405,7 @@ fun BlinkReferenceSignInScreen(
             OrSeparator()
             GoogleOutlineButton(googleLoading, { onGoogleSignIn("") }, "signin_google_btn")
             Spacer(Modifier.height(21.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Don't have an account?", color = Hint, fontSize = 12.sp)
-                TextButton(onClick = onSwitchToSignUp) {
-                    Text("Sign Up", color = Ink, textDecoration = TextDecoration.Underline,
-                        fontWeight = FontWeight.Bold)
-                }
-            }
+            AuthAccountSwitcher("Don't have an account?", "Sign Up", onSwitchToSignUp)
         }
     }
     }
@@ -581,13 +603,7 @@ fun BlinkReferenceCreateAccountScreen(
                 ) { Icon(Icons.Default.MailOutline, contentDescription = "Sign up with email") }
             }
             Spacer(Modifier.height(13.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Already have an account?", color = Hint, fontSize = 12.sp)
-                TextButton(onClick = onLogin) {
-                    Text("Log In", fontWeight = FontWeight.Bold, color = Ink,
-                        textDecoration = TextDecoration.Underline)
-                }
-            }
+            AuthAccountSwitcher("Already have an account?", "Log In", onLogin)
         }
     }
     }
