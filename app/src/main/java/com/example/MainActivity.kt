@@ -673,6 +673,11 @@ class MainActivity : ComponentActivity() {
                         // areas; don't reserve another inset in the host scaffold.
                         uiState.destination == AppDestination.MAIN &&
                             uiState.viewingProfile != null -> WindowInsets(0, 0, 0, 0)
+                        // Reference authentication images intentionally extend under the system
+                        // bars; auth composables keep logo/forms inside safe areas.
+                        uiState.destination == AppDestination.SIGN_IN ||
+                            uiState.destination == AppDestination.SIGN_UP ->
+                            WindowInsets(0, 0, 0, 0)
                         homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
                         routeManagesTopInset -> WindowInsets.safeDrawing.only(
                             WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
