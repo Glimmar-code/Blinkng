@@ -610,7 +610,8 @@ class MainActivity : ComponentActivity() {
                         // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
                             if (uiState.viewingProfile != null ||
-                                (uiState.selectedTab == MainTab.MESSAGES && uiState.activeConversationPartner != null)
+                                (uiState.activeConversationPartner != null &&
+                                    (uiState.selectedTab == MainTab.MESSAGES || uiState.isConversationFullScreen))
                             ) {
                                 // The active conversation owns its bottom system + keyboard
                                 // insets. Reserving this area in Scaffold as well leaves a
