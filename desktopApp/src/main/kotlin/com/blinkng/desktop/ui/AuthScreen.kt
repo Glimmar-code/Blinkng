@@ -34,6 +34,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -75,7 +79,12 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     BlinkDesktopLogo(size = 46.dp, showText = true)
                     Text("Welcome to BLINK", fontSize = 32.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "Connect, discover and grow Beyond LINK",
+                        buildAnnotatedString {
+                            append("Connect, discover and grow ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline)) {
+                                append("Beyond LINK")
+                            }
+                        },
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
