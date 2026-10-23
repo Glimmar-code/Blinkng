@@ -41,6 +41,7 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -3285,21 +3286,29 @@ private suspend fun restoreSupabaseSession() {
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
-                val fresh = postRepository.fetchFeed()
-                if (fresh.isNotEmpty()) {
-                    val muted = _uiState.value.mutedUsers
-                    _uiState.value = _uiState.value.copy(
-                        posts = fresh.filter {
-                            it.videoUrl.isNullOrBlank() &&
-                                !it.isReel &&
-                                it.author.lowercase() !in muted
-                        },
-                        reels = fresh.filter {
-                            !it.videoUrl.isNullOrBlank() &&
-                                it.author.lowercase() !in muted
-                        }
-                    )
-                    persistCurrentFeed()
+                // A failed background RPC must never escape this coroutine and
+                // terminate the app. Keep the last successful/cached feed intact.
+                try {
+                    val fresh = postRepository.fetchFeed()
+                    if (fresh.isNotEmpty()) {
+                        val muted = _uiState.value.mutedUsers
+                        _uiState.value = _uiState.value.copy(
+                            posts = fresh.filter {
+                                it.videoUrl.isNullOrBlank() &&
+                                    !it.isReel &&
+                                    it.author.lowercase() !in muted
+                            },
+                            reels = fresh.filter {
+                                !it.videoUrl.isNullOrBlank() &&
+                                    it.author.lowercase() !in muted
+                            }
+                        )
+                        persistCurrentFeed()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime feed update failed; preserving loaded posts", error)
                 }
             }
         }
