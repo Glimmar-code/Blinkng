@@ -1,12 +1,13 @@
 package com.example.ui.screens
 
 import android.app.Application
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
@@ -25,10 +26,10 @@ import org.robolectric.annotation.GraphicsMode
  * expanded tablet layouts without generating device-only APK downloads.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, sdk = [35], qualifiers = "w320dp-h640dp")
 class BlinkAuthNarrowScreenTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun signupKeepsEveryInputAndProviderReachable() {
         rule.setContent {
@@ -45,7 +46,7 @@ class BlinkAuthNarrowScreenTest {
         rule.onNodeWithTag("create_account_submit").assertExists()
         rule.onNodeWithTag("create_account_google").assertExists()
         rule.onNodeWithTag("create_account_email_focus").assertExists()
-        rule.onRoot().captureRoboImage(filePath = "build/screenshots/blink-auth-signup-320dp.png")
+        rule.activity.window.decorView.captureRoboImage(filePath = "build/screenshots/blink-auth-signup-320dp.png")
     }
 
     @Test fun signupRemainsReachableAt130To200PercentFont() {
@@ -64,7 +65,7 @@ class BlinkAuthNarrowScreenTest {
             rule.onNodeWithTag("create_account_submit").assertExists()
             rule.onNodeWithTag("create_account_email").assertExists()
             rule.onNodeWithTag("create_account_google").assertExists()
-            rule.onRoot().captureRoboImage(
+            rule.activity.window.decorView.captureRoboImage(
                 filePath = "build/screenshots/blink-auth-signup-320dp-font-${(next * 100).toInt()}.png"
             )
         }
@@ -86,15 +87,15 @@ class BlinkAuthNarrowScreenTest {
         rule.onNodeWithTag("signin_submit_btn").assertExists()
         rule.onNodeWithTag("signin_google_btn").assertExists()
         rule.onNodeWithText("Forgot Password?").assertExists()
-        rule.onRoot().captureRoboImage(filePath = "build/screenshots/blink-auth-login-320dp.png")
+        rule.activity.window.decorView.captureRoboImage(filePath = "build/screenshots/blink-auth-login-320dp.png")
     }
 }
 
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, sdk = [35], qualifiers = "w800dp-h960dp")
 class BlinkAuthExpandedScreenTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun tabletKeepsPosterSeparateFromInteractivePhone() {
         rule.setContent {
@@ -107,6 +108,6 @@ class BlinkAuthExpandedScreenTest {
         // BLINK appears both in the poster and inside the interactive form.
         // A single-node lookup is intentionally ambiguous on tablet widths.
         rule.onNodeWithTag("create_account_submit").assertExists()
-        rule.onRoot().captureRoboImage(filePath = "build/screenshots/blink-auth-signup-800dp.png")
+        rule.activity.window.decorView.captureRoboImage(filePath = "build/screenshots/blink-auth-signup-800dp.png")
     }
 }
