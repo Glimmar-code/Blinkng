@@ -81,6 +81,7 @@ data class DesktopConversation(
     val lastMessageAt: String?,
     val isOnline: Boolean = false,
     val lastSeenAt: String? = null,
+    val partnerUsername: String = "",
 )
 
 data class DesktopMessage(
