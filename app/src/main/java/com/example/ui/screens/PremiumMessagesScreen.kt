@@ -1296,7 +1296,13 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            // Apply bottom insets exactly once at the conversation boundary.
+            // Compose consumes overlapping navigation/IME insets in modifier order:
+            // only the remaining IME height is applied when the keyboard appears.
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
         ) {
             ChatHeader(
                 conversation = conversation,
