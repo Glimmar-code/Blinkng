@@ -37,6 +37,7 @@ import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
@@ -898,16 +899,8 @@ private suspend fun restoreSupabaseSession() {
      * Never replace the local list outright: doing so erases visible chat history
      * and optimistic/offline messages whenever a realtime summary event arrives.
      */
-    private fun receiptRank(status: MessageStatus): Int = when (status) {
-        MessageStatus.FAILED -> -1
-        MessageStatus.SENDING -> 0
-        MessageStatus.SENT -> 1
-        MessageStatus.DELIVERED -> 2
-        MessageStatus.READ -> 3
-    }
-
     private fun strongestReceipt(existing: MessageStatus, incoming: MessageStatus): MessageStatus =
-        if (receiptRank(incoming) >= receiptRank(existing)) incoming else existing
+        MessageStatus.valueOf(BlinkDeliveryReceipt.strongest(existing.name, incoming.name))
 
     private fun sameMessageTime(a: String, b: String): Boolean {
         if (a.isBlank() || b.isBlank()) return false
