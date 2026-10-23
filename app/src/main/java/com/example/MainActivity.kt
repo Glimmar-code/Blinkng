@@ -455,6 +455,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.setChatUiForeground(true)
         playInAppUpdateCoordinator.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
@@ -470,6 +471,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        viewModel.setChatUiForeground(false)
         // Save the exact navigation surface before Android backgrounds or kills the task.
         viewModel.persistResumePoint()
         stopPresenceHeartbeat(markOffline = true)
