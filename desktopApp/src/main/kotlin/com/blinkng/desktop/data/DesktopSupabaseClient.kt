@@ -718,15 +718,20 @@ class DesktopSupabaseClient(
             url to reference
         }
 
-    suspend fun confirmPaystackCheckout(reference: String): Boolean = withContext(Dispatchers.IO) {
-        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
-            "Invalid payment reference."
+    suspend fun getPaystackCheckoutStatus(reference: String): com.blinkng.shared.BlinkCheckoutVerificationState =
+        withContext(Dispatchers.IO) {
+            require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+                "Invalid payment reference."
+            }
+            val response = postObject(
+                "/functions/v1/paystack-confirm", JSONObject().put("reference", reference),
+            ) as JSONObject
+            com.blinkng.shared.BlinkCheckoutStatusPolicy.parse(response.optString("status"))
         }
-        val response = postObject(
-            "/functions/v1/paystack-confirm", JSONObject().put("reference", reference),
-        ) as JSONObject
-        response.optString("status") == "fulfilled"
-    }
+
+    /** Only a backend-fulfilled order counts as successfully paid. */
+    suspend fun confirmPaystackCheckout(reference: String): Boolean =
+        getPaystackCheckoutStatus(reference).isConfirmed
 
     suspend fun fetchCoinBalance(): Long = withContext(Dispatchers.IO) {
         val rows = getArray(
