@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -152,7 +154,13 @@ fun MarketScreen(
                 (maxPrice == null || item.price <= maxPrice)
         }) { item -> item.sellerUsername }
     }
-    val marketRows = remember(visibleItems) { visibleItems.chunked(2) }
+    val compactMarketGrid = com.blinkng.shared.BlinkAdaptiveLayoutPolicy.marketColumns(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    ) == 1
+    val marketRows = remember(visibleItems, compactMarketGrid) {
+        visibleItems.chunked(if (compactMarketGrid) 1 else 2)
+    }
     val activeFilterCount = listOf(
         savedOnly,
         verifiedOnly,
@@ -610,7 +618,7 @@ fun MarketScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    if (row.size == 1 && !compactMarketGrid) Spacer(modifier = Modifier.weight(1f))
                 }
             }
 
