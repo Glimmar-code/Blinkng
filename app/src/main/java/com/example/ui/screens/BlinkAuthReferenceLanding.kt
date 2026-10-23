@@ -2,15 +2,13 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MailOutline
@@ -249,7 +247,7 @@ private fun BlinkAuthLandingButton(
                 Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = foreground)
             }
             Icon(
-                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = foreground,
                 modifier = Modifier.size(17.dp),
