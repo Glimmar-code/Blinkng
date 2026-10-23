@@ -20,6 +20,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +76,10 @@ internal fun BlinkReferenceProfileDashboard(
     val ink = if (isDark) Color.White else Color.Black
     val muted = if (isDark) Color(0xFFBBBBBB) else Color(0xFF777777)
     val border = if (isDark) Color(0xFF333333) else Color(0xFFEEEEEE)
+    val compactProfile = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+        LocalConfiguration.current.screenWidthDp.toFloat(),
+        LocalDensity.current.fontScale
+    )
     val xp = xpProgress(profile.totalXp, profile.xpLevel)
     val studentVerified = profile.badges.any {
         val text = (it.id + " " + it.title).lowercase().replace('_', ' ')
@@ -91,8 +98,9 @@ internal fun BlinkReferenceProfileDashboard(
                 modifier = Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onBack)
             )
             Spacer(Modifier.width(10.dp))
-            Text("B L I N K", color = ink, fontWeight = FontWeight.Black,
-                fontSize = 20.sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(if (compactProfile) "BLINK" else "B L I N K", color = ink, fontWeight = FontWeight.Black,
+                fontSize = if (compactProfile) 17.sp else 20.sp,
+                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             listOf(
                 Triple(Icons.Default.Search, "Search", "search"),
                 Triple(Icons.Default.SportsEsports, "Games", "games"),
@@ -105,12 +113,12 @@ internal fun BlinkReferenceProfileDashboard(
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(98.dp)) {
+            Box(Modifier.size(if (compactProfile) 82.dp else 98.dp)) {
                 AsyncImage(
                     model = profile.avatarUrl, fallback = painterResource(R.drawable.ic_default_profile),
                     error = painterResource(R.drawable.ic_default_profile), contentDescription = "View avatar",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
+                    modifier = Modifier.size(if (compactProfile) 80.dp else 96.dp).clip(CircleShape).clickable(onClick = onAvatarClick)
                 )
                 if (profile.isBlinkVip) {
                     Icon(
@@ -124,8 +132,8 @@ internal fun BlinkReferenceProfileDashboard(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(profile.fullName.ifBlank { profile.username },
-                        color = ink, fontWeight = FontWeight.Black, fontSize = 19.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = ink, fontWeight = FontWeight.Black, fontSize = if (compactProfile) 17.sp else 19.sp,
+                        maxLines = if (compactProfile) 2 else 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false))
                     if (profile.verificationBadge != VerificationBadge.NONE) {
                         Spacer(Modifier.width(5.dp))
