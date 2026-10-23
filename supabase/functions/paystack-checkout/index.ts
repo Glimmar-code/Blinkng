@@ -7,6 +7,8 @@ Deno.serve(async req => {
   const user=await currentUser(req);
   if(!user) return json({error:"SIGN_IN_REQUIRED"},401);
   if(!user.email) return json({error:"ACCOUNT_EMAIL_REQUIRED"},400);
+  // Only authenticated, email-verified accounts can initiate a cash checkout.
+  if(!user.email_confirmed_at) return json({error:"EMAIL_CONFIRMATION_REQUIRED"},403);
   // Additional independent kill switch; database cash_checkout_enabled is also required.
   if(Deno.env.get("BLINK_PAYSTACK_CHECKOUT_ENABLED")!=="true")
     return json({error:"CHECKOUT_DISABLED"},503);
@@ -19,6 +21,9 @@ Deno.serve(async req => {
       || !Number.isInteger(months) || ![1,3,6,12].includes(months)
       || ((kind==="coin_pack" || kind==="boost") && months!==1))
       return json({error:"INVALID_CHECKOUT_SELECTION"},400);
+    // Cash boosts need a separate merchant approval flag; Coins alone do not enable them.
+    if(kind==="boost" && Deno.env.get("BLINK_PAYSTACK_BOOST_ENABLED")!=="true")
+      return json({error:"CASH_BOOST_DISABLED"},503);
     const auth=req.headers.get("authorization") || "";
     const caller=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_ANON_KEY")!,{
       global:{headers:{Authorization:auth}},
