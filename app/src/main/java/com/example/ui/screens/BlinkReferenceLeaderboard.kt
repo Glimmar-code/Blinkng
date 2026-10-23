@@ -24,6 +24,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,21 +91,64 @@ internal fun BlinkReferenceLeaderboard(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "reference_title") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(38.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Leaderboard", fontSize = 26.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        "See top students and climb your rank",
-                        fontSize = 12.sp, color = muted, maxLines = 2
-                    )
-                }
-                IconButton(onClick = onInfo) {
-                    Icon(Icons.Default.Info, contentDescription = "How rankings work")
-                }
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh leaderboard")
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val compactHeader = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+                    maxWidth.value, LocalDensity.current.fontScale
+                )
+                if (compactHeader) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(30.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Leaderboard",
+                                modifier = Modifier.weight(1f),
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "See top students and climb your rank",
+                                modifier = Modifier.weight(1f),
+                                fontSize = 12.sp,
+                                color = muted,
+                                maxLines = 3
+                            )
+                            IconButton(onClick = onInfo) {
+                                Icon(Icons.Default.Info, contentDescription = "How rankings work")
+                            }
+                            IconButton(onClick = onRefresh) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh leaderboard")
+                            }
+                        }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(38.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Leaderboard", fontSize = 26.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                "See top students and climb your rank",
+                                fontSize = 12.sp, color = muted, maxLines = 2
+                            )
+                        }
+                        IconButton(onClick = onInfo) {
+                            Icon(Icons.Default.Info, contentDescription = "How rankings work")
+                        }
+                        IconButton(onClick = onRefresh) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh leaderboard")
+                        }
+                    }
                 }
             }
         }
