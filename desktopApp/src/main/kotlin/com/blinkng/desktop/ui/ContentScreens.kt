@@ -852,7 +852,7 @@ fun LeaderboardScreen(state: DesktopAppState) {
     LaunchedEffect(state.profile?.id) { reload() }
 
     val ranked = remember(entries, selectedScope, campus) {
-        if (selectedScope == "Campus") {
+        val sorted = if (selectedScope == "Campus") {
             entries.filter { it.university?.trim()?.equals(campus, ignoreCase = true) == true }
                 .sortedWith(compareBy<DesktopLeaderboardEntry> {
                     it.campusRank ?: Int.MAX_VALUE
@@ -861,7 +861,8 @@ fun LeaderboardScreen(state: DesktopAppState) {
             entries.sortedWith(compareBy<DesktopLeaderboardEntry> {
                 it.worldRank ?: Int.MAX_VALUE
             }.thenByDescending { it.worldScore })
-        }.take(10)
+        }
+        sorted.take(10)
     }
     val current = entries.firstOrNull { it.userId == state.profile?.id }
     val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
@@ -1030,7 +1031,7 @@ fun LeaderboardScreen(state: DesktopAppState) {
                                                 )
                                             }
                                             Text(
-                                                "#" + (if (selectedScope == "Campus" || featuredCampus) student.campusRank else student.worldRank)?.toString() ?: "—",
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusRank else student.worldRank)?.let { "#" + it } ?: "—",
                                                 color = accent, fontWeight = FontWeight.Bold
                                             )
                                             Text(student.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
