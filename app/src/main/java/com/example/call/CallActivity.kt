@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -158,6 +159,7 @@ class CallActivity : ComponentActivity() {
     private var answerRequested = false
     private var isCaller = false
     private var connectingSinceMillis = 0L
+    private var callerRingingSinceMs = 0L
 
     private var statusText by mutableStateOf("Loading call…")
     private var callType by mutableStateOf(CallType.AUDIO)
@@ -344,10 +346,15 @@ class CallActivity : ComponentActivity() {
         peerUsername = sourceIntent.getStringExtra(EXTRA_PEER_USERNAME).orEmpty()
         peerAvatar = sourceIntent.getStringExtra(EXTRA_PEER_AVATAR).orEmpty()
         if (peerId.isNotBlank() && (peerName == "Blink user" || peerUsername.isBlank())) {
-            repository.fetchPeer(peerId).getOrNull()?.let { peer ->
-                peerName = peer.name
-                peerUsername = peer.username
-                peerAvatar = peer.avatar
+            // An optional profile lookup must never delay offer/answer exchange.
+            lifecycleScope.launch {
+                repository.fetchPeer(peerId).getOrNull()?.let { peer ->
+                    if (call?.id == loaded.id && !ending.get()) {
+                        peerName = peer.name
+                        peerUsername = peer.username
+                        peerAvatar = peer.avatar
+                    }
+                }
             }
         }
 
@@ -361,6 +368,8 @@ class CallActivity : ComponentActivity() {
         }
         speakerOn = callType == CallType.VIDEO
         cameraOn = callType == CallType.VIDEO
+        callerRingingSinceMs =
+            if (isCaller && loaded.status == CallStatus.RINGING) SystemClock.elapsedRealtime() else 0L
 
         startRealtime(loaded.id)
         startReconciliationLoop(loaded.id)
@@ -402,7 +411,14 @@ class CallActivity : ComponentActivity() {
 
         // Permissions are granted at this point, so it is safe to start the phone-call
         // foreground service before registering the call with Telecom.
-        startForegroundCall(active.id)
+        try {
+            startForegroundCall(active.id)
+        } catch (error: RuntimeException) {
+            Log.e("BlinkCalls", "Android rejected call foreground service", error)
+            errorText = "Unable to start call audio. Check microphone permission and try again."
+            failAndFinish("failed")
+            return
+        }
         BlinkTelecomManager.ensureCallRegistered(
             context = this,
             callId = active.id,
@@ -450,8 +466,16 @@ class CallActivity : ComponentActivity() {
                 dataSaverEnabled = dataSaverEnabled
             )
         } catch (error: Exception) {
+            Log.e("BlinkCalls", "Call media initialization failed", error)
             mediaStarted = false
-            errorText = "Unable to initialize call media."
+            errorText = "Unable to initialize call media. Try again."
+            failAndFinish("failed")
+            return
+        } catch (error: LinkageError) {
+            // JNI process aborts require the keep-rule/APK audit separately.
+            Log.e("BlinkCalls", "Recoverable WebRTC Java/native linkage error", error)
+            mediaStarted = false
+            errorText = "This build cannot start calls. Update BLINK and try again."
             failAndFinish("failed")
             return
         }
@@ -522,6 +546,16 @@ class CallActivity : ComponentActivity() {
                     ?: repository.fetchCall(callId).getOrNull()
                 if (refreshed != null) applyCallUpdate(refreshed)
                 if (
+                    callerRingingSinceMs > 0L &&
+                    CallStartupPolicy.unansweredCallTimedOut(
+                        call?.status, isCaller, SystemClock.elapsedRealtime() - callerRingingSinceMs
+                    )
+                ) {
+                    errorText = "The other phone did not answer. Check its network and notifications."
+                    failAndFinish("no_answer")
+                    break
+                }
+                if (
                     refreshed?.status == CallStatus.CONNECTING &&
                     connectingSinceMillis > 0L &&
                     System.currentTimeMillis() - connectingSinceMillis > 35_000L
@@ -583,12 +617,14 @@ class CallActivity : ComponentActivity() {
         when (updated.status) {
             CallStatus.RINGING -> statusText = if (isCaller) "Calling…" else "Incoming call"
             CallStatus.CONNECTING -> {
+                callerRingingSinceMs = 0L
                 incomingRinging = false
                 statusText = "Connecting…"
                 if (connectingSinceMillis == 0L) connectingSinceMillis = System.currentTimeMillis()
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
+                callerRingingSinceMs = 0L
                 incomingRinging = false
                 statusText = "Connected"
                 if (!mediaStarted) requestMediaPermissions(incomingAnswer = !isCaller)
@@ -612,12 +648,27 @@ class CallActivity : ComponentActivity() {
         override fun onLocalDescription(kind: String, description: SessionDescription) {
             val active = call ?: return
             lifecycleScope.launch {
-                signalSendMutex.withLock {
-                    repository.sendSignal(
-                        active.id,
-                        kind,
-                        JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)
-                    )
+                val payload = JSONObject()
+                    .put("type", description.type.canonicalForm())
+                    .put("sdp", description.description)
+                var delivered = false
+                for (attempt in 0 until CallStartupPolicy.MAX_SDP_ATTEMPTS) {
+                    if (ending.get()) return@launch
+                    val result = signalSendMutex.withLock {
+                        repository.sendSignal(active.id, kind, payload)
+                    }
+                    if (result.isSuccess) {
+                        delivered = true
+                        break
+                    }
+                    Log.w("BlinkCalls", "SDP $kind send attempt ${attempt + 1} failed", result.exceptionOrNull())
+                    if (attempt + 1 < CallStartupPolicy.MAX_SDP_ATTEMPTS) {
+                        delay(CallStartupPolicy.sdpRetryDelayMs(attempt))
+                    }
+                }
+                if (!delivered && !ending.get()) {
+                    errorText = "Unable to connect the call. Check your network."
+                    failAndFinish("signaling_failed")
                 }
             }
         }
@@ -625,7 +676,7 @@ class CallActivity : ComponentActivity() {
         override fun onLocalIceCandidate(candidate: IceCandidate) {
             val active = call ?: return
             lifecycleScope.launch {
-                signalSendMutex.withLock {
+                val result = signalSendMutex.withLock {
                     repository.sendSignal(
                         active.id,
                         "ice",
@@ -634,6 +685,9 @@ class CallActivity : ComponentActivity() {
                             .put("sdpMLineIndex", candidate.sdpMLineIndex)
                             .put("candidate", candidate.sdp)
                     )
+                }
+                if (result.isFailure) {
+                    Log.w("BlinkCalls", "ICE candidate send failed", result.exceptionOrNull())
                 }
             }
         }
