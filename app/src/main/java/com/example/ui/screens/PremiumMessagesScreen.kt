@@ -2218,12 +2218,12 @@ private fun MessageComposer(
         contentColor = palette.textPrimary,
         border = BorderStroke(1.dp, palette.border),
         shadowElevation = 8.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
+        // PremiumChatDetail owns the safe/IME insets. The composer must not add
+        // a second navigation-bar gap between the typing field and keyboard.
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassIconButton(
