@@ -48,6 +48,7 @@ private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
 @Composable
 fun BlinkAuthScreen(state: DesktopAppState) {
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
+    var showWelcome by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -70,6 +71,42 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 modifier = Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (showWelcome) {
+                    BlinkDesktopLogo(size = 46.dp, showText = true)
+                    Text("Welcome to BLINK", fontSize = 32.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        "Connect, discover and grow Beyond LINK",
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Meet Students     •     Join Communities     •     Attend Events     •     Buy & Sell on Campus",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_IN; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("Log In") }
+                    OutlinedButton(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_UP; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("Create Account") }
+                    OutlinedButton(
+                        onClick = {
+                            state.clearError()
+                            scope.launch { runCatching { state.signInWithGoogle() } }
+                        },
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Text("G", color = androidx.compose.ui.graphics.Color(0xFF4285F4), fontWeight = FontWeight.Bold)
+                        Text("  Continue with Google")
+                    }
+                    HorizontalDivider()
+                    Text("Already a student?  Join your campus community today.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
                 BlinkDesktopLogo(size = 46.dp, showText = true)
                 Text(
                     when (mode) {
@@ -257,6 +294,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                 )
+                }
             }
         }
     }
