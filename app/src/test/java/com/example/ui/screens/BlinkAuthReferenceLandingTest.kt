@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -48,22 +51,24 @@ class BlinkAuthReferenceLandingTest {
     @Test
     fun referenceLayoutsAtLargeFontScales() {
         val scales = listOf(1f, 1.3f, 1.5f, 2f)
-        scales.forEach { scale ->
-            rule.setContent {
-                val density = LocalDensity.current
-                CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
-                    BlinkAuthReferenceLanding(
-                        onSignInClick = {},
-                        onSignUpClick = {},
-                        onGoogleSignIn = {},
-                    )
-                }
+        var scale by mutableFloatStateOf(1f)
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
+                BlinkAuthReferenceLanding(
+                    onSignInClick = {},
+                    onSignUpClick = {},
+                    onGoogleSignIn = {},
+                )
             }
+        }
+        scales.forEach { newScale ->
+            rule.runOnIdle { scale = newScale }
             rule.onNodeWithTag("onboarding_signin_btn").assertExists()
             rule.onNodeWithTag("onboarding_signup_btn").assertExists()
             rule.onNodeWithTag("onboarding_google_btn").assertExists()
             rule.onRoot().captureRoboImage(
-                filePath = "build/screenshots/blink-auth-reference-${(scale * 100).toInt()}.png"
+                filePath = "build/screenshots/blink-auth-reference-${(newScale * 100).toInt()}.png"
             )
         }
     }
