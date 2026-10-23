@@ -177,6 +177,11 @@ fun LeaderboardScreen(
 
     BlinkReferenceLeaderboard(
         visibleTopTen = visibleTopTen,
+        campusPodiumUsers = if (campusName.isNotBlank()) {
+            world.filter {
+                com.blinkng.shared.discovery.BlinkUniversitySearch.sameCampus(it.university, campusName)
+            }.take(3).mapIndexed { index, student -> student.copy(rank = index + 1) }
+        } else emptyList(),
         userProfile = userProfile,
         currentUser = currentUser,
         currentWorldRank = world.firstOrNull {
