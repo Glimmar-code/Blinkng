@@ -737,19 +737,19 @@ class DesktopSupabaseClient(
 
     suspend fun fetchLeaderboard(): List<DesktopLeaderboardEntry> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/leaderboard_snapshots?select=user_id,name,handle,university,verification_tier,world_score,world_rank,campus_score,campus_rank&order=world_rank.asc.nullslast&limit=200",
+            "/rest/v1/game_leaderboard?select=user_id,name,username,university,verification_badge,score,world_rank,campus_rank&order=world_rank.asc&limit=200",
         )
         (0 until rows.length()).mapNotNull { i ->
             rows.optJSONObject(i)?.let { row ->
                 DesktopLeaderboardEntry(
                     userId = row.optString("user_id"),
                     name = row.optString("name"),
-                    handle = row.optString("handle"),
+                    handle = row.optString("username"),
                     university = row.optNullableString("university"),
-                    verificationTier = row.optString("verification_tier"),
-                    worldScore = row.optLong("world_score"),
+                    verificationTier = row.optString("verification_badge"),
+                    worldScore = row.optLong("score"),
                     worldRank = row.optNullableInt("world_rank"),
-                    campusScore = row.optLong("campus_score"),
+                    campusScore = row.optLong("score"),
                     campusRank = row.optNullableInt("campus_rank"),
                 )
             }
