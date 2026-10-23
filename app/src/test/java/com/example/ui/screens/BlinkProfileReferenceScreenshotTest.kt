@@ -37,7 +37,9 @@ import org.robolectric.annotation.GraphicsMode
  * Rendering at larger font scales catches clipping without consuming device data.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+// LEGACY captures show Compose's colored semantics/debug rectangles, not the
+// actual BLINK UI. NATIVE draws real text, surfaces and images for visual QA.
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [35])
 class BlinkProfileReferenceScreenshotTest {
     @get:Rule val rule = createComposeRule()
