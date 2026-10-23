@@ -13,6 +13,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -78,7 +81,12 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     Text("Welcome to BLINK", color = authInk,
                         fontSize = 30.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "Connect, discover and grow Beyond LINK",
+                        buildAnnotatedString {
+                            append("Connect, discover and grow ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline)) {
+                                append("Beyond LINK")
+                            }
+                        },
                         color = authHint, fontSize = 15.sp
                     )
                     Text(
