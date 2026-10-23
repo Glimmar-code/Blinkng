@@ -50,6 +50,18 @@ jobs:
         if: steps.scope.outputs.android == 'true'
         run: |
           gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark large-fonts 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/profile-reference-${name}.png" || {
+              echo "::error::Missing profile-reference-${name}.png"
+              exit 1
+            }
+          done
+          # LEGACY/headless semantics placeholder previously generated IDENTICAL
+          # light and dark PNGs; reject another false-positive visual gate.
+          if cmp -s app/src/test/screenshots/profile-reference-light.png app/src/test/screenshots/profile-reference-dark.png; then
+            echo "::error::Identical light/dark profile captures are not valid visual evidence."
+            exit 1
+          fi
           find . -name 'profile-reference-*.png' -print
 
       - name: Upload BLINK profile visual snapshots
