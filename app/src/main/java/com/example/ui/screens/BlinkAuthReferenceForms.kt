@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +48,7 @@ import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthLaunchGate
 import com.example.auth.RememberedLoginStore
 import com.example.data.models.BlinkUniversitySearch
+import kotlinx.coroutines.delay
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
@@ -176,9 +179,11 @@ private fun OrSeparator() {
 }
 
 @Composable
-private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: String) {
+private fun GoogleOutlineButton(
+    loading: Boolean, onClick: () -> Unit, tag: String, enabled: Boolean = true
+) {
     OutlinedButton(
-        onClick = onClick, enabled = !loading,
+        onClick = onClick, enabled = enabled && !loading,
         modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag(tag),
         border = BorderStroke(1.2.dp, Ink),
         shape = RoundedCornerShape(11.dp),
@@ -324,6 +329,16 @@ private fun AuthSocialCircle(
     )
 }
 
+
+/** Do not start an expensive login request when Android confirms there is no network. */
+private fun isLoginOffline(context: Context): Boolean = runCatching {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return@runCatching false
+    val network = cm.activeNetwork ?: return@runCatching true
+    val capabilities = cm.getNetworkCapabilities(network) ?: return@runCatching true
+    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}.getOrDefault(false)
+
 @Composable
 fun BlinkReferenceSignInScreen(
     initialIdentifier: String = "",
@@ -334,12 +349,29 @@ fun BlinkReferenceSignInScreen(
     onSwitchToSignUp: () -> Unit
 ) {
     val context = LocalContext.current
+    // Existing Android Keystore-protected Supabase sessions keep users signed in.
+    // A saved password is not needed for future launches; migrate only the identifier.
     val stored = remember { RememberedLoginStore.load(context) }
-    var identifier by rememberSaveable { mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier) }
-    var password by remember { mutableStateOf(stored?.password.orEmpty()) }
-    val rememberCredentials = stored != null
+    var identifier by rememberSaveable {
+        mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier)
+    }
+    var password by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        stored?.identifier?.takeIf { it.isNotBlank() }?.let {
+            AccountSessionStore.rememberIdentifier(context, it)
+        }
+        if (stored != null) RememberedLoginStore.clear(context)
+    }
     var visible by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
+    var slowLogin by remember { mutableStateOf(false) }
+    LaunchedEffect(submitting) {
+        slowLogin = false
+        if (submitting) {
+            delay(8_000L)
+            slowLogin = true
+        }
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var forgot by remember { mutableStateOf(false) }
     val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
@@ -403,27 +435,45 @@ fun BlinkReferenceSignInScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            SolidAuthButton("Log In", enabled = !submitting, working = submitting,
-                tag = "signin_submit_btn") {
-                if (identifier.isBlank() || password.isBlank()) {
-                    error = "Enter your email or username and password."
-                } else {
-                    submitting = true
-                    error = null
-                    onSignInWithCredentials(identifier.trim(), password) { success, message ->
-                        submitting = false
-                        if (success) {
-                            AccountSessionStore.setSignInRequired(context, !rememberCredentials)
-                            if (rememberCredentials) RememberedLoginStore.save(context, identifier.trim(), password)
-                            else RememberedLoginStore.clear(context)
-                        } else {
-                            error = message ?: "Unable to log in. Please try again."
+            SolidAuthButton("Log In", enabled = !submitting && !googleLoading,
+                working = submitting, tag = "signin_submit_btn") {
+                if (submitting || googleLoading) return@SolidAuthButton
+                when {
+                    identifier.isBlank() || password.isBlank() ->
+                        error = "Enter your email or username and password."
+                    isLoginOffline(context) ->
+                        error = "You're offline. Connect to the internet and try again."
+                    else -> {
+                        submitting = true
+                        error = null
+                        val submittedIdentifier = identifier.trim()
+                        onSignInWithCredentials(submittedIdentifier, password) { success, message ->
+                            submitting = false
+                            if (success) {
+                                // Persist the authenticated session, not a reusable password.
+                                AccountSessionStore.rememberIdentifier(context, submittedIdentifier)
+                                AccountSessionStore.setSignInRequired(context, false)
+                                RememberedLoginStore.clear(context)
+                            } else {
+                                error = message ?: "Unable to log in. Please try again."
+                            }
                         }
                     }
                 }
             }
+            if (slowLogin && submitting) {
+                Text(
+                    "Connection is taking longer than usual. Check your network.",
+                    color = Hint, fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
             OrSeparator()
-            GoogleOutlineButton(googleLoading, { onGoogleSignIn("") }, "signin_google_btn")
+            GoogleOutlineButton(
+                googleLoading, { onGoogleSignIn("") }, "signin_google_btn",
+                enabled = !submitting
+            )
             Spacer(Modifier.height(21.dp))
             AuthAccountSwitcher("Don't have an account?", "Sign Up", onSwitchToSignUp)
         }
