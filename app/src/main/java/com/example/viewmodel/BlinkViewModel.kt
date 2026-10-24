@@ -2718,8 +2718,9 @@ private suspend fun restoreSupabaseSession() {
         chatUiForeground = isForeground
         val current = _uiState.value
         val partner = current.activeConversationPartner
+        // BlinkUiState has no chatPrivacySettings field. Keep the same visible-chat
+        // read acknowledgement rule used by message-history hydration below.
         if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
-            current.chatPrivacySettings.sendReadReceipts &&
             (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
             viewModelScope.launch {
                 runCatching { chatRepository.markConversationRead(partner) }
