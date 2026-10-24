@@ -1,3 +1,11 @@
+## 2026-10-24 — Cold-start BLINK intro smoothness (Testlab candidate)
+
+- **Root cause candidate:** The shared 6.4 s intro used per-frame Compose recomposition, text measurement/width re-layout of every disappearing character, and reconstructing five traced logo Paths on each Canvas draw. Android also initialized ad-consent/optional rewarded ad loading synchronously during Activity creation, competing for first-frame main-thread time. These are static code observations, *not* measured frame-drop attribution.
+- **Android/Windows shared fix:** The same exact approved 6.4 s keyframe timings, contours, blue dot, black background, and scaling now render as one cached draw node. Text glyph layouts and logo Paths are cached per screen size/density; the animation timestamp is read only during draw, avoiding recomposition/layout every frame. No extra video decode or network work is introduced.
+- **Android cold start:** Defer SDK consent/ad bootstrap until the intro finishes plus a short grace period. Respect the existing consent gate; never preload ads before consent. Session restoration and in-app flow remain unchanged.
+- **Windows:** Identical optimized shared Compose artwork/clock; no Android ad SDK and no desktop-specific boot change.
+- **Release hold:** Needs newest-head Android/Windows compile, cross-size screenshots and frame-by-frame comparisons to the approved intro, real Android frame-time/dropped-frame baseline and post-fix measurements, offline/session-restoration testing, plus safe check that ads still request consent after launch. Current production main/website/APK unchanged.
+
 ## 2026-10-24 — PARITY-EXCEPTION: android-cold-start-brand-route
 
 - PR #515 repairs an Android Activity/ViewModel timing bug: restored sessions may leave the SPLASH destination before its Composable renders, skipping the approved shared intro. Android now overlays the already-shared intro on the root Activity for one cold launch and prevents intro-time tap-through.
