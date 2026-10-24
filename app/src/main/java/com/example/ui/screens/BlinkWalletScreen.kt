@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,14 +30,14 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.NumberFormat
 
-private data class WalletLedgerRow(
+internal data class WalletLedgerRow(
     val id: String,
     val description: String,
     val amount: Long,
     val createdAt: String
 )
 
-private fun decodeWalletLedger(payload: JSONObject): List<WalletLedgerRow> {
+internal fun decodeWalletLedger(payload: JSONObject): List<WalletLedgerRow> {
     val array = payload.optJSONArray("transactions") ?: return emptyList()
     return buildList {
         for (index in 0 until array.length()) {
@@ -90,6 +92,7 @@ fun BlinkWalletScreen(
     val surface = MaterialTheme.colorScheme.surface
     val border = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .65f)
     val amountFormatter = remember { NumberFormat.getIntegerInstance() }
+    val compact = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale >= 1.5f
 
     suspend fun refresh() {
         if (accountId.isBlank()) return
@@ -163,7 +166,7 @@ fun BlinkWalletScreen(
                         }
                         Text(
                             balance?.let { amountFormatter.format(it) } ?: "—",
-                            fontSize = 39.sp, fontWeight = FontWeight.Black,
+                            fontSize = if (compact) 26.sp else 39.sp, fontWeight = FontWeight.Black,
                             color = Color.White,
                             modifier = Modifier.testTag("wallet_balance_value")
                         )
@@ -184,26 +187,40 @@ fun BlinkWalletScreen(
                 }
             }
             item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = onOpenStore,
-                        modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = WalletBlack)
+                if (compact) {
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        Icon(Icons.Rounded.Storefront, null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Use Coins", maxLines = 1)
+                        Button(
+                            onClick = onOpenStore,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = WalletBlack)
+                        ) { Text("Use Coins in BLINK Store") }
+                        OutlinedButton(
+                            onClick = { tab = 1 },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)
+                        ) { Text("Earn Rewards") }
                     }
-                    OutlinedButton(
-                        onClick = { tab = 1 },
-                        modifier = Modifier.weight(1f).heightIn(min = 50.dp)
-                    ) {
-                        Icon(Icons.Rounded.CardGiftcard, null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Earn Rewards", maxLines = 1)
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = onOpenStore,
+                            modifier = Modifier.weight(1f).heightIn(min = 50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = WalletBlack)
+                        ) {
+                            Icon(Icons.Rounded.Storefront, null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Use Coins", maxLines = 1)
+                        }
+                        OutlinedButton(
+                            onClick = { tab = 1 },
+                            modifier = Modifier.weight(1f).heightIn(min = 50.dp)
+                        ) {
+                            Icon(Icons.Rounded.CardGiftcard, null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Earn Rewards", maxLines = 1)
+                        }
                     }
                 }
             }
