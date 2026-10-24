@@ -35,6 +35,10 @@ check("<h1" in index and "campus community" in index.lower(), "crawlable BLINK b
 check("<title>BLINK" in index, "descriptive brand title")
 check("<title>BLINK Nigeria | Social &amp; Campus Community App</title>" in index, "distinctive homepage brand title")
 check("<h1" in index and "BLINK Nigeria" in index, "crawlable homepage identifies BLINK Nigeria")
+check('class="boot-static"' in index and index.count('class="boot-static-grid"') == 1, "homepage has raw HTML public discovery information")
+for href in ("./students/", "./marketplace/", "./features/", "./download/", "./safety/"):
+    check(f'href="{href}"' in index, f"pre-rendered homepage includes {href}")
+check("new URLSearchParams(location.search).has('p')" in index, "early noindex on redirected SPA routes")
 check("BLINK Nigeria | Social & Campus Community App" in read("app.js"), "runtime title matches official BLINK Nigeria brand")
 check("BLINK Nigeria</span>" in read("app.js"), "interactive hero heading distinguishes BLINK Nigeria")
 check('<meta name="description"' in index, "description")
