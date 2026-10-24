@@ -12,6 +12,11 @@ const supabase='https://jhwgifrlxwspoedxjaly.supabase.co';
 const apk='https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk';
 const fail=[];
 const checks=[];
+// Before production publication, validate only currently published informational
+// pages. On successful deployment of this candidate, require all new SEO pages.
+const postDeploy=process.env.BLINK_SEO_POST_DEPLOY==='1';
+const existingPublicPaths=['/','/about/','/features/','/download/','/faq/','/privacy/'];
+const newPublicPaths=['/students/','/marketplace/','/safety/'];
 const get=async(path)=>{
   const res=await fetch(site+path,{headers:{Accept:'text/html,application/xml,application/json,*/*'},signal:AbortSignal.timeout(18000),redirect:'follow'});
   if(!res.ok)throw new Error(path+': HTTP '+res.status);
@@ -39,9 +44,36 @@ await check('Public informational pages and canonical URLs',async()=>{
 await check('Live sitemap and robots discovery',async()=>{
  const [{body:sitemap},{body:robots}]=await Promise.all([get('/sitemap.xml'),get('/robots.txt')]);
  const matches=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
- assert.deepEqual(matches,['/','/about/','/features/','/download/','/faq/','/privacy/'].map(s=>site+s));
- assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'));
+ assert.equal(matches.length,new Set(matches).size,'Sitemap has duplicate locations');
+ assert.ok(matches.every(url=>url.startsWith(site+'/')),'Sitemap contains external or noncanonical URLs');
+ const required=existingPublicPaths.map(path=>site+path);
+ if(postDeploy){
+  assert.deepEqual(matches,[...existingPublicPaths,...newPublicPaths].map(path=>site+path),'Deployed sitemap must contain all nine public pages');
+ }else{
+  assert.ok(required.every(url=>matches.includes(url)),'Production sitemap is missing a baseline page');
+ }
+ assert.ok(robots.includes('User-agent: *'),'Missing public crawler directive');
+ assert.ok(robots.includes('Allow: /'),'Public crawling not permitted');
+ assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'),'Sitemap discovery directive missing');
 });
+if(postDeploy){
+ await check('New SEO pages are live with static content and correct canonicals',async()=>{
+  for(const slug of ['students','marketplace','safety']){
+   const {res,body}=await get('/'+slug+'/');
+   assert.match(body,/<h1>[^<]+<\/h1>/,'Missing readable H1: '+slug);
+   assert.ok(body.includes('<link rel="canonical" href="'+site+'/'+slug+'/">'),'Wrong canonical: '+slug);
+   assert.ok(body.includes('<meta name="robots" content="index,follow'),'SEO page is not crawlable: '+slug);
+   assert.ok(!/noindex/i.test(res.headers.get('x-robots-tag')||''),'Server marked public page noindex: '+slug);
+  }
+ });
+ await check('HTML-first homepage visible to no-JavaScript crawlers',async()=>{
+  const {body}=await get('/');
+  assert.ok(body.includes('<main class="boot-static"'),'Published homepage lacks HTML-first discovery content');
+  for(const path of newPublicPaths){
+   assert.ok(body.includes('href=".'+path+'"'),'Missing initial HTML link: '+path);
+  }
+ });
+}
 await check('Published assetlinks and Android package/certificate',async()=>{
  const {body}=await get('/.well-known/assetlinks.json');
  const links=JSON.parse(body);
