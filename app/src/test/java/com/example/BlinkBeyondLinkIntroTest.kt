@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
  * The timing check also prevents the intro from trapping navigation.
  */
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.LEGACY)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = Application::class, sdk = [35])
 class BlinkBeyondLinkIntroTest {
     @get:Rule val composeRule = createComposeRule()
