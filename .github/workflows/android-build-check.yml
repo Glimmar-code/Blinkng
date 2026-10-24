@@ -141,8 +141,17 @@ jobs:
         shell: bash
         run: |
           gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark large-fonts medium-fonts extra-large-fonts 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/profile-reference-${name}.png" || {
+              echo "::error::Missing profile-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/profile-reference-light.png app/src/test/screenshots/profile-reference-dark.png; then
+            echo "::error::Light and dark screenshots are identical; render native UI before merging."
+            exit 1
+          fi
           find . -name 'profile-reference-*.png' -print
-          test "$(find . -name 'profile-reference-*.png' | wc -l)" -ge 5
 
       - name: Upload full-screen BLINK profile screenshots
         if: steps.scope.outputs.android == 'true'
