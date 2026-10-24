@@ -1,3 +1,10 @@
+## 2026-10-24 — BLINK Search reference screenshot review and action parity (Phase 4)
+
+- **Real screenshot evidence:** Reviewed CI-generated `search-reference-light.png`, `search-reference-dark.png` and `search-reference-320dp-font200.png` for the previous Search candidate. Dark and light mode were distinct and category layout matched the reference direction. The 320dp/200% capture exposed a People-name/Follow-button collision and a two-line Recent searches header; approval withheld.
+- **Android corrections:** For font scale >= 160%, show the Follow button beneath the profile identity; constrain titles and section labels to avoid action overlap, preserve large readable type, keep clear-recents accessible and reduce section-header whitespace. Real online status is displayed on matching People avatars.
+- **Post actions:** Show like, comment, repost/share and bookmark controls, forwarding to existing post callbacks. Post menu uses the existing options callback; tapping the card still opens its post. No simulated backend actions.
+- **Status:** These corrections require a fresh compile and captured screenshots from the **final** candidate; earlier passing screenshots/checks do not prove this commit. Testlab promotion only after latest CI and rendering verification. Main and production APK untouched.
+
 ## 2026-10-24 — Reference Search Phase 2 navigation and authenticated actions
 
 - **Android header:** BLINK wordmark, signed-in profile avatar and online dot, existing Home game route, and real notification center route/unread indicator. No duplicate overlay or invented notification data.
