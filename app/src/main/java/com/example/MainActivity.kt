@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
     private var rewardedAdShowPending = false
+    private var startupIntroComplete = false
     private var itemsOpenSignal by mutableIntStateOf(0)
     private var boostOpenSignal by mutableIntStateOf(0)
     private var showBugReportSheet by mutableStateOf(false)
@@ -492,7 +493,7 @@ class MainActivity : ComponentActivity() {
             viewModel.verifyPendingPaystackCheckout()
             reconcileReturnedPaystackPayment()
             viewModel.retryPendingRewardedAdClaim()
-            if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
+            if (startupIntroComplete && BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
             }
             startPresenceHeartbeat()
@@ -1001,7 +1002,7 @@ class MainActivity : ComponentActivity() {
                 // how quickly a cached session transitions from SPLASH to MAIN.
                 if (showStartupIntro) {
                     com.blinkng.shared.brand.BlinkBeyondLinkIntro(
-                        onFinished = { showStartupIntro = false },
+                        onFinished = { startupIntroComplete = true; showStartupIntro = false },
                         modifier = Modifier.fillMaxSize()
                             .zIndex(1000f)
                             .pointerInput(Unit) {
