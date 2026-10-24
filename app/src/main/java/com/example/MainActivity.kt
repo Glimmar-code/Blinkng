@@ -559,6 +559,18 @@ class MainActivity : ComponentActivity() {
             val snackbarHostState = remember { SnackbarHostState() }
             // Covers auth/session restoration too: returning users must see the intro.
             var showStartupIntro by remember { mutableStateOf(true) }
+            // Ad consent and rewarded-ad loading compete with first-frame rendering.
+            // Run them only after the exact approved BLINK intro finishes.
+            LaunchedEffect(showStartupIntro) {
+                if (!showStartupIntro && !isFinishing && !isDestroyed) {
+                    delay(300L)
+                    adConsentManager.gatherConsent {
+                        if (BlinkAdsRuntime.canRequestAds.value && !isFinishing && !isDestroyed) {
+                            rewardedAdManager.load()
+                        }
+                    }
+                }
+            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
@@ -1005,9 +1017,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        adConsentManager.gatherConsent {
-            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
-        }
         handleIncomingIntent(intent)
     }
 }
