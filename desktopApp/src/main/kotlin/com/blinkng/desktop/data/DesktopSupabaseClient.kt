@@ -249,7 +249,7 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,academic_level,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -360,7 +360,7 @@ class DesktopSupabaseClient(
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
         val encodedPattern = encode("*$clean*")
         val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=30",
+            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,academic_level,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week,account_type&limit=30",
         )
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
@@ -552,6 +552,7 @@ class DesktopSupabaseClient(
                 summaryRows.optJSONObject(i)?.let { row ->
                     DesktopConversation(
                         id = row.optString("conversation_id"),
+                        partnerUsername = row.optString("partner_username"),
                         title = row.optString("partner_name").ifBlank {
                             row.optString("partner_username").ifBlank { "Conversation" }
                         },
@@ -579,6 +580,32 @@ class DesktopSupabaseClient(
                 )
             }
         }
+    }
+
+    /** Latest visible inbox row only, restricted by existing messages RLS. */
+    suspend fun fetchLatestMessage(conversationId: String): DesktopMessage? = withContext(Dispatchers.IO) {
+        require(conversationId.matches(Regex("^[0-9a-fA-F-]{36}$")))
+        val rows = getArray(
+            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.desc,id.desc&limit=1",
+        )
+        rows.optJSONObject(0)?.let(::parseMessage)
+    }
+
+    /** A recipient online in the desktop inbox can confirm delivery without opening a chat. */
+    suspend fun acknowledgePendingMessages(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            postObject("/rest/v1/rpc/ack_pending_message_deliveries", JSONObject())
+            true
+        }.getOrDefault(false)
+    }
+
+    suspend fun markConversationReadReceipt(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        if (partnerUsername.isBlank()) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/mark_conversation_read",
+                JSONObject().put("p_partner_username", partnerUsername.trim()))
+            true
+        }.getOrDefault(false)
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
@@ -718,15 +745,20 @@ class DesktopSupabaseClient(
             url to reference
         }
 
-    suspend fun confirmPaystackCheckout(reference: String): Boolean = withContext(Dispatchers.IO) {
-        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
-            "Invalid payment reference."
+    suspend fun getPaystackCheckoutStatus(reference: String): com.blinkng.shared.BlinkCheckoutVerificationState =
+        withContext(Dispatchers.IO) {
+            require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+                "Invalid payment reference."
+            }
+            val response = postObject(
+                "/functions/v1/paystack-confirm", JSONObject().put("reference", reference),
+            ) as JSONObject
+            com.blinkng.shared.BlinkCheckoutStatusPolicy.parse(response.optString("status"))
         }
-        val response = postObject(
-            "/functions/v1/paystack-confirm", JSONObject().put("reference", reference),
-        ) as JSONObject
-        response.optString("status") == "fulfilled"
-    }
+
+    /** Only a backend-fulfilled order counts as successfully paid. */
+    suspend fun confirmPaystackCheckout(reference: String): Boolean =
+        getPaystackCheckoutStatus(reference).isConfirmed
 
     suspend fun fetchCoinBalance(): Long = withContext(Dispatchers.IO) {
         val rows = getArray(
@@ -865,6 +897,9 @@ class DesktopSupabaseClient(
         fullName = row.optString("full_name").ifBlank { row.optString("name").ifBlank { row.optString("username") } },
         username = row.optString("username").ifBlank { row.optString("handle") },
         avatarUrl = row.optNullableString("avatar_url"),
+        coverPhotoUrl = row.optNullableString("cover_photo_url"),
+        professionalHeadline = row.optNullableString("professional_headline"),
+        academicLevel = row.optNullableString("academic_level"),
         university = row.optNullableString("university"),
         accountType = row.optNullableString("account_type"),
         faculty = row.optNullableString("faculty"),

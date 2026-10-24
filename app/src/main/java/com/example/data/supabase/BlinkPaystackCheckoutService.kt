@@ -1,5 +1,7 @@
 package com.example.data.supabase
 
+import com.blinkng.shared.BlinkCheckoutStatusPolicy
+import com.blinkng.shared.BlinkCheckoutVerificationState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -148,11 +150,15 @@ class BlinkPaystackCheckoutService {
         return BlinkPaystackCheckout(url, reference, "boost")
     }
 
-    suspend fun confirmPayment(reference: String): Boolean {
+    suspend fun paymentStatus(reference: String): BlinkCheckoutVerificationState {
         require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
             "Invalid payment reference."
         }
-        return invoke("paystack-confirm", JSONObject().put("reference", reference))
-            .optString("status") == "fulfilled"
+        val response = invoke("paystack-confirm", JSONObject().put("reference", reference))
+        return BlinkCheckoutStatusPolicy.parse(response.optString("status"))
     }
+
+    /** Backwards-compatible boolean contract. Only server fulfillment counts as paid. */
+    suspend fun confirmPayment(reference: String): Boolean =
+        paymentStatus(reference) == BlinkCheckoutVerificationState.FULFILLED
 }

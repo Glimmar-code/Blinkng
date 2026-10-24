@@ -11,6 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -58,6 +62,8 @@ internal fun BlinkReferenceProfileDashboard(
     isDark: Boolean,
     isFollowing: Boolean,
     followBusy: Boolean,
+    postCount: Int,
+    profileCompletion: Int,
     onAvatarClick: () -> Unit,
     onBack: () -> Unit,
     onEdit: () -> Unit,
@@ -85,6 +91,7 @@ internal fun BlinkReferenceProfileDashboard(
     val accessibilityProfile = LocalConfiguration.current.screenWidthDp < 340 ||
         LocalDensity.current.fontScale >= 1.6f
     val xp = xpProgress(profile.totalXp, profile.xpLevel)
+    var interactMenuExpanded by remember(profile.id) { mutableStateOf(false) }
     val studentVerified = profile.badges.any {
         val text = (it.id + " " + it.title).lowercase().replace('_', ' ')
         text.contains("verified student")
@@ -115,6 +122,15 @@ internal fun BlinkReferenceProfileDashboard(
                     Icon(icon, contentDescription = label, tint = ink, modifier = Modifier.size(22.dp))
                 }
             }
+        }
+        if (profile.coverPhotoUrl.isNotBlank()) {
+            AsyncImage(
+                model = profile.coverPhotoUrl,
+                contentDescription = "Profile cover photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().height(108.dp)
+                    .clip(RoundedCornerShape(16.dp))
+            )
         }
         if (accessibilityProfile) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -154,6 +170,27 @@ internal fun BlinkReferenceProfileDashboard(
                     }
                 }
             }
+            // Keep extended metadata below the avatar on accessibility layouts.
+                if (profile.username.isNotBlank()) {
+                    Text("@${profile.username}", color = muted, fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (profile.professionalHeadline.isNotBlank()) {
+                    Text(profile.professionalHeadline, color = ink, fontSize = 12.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (profile.academicLevel.isNotBlank()) {
+                    Text(profile.academicLevel, color = muted, fontSize = 11.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (profile.department.isNotBlank()) {
+                    Text(profile.department, color = muted, fontSize = 11.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (profile.dailyStreak > 0) {
+                    Text("🔥 ${profile.dailyStreak} day streak", color = muted,
+                        fontSize = 11.sp, maxLines = 1)
+                }
             if (profile.bio.isNotBlank()) {
                 Text(profile.bio, color = muted, fontSize = 12.sp,
                     maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -171,10 +208,32 @@ internal fun BlinkReferenceProfileDashboard(
                         null, modifier = Modifier.size(14.dp))
                 }
                 if (!isMe) {
-                    TextButton(onClick = onFollow, enabled = !followBusy) {
-                        Text(if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
-                            fontSize = 11.sp)
-                    }
+                    Box {
+                            TextButton(
+                                onClick = {
+                                    if (isFollowing) interactMenuExpanded = true else onFollow()
+                                },
+                                enabled = !followBusy
+                            ) {
+                                Text(
+                                    if (followBusy) "Updating" else if (isFollowing) "Interact" else "Follow",
+                                    fontSize = 11.sp
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = interactMenuExpanded,
+                                onDismissRequest = { interactMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Message") },
+                                    onClick = { interactMenuExpanded = false; onMessage() }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("I follow · Unfollow") },
+                                    onClick = { interactMenuExpanded = false; onFollow() }
+                                )
+                            }
+                        }
                 }
             }
         } else {
@@ -208,8 +267,23 @@ internal fun BlinkReferenceProfileDashboard(
                             )
                         }
                     }
+                    if (profile.username.isNotBlank())
+                        Text("@${profile.username}", color = muted, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (profile.professionalHeadline.isNotBlank())
+                        Text(profile.professionalHeadline, color = ink, fontSize = 12.sp,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                     if (profile.university.isNotBlank())
                         Text(profile.university, color = muted, fontSize = 12.sp, maxLines = 2)
+                    if (profile.academicLevel.isNotBlank())
+                        Text(profile.academicLevel, color = muted, fontSize = 11.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (profile.department.isNotBlank())
+                        Text(profile.department, color = muted, fontSize = 11.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (profile.dailyStreak > 0)
+                        Text("🔥 ${profile.dailyStreak} day streak", color = muted,
+                            fontSize = 11.sp, maxLines = 1)
                     if (profile.bio.isNotBlank())
                         Text(profile.bio, color = muted, fontSize = 12.sp, maxLines = 2)
                     Button(
@@ -223,8 +297,31 @@ internal fun BlinkReferenceProfileDashboard(
                         Icon(if (isMe) Icons.Default.Edit else Icons.Default.Chat, null, modifier = Modifier.size(14.dp))
                     }
                     if (!isMe) {
-                        TextButton(onClick = onFollow, enabled = !followBusy) {
-                            Text(if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow", fontSize = 11.sp)
+                        Box {
+                            TextButton(
+                                onClick = {
+                                    if (isFollowing) interactMenuExpanded = true else onFollow()
+                                },
+                                enabled = !followBusy
+                            ) {
+                                Text(
+                                    if (followBusy) "Updating" else if (isFollowing) "Interact" else "Follow",
+                                    fontSize = 11.sp
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = interactMenuExpanded,
+                                onDismissRequest = { interactMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Message") },
+                                    onClick = { interactMenuExpanded = false; onMessage() }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("I follow · Unfollow") },
+                                    onClick = { interactMenuExpanded = false; onFollow() }
+                                )
+                            }
                         }
                     }
                 }
@@ -379,8 +476,14 @@ internal fun BlinkReferenceProfileDashboard(
                 "Build trust and get a verified badge",
                 profile.verificationBadge != VerificationBadge.NONE, ink, muted, onVerify)
         }
+        // A single statistics row; secondary actions remain below rather than crowding counts.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(NumberFormat.getIntegerInstance().format(postCount),
+                    color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Posts", color = muted, fontSize = 10.sp)
+            }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(NumberFormat.getIntegerInstance().format(profile.followerCount),
                     color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -391,9 +494,28 @@ internal fun BlinkReferenceProfileDashboard(
                     color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text("Following", color = muted, fontSize = 10.sp)
             }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             TextButton(onClick = onShare) { Text("Share", fontSize = 11.sp) }
-            TextButton(onClick = onCopyUsername) { Text("Copy", fontSize = 11.sp) }
+            TextButton(onClick = onCopyUsername) { Text("Copy username", fontSize = 11.sp) }
             if (isMe) TextButton(onClick = onVisitors) { Text("Visitors", fontSize = 11.sp) }
+        }
+        if (isMe && profileCompletion < 100) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit),
+                shape = RoundedCornerShape(14.dp), color = card,
+                border = BorderStroke(1.dp, border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Complete your profile · $profileCompletion%", color = ink,
+                        fontSize = 12.sp, modifier = Modifier.weight(1f),
+                        maxLines = 2)
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Edit profile", tint = muted)
+                }
+            }
         }
     }
 }

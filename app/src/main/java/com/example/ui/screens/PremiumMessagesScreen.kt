@@ -228,7 +228,8 @@ fun PremiumMessagesScreen(
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -319,7 +320,8 @@ fun PremiumMessagesScreen(
                             hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
-                            isDark = isDark
+                            isDark = isDark,
+                            onVisibleInboxReceipt = onVisibleInboxReceipt
                         )
                     }
 
@@ -390,7 +392,8 @@ fun PremiumMessagesScreen(
                     hasUnreadNotifications = activities.any { it.isUnread },
                     isConnected = isConnected,
                     isLoading = isLoading,
-                    isDark = isDark
+                    isDark = isDark,
+                    onVisibleInboxReceipt = onVisibleInboxReceipt
                 )
             }
         }
@@ -653,7 +656,8 @@ private fun PremiumMessagesHome(
     hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
-    isDark: Boolean
+    isDark: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit
 ) {
     var query by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:query:1")
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
@@ -698,6 +702,7 @@ private fun PremiumMessagesHome(
         onOpenSettings = onOpenAppearance,
         isConnected = isConnected,
         isLoading = isLoading,
+        onVisibleInboxReceipt = onVisibleInboxReceipt,
         filterContent = {}
     )
 }
@@ -1296,7 +1301,14 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            // Apply bottom insets exactly once at the conversation boundary.
+            // Compose consumes overlapping navigation/IME insets in modifier order:
+            // only the remaining IME height is applied when the keyboard appears.
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -2212,12 +2224,12 @@ private fun MessageComposer(
         contentColor = palette.textPrimary,
         border = BorderStroke(1.dp, palette.border),
         shadowElevation = 8.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
+        // PremiumChatDetail owns the safe/IME insets. The composer must not add
+        // a second navigation-bar gap between the typing field and keyboard.
+        modifier = Modifier.fillMaxWidth().testTag("chat_message_composer")
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassIconButton(
@@ -2267,6 +2279,7 @@ private fun MessageComposer(
                     .weight(1f)
                     .heightIn(min = 44.dp, max = 112.dp)
                     .border(1.dp, palette.border, RoundedCornerShape(24.dp))
+                    .testTag("chat_typing_field")
             )
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = if (value.isBlank()) onQuickLike else onSubmit) {

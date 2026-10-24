@@ -388,6 +388,47 @@ Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, n
 - **Testlab preservation:** Port the minimal WebRTC keep rules, outbound push-before-Activity ordering, missed invite warnings, and bounded call-setup failures onto existing Testlab. Preserve preexisting Testlab call signaling retries, dynamic TURN settings, camera quality/recovery, UI and notification ledger. Do not replace Testlab wholesale with divergent main sources.
 - **Verification:** Android unit/lint/minified release JNI audit and Windows parity/build; Android 15 runtime; hosted Supabase call state inspection and two physical Android devices for incoming/outgoing voice/video calls, including background notifications. No production backend writes from this candidate.
 
+
+## 2026-10-23 — Delivery, read and inbox receipt parity (Testlab candidate)
+
+- **Shared contract:** `BlinkDeliveryReceipt` maps server-evidenced `SENT` → `DELIVERED` → `READ` to one/two/blue-tick semantics and keeps receipt transitions monotonic. Neither online presence nor an internet-enabled device alone constitutes a delivery acknowledgement. Shared JVM tests cover status text and monotonicity.
+- **Android:** Existing `ack_message_delivered` on FCM/realtime receipt and `ack_pending_message_deliveries` on reconnect remain the receipt writers. The sender now applies UPDATE events to the inbox even with no message history loaded and preserves read/delivered statuses against stale sends/history pages; non-INSERT incoming UPDATE events cannot show duplicate message alerts/unread increments. Only foreground-visible conversations send read acknowledgements. Each visible inbox row obtains its latest sender/delivered/read status via the existing signed-in, membership-protected `get_conversation_messages_page(p_limit=1)` RPC. Requests are lazy, briefly rate-limited, and account-scoped; unverified/failed status remains hidden rather than claiming delivery.
+- **Windows:** The desktop inbox performs a latest-message RLS query for visible conversations and displays the same sent/delivered/read indicators for outgoing messages; it acknowledges queued deliveries when the inbox syncs and sends read receipts only for a selected, displayed one-to-one chat. Group conversations do not infer per-recipient DM receipts.
+- **No schema changes:** RPC signatures, RLS, backend user identities, event payloads and payment handling are unchanged. A device with mobile data but without a running/receiving BLINK client cannot truthfully claim message delivery; two ticks require a positive recipient acknowledgement.
+- **Verification required:** Android + Windows compile, shared receipt tests, account switch, FCM and realtime acknowledgements, sender inbox without chat opening, receiver offline/reconnect, read only when foreground chat visible, delayed/out-of-order events, high font scaling and metadata tap targets. Verify on Android 15 emulator and backend sandbox. Do not promote to main before checks and real two-account confirmation.
+
+
+## 2026-10-23 — Chat composer keyboard spacing and Android edge-to-edge insets (Testlab candidate)
+
+- **Android:** When the Messages tab shows an active conversation, the root `Scaffold` no longer reserves a second bottom navigation inset. `PremiumChatDetail` applies status bar, navigation bar and IME insets in one Compose modifier chain, so inset consumption handles overlap as the keyboard animates. `MessageComposer` no longer adds its own bottom navigation bar padding; its row uses 6dp vertical content padding rather than 8dp. Stable test tags identify chat root, composer and typing field.
+- **Windows:** Desktop chat is laid out using desktop window resizing and native text input; it does not use Android system-navigation bars or Android IME insets. **PARITY-EXCEPTION: android-chat-ime-safe-area** — keyboard inset handling is intrinsically Android-specific. Message editing, send, attachments and conversation state remain unchanged on both clients.
+- **QA:** Inspect on Android 15 (including gesture and three-button navigation), Gboard and alternate IME, with keyboard closed/open and during transition; replies, emoji rail, dictation, attachment sheet and 1–4 input lines; small and tall devices and 100/130/150/200% text scaling. Run Android relevant unit/build/lint and existing desktop parity checks. No production backend, database or payment changes.
+
+
+## 2026-10-23 — Cancelled Paystack checkout UX (Testlab candidate)
+
+- **Shared status contract:** `BlinkCheckoutStatusPolicy` explicitly distinguishes fulfilled, abandoned, failed, reversed, pending, ongoing, processing and unknown. The UI never treats provider `success` or a browser callback as a fulfilled payment; only the server's `fulfilled` response can unlock benefits.
+- **Server:** `paystack-confirm` still checks the authenticated account and calls trusted Paystack verification. For non-successful checks it reports the provider's normalized status without changing the pending database order; a late, signed successful webhook can still fulfil idempotently.
+- **Android:** New checkout and restored app sessions no longer raise mandatory "Check Paystack Payment" modals. Saved references reconcile silently, at most once per minute per reference; uncertain/network-failed outcomes remain locally recorded. Local reminders clear after a server-verified abandoned/failed/reversed state or fulfilled order, with success refreshing Coins/verification only after backend fulfillment. Manual checks remain available through existing verification controls.
+- **Windows:** Desktop checkout retains user-initiated confirmation, shows the same normalized states, and permits dismissing a local checkout reminder without modifying the backend order.
+- **Security:** No Paystack secret on clients, no client-reported payment status used for fulfillment, no checkout flag toggled, no database schema changes, no live transaction tests. Test with mocked provider responses and sandbox only; verify webhook replay protection and late-success recovery before deployment.
+
+
+## 2026-10-23 — Android grouped DM notification presentation (Testlab candidate)
+
+- **Shared behavior:** Message delivery, read state, server identity, recipient binding, deduplication, and notification text sanitization are unchanged. Group summaries never acknowledge receipt or advance read state.
+- **Android:** For recipient-bound FCM direct messages, each conversation retains its stable notification ID and existing quick actions. A bounded, account-scoped **RAM-only** recent-preview list powers MessagingStyle expansion. Once two distinct active direct-message notifications exist, add a silent group summary; its tap opens the Messages inbox. No disk-cached private preview or network/avatar fetch in the FCM callback.
+- **Windows:** The desktop notification activity remains individually accessible in the existing notification list, with its own operating-system notification layout. **PARITY-EXCEPTION: android-system-notification-group-summary** — Android NotificationManager channel/group and PendingIntent are Android-only, and Windows does not use Android's notification shade.
+- **Verification:** JVM/Android compile + notification quick-action regression, Android 13/15 device/emulator grouping/tap/reply/mark-read, account-switch isolation, dismissal, and disabled-notification behavior; Windows parity CI. No server schema changes or production payments involved.
+
+
+## 2026-10-23 — Single profile identity restoration (Testlab candidate)
+
+- **Android:** Extend the existing single full-screen BLINK dashboard instead of reinstating a duplicate legacy profile. Show optional cover, @username, professional headline, university/academic level, department, streak, actual post count and owner-only profile completion. Restore Follow → Interact as a compact menu containing only connected Message/Unfollow actions; no fake gift or Connect callbacks.
+- **Windows:** Desktop profile continues using its native resizable layout and existing Posts/Followers/Following, online presence and XP. Extend the same Supabase profile projection for the cover, headline and academic level; render cover/headline/academic info without embedding the mobile design.
+- **Existing semantics:** Backend data, verification, Coin balances, rewards, chat routing, FollowStateStore and profile privacy are unchanged. This PR does not assert follower lists, advanced gifting or other not-yet-wired UI features are complete.
+- **Verification gate:** Run relevant Android build/unit/UI and Windows compile/parity checks on the final head; screenshot compare at large font sizes. Testlab and main are divergent: do not merge this branch or cherry-pick profile files directly into main without carefully reconciling later changes and satisfying release safeguards.
+
 ## 2026-10-23 — Android screen-size resilience and ranked-feed timeout recovery (Testlab only)
 
 - **Shared policy:** `BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout` identifies narrow layouts and enlarged text without relying on physical pixel resolutions. Shared code is JVM-only and safe for future desktop reuse.

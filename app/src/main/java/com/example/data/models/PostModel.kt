@@ -278,5 +278,10 @@ data class ChatConversation(
     val faculty: String = "SIMME",
     val lastSeen: String = "Last seen recently",
     val isMuted: Boolean = false,
-    val messages: MutableList<ChatMessage> = mutableListOf()
+    val messages: MutableList<ChatMessage> = mutableListOf(),
+    // Null means latest message was incoming, there is no message, or its
+    // direction/receipt has not yet been verified. Never manufacture two ticks
+    // based only on the other person's online indicator.
+    val lastOutgoingStatus: MessageStatus? = null,
+    val lastReceiptMessageId: String = ""
 )
