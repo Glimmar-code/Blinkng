@@ -2052,6 +2052,10 @@ fun MainAppContent(
                     context.startActivity(Intent(context,
                         com.example.auth.AccountSwitcherActivity::class.java))
                 },
+                onOpenAdmin = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
+                },
                 onLogOut = {
                     viewModel.openMenu(false)
                     viewModel.logout()
