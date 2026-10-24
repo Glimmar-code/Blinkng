@@ -1829,12 +1829,17 @@ private suspend fun restoreSupabaseSession() {
                     val fresh = postRepository.fetchFollowingFeed(limit = 30)
                     if (_uiState.value.myProfile.id != accountId) return@withLock
                     val current = _uiState.value
-                    if (fresh.isNotEmpty()) {
-                        _uiState.value = current.copy(
-                            followingPosts = reconcileRefreshedFeed(current.followingPosts, fresh)
-                        )
-                        persistCurrentFeed()
-                    }
+                    // A successful empty response means the Following lane has
+                    // no eligible posts (e.g. after unfollowing everyone). Do
+                    // not indefinitely retain obsolete recommendations. Failed
+                    // requests still leave cached posts untouched in catch.
+                    _uiState.value = current.copy(
+                        followingPosts = if (fresh.isEmpty()) emptyList()
+                            else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
+                            current.followingRefreshRevision + 1 else current.followingRefreshRevision
+                    )
+                    persistCurrentFeed()
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
