@@ -294,7 +294,13 @@ fun PostCard(
             // Exact Home reference hierarchy: avatar | name and badge | metadata | follow | options.
             if (xFeedStyle) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp)
+                        // Header whitespace opens the full post; child controls
+                        // (avatar, name, Follow and options) retain their actions.
+                        .clickable(enabled = onOpenPost != null, role = Role.Button) {
+                            onOpenPost?.invoke()
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.size(52.dp)) {
