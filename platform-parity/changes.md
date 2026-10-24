@@ -1,5 +1,13 @@
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
+## 2026-10-24 — Phase 5 scoped foreground feed freshness
+
+- **Android:** Home and Reels revalidate after a per-surface one-minute cooldown when the app returns to the foreground or a primary route is revisited, while Messages, Market and Connect retain the existing conservative three-minute stale interval. This is a quiet data update, not a forced scroll-to-top or full-app reload. User-initiated feed refresh now updates only its own cooldown, rather than postponing other route refreshes.
+- **Android Following lane:** Opening Following schedules its own throttled request for accounts with online data, retaining existing content and scroll position while fresh rows arrive. Existing New Posts affordance is preserved.
+- **PARITY-EXCEPTION: android-foreground-feed-quiet-refresh-20261024** — Android foreground lifecycle uses Activity `onResume` and Compose navigation events, which have no direct desktop equivalent. **Windows equivalent** is existing explicit reload/search and live post updates in `DesktopFeedPostCard` / `HomeScreen` of `ContentScreens.kt`; no Windows event loop or caching semantics are modified.
+- **Validation:** `BlinkRefreshPolicyTest` covers first visit, repeated resumes and one-minute threshold; `test_home_reference_contract.py` checks that the screen and ViewModel retain the quiet scoped routing. Full Android/Windows CI and real-screen QA are still release gates.
+
+
 ## 2026-10-24 — Feed post footer, preview and opening behavior (Android and Windows)
 
 - **Android:** Normal feed posts preview four lines before `See more`; the xFeed action row now shows Like → Comment → Repost → Save → Share for all text/image posts. True backend view count appears as small muted text below actions, not as an eye icon. Header whitespace, university and time metadata open full post while profile/Follow/options keep their own routes. Preserve media interaction, poll controls, saved state and author-hidden likes.
