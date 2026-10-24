@@ -61,48 +61,8 @@ import kotlinx.coroutines.launch
 fun SplashScreen(
     onTimeout: () -> Unit
 ) {
-    var started by remember { mutableStateOf(false) }
-
-    val bScale by animateFloatAsState(
-        targetValue = if (started) 1f else 0.92f,
-        animationSpec = tween(
-            durationMillis = 90,
-            easing = FastOutSlowInEasing
-        ),
-        label = "splash_b_scale"
-    )
-
-    val bAlpha by animateFloatAsState(
-        targetValue = if (started) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 70,
-            easing = FastOutSlowInEasing
-        ),
-        label = "splash_b_alpha"
-    )
-
-    LaunchedEffect(Unit) {
-        started = true
-        // Android already shows the system launch mark. Keep the Compose hand-off tiny
-        // so startup never waits on branding or network/session work.
-        delay(120)
-        onTimeout()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        BlinkMark(
-            size = 86.dp,
-            showText = false,
-            modifier = Modifier
-                .alpha(bAlpha)
-                .scale(bScale)
-        )
-    }
+    // Keep authentication/restored navigation independent of the brand sequence.
+    com.blinkng.shared.brand.BlinkBeyondLinkIntro(onFinished = onTimeout)
 }
 
 // ================================================================
