@@ -1033,7 +1033,6 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
-    var bottomBarTravelPx by remember { mutableStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
@@ -1613,11 +1612,8 @@ fun MainAppContent(
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         },
-                        onBottomBarTravelChange = { pixels ->
-                            bottomBarTravelPx = if (
-                                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
-                            ) pixels.coerceIn(0f, 50f) else 0f
-                        }
+                        // Home now requests complete hide/show, never partial translation.
+                        onBottomBarTravelChange = { _ -> }
                     )
                 }
 
@@ -2099,14 +2095,6 @@ fun MainAppContent(
                 .zIndex(30f)
         )
 
-        // The Home feed moves its nav rail 50px for every 80px of post scroll.
-        // Prevent a translated bar from leaking onto Reels, Market or Messages.
-        LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
-            if (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0) {
-                bottomBarTravelPx = 0f
-            }
-        }
-
         // Floating bottom navigation follows the feed chrome state. Its transition is
         // deliberately non-bouncy so a restored bar glides in instead of springing back.
         val shouldShowBottomBar = feedUtilitySheet == null &&
@@ -2129,7 +2117,12 @@ fun MainAppContent(
                 !uiState.isMenuOpen
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = shouldShowBottomBar,
+            // A downward Home scroll hides the entire rail, including its shadow,
+            // rather than moving it by a fixed 50 px on different screen sizes.
+            visible = shouldShowBottomBar && (
+                uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0 ||
+                    isBottomBarVisibleByScroll
+            ),
             enter = androidx.compose.animation.slideInVertically(
                 initialOffsetY = { it },
                 animationSpec = androidx.compose.animation.core.tween(
@@ -2228,9 +2221,7 @@ fun MainAppContent(
                     viewModel.openMenu(true)
                 },
                 isMenuOpen = uiState.isMenuOpen,
-                modifier = Modifier.graphicsLayer {
-                    translationY = bottomBarTravelPx
-                }
+                modifier = Modifier
             )
         }
 
