@@ -1,6 +1,7 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkAuthFeedback
 import com.blinkng.shared.discovery.BlinkCampusAccountType
 import com.blinkng.shared.discovery.BlinkUniversitySearch
 import com.sun.net.httpserver.HttpServer
@@ -68,17 +69,19 @@ class DesktopSupabaseClient(
         require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
         val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
-        val response = if (identifier.contains("@") && !identifier.startsWith("@")) {
-            // Preserve standard Supabase email login. Owner aliases are resolved
-            // server-side only after normal email authentication fails.
-            runCatching {
+        val response = try {
+            if (identifier.contains("@") && !identifier.startsWith("@")) {
                 authPost("/auth/v1/token?grant_type=password",
                     JSONObject().put("email", identifier).put("password", password))
-            }.getOrElse {
+            } else {
                 authPost("/functions/v1/username-login", body)
             }
-        } else {
-            authPost("/functions/v1/username-login", body)
+        } catch (error: Exception) {
+            // Keep the same user-safe login feedback as Android; do not retry
+            // a rejected email/password against a different username endpoint.
+            throw IllegalStateException(
+                BlinkAuthFeedback.friendly(error.message, "Unable to sign in."), error
+            )
         }
         saveAuthResponse(response, identifier)
     }
