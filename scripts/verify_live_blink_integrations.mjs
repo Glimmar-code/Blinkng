@@ -6,6 +6,8 @@
  * page view. This will increment the approximate live metrics by one.
  */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 
 const site='https://blink.com.ng';
 const supabase='https://jhwgifrlxwspoedxjaly.supabase.co';
@@ -18,6 +20,17 @@ const postDeploy=process.env.BLINK_SEO_POST_DEPLOY==='1';
 const existingPublicPaths=['/','/about/','/features/','/download/','/faq/','/privacy/'];
 const newPublicPaths=['/students/','/marketplace/','/safety/'];
 const expectedPublishedCommit=(process.env.BLINK_EXPECTED_MAIN_SHA||'').trim();
+const verifyStaticSource=postDeploy||process.env.BLINK_VERIFY_STATIC_SOURCE==='1';
+const publishedAssets=[
+  ['web/index.html','/'],
+  ['web/sitemap.xml','/sitemap.xml'],
+  ['web/landing.css','/landing.css'],
+  ['web/students/index.html','/students/'],
+  ['web/marketplace/index.html','/marketplace/'],
+  ['web/safety/index.html','/safety/'],
+  ['web/robots.txt','/robots.txt'],
+];
+const sha256=s=>createHash('sha256').update(s,'utf8').digest('hex');
 const get=async(path)=>{
   const res=await fetch(site+path,{headers:{Accept:'text/html,application/xml,application/json,*/*'},signal:AbortSignal.timeout(18000),redirect:'follow'});
   if(!res.ok)throw new Error(path+': HTTP '+res.status);
@@ -57,21 +70,35 @@ await check('Live sitemap and robots discovery',async()=>{
  assert.ok(robots.includes('Allow: /'),'Public crawling not permitted');
  assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'),'Sitemap discovery directive missing');
 });
-if(postDeploy){
- await check('Published GitHub Pages commit matches the approved deployment',async()=>{
-  assert.match(expectedPublishedCommit,/^[0-9a-f]{40}$/,'Missing expected main commit SHA');
-  // Cache-busting prevents stale CDN metadata from being mistaken for a new release.
-  let actual='';
-  for(let attempt=0;attempt<4;attempt++){
-   const response=await get('/blink-build.json?deployment='+encodeURIComponent(expectedPublishedCommit)+'&attempt='+attempt);
-   const data=JSON.parse(response.body);
-   assert.equal(data.application,'BLINK','Incorrect published project');
-   assert.equal(data.source,'github-pages','Incorrect publishing source');
-   actual=String(data.commit||'');
-   if(actual===expectedPublishedCommit)return;
-   if(attempt<3)await new Promise(resolve=>setTimeout(resolve,5000));
+if(verifyStaticSource){
+ await check('Published SEO assets match the tested Git revision',async()=>{
+  assert.match(expectedPublishedCommit,/^[0-9a-f]{40}$/,'Missing checked-out Git commit SHA');
+  // blink.com.ng is served by Cloudflare Pages, not necessarily by the
+  // GitHub Pages artifact that stamps /blink-build.json. A missing marker
+  // therefore cannot establish staleness. Compare actual deployed public
+  // asset bytes against the same files checked out at the expected SHA.
+  // This verifies these assets, not private backend state or every file.
+  let differences=[];
+  for(let attempt=0;attempt<3;attempt++){
+   const suffix='blink_source_rev='+expectedPublishedCommit+'&attempt='+attempt;
+   const mismatches=[];
+   for(const [source,url] of publishedAssets){
+    const expected=sha256(readFileSync(new URL('../'+source,import.meta.url),'utf8'));
+    try{
+     const path=url+(url.includes('?')?'&':'?')+suffix;
+     const {body}=await get(path);
+     const actual=sha256(body);
+     if(actual!==expected)mismatches.push(source+': expected '+expected.slice(0,12)+' received '+actual.slice(0,12));
+    }catch(e){mismatches.push(source+': '+String(e.message).slice(0,110));}
+   }
+   if(!mismatches.length){
+    console.log('PASS '+publishedAssets.length+' public files match checked-out '+expectedPublishedCommit);
+    return;
+   }
+   differences=mismatches;
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,5000));
   }
-  assert.equal(actual,expectedPublishedCommit,'Live website still serves a different commit');
+  assert.fail('Live source fingerprint mismatch: '+differences.join('; '));
  });
 }
 if(postDeploy){
