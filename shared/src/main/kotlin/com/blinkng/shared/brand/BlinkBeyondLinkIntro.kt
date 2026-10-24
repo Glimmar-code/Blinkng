@@ -111,14 +111,20 @@ fun BlinkBeyondLinkIntro(
                 val blinkReveal = introFraction(nowMs, 2_870, 3_550)
                 val blueAlpha = introFraction(nowMs, 3_260, 3_630)
                 val initialAlpha = appear * firstFade
-                val exits = introLetterExitTimings.map { (start, end) ->
-                    introFraction(nowMs, start, end)
-                }
+                // No per-frame lists/arrays: the five original exit windows
+                // retain their exact timings without allocating at 60/120 FPS.
+                val exit0 = introFraction(nowMs, 1_950, 2_240)
+                val exit1 = introFraction(nowMs, 2_080, 2_340)
+                val exit2 = introFraction(nowMs, 2_190, 2_450)
+                val exit3 = introFraction(nowMs, 2_460, 2_920)
+                val exit4 = introFraction(nowMs, 2_640, 3_160)
 
                 // Original Row widths: 50dp dots + actual b width + five
                 // 20dp character cells + actual " link" width (scaled).
                 val activeDotsWidth = dotsWidth * (1f - dotsExit)
-                val activeLettersWidth = exits.sumOf { (cellWidth * (1f - it)).toDouble() }.toFloat()
+                val activeLettersWidth = cellWidth * (
+                    5f - exit0 - exit1 - exit2 - exit3 - exit4
+                )
                 val totalWidth = activeDotsWidth + cells[1].size.width +
                     activeLettersWidth + cells[7].size.width
                 var left = (size.width - totalWidth) / 2f
@@ -141,13 +147,20 @@ fun BlinkBeyondLinkIntro(
                     )
                     left += cells[1].size.width
                     for (index in 0 until 5) {
-                        val availableWidth = cellWidth * (1f - exits[index])
+                        val exit = when (index) {
+                            0 -> exit0
+                            1 -> exit1
+                            2 -> exit2
+                            3 -> exit3
+                            else -> exit4
+                        }
+                        val availableWidth = cellWidth * (1f - exit)
                         if (availableWidth > 0f) {
                             clipRect(left = left, right = left + availableWidth) {
                                 drawText(cells[index + 2],
                                     topLeft = Offset(left,
                                         baselineCenter - cells[index + 2].size.height / 2f),
-                                    alpha = initialAlpha * (1f - exits[index])
+                                    alpha = initialAlpha * (1f - exit)
                                 )
                             }
                         }
