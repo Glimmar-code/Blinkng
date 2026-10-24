@@ -4380,6 +4380,7 @@ private suspend fun restoreSupabaseSession() {
         val current = _uiState.value
         val partner = current.activeConversationPartner
         if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
+            current.chatPrivacySettings.sendReadReceipts &&
             (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
             viewModelScope.launch {
                 runCatching { chatRepository.markConversationRead(partner) }
