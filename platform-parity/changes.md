@@ -1,3 +1,11 @@
+## 2026-10-24 — Scoped Testlab Search promotion onto newer main (awaiting production approval)
+
+- **Provenance:** Reference Search was validated in Testlab via PR #500, merge fd5dd79b383bb8e920ab9703c7f105b8ffb1cec5. Its post-merge Testlab safety, domain, Android release smoke and BLINK LIFE preview workflows passed. Main/Testlab have diverged by hundreds of commits, so no bulk Testlab-to-main merge or force update is safe.
+- **Android scope:** Port only the reference landing/search screen and its per-account history, live result cards, real Follow actions, post callbacks, product routing, Game/Notifications shortcuts and responsive font behavior. Keep main's current App shell, messaging, feed, search-poll and `UnifiedPremiumSearchHost` advanced Phase 3 callbacks; no Testlab `MainActivity` / `BlinkViewModel` overwrite.
+- **Windows scope:** Port discover-category chips and live marketplace search on top of **main's** existing error/retry handling, Trends/Places navigation and desktop result logic. Windows Communities stays an explicitly disclosed shared-discovery backend gap, not a fake result list.
+- **Verification:** Run main-based PR Android unit/lint/APK/App Bundle/smoke, Search light/dark + 320dp/200% + 360dp/130% screenshot artifacts, Windows desktop/parity, domain and Supabase safety. Device interaction testing and final visual judgment are separate from successful compilation.
+- **Release hold:** The main-based candidate is not approved for merging or publishing until required checks and actual UX validations pass. Production release additionally requires the owner to post `BLINK APPROVE <current-PR-head-SHA>` on the production PR. No production Supabase writes, no fee-bearing staging, and no signed APK publication from this preparation.
+
 ## 2026-10-24 — Only items 4, 5 and 7 from BLINK Auth follow-up
 
 - **4 · Faster, safer login (Android):** Preserve the authenticated Supabase session instead of re-prompting after every login; remember the identifier only; stop refilling or persisting an account password, migrate and erase legacy encrypted remembered-password entries on auth screen; block duplicate credentials/Google submits, show early offline errors and a slow-connection hint. Do not bypass server identity validation. Existing logout/account-switch logic remains authoritative.
