@@ -310,7 +310,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }

@@ -436,7 +436,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                     maxLines = 1)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     val latest = latestInboxReceipts[conversation.id]
-                                    if (latest != null && latest.senderId == myUserId) {
+                                    if (!conversation.isGroup && latest != null && latest.senderId == myUserId) {
                                         val receipt = when {
                                             latest.readAt != null || latest.isRead -> "READ"
                                             latest.deliveredAt != null -> "DELIVERED"
