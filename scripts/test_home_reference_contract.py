@@ -83,9 +83,15 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
         self.assertEqual(nav.count('FeedBottomItem('), 5)
-        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MESSAGE'):
+        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MENU'):
             self.assertIn(f'FeedBottomDestination.{tag}', nav)
         self.assertIn('hasUnreadMessages', NAV)
+        self.assertIn('FeedBottomDestination.MENU -> onMenuClick()', NAV)
+        # The five-slot Menu redesign moves Messages to an actual Menu route.
+        menu = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkReferenceMenuScreen.kt").read_text()
+        self.assertIn('onMessages: () -> Unit', menu)
+        self.assertIn('"Messages & inbox" to onMessages', menu)
+        self.assertIn('onMessages = {', MAIN)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)
