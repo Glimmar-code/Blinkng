@@ -57,6 +57,7 @@ import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -5365,10 +5366,25 @@ private suspend fun restoreSupabaseSession() {
                     return@launch
                 }
 
-                val freshRequest = async { postRepository.fetchFeed() }
-                val followingRequest = async { postRepository.fetchFollowingFeed(limit = 30) }
-                val fresh = freshRequest.await()
-                val following = followingRequest.await()
+                // Timeouts are independent for the For You and Following lanes.
+                // Preserve cached lists and do not cancel this realtime handler
+                // on ordinary HTTP/SQL failures. Keep coroutine cancellation intact.
+                val fresh = try {
+                    postRepository.fetchFeed()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime ranked refresh failed; retaining cached posts", error)
+                    emptyList()
+                }
+                val following = try {
+                    postRepository.fetchFollowingFeed(limit = 30)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime Following refresh failed; retaining cached posts", error)
+                    emptyList()
+                }
                 val latest = _uiState.value
                 val muted = latest.mutedUsers
 
