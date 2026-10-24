@@ -129,9 +129,12 @@ fun FeedTopBar(
         val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
             maxWidth.value.toInt(), LocalDensity.current.fontScale
         )
-        // At large font scales the brand and four existing actions need
-        // separate rails: never hide Search, Items, Notifications or Menu.
-        if (compactToolbar) {
+        // Narrow phones still fit the brand and four 38dp actions on ONE
+        // row. Keep two rows only when the available width or accessibility
+        // font size really cannot fit the controls without overlapping.
+        val needsTwoRows = maxWidth < 316.dp ||
+            (compactToolbar && LocalDensity.current.fontScale >= 1.8f)
+        if (needsTwoRows) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(
                     start = 12.dp, end = 8.dp, top = 8.dp, bottom = 6.dp
@@ -175,11 +178,11 @@ fun FeedTopBar(
                     userIsOnline = userIsOnline,
                     onProfileClick = onProfileClick,
                     showTitle = true,
-                    compact = false,
+                    compact = compactToolbar,
                     modifier = Modifier.weight(1f)
                 )
                 FeedHeaderActions(
-                    compact = false,
+                    compact = compactToolbar,
                     hasUnreadNotifications = hasUnreadNotifications,
                     unreadNotificationCount = unreadNotificationCount,
                     onSearchClick = onSearchClick,

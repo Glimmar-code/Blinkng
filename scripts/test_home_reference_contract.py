@@ -38,6 +38,14 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('text = "BLINK"', CHROME)
         self.assertIn('contentDescription = "Open Items (includes Game)"', header)
 
+    def test_phone_header_avoids_unnecessary_second_rail(self):
+        header = method_body(CHROME, "fun FeedTopBar(", "private fun FeedBrandBlock(")
+        # Short widths use compact icons and a compact wordmark, not a
+        # mandatory second header row just because width is below 390dp.
+        self.assertIn('val needsTwoRows = maxWidth < 316.dp', header)
+        self.assertIn('if (needsTwoRows)', header)
+        self.assertIn('compact = compactToolbar,', header)
+
     def test_account_summary_only_uses_real_values(self):
         panel = method_body(CHROME, "fun FeedReferenceStatsRow(", "fun FeedUtilityRow(")
         self.assertIn('worldRank > 0', panel)
