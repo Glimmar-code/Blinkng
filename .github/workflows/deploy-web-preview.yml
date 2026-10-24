@@ -14,6 +14,7 @@ on:
       # Keep live SEO, Auth provider and browser-analytics checks aligned with web publication.
       - '.github/workflows/blink-live-integrations-smoke.yml'
       - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/normalize_public_html.mjs'
       - 'scripts/verify_live_browser_analytics.mjs'
   workflow_dispatch:
 
