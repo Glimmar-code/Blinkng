@@ -200,7 +200,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private data class PendingAttachment(
-        val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long
+        val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long,
+        val ownerId: String
     )
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
@@ -3041,7 +3042,9 @@ private suspend fun restoreSupabaseSession() {
         val partner = partnerUsername.trim().removePrefix("@")
         if (partner.isBlank()) return
         val tempId = "temp_attachment_${UUID.randomUUID()}"
-        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs)
+        val senderId = supabaseService.getCurrentUserId().orEmpty()
+        if (senderId.isBlank()) { showToast("Sign in before sharing a file."); return }
+        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId)
         val currentConversation = _uiState.value.conversations
             .firstOrNull { it.partnerUsername.equals(partner, true) }
             ?.id?.takeUnless { it.startsWith("local_") }
@@ -3063,6 +3066,11 @@ private suspend fun restoreSupabaseSession() {
 
     private fun dispatchAttachment(partner: String, tempId: String) {
         val pending = pendingAttachments[tempId] ?: return
+        if (pending.ownerId != supabaseService.getCurrentUserId()) {
+            pendingAttachments.remove(tempId)
+            showToast("Attachment belongs to a previous account. Choose the file again.")
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
@@ -3083,15 +3091,19 @@ private suspend fun restoreSupabaseSession() {
                             }
                         }
                         withContext(Dispatchers.Main) {
-                            replaceMessageInState(partner, tempId, message.copy(status = MessageStatus.SENT))
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                replaceMessageInState(partner, tempId, message.copy(status = MessageStatus.SENT))
+                            }
                         }
                         persistConversationsNow()
                         withContext(Dispatchers.Main) { fetchSupabaseData() }
                     },
                     onFailure = { error ->
                         withContext(Dispatchers.Main) {
-                            updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
-                            showToast(error.message ?: "Attachment could not be sent. Tap to retry.")
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                                showToast(error.message ?: "Attachment could not be sent. Tap to retry.")
+                            }
                         }
                     }
                 )
@@ -4219,6 +4231,17 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun logout() {
+        // Drop in-memory picker grants and private recordings on account change.
+        pendingAttachments.values.forEach { attachment ->
+            if (attachment.kind == BlinkChatAttachmentKind.VOICE && attachment.uri.scheme == "file") {
+                runCatching {
+                    java.io.File(attachment.uri.path.orEmpty()).takeIf {
+                        it.parentFile == appContext.cacheDir && it.name.startsWith("blink-voice-")
+                    }?.delete()
+                }
+            }
+        }
+        pendingAttachments.clear()
         realtimeManager.disconnect()
         viewModelScope.launch {
             runCatching { supabaseService.setMyPresence(false) }
