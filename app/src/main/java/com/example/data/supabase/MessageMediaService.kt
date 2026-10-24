@@ -102,7 +102,8 @@ object MessageMediaService {
         receiverUsername: String,
         uri: Uri,
         kind: BlinkChatAttachmentKind,
-        durationMs: Long = 0L
+        durationMs: Long = 0L,
+        clientMessageId: String = UUID.randomUUID().toString()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
@@ -191,6 +192,48 @@ object MessageMediaService {
                 }
             }
 
+            // Reuse the same client message ID on retry. If the server saved
+            // the message but the success response was lost, do not send twice.
+            val safeMessageId = UUID.fromString(clientMessageId).toString()
+            val existing = client.newCall(
+                builder(
+                    "/rest/v1/messages?id=eq.$safeMessageId&select=id,sender_id,conversation_id," +
+                        "content,created_at,media_url&limit=1"
+                ).get().build()
+            ).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    error(raw, "Cannot check existing attachment message.")
+                )
+                JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
+            }
+            if (existing != null && existing.optString("sender_id") == senderId &&
+                existing.optString("conversation_id") == conversationId) {
+                val ref = existing.optString("media_url")
+                val objectPath = ref.removePrefix("$PRIVATE_BUCKET:")
+                val replayUrl = if (ref.startsWith("$PRIVATE_BUCKET:conversations/$conversationId/users/"))
+                    signedUrl(objectPath) else null
+                return@withContext Result.success(ChatMessage(
+                    id = safeMessageId,
+                    senderId = senderId,
+                    text = existing.optString("content"),
+                    timestamp = "Just now",
+                    isFromMe = true,
+                    conversationId = conversationId,
+                    rawTimestamp = existing.optString("created_at"),
+                    isRead = false,
+                    status = MessageStatus.SENT,
+                    isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+                    voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
+                    voiceAudioUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.VOICE },
+                    attachedImageUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+                    attachedVideoUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
+                    attachedDocumentUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },
+                    attachedDocumentName = existing.optString("content")
+                        .removePrefix("Document: ").takeIf { kind == BlinkChatAttachmentKind.DOCUMENT }
+                ))
+            }
+
             BoundedMessageAttachment.open(context, uri, kind).use { staged ->
                 val objectPath =
                     "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
@@ -208,6 +251,7 @@ object MessageMediaService {
                     else -> kind.title
                 }
                 val messageBody = JSONObject()
+                    .put("id", safeMessageId)
                     .put("conversation_id", conversationId)
                     .put("sender_id", senderId)
                     .put("content", label)
