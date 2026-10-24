@@ -14,6 +14,8 @@ data class BlinkReferralStats(
     val activeLast30Days: Long = 0,
     val visibilityPoints: Int = 0,
     val visibilityLabel: String = "Normal discovery",
+    val achievementTier: String = "New member",
+    val nextAchievementTarget: Int? = 1,
 )
 
 /** Copy is deliberately a possibility, not a promise of followers, views or placement. */
@@ -23,6 +25,37 @@ object BlinkReferralPolicy {
         "Invite students to BLINK. Confirmed referrals can improve your chances of being recommended to new members."
     const val INVITATION_MESSAGE = "Join me on BLINK — connect and discover students beyond link."
     const val MAX_PAGE_SIZE = 10
+
+    /** Only actual confirmed referrals earn a permanent achievement. */
+    val MILESTONE_TARGETS = listOf(1, 5, 10, 25, 50, 100)
+
+    fun tierForLifetime(total: Long): String = when {
+        total >= 100L -> "Ambassador"
+        total >= 50L -> "Champion"
+        total >= 25L -> "Connector"
+        total >= 10L -> "Advocate"
+        total >= 5L -> "Builder"
+        total >= 1L -> "Starter"
+        else -> "New member"
+    }
+
+    fun nextMilestone(total: Long): Int? =
+        MILESTONE_TARGETS.firstOrNull { total < it }
+
+    fun milestoneLabel(stats: BlinkReferralStats): String =
+        stats.nextAchievementTarget?.let { target ->
+            val remaining = (target.toLong() - stats.total).coerceAtLeast(0)
+            "$remaining more confirmed referrals to reach $target"
+        } ?: "All referral milestones unlocked"
+
+    /** A three-step 30-day fade with a hard cap. The backend is authoritative. */
+    fun pointsForReferralAgeDays(days: Long): Int = when {
+        days < 0L -> 0
+        days < 10L -> 3
+        days < 20L -> 2
+        days < 30L -> 1
+        else -> 0
+    }
 
     fun normalizedQuery(value: String): String = value.trim().removePrefix("@").take(40)
     fun inviteUrl(username: String): String {
