@@ -431,7 +431,7 @@ fun CommentSheet(
 }
 
 @Composable
-private fun CommentRow(
+internal fun CommentRow(
     username: String,
     displayName: String,
     avatar: String,
@@ -697,7 +697,7 @@ private fun MentionSuggestionRow(
 }
 
 @Composable
-private fun CommentReportDialog(
+internal fun CommentReportDialog(
     onDismiss: () -> Unit,
     onReasonSelected: (String) -> Unit
 ) {

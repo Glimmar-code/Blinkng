@@ -603,21 +603,34 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 activePostOptionsPost = null
             )
         } else {
-            _uiState.value = state.copy(
-                selectedTab = MainTab.HOME,
-                feedSubTab = 0,
-                routedReelId = null,
-                posts = listOf(post) + state.posts.filterNot { it.id == post.id },
-                deepLinkedPost = post,
-                activeCommentsPostId = null,
-                activePostOptionsPost = null
-            )
+            // Search opens a detail overlay in place. Do not force Home, inject a
+            // search result into the ranked Feed, or discard Search scroll state.
+            openFeedPostDetails(post)
         }
         persistCurrentFeed()
     }
 
+    /** Open a Feed card without switching tabs, re-ranking posts or losing scroll position. */
+    fun openFeedPostDetails(post: FeedPost) {
+        if (post.isReel) {
+            openSearchPost(post)
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = post,
+            activeCommentsPostId = null,
+            activePostOptionsPost = null
+        )
+    }
+
     fun closeDeepLinkedPost() {
-        _uiState.value = _uiState.value.copy(deepLinkedPost = null)
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = null,
+            activeCommentsPostId = null,
+            comments = emptyList(),
+            isCommentsLoading = false,
+            isPostingComment = false
+        )
     }
 
     private fun observeAuthState() {
