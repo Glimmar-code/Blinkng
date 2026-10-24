@@ -92,12 +92,14 @@ internal fun BlinkReferenceSearchScreen(
     var busyFollowId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { FollowStateStore.refresh() }
+    val accountKey = myProfile.id.ifBlank { currentUsername.trim().lowercase(Locale.ROOT) }
+    val recentsKey = "$REF_RECENTS_KEY:$accountKey"
     val prefs = remember(context) { context.getSharedPreferences(REF_RECENTS_PREF, Context.MODE_PRIVATE) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf(ReferenceCategory.ALL) }
-    var recents by remember {
+    var query by rememberSaveable(accountKey) { mutableStateOf("") }
+    var category by rememberSaveable(accountKey) { mutableStateOf(ReferenceCategory.ALL) }
+    var recents by remember(accountKey) {
         mutableStateOf(
-            prefs.getString(REF_RECENTS_KEY, "").orEmpty().split(REF_RECENTS_SEPARATOR)
+            prefs.getString(recentsKey, "").orEmpty().split(REF_RECENTS_SEPARATOR)
                 .map(String::trim).filter(String::isNotEmpty).distinct().take(10)
         )
     }
@@ -115,7 +117,7 @@ internal fun BlinkReferenceSearchScreen(
         val clean = value.trim().take(200)
         if (clean.isBlank() || discovery.privateHistory) return
         recents = (listOf(clean) + recents.filterNot { it.equals(clean, ignoreCase = true) }).take(10)
-        prefs.edit().putString(REF_RECENTS_KEY, recents.joinToString(REF_RECENTS_SEPARATOR)).apply()
+        prefs.edit().putString(recentsKey, recents.joinToString(REF_RECENTS_SEPARATOR)).apply()
     }
     fun toggleFollow(profileId: String) {
         if (profileId.isBlank() || busyFollowId != null) return
@@ -297,7 +299,7 @@ internal fun BlinkReferenceSearchScreen(
                     Text("Recent searches", Modifier.weight(1f), color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     TextButton(onClick = {
                         recents = emptyList()
-                        prefs.edit().remove(REF_RECENTS_KEY).apply()
+                        prefs.edit().remove(recentsKey).apply()
                     }) { Text("Clear all", fontSize = 11.sp, color = muted) }
                 }
                 if (recents.isEmpty()) {
