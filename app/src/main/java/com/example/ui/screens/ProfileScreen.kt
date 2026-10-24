@@ -441,6 +441,8 @@ fun ProfileScreen(
                             Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
                         },
                         onVisitors = { showMoreSheet = true },
+                        onFollowers = { openConnectionList(ProfileConnectionKind.FOLLOWERS) },
+                        onFollowing = { openConnectionList(ProfileConnectionKind.FOLLOWING) },
                         // Relationship actions live on the single reference dashboard.
                         // Keep the existing server-authoritative callbacks when retiring
                         // the duplicated legacy cover/identity/trust panel.
