@@ -1113,6 +1113,33 @@ class DesktopSupabaseClient(
         Unit
     }
 
+    /** One latest message per visible inbox conversation; existing participant RPC enforces membership. */
+    suspend fun fetchLatestMessage(conversationId: String): DesktopMessage? = withContext(Dispatchers.IO) {
+        if (!conversationId.matches(Regex("^[0-9a-fA-F-]{36}$"))) return@withContext null
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_limit", 1).put("p_before", JSONObject.NULL)
+                .put("p_before_id", JSONObject.NULL)
+        )
+        (result as? JSONArray)?.optJSONObject(0)?.let(::parseMessage)
+    }
+
+    suspend fun acknowledgePendingMessageDeliveries(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { postObject("/rest/v1/rpc/ack_pending_message_deliveries", JSONObject()); true }
+            .getOrDefault(false)
+    }
+
+    suspend fun markVisibleConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        val username = partnerUsername.trim()
+        if (username.isBlank()) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/mark_conversation_read",
+                JSONObject().put("p_partner_username", username))
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun fetchMessages(
         conversationId: String,
         beforeCreatedAt: String? = null,
