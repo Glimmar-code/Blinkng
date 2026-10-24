@@ -714,11 +714,46 @@
     }catch(e){const body=document.getElementById('comments-body');if(body)body.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
   }
 
+  async function showReferralGrowth(){
+    if(!requireAuth())return;
+    modal('Refer & Grow', '<p>Invite friends. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
+      '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
+      '<div class="form-stack"><button type="button" class="btn primary" id="share-referral">Share invitation</button></div>');
+    const stats=document.getElementById('referral-stats');
+    if(!stats)return;
+    try{
+      const rows=await rpc('blink_referral_dashboard');
+      if(!stats.isConnected)return;
+      const row=Array.isArray(rows)?rows[0]:null;
+      stats.textContent=row
+        ? 'Successful referrals: '+fmt(row.total_referrals)+
+          ' · Active this month: '+fmt(row.active_referrals)+
+          ' · Discovery points: '+fmt(row.visibility_points)+
+          ' · '+String(row.visibility_label||'Normal discovery')
+        : 'No referral activity yet.';
+    }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
+    document.getElementById('share-referral')?.addEventListener('click',async()=>{
+      const username=String(state.profile?.username||'').toLowerCase().replace(/^@/,'');
+      if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(username)){toast('Complete your username first.');return;}
+      const invite='Join me on BLINK — connect and discover students beyond link.\n'+
+        SITE_URL+'/invite/'+encodeURIComponent(username);
+      try{
+        if(navigator.share)await navigator.share({title:'Join BLINK',text:invite});
+        else if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(invite);toast('Invite copied.');}
+        else toast('Sharing is unavailable in this browser.');
+      }catch{}
+    });
+  }
+
   async function renderSearch(){
     if(!requireAuth())return;
     const q=new URLSearchParams(location.search).get('q')||'';
     const form=`<form id="search-form" style="display:flex;gap:8px;margin-bottom:13px"><input class="search-input" name="q" maxlength="120" value="${esc(q)}" placeholder="Search people, posts, tags…" autocomplete="off"><button class="btn primary">Search</button></form><div id="search-results"></div>`;
-    ROOT.innerHTML=shell(form,'Search');bindCommon();
+    const promo='<button type="button" class="card" id="refer-grow-promo" style="width:100%;text-align:left;margin-bottom:13px;padding:15px">' +
+      '<strong>🚀 Refer friends. Get discovered.</strong><p class="muted small">Invite students to BLINK. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
+      '<span class="btn small-btn primary">Invite friends →</span></button>';
+    ROOT.innerHTML=shell(promo+form,'Search');bindCommon();
+    document.getElementById('refer-grow-promo').onclick=showReferralGrowth;
     document.getElementById('search-form').onsubmit=e=>{
       e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();
       const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);runSearch(v);
