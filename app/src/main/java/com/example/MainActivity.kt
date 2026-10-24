@@ -1533,6 +1533,7 @@ fun MainAppContent(
                         isDark = uiState.isDarkMode,
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
+                        onOpenFeedPost = { viewModel.openFeedPostDetails(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
                         onRepostPost = { viewModel.toggleRepost(it) },
                         onSharePost = { sharePostOrReel(it) },
@@ -2243,6 +2244,14 @@ fun MainAppContent(
                 .zIndex(50f)
         )
 
+        // Load the full thread once when a post opens. Keep the comment sheet
+        // for other routes; the full post now renders its comments inline.
+        LaunchedEffect(uiState.deepLinkedPost?.id) {
+            uiState.deepLinkedPost?.id?.let { postId ->
+                if (uiState.activeCommentsPostId != postId) viewModel.openCommentsForPost(postId)
+            }
+        }
+
         AnimatedVisibility(
             visible = uiState.deepLinkedPost != null,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
@@ -2252,16 +2261,22 @@ fun MainAppContent(
                 SharedPostScreen(
                     post = post,
                     currentUsername = uiState.myProfile.username,
+                    currentUserId = uiState.myProfile.id,
                     isDark = uiState.isDarkMode,
+                    comments = uiState.comments,
+                    isCommentsLoading = uiState.isCommentsLoading,
+                    isPostingComment = uiState.isPostingComment,
                     onBack = { viewModel.closeDeepLinkedPost() },
                     onLike = { viewModel.togglePostLike(post.id) },
-                    onComment = { viewModel.openCommentsForPost(post.id) },
                     onBookmark = { viewModel.toggleBookmark(post.id) },
                     onShare = { sharePostOrReel(post.id) },
                     onOptions = { viewModel.openPostOptions(post) },
                     onDelete = { viewModel.deletePost(post.id) },
                     onProfileClick = { viewModel.openProfile(it) },
-                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) }
+                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                    onSendComment = { text, parentId -> viewModel.addComment(post.id, text, parentId) },
+                    onToggleCommentLike = { viewModel.toggleCommentLike(it) },
+                    onReportComment = { id, reason -> viewModel.reportComment(id, reason) }
                 )
             }
         }
@@ -2510,7 +2525,7 @@ fun MainAppContent(
         }
 
         // Modals: Comments Modal Sheet with reply & like interactions
-        if (uiState.activeCommentsPostId != null) {
+        if (uiState.activeCommentsPostId != null && uiState.deepLinkedPost == null) {
             CommentSheet(
                 comments = uiState.comments,
                 isLoading = uiState.isCommentsLoading,
