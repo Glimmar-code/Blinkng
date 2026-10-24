@@ -529,7 +529,7 @@ private fun ReelsContent(
                         reel = reel,
                         pageOffset = pageOffset,
                         isActive = isScreenActive && index == pager.currentPage,
-                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
+                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -565,7 +565,7 @@ private fun ReelsContent(
                 is ReelPagerItem.Boosted -> {
                     val placement = item.placement
                     val reel = placement.post ?: return@VerticalPager
-                    LaunchedEffect(index == pager.currentPage, pager.isScrollInProgress, placement.campaignId) {
+                    LaunchedEffect(isScreenActive, index == pager.currentPage, pager.isScrollInProgress, placement.campaignId) {
                         if (isScreenActive && index == pager.currentPage && !pager.isScrollInProgress) {
                             // Ignore fly-through pages: a boosted video should only
                             // count after being visibly settled for half a second.
@@ -583,7 +583,7 @@ private fun ReelsContent(
                         reel = reel,
                         pageOffset = pageOffset,
                         isActive = isScreenActive && index == pager.currentPage,
-                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
+                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
