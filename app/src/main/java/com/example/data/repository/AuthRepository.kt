@@ -42,7 +42,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
     private val anonKey = SupabaseConfig.anonKey
 
-    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = ""): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "", referrerId: String? = null): AuthResult = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().removePrefix("@"); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) return@withContext AuthResult.failure("Please complete all required fields.")
         if (!cleanUsername.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
@@ -55,7 +55,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         if (availability?.usernameAvailable == false) {
             return@withContext AuthResult.failure("That username is already taken. Please choose another one.")
         }
-        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Sign up failed.")) } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Sign up failed.")) }
+        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty, referrerId = referrerId); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Sign up failed.")) } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Sign up failed.")) }
     }
 
     suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {

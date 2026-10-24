@@ -2799,7 +2799,7 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, email: String, password: String) {
+    fun signUp(fullName: String, email: String, password: String, referrerId: String? = null) {
         val temporaryUsername = "blink_" + UUID.randomUUID()
             .toString()
             .replace("-", "")
@@ -2810,11 +2810,12 @@ private suspend fun restoreSupabaseSession() {
             username = temporaryUsername,
             email = email,
             password = password,
-            faculty = ""
+            faculty = "",
+            referrerId = referrerId
         )
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
+    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "", referrerId: String? = null) {
         if (fullName.isBlank()) { showToast("Please enter your real name."); return }
         if (username.isBlank()) { showToast("Please choose a username."); return }
         if (password.isBlank()) { showToast("Please create a password before continuing."); return }
@@ -2831,7 +2832,7 @@ private suspend fun restoreSupabaseSession() {
         // Supabase Auth and BLINK profile initialization have both succeeded.
         viewModelScope.launch {
             try {
-                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())
+                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim(), referrerId)
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
                     _uiState.value = _uiState.value.copy(

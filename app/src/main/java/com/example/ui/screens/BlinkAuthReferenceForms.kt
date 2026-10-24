@@ -589,7 +589,7 @@ internal fun UniversityCampusPickerDialog(
 @Composable
 fun BlinkReferenceCreateAccountScreen(
     onBack: () -> Unit,
-    onCreateAccount: (String, String, String) -> Unit,
+    onCreateAccount: (String, String, String, String?) -> Unit,
     onGoogle: (String) -> Unit,
     onLogin: () -> Unit
 ) {
@@ -599,6 +599,7 @@ fun BlinkReferenceCreateAccountScreen(
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     var university by rememberSaveable { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
     var pickingUniversity by remember { mutableStateOf(false) }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
     var confirmTerms by remember { mutableStateOf(false) }
@@ -692,6 +693,11 @@ fun BlinkReferenceCreateAccountScreen(
             ReferenceInput(password, { password = it; error = null }, "Password",
                 Icons.Default.Lock, Modifier.testTag("create_account_password"), password = true,
                 visible = visible, onToggle = { visible = !visible })
+            Spacer(Modifier.height(10.dp))
+            BlinkReferrerPicker(
+                selected = selectedReferrer,
+                onSelected = { selectedReferrer = it }
+            )
             Spacer(Modifier.height(6.dp))
             SolidAuthButton("Create Account", enabled = true,
                 tag = "create_account_submit") {
@@ -708,7 +714,7 @@ fun BlinkReferenceCreateAccountScreen(
                     // Save only this campus choice for the existing onboarding screen;
                     // passwords stay with the current Supabase sign-up callback.
                     SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password)
+                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id)
                 }
             }
             OrSeparator()
@@ -752,7 +758,7 @@ fun BlinkReferenceCreateAccountScreen(
                     acceptedTerms = true
                     confirmTerms = false
                     SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password)
+                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id)
                 }) { Text("Agree & Create Account", color = Ink) }
             },
             dismissButton = {

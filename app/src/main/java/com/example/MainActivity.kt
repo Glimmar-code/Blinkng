@@ -812,8 +812,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     BlinkReferenceCreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onCreateAccount = { name, email, password ->
-                                            viewModel.signUp(name, email, password)
+                                        onCreateAccount = { name, email, password, referrerId ->
+                                            viewModel.signUp(name, email, password, referrerId = referrerId)
                                         },
                                         onGoogle = { email -> viewModel.loginWithGoogle(email) },
                                         onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) }
