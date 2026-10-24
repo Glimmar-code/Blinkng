@@ -1,3 +1,12 @@
+## 2026-10-24 — Scoped production logo asset promotion (PR #507 from Testlab)
+
+- Official lowercase white **b** with electric-blue center dot and black rounded-square background applied via shared Android launcher/drawables, Windows Compose/taskbar/installer art, and web favicon/PWA/social metadata and website UI image.
+- Assets are a visually faithful optimized raster of the user's supplied reference, rather than the original unmodified 1254px JPEG. Exact master stays in the chat asset package for future repro exports.
+- Main's existing Android permissions/services, website SEO structured data, mobile feed, privacy-safe caching, and desktop packaging must remain unchanged except narrowly scoped brand references.
+- Platform parity: the same approved mark is included in both Android and Windows assets. iOS AppIcon assets are staged but iOS release remains independently gated.
+- Android small notifications use a platform-required monochrome icon (full-color logo is inappropriate there).
+- Manual third-party vendor branding, store listings, hosted email templates and any unreferenced UI surfaces remain separate verification work; no claims of their publication from this code PR.
+
 ## 2026-10-24 — Search production candidate resynced with current main after auth upgrade
 
 - Main advanced to d1c559f05d1fa24f19bf9ae88b3bf3354afb7a36 with approved auth routing (PR #503) while the previous Search production candidate PR #504 was open. The prior PR developed a genuine conflict with MainActivity and must not be force-merged.
