@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.app.Application
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -12,7 +13,9 @@ import org.robolectric.annotation.Config
 // Robolectric cannot load the newest Android preview SDK configured by CI.
 // JSON ledger tests need only a stable supported Android runtime.
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+// Keep a plain Application: BlinkApplication starts WorkManager, FCM and network
+// work that is unrelated to parsing wallet history in a local unit test.
+@Config(sdk = [33], application = Application::class)
 class BlinkWalletLedgerTest {
     @Test
     fun walletHistoryNeverInventsMissingTransactionIds() {
