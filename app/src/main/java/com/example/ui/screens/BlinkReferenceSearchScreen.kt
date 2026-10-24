@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
+import com.example.data.models.DiscoverySort
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.repository.FollowStateStore
@@ -64,6 +65,7 @@ private const val REF_RECENTS_PREF = "blink_reference_search"
 private const val REF_RECENTS_KEY = "queries"
 private const val REF_RECENTS_SEPARATOR = "\u001F"
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BlinkReferenceSearchScreen(
     profiles: List<UserProfile>,
@@ -104,6 +106,7 @@ internal fun BlinkReferenceSearchScreen(
         )
     }
     var selectedDetail by remember { mutableStateOf<DiscoveryResult?>(null) }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
 
     val bg = if (isDark) Color(0xFF0C0D10) else Color.White
     val fg = if (isDark) Color.White else Color(0xFF111111)
@@ -143,7 +146,7 @@ internal fun BlinkReferenceSearchScreen(
     }
 
     LaunchedEffect(discovery.backendAvailable, query) {
-        if (discovery.backendAvailable && query != discovery.query) search.setQuery(query)
+        if (discovery.backendAvailable && query != discovery.query) search.setQuery(query, persistHistory = false)
     }
     LaunchedEffect(discovery.backendAvailable, category) {
         if (discovery.backendAvailable && discovery.selectedType != category.discoveryType) {
@@ -246,6 +249,7 @@ internal fun BlinkReferenceSearchScreen(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
                                 rememberQuery(query)
+                                search.commitQuery()
                                 keyboard?.hide()
                             }),
                         )
@@ -258,7 +262,7 @@ internal fun BlinkReferenceSearchScreen(
                 }
             }
             Surface(
-                onClick = onOpenAdvanced,
+                onClick = { showFilters = true },
                 shape = RoundedCornerShape(16.dp),
                 color = subtle,
                 border = BorderStroke(1.dp, line),
@@ -425,6 +429,71 @@ internal fun BlinkReferenceSearchScreen(
                 }
             }
             Spacer(Modifier.height(22.dp))
+        }
+    }
+
+    if (showFilters) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilters = false },
+            containerColor = bg,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Search filters", fontSize = 21.sp, fontWeight = FontWeight.Black, color = fg)
+                Text("Find exactly what matters across your campus.", color = muted, fontSize = 12.sp)
+                HorizontalDivider(color = line)
+                Text("Sort by", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf(DiscoverySort.RELEVANT, DiscoverySort.RECENT, DiscoverySort.TRENDING), key = { it.name }) { mode ->
+                        Surface(
+                            onClick = { search.setSort(mode) },
+                            shape = RoundedCornerShape(30.dp),
+                            color = if (discovery.sort == mode) accent else subtle,
+                        ) {
+                            Text(mode.label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                color = if (discovery.sort == mode) accentText else fg, fontSize = 12.sp)
+                        }
+                    }
+                }
+                if (discovery.backendAvailable && discovery.capabilities.following) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("People I follow", color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Only content from accounts you follow", color = muted, fontSize = 11.sp)
+                        }
+                        Switch(checked = discovery.followingOnly, onCheckedChange = { search.toggleFollowingOnly() })
+                    }
+                }
+                if (discovery.backendAvailable && discovery.capabilities.saved) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Saved only", color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Find content you previously saved", color = muted, fontSize = 11.sp)
+                        }
+                        Switch(checked = discovery.savedOnly, onCheckedChange = { search.toggleSavedOnly() })
+                    }
+                }
+                if (!discovery.backendAvailable) {
+                    Text("More filters require the BLINK discovery service.", color = muted, fontSize = 11.sp)
+                }
+                Surface(
+                    onClick = { showFilters = false; onOpenAdvanced() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp),
+                    color = accent,
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Tune, null, Modifier.size(19.dp), tint = accentText)
+                        Spacer(Modifier.width(9.dp))
+                        Text("Advanced search tools", Modifier.weight(1f), color = accentText,
+                            fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Icon(Icons.Rounded.ChevronRight, null, tint = accentText)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
         }
     }
 
