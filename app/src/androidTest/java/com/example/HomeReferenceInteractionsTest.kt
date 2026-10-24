@@ -58,7 +58,9 @@ class HomeReferenceInteractionsTest {
                             text = "An image post still needs an accessible Like action.",
                             images = listOf("android.resource://com.example/nonexistent_fixture"),
                             viewsCount = 21,
-                            likes = 4
+                            likes = 4,
+                            commentsCount = 0,
+                            sharesCount = 0
                         ),
                         isDark = false,
                         xFeedStyle = true,
