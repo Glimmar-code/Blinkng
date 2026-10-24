@@ -1,5 +1,37 @@
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
+## 2026-10-24 — Feed post footer, preview and opening behavior (Android and Windows)
+
+- **Android:** Normal feed posts preview four lines before `See more`; the xFeed action row now shows Like → Comment → Repost → Save → Share for all text/image posts. True backend view count appears as small muted text below actions, not as an eye icon. Header whitespace, university and time metadata open full post while profile/Follow/options keep their own routes. Preserve media interaction, poll controls, saved state and author-hidden likes.
+- **Windows equivalent:** `DesktopFeedPostCard` adopts the same Like → Comment → Repost → Save → Share order, four-line excerpts and small views label beneath. Desktop's xFeed card surface now follows the chosen app colour scheme rather than always painting black.
+- **Regression tests:** Android screenshot interaction test covers liking an image post and tapping university metadata; shared Home static contract asserts action order and Windows/Android counts. Required device screenshot and actual link handling verification remain release gates.
+- **Safety:** No Supabase or ranking modifications; backend-provided counts only. No claimed user engagement changes.
+
+
+## 2026-10-24 — Feed viewport fills space while phone nav is hidden
+
+- **Android:** `MainActivity` passes the Home bottom-rail scroll visibility into `PremiumFeedScreen`. When the overlaid 64dp navigation bar scrolls away, the feed no longer reserves its invisible footprint; preserve Android's system-navigation inset so posts and gesture targets remain accessible. Move the create FAB toward the safe-area bottom while the nav is hidden and restore it smoothly when the bar reappears, respecting reduced motion.
+- **PARITY-EXCEPTION: android-feed-scroll-away-bottom-rail-20261024** — This corrects Android's phone-only scroll-away overlay navigation and gesture insets. **Windows equivalent:** `DesktopShell.kt` already uses desktop navigation with no vertically overlaid 64dp Android bar, so it needs no viewport-space adjustment and retains existing route behavior.
+- **Validation:** Regression contract asserts state is passed to viewport and FAB, Android compile and runtime smoke, screenshot comparison while scrolling on small phones, with both system gesture and button navigation. No backend, chat or release changes.
+
+
+## 2026-10-24 — Android Items respects active Light/Dark appearance
+
+- **Android header responsiveness:** Keep Search, Items, Notifications and Menu in a compact single row on 320–389dp devices when they physically fit; reserve two rows for extremely narrow or large-accessibility-font layouts. Avoids the unwanted top gap from the old below-390dp mandatory split.
+- **PARITY-EXCEPTION: android-feed-header-breakpoint-fix-20261024** — The Android reference feed header uses dp-specific phone gestures/insets, unlike Windows' desktop-native navigation. **Windows equivalent remains** its existing spacious drawer/toolbar in `DesktopShell.kt`. No Windows features or control routes are changed.
+- **Android:** Replace legacy dark-only `FeedBackground`, `FeedElevatedSurface`, `FeedBorder`, `FeedTextPrimary`, and `FeedTextSecondary` references across Items' tools with Material3's active semantic palette. Preserves Game, Boost, Drops, Update Center, Weather, Steps, private location UI and existing functionality.
+- **PARITY-EXCEPTION: android-items-semantic-palette-fix-20261024** — Items includes Android-specific phone utilities (sensor pedometer, Android permission-based live location, phone-specific APK updater) and is not a one-to-one desktop window. **Windows equivalent already present:** `BlinkDesktopTheme` provides Light/Dark semantics to desktop Items-like tools; this repair fixes an Android-only regression without adding, removing or diverging Windows behavior.
+- **Validation:** Android compilation, static token regression test, Windows parity, and device screenshots in both appearances still required before release.
+
+
+## 2026-10-24 — Restore Android Message tab and Items header routing on current main
+
+- **Android navigation fix:** The reference phone bottom bar accidentally replaced the fifth **Message** destination with **Menu**. Restore the canonical Home → Reels → Market → Connect → Message order, selected state, unread indication, and working Message tap in the Menu overlay; preserve access to Menu via the top-right header.
+- **Android header consistency:** Search, Inbox and Menu headers were showing Game directly where the approved four-square **Items** destination belongs. Use the Items grid and route it to the Items hub, where Game remains available, without altering other Game shortcuts.
+- **PARITY-EXCEPTION: android-reference-phone-nav-restoration-20261024** — This is a correction to Android's compact five-icon edge-to-edge bottom navigation and phone-specific Items header controls. **Windows equivalent already exists**: `DesktopShell.kt` has a dedicated **Messages** drawer destination (before **Games**) and separate **Menu**, **Games**, and other utility destinations. Windows does not use a five-icon bottom bar or the Android Items sheet; it keeps its desktop-native navigation and existing functionality. No Windows feature is intentionally removed or deferred by this repair.
+- **Release validation:** Scoped to a main-based staging branch to avoid clobbering the heavily divergent Testlab branch; verify Android builds, Windows parity, Search/Inbox/Menu route behavior and screenshot parity before reconciliation and main release.
+
+
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
 - Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
 - Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.

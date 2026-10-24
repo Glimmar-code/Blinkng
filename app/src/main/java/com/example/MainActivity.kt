@@ -1627,6 +1627,7 @@ fun MainAppContent(
                         onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
+                        isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         },
@@ -1645,7 +1646,7 @@ fun MainAppContent(
                         serverPosts = uiState.discoverPosts,
                         marketItems = uiState.marketItems,
                         onMarketItemClick = { viewModel.openProductDetail(it) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         isSearching = uiState.isDiscoverSearching,
@@ -1785,7 +1786,7 @@ fun MainAppContent(
                         },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
                         isLoading = uiState.isConversationsLoading,
@@ -2162,7 +2163,6 @@ fun MainAppContent(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FeedBottomBar(
-                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 },
                 currentTab = uiState.selectedTab,
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {
@@ -2239,6 +2239,7 @@ fun MainAppContent(
                     viewModel.openMenu(true)
                 },
                 isMenuOpen = uiState.isMenuOpen,
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 || it.isMarkedUnread },
                 modifier = Modifier
             )
         }
@@ -3047,8 +3048,7 @@ fun MainAppContent(
                 },
                 onGames = {
                     viewModel.openMenu(false)
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(3)
+                    feedUtilitySheet = "items"
                 },
                 onOpenUpdateWebsite = onOpenWebsiteUpdate,
                 onOpenHelpWebsite = {

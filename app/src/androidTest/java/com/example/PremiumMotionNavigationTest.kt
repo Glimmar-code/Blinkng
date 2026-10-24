@@ -31,7 +31,6 @@ class PremiumMotionNavigationTest {
         composeRule.setContent {
             var tab by remember { mutableStateOf(MainTab.HOME) }
             var subTab by remember { mutableIntStateOf(0) }
-            var menuOpen by remember { mutableStateOf(false) }
             MaterialTheme {
                 FeedBottomBar(
                     currentTab = tab,
@@ -42,8 +41,6 @@ class PremiumMotionNavigationTest {
                     onMarketClick = { tab = MainTab.MARKET; subTab = 0 },
                     onConnectClick = { tab = MainTab.HOME; subTab = 2 },
                     onMessageClick = { tab = MainTab.MESSAGES; subTab = 0 },
-                    onMenuClick = { menuOpen = true },
-                    isMenuOpen = menuOpen,
                 )
             }
         }
@@ -56,9 +53,9 @@ class PremiumMotionNavigationTest {
         composeRule.onNodeWithTag("feed_nav_market").assertIsSelected()
         composeRule.onNodeWithTag("feed_nav_home").assertIsNotSelected()
 
-        composeRule.onNodeWithTag("feed_nav_menu").performClick()
+        composeRule.onNodeWithTag("feed_nav_message").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("feed_nav_menu").assertIsSelected()
+        composeRule.onNodeWithTag("feed_nav_message").assertIsSelected()
         composeRule.onNodeWithTag("feed_nav_market").assertIsNotSelected()
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -214,7 +215,7 @@ internal fun BlinkReferenceSearchScreen(
                     fontWeight = FontWeight.Black, color = fg, maxLines = 1)
             }
             IconButton(onClick = onGameClick, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.SportsEsports, "Game", modifier = Modifier.size(23.dp), tint = fg)
+                Icon(Icons.Rounded.GridView, "Open Items", modifier = Modifier.size(23.dp), tint = fg)
             }
             Box(Modifier.size(40.dp)) {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.fillMaxSize()) {
