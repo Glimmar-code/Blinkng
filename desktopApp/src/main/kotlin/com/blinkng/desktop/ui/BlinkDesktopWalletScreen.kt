@@ -221,11 +221,20 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                                         busyMission = mission.key
                                         scope.launch {
                                             runCatching { actions.claimDailyMission(mission.key) }
+                                                .onSuccess { result ->
+                                                    if (result.optBoolean("success", true)) {
+                                                        busyMission = null
+                                                        reload()
+                                                    } else {
+                                                        missionError = result.optString("message")
+                                                            .ifBlank { "The server did not confirm this reward." }
+                                                        busyMission = null
+                                                    }
+                                                }
                                                 .onFailure {
                                                     missionError = it.message ?: "Unable to claim reward."
+                                                    busyMission = null
                                                 }
-                                            busyMission = null
-                                            reload()
                                         }
                                     }
                                 ) { Text(if (busyMission == mission.key) "Claiming…" else "Claim reward") }
