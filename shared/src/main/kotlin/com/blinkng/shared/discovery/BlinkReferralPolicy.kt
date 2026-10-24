@@ -12,7 +12,7 @@ data class BlinkReferralSuggestion(
 data class BlinkReferralStats(
     val total: Long = 0,
     val activeLast30Days: Long = 0,
-    val bonusPercent: Int = 0,
+    val visibilityPoints: Int = 0,
     val visibilityLabel: String = "Normal discovery",
 )
 
