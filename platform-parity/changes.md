@@ -2,7 +2,7 @@
 
 - **Root cause:** the approved `BlinkAuthReferenceLanding` was already wired through `OnboardingScreen`, and the Testlab shell used it, but the production `MainActivity` destination still invoked the older dark `BlinkWelcomeScreen`. Passing standalone reference screenshots did not test the production entry route.
 - **Android repair:** route `AppDestination.ONBOARDING` to `OnboardingScreen` with the existing sign-in, sign-up and Google callbacks; align status-bar appearance and avoid double top insets while keeping bottom gesture/navigation space.
-- **Windows parity:** Windows already provides its matching reference welcome page, so its existing login, registration and Google actions are intentionally left unchanged. No shared backend, payment, session or Supabase schema changes.
+- **PARITY-EXCEPTION: auth-welcome-entrypoint** — This repairs Android's Activity-level navigation to the approved welcome; Windows has no Android Activity route and already shows the corresponding reference welcome screen with functional login, registration and Google actions. No new feature or changed shared backend contract needs a Windows code change. This exception is specific to the Android entry-point bug.
 - **Regression protection:** an Android unit test asserts the actual app destination selects the approved screen, in addition to existing Compose click and screenshot tests at 100–200% font scaling. A signed APK must only be published after the latest candidate's release and navigation checks pass. Existing signed-in users normally go straight to Home instead of onboarding.
 
 ## 2026-10-24 — Only items 4, 5 and 7 from BLINK Auth follow-up
