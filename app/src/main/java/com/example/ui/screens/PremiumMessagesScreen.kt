@@ -7,6 +7,17 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
+import android.os.Build
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.io.File
+import com.blinkng.shared.BlinkChatAttachmentKind
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -78,6 +89,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardVoice
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
@@ -107,6 +121,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -213,6 +228,7 @@ fun PremiumMessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long) -> Unit = { _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -348,6 +364,7 @@ fun PremiumMessagesScreen(
                         onCloseConversation = onCloseConversation,
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
+                        onSendAttachment = onSendAttachment,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -464,6 +481,7 @@ private fun PremiumMessagesMasterDetail(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -526,6 +544,9 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendAttachment = { uri, kind, duration ->
+                    onSendAttachment(displayedConversation.partnerUsername, uri, kind, duration)
+                },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
@@ -1229,6 +1250,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendAttachment: (Uri, BlinkChatAttachmentKind, Long) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onStoryReferenceClick: (String) -> Unit,
@@ -1239,6 +1261,7 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
@@ -1263,8 +1286,117 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendVideo(uri)
+    var recording by remember(conversation.id) { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember(conversation.id) { mutableStateOf<File?>(null) }
+    var recordedFile by remember(conversation.id) { mutableStateOf<File?>(null) }
+    var recordingStart by remember(conversation.id) { mutableStateOf(0L) }
+    var recordingSeconds by remember(conversation.id) { mutableIntStateOf(0) }
+    var readyDuration by remember(conversation.id) { mutableStateOf(0L) }
+
+    fun finishRecording(keep: Boolean) {
+        val current = recording ?: return
+        val file = recordingFile
+        val duration = (SystemClock.elapsedRealtime() - recordingStart).coerceAtLeast(0)
+        recording = null
+        recordingFile = null
+        val stopped = runCatching { current.stop() }.isSuccess
+        runCatching { current.release() }
+        if (stopped && keep && duration >= 700L && file != null && file.exists()) {
+            recordedFile?.delete()
+            recordedFile = file
+            readyDuration = duration
+        } else {
+            file?.delete()
+        }
+    }
+
+    fun beginRecording() {
+        if (recording != null) return
+        val file = File.createTempFile("blink-voice-", ".m4a", context.cacheDir)
+        val recorder = runCatching {
+            if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+        }.getOrElse {
+            file.delete()
+            Toast.makeText(context, "Recorder is not available.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setOutputFile(file.absolutePath)
+            recorder.setMaxDuration(120_000)
+            recorder.setOnInfoListener { _, code, _ ->
+                if (code == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                    finishRecording(true)
+                }
+            }
+            recorder.prepare()
+            recorder.start()
+        }.onSuccess {
+            recording = recorder
+            recordingFile = file
+            recordingStart = SystemClock.elapsedRealtime()
+            recordingSeconds = 0
+        }.onFailure {
+            runCatching { recorder.release() }
+            file.delete()
+            Toast.makeText(context, "Microphone could not start.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val microphonePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { approved ->
+        if (approved) beginRecording()
+        else Toast.makeText(context, "Microphone permission is required for voice notes.", Toast.LENGTH_SHORT).show()
+    }
+    val startVoiceNote = {
+        showAttachmentSheet = false
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED) beginRecording()
+        else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.IMAGE, 0L)
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L)
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L)
+    }
+    LaunchedEffect(recording) {
+        while (recording != null) {
+            recordingSeconds = ((SystemClock.elapsedRealtime() - recordingStart) / 1_000L).toInt()
+            if (recordingSeconds >= 119) {
+                finishRecording(true)
+                break
+            }
+            delay(300L)
+        }
+    }
+    DisposableEffect(conversation.id, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && recording != null) {
+                // Android backgrounding must never leave the microphone active.
+                finishRecording(true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            runCatching { recording?.stop() }
+            runCatching { recording?.release() }
+            recordingFile?.delete()
+            recordedFile?.delete()
+            recording = null
+            recordingFile = null
+            recordedFile = null
+        }
     }
     val startDictation = rememberSpeechInput { spoken ->
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
@@ -1468,12 +1600,57 @@ private fun PremiumChatDetail(
                 EmojiRail(palette = palette, onEmoji = { text += it })
             }
 
+            if (recording != null || recordedFile != null) {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(1.dp, palette.border),
+                    modifier = Modifier.fillMaxWidth().testTag("chat_voice_recording_panel")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Mic, null, tint = palette.accent)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (recording != null) "Recording ${recordingSeconds}s / 120s"
+                            else "Voice note • ${readyDuration / 1000}s",
+                            color = palette.textPrimary,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1
+                        )
+                        if (recording != null) {
+                            IconButton(onClick = { finishRecording(true) }) {
+                                Icon(Icons.Default.Check, contentDescription = "Finish recording", tint = palette.accent)
+                            }
+                            IconButton(onClick = { finishRecording(false) }) {
+                                Icon(Icons.Default.Close, contentDescription = "Discard voice note", tint = palette.textSecondary)
+                            }
+                        } else {
+                            IconButton(onClick = {
+                                recordedFile?.delete()
+                                recordedFile = null
+                            }) {
+                                Icon(Icons.Default.Close, contentDescription = "Discard voice note", tint = palette.textSecondary)
+                            }
+                            IconButton(onClick = {
+                                recordedFile?.let { file ->
+                                    recordedFile = null
+                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration)
+                                }
+                            }) {
+                                Icon(Icons.Default.Send, contentDescription = "Send voice note", tint = palette.accent)
+                            }
+                        }
+                    }
+                }
+            }
             MessageComposer(
                 value = text,
                 onValueChange = { text = it },
                 palette = palette,
                 onAttachment = { showAttachmentSheet = true },
-                onDictation = startDictation,
+                onDictation = startVoiceNote,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
                 onQuickLike = { submitMessage("👍") }
@@ -1600,9 +1777,27 @@ private fun PremiumChatDetail(
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
+            onImage = {
+                showAttachmentSheet = false
+                imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"))
+            },
             onVideo = {
                 showAttachmentSheet = false
-                videoPicker.launch("video/*")
+                videoPicker.launch(arrayOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp"))
+            },
+            onVoice = startVoiceNote,
+            onDocument = {
+                showAttachmentSheet = false
+                documentPicker.launch(arrayOf(
+                    "application/pdf", "text/plain", "text/csv",
+                    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ))
+            },
+            onDictation = {
+                showAttachmentSheet = false
+                startDictation()
             },
             onDismiss = { showAttachmentSheet = false }
         )
@@ -1932,15 +2127,34 @@ private fun MessageContent(
                 }
             }
             if (message.isVoiceNote) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                BlinkChatVoicePlayer(
+                    url = message.voiceAudioUrl,
+                    durationLabel = message.voiceDuration,
+                    tint = contentColor,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp)
+                )
+            }
+            if (message.attachedDocumentUrl != null || message.attachedDocumentName != null) {
+                val documentUrl = message.attachedDocumentUrl
+                Surface(
+                    color = contentColor.copy(alpha = .10f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(6.dp).clickable(enabled = !documentUrl.isNullOrBlank()) {
+                        documentUrl?.let {
+                            openExternalUri(context, Uri.parse(it), "Open document")
+                        }
+                    }.testTag("chat_document_attachment")
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.width(104.dp).height(3.dp).clip(CircleShape).background(contentColor.copy(alpha = .55f)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Description, contentDescription = "Document", tint = contentColor)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            message.attachedDocumentName ?: "Document",
+                            color = contentColor,
+                            fontSize = 12.sp, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             val storyReply = BlinkStoryPresentation.parseReply(message.text)
@@ -1973,7 +2187,8 @@ private fun MessageContent(
             }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
-                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
+                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true)) ||
+                    message.attachedDocumentName != null
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
                     storyReply?.text ?: message.text,
@@ -2304,58 +2519,64 @@ private fun MessageComposer(
 @Composable
 private fun AttachmentSheet(
     palette: MessagePalette,
+    onImage: () -> Unit,
     onVideo: () -> Unit,
+    onVoice: () -> Unit,
+    onDocument: () -> Unit,
+    onDictation: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = palette.glass,
-        contentColor = palette.textPrimary,
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(vertical = 11.dp)
-                    .size(width = 42.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(palette.textMuted.copy(alpha = .55f))
-            )
-        }
+        contentColor = palette.textPrimary
     ) {
-        Text(
-            "Share with this chat",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-        )
-        Surface(
-            color = palette.glassElevated.copy(alpha = .75f),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, palette.border),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .clickable(onClick = onVideo)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = null,
-                        tint = palette.accent,
-                        modifier = Modifier.padding(10.dp).size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Choose a video from your device", color = palette.textSecondary, fontSize = 11.sp)
+            Text(
+                "Share with this chat",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            listOf(
+                Triple("Photo", "Choose a picture", Icons.Default.Image),
+                Triple("Video", "Share a video clip", Icons.Default.VideoLibrary),
+                Triple("Voice note", "Record with your microphone", Icons.Default.Mic),
+                Triple("Document", "PDF, Word, spreadsheet or presentation", Icons.Default.Description),
+                Triple("Voice typing", "Speak to type a text message", Icons.Default.KeyboardVoice)
+            ).forEachIndexed { index, item ->
+                Surface(
+                    color = palette.glassElevated.copy(alpha = .75f),
+                    border = BorderStroke(1.dp, palette.border),
+                    shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable {
+                            when (index) {
+                                0 -> onImage()
+                                1 -> onVideo()
+                                2 -> onVoice()
+                                3 -> onDocument()
+                                else -> onDictation()
+                            }
+                        }.testTag("chat_attachment_$index")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(item.third, null, tint = palette.accent, modifier = Modifier.size(23.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column {
+                            Text(item.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(item.second, fontSize = 11.sp, color = palette.textSecondary)
+                        }
+                    }
                 }
             }
+            Spacer(Modifier.height(16.dp).navigationBarsPadding())
         }
-        Spacer(Modifier.height(18.dp).navigationBarsPadding())
     }
 }
 

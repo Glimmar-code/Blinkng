@@ -2,6 +2,8 @@ package com.example.data.supabase
 
 import android.content.Context
 import android.net.Uri
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
 import com.example.data.models.ChatConversation
@@ -75,9 +77,16 @@ object MessageMediaService {
                 if (!response.isSuccessful) throw IllegalStateException(error(raw, "Could not open private video."))
                 val obj = JSONObject(raw)
                 val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
-                if (signed.isBlank()) null
-                else if (signed.startsWith("http")) signed
-                else "${SupabaseConfig.url.trimEnd('/')}$signed"
+                when {
+                    signed.isBlank() -> null
+                    signed.startsWith("https://") &&
+                        signed.startsWith(SupabaseConfig.url.trimEnd('/')) -> signed
+                    signed.startsWith("/storage/v1/") ->
+                        SupabaseConfig.url.trimEnd('/') + signed
+                    signed.startsWith("/object/") ->
+                        SupabaseConfig.url.trimEnd('/') + "/storage/v1" + signed
+                    else -> null
+                }
             }
         }.getOrNull()
     }
@@ -86,6 +95,15 @@ object MessageMediaService {
         context: Context,
         receiverUsername: String,
         uri: Uri
+    ): Result<ChatMessage> = sendAttachment(context, receiverUsername, uri, BlinkChatAttachmentKind.VIDEO)
+
+    suspend fun sendAttachment(
+        context: Context,
+        receiverUsername: String,
+        uri: Uri,
+        kind: BlinkChatAttachmentKind,
+        durationMs: Long = 0L,
+        clientMessageId: String = UUID.randomUUID().toString()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
@@ -94,149 +112,175 @@ object MessageMediaService {
                 return@withContext Result.failure(Exception("Recipient is required."))
             }
 
-            val target = client.newCall(
+            // Production RLS only permits inserting your OWN membership row.
+            // Use the existing server RPC: it checks blocks, self-messaging
+            // and atomically creates BOTH participants without a dummy text.
+            val conversationResponse = client.newCall(
+                builder("/rest/v1/rpc/get_or_create_direct_conversation")
+                    .post(JSONObject().put("p_receiver_username", receiver)
+                        .toString().toRequestBody(jsonType)).build()
+            ).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    error(raw, "You cannot start this conversation.")
+                )
+                raw.trim().trim('"')
+            }
+            val conversationId = runCatching {
+                UUID.fromString(conversationResponse).toString()
+            }.getOrElse { throw IllegalStateException("Server did not confirm the conversation.") }
+
+            // Reuse the same client message ID on retry. If the server saved
+            // the message but the success response was lost, do not send twice.
+            val safeMessageId = UUID.fromString(clientMessageId).toString()
+            val existing = client.newCall(
                 builder(
-                    "/rest/v1/profiles?username=eq.${
-                        URLEncoder.encode(receiver, StandardCharsets.UTF_8.name())
-                    }&select=id,username&limit=1"
+                    "/rest/v1/messages?id=eq.$safeMessageId&select=id,sender_id,conversation_id," +
+                        "content,created_at,media_url&limit=1"
                 ).get().build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Recipient lookup failed."))
+                if (!response.isSuccessful) throw IllegalStateException(
+                    error(raw, "Cannot check existing attachment message.")
+                )
                 JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
-            } ?: return@withContext Result.failure(Exception("Recipient not found."))
-
-            val targetId = target.optString("id")
-            if (targetId == senderId) return@withContext Result.failure(Exception("Cannot message yourself."))
-
-            val mine = client.newCall(
-                builder(
-                    "/rest/v1/conversation_participants?user_id=eq.${
-                        URLEncoder.encode(senderId, StandardCharsets.UTF_8.name())
-                    }&select=conversation_id"
-                ).get().build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation lookup failed."))
-                JSONArray(raw.ifBlank { "[]" })
             }
-
-            var conversationId = ""
-            for (i in 0 until mine.length()) {
-                val cid = mine.optJSONObject(i)?.optString("conversation_id").orEmpty()
-                if (cid.isBlank()) continue
-                val exists = client.newCall(
-                    builder(
-                        "/rest/v1/conversation_participants?conversation_id=eq.${
-                            URLEncoder.encode(cid, StandardCharsets.UTF_8.name())
-                        }&user_id=eq.${
-                            URLEncoder.encode(targetId, StandardCharsets.UTF_8.name())
-                        }&select=user_id&limit=1"
-                    ).get().build()
-                ).execute().use { response ->
-                    response.isSuccessful && response.body?.string().orEmpty() != "[]"
-                }
-                if (exists) {
-                    conversationId = cid
-                    break
-                }
-            }
-
-            if (conversationId.isBlank()) {
-                val conversationBody = JSONObject()
-                    .put("created_by", senderId)
-                    .put("is_group", false)
-                val created = client.newCall(
-                    builder("/rest/v1/conversations")
-                        .addHeader("Prefer", "return=representation")
-                        .post(conversationBody.toString().toRequestBody(jsonType))
-                        .build()
-                ).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation creation failed."))
-                    raw
-                }
-                conversationId = JSONArray(created).getJSONObject(0).optString("id")
-                for (member in listOf(senderId, targetId)) {
-                    val memberBody = JSONObject()
-                        .put("conversation_id", conversationId)
-                        .put("user_id", member)
-                    client.newCall(
-                        builder("/rest/v1/conversation_participants")
-                            .post(memberBody.toString().toRequestBody(jsonType))
-                            .build()
-                    ).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
-                        if (!response.isSuccessful) {
-                            throw IllegalStateException(error(raw, "Conversation membership failed."))
-                        }
-                    }
-                }
-            }
-
-            val mime = context.contentResolver.getType(uri) ?: "video/mp4"
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return@withContext Result.failure(Exception("Could not read video."))
-            if (bytes.isEmpty()) return@withContext Result.failure(Exception("Video is empty."))
-
-            val extension = when {
-                mime.contains("webm", true) -> "webm"
-                mime.contains("quicktime", true) -> "mov"
-                else -> "mp4"
-            }
-            val objectPath =
-                "conversations/$conversationId/users/$senderId/videos/${UUID.randomUUID()}.$extension"
-
-            client.newCall(
-                builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
-                    .addHeader("Content-Type", mime)
-                    .addHeader("x-upsert", "false")
-                    .post(bytes.toRequestBody(mime.toMediaType()))
-                    .build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Video upload failed."))
-            }
-
-            val storedReference = "$PRIVATE_BUCKET:$objectPath"
-            val messageBody = JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", senderId)
-                .put("content", "Video")
-                .put("media_url", storedReference)
-                .put("is_read", false)
-                .put("message_type", "video")
-
-            val raw = client.newCall(
-                builder("/rest/v1/messages")
-                    .addHeader("Prefer", "return=representation")
-                    .post(messageBody.toString().toRequestBody(jsonType))
-                    .build()
-            ).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(text, "Video message failed."))
-                text
-            }
-            val row = JSONArray(raw).getJSONObject(0)
-            val playableUrl = signedUrl(objectPath)
-
-            Result.success(
-                ChatMessage(
-                    id = row.optString("id"),
+            if (existing != null && existing.optString("sender_id") == senderId &&
+                existing.optString("conversation_id") == conversationId) {
+                val ref = existing.optString("media_url")
+                val objectPath = ref.removePrefix("$PRIVATE_BUCKET:")
+                val replayUrl = if (ref.startsWith("$PRIVATE_BUCKET:conversations/$conversationId/users/"))
+                    signedUrl(objectPath) else null
+                return@withContext Result.success(ChatMessage(
+                    id = safeMessageId,
                     senderId = senderId,
-                    text = "Video",
+                    text = existing.optString("content"),
                     timestamp = "Just now",
                     isFromMe = true,
                     conversationId = conversationId,
-                    rawTimestamp = row.optString("created_at"),
+                    rawTimestamp = existing.optString("created_at"),
                     isRead = false,
                     status = MessageStatus.SENT,
-                    attachedVideoUrl = playableUrl
+                    isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+                    voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
+                    voiceAudioUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.VOICE },
+                    attachedImageUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+                    attachedVideoUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
+                    attachedDocumentUrl = replayUrl.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },
+                    attachedDocumentName = existing.optString("content")
+                        .removePrefix("Document: ").takeIf { kind == BlinkChatAttachmentKind.DOCUMENT }
+                ))
+            }
+
+            BoundedMessageAttachment.open(context, uri, kind).use { staged ->
+                val objectPath =
+                    "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
+                client.newCall(
+                    builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
+                        .addHeader("x-upsert", "false")
+                        .post(staged.requestBody()).build()
+                ).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Upload failed."))
+                }
+                val label = when (kind) {
+                    BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
+                    BlinkChatAttachmentKind.VOICE -> "Voice note: ${durationMs.coerceAtLeast(0) / 1000}s"
+                    else -> kind.title
+                }
+                val messageBody = JSONObject()
+                    .put("id", safeMessageId)
+                    .put("conversation_id", conversationId)
+                    .put("sender_id", senderId)
+                    .put("content", label)
+                    .put("media_url", "$PRIVATE_BUCKET:$objectPath")
+                    .put("is_read", false)
+                    .put("message_type", kind.wireType)
+                val raw = client.newCall(
+                    builder("/rest/v1/messages")
+                        .addHeader("Prefer", "return=representation")
+                        .post(messageBody.toString().toRequestBody(jsonType)).build()
+                ).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(
+                        error(body, "Could not send ${kind.title.lowercase()} message.")
+                    )
+                    body
+                }
+                val row = JSONArray(raw).getJSONObject(0)
+                val messageId = row.optString("id")
+                if (messageId.isBlank()) throw IllegalStateException("Message not confirmed by server.")
+                // Keep the v1 wire contract compatible with production:
+                // message_attachments is not deployed there yet. The durable
+                // type, reference and filename live in the messages row.
+                val url = signedUrl(objectPath)
+                Result.success(
+                    ChatMessage(
+                        id = messageId,
+                        senderId = senderId,
+                        text = label,
+                        timestamp = "Just now",
+                        isFromMe = true,
+                        conversationId = conversationId,
+                        rawTimestamp = row.optString("created_at"),
+                        isRead = false,
+                        status = MessageStatus.SENT,
+                        isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+                        voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
+                        voiceAudioUrl = url.takeIf { kind == BlinkChatAttachmentKind.VOICE },
+                        attachedImageUrl = url.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+                        attachedVideoUrl = url.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
+                        attachedDocumentUrl = url.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },
+                        attachedDocumentName = staged.name.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT }
+                    )
                 )
-            )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "sendVideoMessage failed", e)
             Result.failure(e)
+        }
+    }
+
+    /** Convert a page's private references to short-lived signed URLs only
+     * after the server has returned messages in the current conversation. */
+    suspend fun hydrateMediaPage(messages: List<ChatMessage>, conversationId: String):
+        List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty() || SupabaseService.accessToken().isNullOrBlank()) {
+            return@withContext messages
+        }
+        val signedCache = mutableMapOf<String, String?>()
+        messages.map { message ->
+            val kind = when {
+                message.attachedImageUrl != null -> BlinkChatAttachmentKind.IMAGE
+                message.attachedVideoUrl != null -> BlinkChatAttachmentKind.VIDEO
+                message.isVoiceNote -> BlinkChatAttachmentKind.VOICE
+                message.attachedDocumentUrl != null -> BlinkChatAttachmentKind.DOCUMENT
+                else -> null
+            }
+            val reference = when (kind) {
+                BlinkChatAttachmentKind.IMAGE -> message.attachedImageUrl
+                BlinkChatAttachmentKind.VIDEO -> message.attachedVideoUrl
+                BlinkChatAttachmentKind.VOICE -> message.voiceAudioUrl
+                BlinkChatAttachmentKind.DOCUMENT -> message.attachedDocumentUrl
+                else -> null
+            }
+            // Only sign storage references belonging to the opened conversation.
+            val prefix = "$PRIVATE_BUCKET:conversations/$conversationId/users/"
+            val url = when {
+                reference?.startsWith(prefix) == true -> {
+                    val objectPath = reference.removePrefix("$PRIVATE_BUCKET:")
+                    signedCache.getOrPut(objectPath) { signedUrl(objectPath) }
+                }
+                reference?.startsWith("https://") == true -> reference
+                else -> null
+            }
+            when (kind) {
+                BlinkChatAttachmentKind.IMAGE -> message.copy(attachedImageUrl = url)
+                BlinkChatAttachmentKind.VIDEO -> message.copy(attachedVideoUrl = url)
+                BlinkChatAttachmentKind.VOICE -> message.copy(voiceAudioUrl = url)
+                BlinkChatAttachmentKind.DOCUMENT -> message.copy(attachedDocumentUrl = url)
+                null -> message
+            }
         }
     }
 
