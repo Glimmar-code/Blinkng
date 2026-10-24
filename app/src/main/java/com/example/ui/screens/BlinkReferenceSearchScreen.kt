@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -78,6 +79,11 @@ internal fun BlinkReferenceSearchScreen(
     myProfile: UserProfile,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
@@ -357,9 +363,13 @@ internal fun BlinkReferenceSearchScreen(
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
                 if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
                     val profileId = result.id
+                    val presentProfile = allProfiles.firstOrNull {
+                        it.id == profileId || (result.username.isNotBlank() && it.username.equals(result.username, true))
+                    }
                     ReferencePersonRow(
                         title = result.title, subtitle = result.subtitle, avatar = result.avatarUrl,
-                        verified = result.verified, fg = fg, muted = muted, line = line,
+                        verified = result.verified, online = presentProfile?.onlineNow == true,
+                        fg = fg, muted = muted, line = line,
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
@@ -372,6 +382,7 @@ internal fun BlinkReferenceSearchScreen(
                         subtitle = listOf(profile.university, profile.department).filter(String::isNotBlank).joinToString(" · "),
                         avatar = profile.avatarUrl,
                         verified = profile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
+                        online = profile.onlineNow,
                         fg = fg, muted = muted, line = line,
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
@@ -386,13 +397,32 @@ internal fun BlinkReferenceSearchScreen(
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.POSTS) {
                 ReferenceTitle("Posts", fg, muted) { select(ReferenceCategory.POSTS) }
                 if (livePosts.isNotEmpty()) livePosts.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                    ReferencePostRow(item.title, item.subtitle, item.body, item.avatarUrl, item.likeCount, item.commentCount, fg, muted, line) {
-                        onPostClick(allPosts.firstOrNull { it.id == item.id } ?: item.asFeedPost())
-                    }
+                    val post = allPosts.firstOrNull { it.id == item.id } ?: item.asFeedPost()
+                    ReferencePostRow(
+                        author = item.title, time = item.subtitle, body = item.body,
+                        avatar = item.avatarUrl, likes = item.likeCount, comments = item.commentCount,
+                        reposts = post.repostsCount, saved = post.isBookmarked,
+                        fg = fg, muted = muted, line = line,
+                        onClick = { onPostClick(post) },
+                        onLike = { onLikePost(post.id) },
+                        onComment = { onCommentPost(post.id) },
+                        onShare = { onSharePost(post.id) },
+                        onBookmark = { onBookmarkPost(post.id) },
+                        onOptions = { onOptionsClick(post) },
+                    )
                 } else localPosts.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                    ReferencePostRow(item.author, item.timeAgo, item.text, item.authorAvatar, item.likes, item.commentsCount, fg, muted, line) {
-                        onPostClick(item)
-                    }
+                    ReferencePostRow(
+                        author = item.author, time = item.timeAgo, body = item.text,
+                        avatar = item.authorAvatar, likes = item.likes, comments = item.commentsCount,
+                        reposts = item.repostsCount, saved = item.isBookmarked,
+                        fg = fg, muted = muted, line = line,
+                        onClick = { onPostClick(item) },
+                        onLike = { onLikePost(item.id) },
+                        onComment = { onCommentPost(item.id) },
+                        onShare = { onSharePost(item.id) },
+                        onBookmark = { onBookmarkPost(item.id) },
+                        onOptions = { onOptionsClick(item) },
+                    )
                 }
                 if (livePosts.isEmpty() && localPosts.isEmpty()) ReferenceNoResults("No posts found", muted)
                 Spacer(Modifier.height(12.dp))
@@ -557,7 +587,7 @@ private fun ReferenceTitle(title: String, fg: Color, muted: Color, onSeeAll: () 
 
 @Composable
 private fun ReferencePersonRow(
-    title: String, subtitle: String, avatar: String?, verified: Boolean,
+    title: String, subtitle: String, avatar: String?, verified: Boolean, online: Boolean,
     fg: Color, muted: Color, line: Color,
     followable: Boolean, following: Boolean, isBusy: Boolean,
     onFollow: () -> Unit, onClick: () -> Unit,
@@ -565,7 +595,7 @@ private fun ReferencePersonRow(
     val largeFont = LocalDensity.current.fontScale >= 1.6f
     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49) }
+            Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49, online) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).clickable(onClick = onClick)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -651,10 +681,15 @@ private fun ReferenceMarketRow(
 @Composable
 private fun ReferencePostRow(
     author: String, time: String, body: String, avatar: String?,
-    likes: Int, comments: Int, fg: Color, muted: Color, line: Color,
-    onClick: () -> Unit,
+    likes: Int, comments: Int, reposts: Int, saved: Boolean,
+    fg: Color, muted: Color, line: Color,
+    onClick: () -> Unit, onLike: () -> Unit, onComment: () -> Unit,
+    onShare: () -> Unit, onBookmark: () -> Unit, onOptions: () -> Unit,
 ) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(14.dp), color = Color.Transparent, border = BorderStroke(1.dp, line)) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(14.dp),
+        color = Color.Transparent, border = BorderStroke(1.dp, line)
+    ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ReferenceAvatar(avatar, 37)
@@ -663,26 +698,63 @@ private fun ReferencePostRow(
                     Text(author, color = fg, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(time, color = muted, fontSize = 10.sp, maxLines = 1)
                 }
-                Icon(Icons.Rounded.MoreVert, null, tint = fg)
+                IconButton(onClick = onOptions, modifier = Modifier.size(35.dp)) {
+                    Icon(Icons.Rounded.MoreVert, "Post options", tint = fg, modifier = Modifier.size(19.dp))
+                }
             }
             Spacer(Modifier.height(8.dp))
             Text(body, color = fg, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(9.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(19.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.FavoriteBorder, null, Modifier.size(16.dp), tint = fg)
-                Text(likes.toString(), fontSize = 10.sp, color = muted)
-                Icon(Icons.Rounded.ChatBubbleOutline, null, Modifier.size(16.dp), tint = fg)
-                Text(comments.toString(), fontSize = 10.sp, color = muted)
+            Spacer(Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                item {
+                    ReferencePostAction(Icons.Rounded.FavoriteBorder, "Like", likes, fg, muted, onLike)
+                }
+                item {
+                    ReferencePostAction(Icons.Rounded.ChatBubbleOutline, "Comment", comments, fg, muted, onComment)
+                }
+                item {
+                    ReferencePostAction(Icons.Rounded.Repeat, "Repost or share", reposts, fg, muted, onShare)
+                }
+                item {
+                    ReferencePostAction(
+                        if (saved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        if (saved) "Remove bookmark" else "Bookmark", null, fg, muted, onBookmark
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ReferenceAvatar(url: String?, size: Int) {
-    Box(Modifier.size(size.dp).clip(CircleShape).background(Color(0xFFE8E8E8)), contentAlignment = Alignment.Center) {
-        if (!url.isNullOrBlank()) AsyncImage(url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Icon(Icons.Rounded.Person, null, tint = Color.DarkGray)
+private fun ReferencePostAction(
+    icon: ImageVector, label: String, count: Int?,
+    fg: Color, muted: Color, onClick: () -> Unit,
+) {
+    Row(Modifier.clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = label, modifier = Modifier.size(17.dp), tint = fg)
+        if (count != null) {
+            Spacer(Modifier.width(5.dp))
+            Text(count.toString(), color = muted, fontSize = 10.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ReferenceAvatar(url: String?, size: Int, online: Boolean = false) {
+    Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFFE8E8E8)),
+            contentAlignment = Alignment.Center) {
+            if (!url.isNullOrBlank()) {
+                AsyncImage(url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else Icon(Icons.Rounded.Person, null, tint = Color.DarkGray)
+        }
+        if (online) {
+            Box(Modifier.align(Alignment.BottomEnd).size(10.dp).clip(CircleShape)
+                .background(Color(0xFF17CE5D)))
+        }
     }
 }
 
