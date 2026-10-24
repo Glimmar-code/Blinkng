@@ -30,10 +30,13 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                 Text(BlinkReferralPolicy.PROMO_MESSAGE)
                 if (stats == null && !error) LinearProgressIndicator(Modifier.fillMaxWidth())
                 stats?.let {
-                    Text("Successful referrals: ${it.total}")
+                    Text("Lifetime confirmed referrals: ${it.total}")
+                    Text("Achievement: ${it.achievementTier}")
+                    Text(BlinkReferralPolicy.milestoneLabel(it))
                     Text("Active in 30 days: ${it.activeLast30Days}")
-                    Text("Visibility level: ${it.visibilityLabel}")
-                    Text("Referral discovery points: ${it.visibilityPoints}")
+                    Text("Current visibility: ${it.visibilityLabel} (${it.visibilityPoints} points)")
+                    Text("New referrals add 3 points for days 0-9, 2 for days 10-19, and 1 for days 20-29. Lifetime badges never fade.")
+                    Text("Discovery doesn't guarantee views or follows.")
                 }
                 if (error) Text("Referrals are unavailable until the server update is ready.")
                 Text("Referral visibility increases discovery opportunities, not guaranteed followers.")
