@@ -184,66 +184,83 @@ object MessageMediaService {
                 }
             }
 
-            val mime = context.contentResolver.getType(uri) ?: "video/mp4"
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return@withContext Result.failure(Exception("Could not read video."))
-            if (bytes.isEmpty()) return@withContext Result.failure(Exception("Video is empty."))
-
-            val extension = when {
-                mime.contains("webm", true) -> "webm"
-                mime.contains("quicktime", true) -> "mov"
-                else -> "mp4"
-            }
-            val objectPath =
-                "conversations/$conversationId/users/$senderId/videos/${UUID.randomUUID()}.$extension"
-
-            client.newCall(
-                builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
-                    .addHeader("Content-Type", mime)
-                    .addHeader("x-upsert", "false")
-                    .post(bytes.toRequestBody(mime.toMediaType()))
-                    .build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Video upload failed."))
-            }
-
-            val storedReference = "$PRIVATE_BUCKET:$objectPath"
-            val messageBody = JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", senderId)
-                .put("content", "Video")
-                .put("media_url", storedReference)
-                .put("is_read", false)
-                .put("message_type", "video")
-
-            val raw = client.newCall(
-                builder("/rest/v1/messages")
-                    .addHeader("Prefer", "return=representation")
-                    .post(messageBody.toString().toRequestBody(jsonType))
-                    .build()
-            ).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(text, "Video message failed."))
-                text
-            }
-            val row = JSONArray(raw).getJSONObject(0)
-            val playableUrl = signedUrl(objectPath)
-
-            Result.success(
-                ChatMessage(
-                    id = row.optString("id"),
-                    senderId = senderId,
-                    text = "Video",
-                    timestamp = "Just now",
-                    isFromMe = true,
-                    conversationId = conversationId,
-                    rawTimestamp = row.optString("created_at"),
-                    isRead = false,
-                    status = MessageStatus.SENT,
-                    attachedVideoUrl = playableUrl
+            BoundedMessageAttachment.open(context, uri, kind).use { staged ->
+                val objectPath =
+                    "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
+                client.newCall(
+                    builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
+                        .addHeader("x-upsert", "false")
+                        .post(staged.requestBody()).build()
+                ).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Upload failed."))
+                }
+                val label = when (kind) {
+                    BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
+                    BlinkChatAttachmentKind.VOICE -> "Voice note"
+                    else -> kind.title
+                }
+                val messageBody = JSONObject()
+                    .put("conversation_id", conversationId)
+                    .put("sender_id", senderId)
+                    .put("content", label)
+                    .put("media_url", "$PRIVATE_BUCKET:$objectPath")
+                    .put("is_read", false)
+                    .put("message_type", kind.wireType)
+                val raw = client.newCall(
+                    builder("/rest/v1/messages")
+                        .addHeader("Prefer", "return=representation")
+                        .post(messageBody.toString().toRequestBody(jsonType)).build()
+                ).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(
+                        error(body, "Could not send ${kind.title.lowercase()} message.")
+                    )
+                    body
+                }
+                val row = JSONArray(raw).getJSONObject(0)
+                val messageId = row.optString("id")
+                if (messageId.isBlank()) throw IllegalStateException("Message not confirmed by server.")
+                // Metadata is best-effort and never creates a duplicate chat message.
+                runCatching {
+                    val data = JSONObject()
+                        .put("message_id", messageId)
+                        .put("conversation_id", conversationId)
+                        .put("uploader_id", senderId)
+                        .put("kind", kind.wireType)
+                        .put("storage_bucket", PRIVATE_BUCKET)
+                        .put("storage_path", objectPath)
+                        .put("display_name", staged.name)
+                        .put("mime_type", staged.mime)
+                        .put("byte_size", staged.size)
+                    if (durationMs > 0) data.put("duration_ms", durationMs)
+                    client.newCall(
+                        builder("/rest/v1/message_attachments")
+                            .post(data.toString().toRequestBody(jsonType)).build()
+                    ).execute().close()
+                }
+                val url = signedUrl(objectPath)
+                Result.success(
+                    ChatMessage(
+                        id = messageId,
+                        senderId = senderId,
+                        text = label,
+                        timestamp = "Just now",
+                        isFromMe = true,
+                        conversationId = conversationId,
+                        rawTimestamp = row.optString("created_at"),
+                        isRead = false,
+                        status = MessageStatus.SENT,
+                        isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+                        voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
+                        voiceAudioUrl = url.takeIf { kind == BlinkChatAttachmentKind.VOICE },
+                        attachedImageUrl = url.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+                        attachedVideoUrl = url.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
+                        attachedDocumentUrl = url.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },
+                        attachedDocumentName = staged.name.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT }
+                    )
                 )
-            )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "sendVideoMessage failed", e)
             Result.failure(e)
