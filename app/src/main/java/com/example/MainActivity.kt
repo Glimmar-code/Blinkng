@@ -730,8 +730,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     SignUpScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onSuccess = { name, user, email, pass, uni, type ->
-                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type)
+                                        onSuccess = { name, user, email, pass, uni, type, referrerId ->
+                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type, referrerId = referrerId)
                                         },
                                         onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
                                         onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
