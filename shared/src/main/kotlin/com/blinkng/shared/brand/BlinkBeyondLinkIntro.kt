@@ -189,10 +189,10 @@ private fun ApprovedVideoWordmark(scale: Float, blueAlpha: Float, modifier: Modi
                 }
                 close()
             }
-            drawPath(outline, Color.White)
+            drawPath(outline, Color(0xFFF9FAFD))
         }
         drawCircle(
-            Color(0xFF236BF5).copy(alpha = blueAlpha),
+            Color(0xFF1E66F9).copy(alpha = blueAlpha),
             radius = 18.25f * sx,
             center = Offset(63f * sx, 111f * sy),
         )
