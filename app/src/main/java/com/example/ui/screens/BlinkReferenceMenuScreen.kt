@@ -58,10 +58,14 @@ fun BlinkReferenceMenuScreen(
     onSaved: () -> Unit,
     onVerification: () -> Unit,
     onSettings: () -> Unit,
+    onToggleTheme: () -> Unit,
+    onCallSettings: () -> Unit,
+    onSwitchAccount: () -> Unit,
     onLogOut: () -> Unit,
     onSearch: () -> Unit,
     onGames: () -> Unit,
     onOpenUpdateWebsite: () -> Unit,
+    onOpenHelpWebsite: () -> Unit,
     onHome: () -> Unit,
     onReels: () -> Unit,
     onMarket: () -> Unit,
@@ -225,7 +229,7 @@ fun BlinkReferenceMenuScreen(
                                     BlinkMenuDestination.SAVED -> onSaved()
                                     BlinkMenuDestination.VERIFICATION -> onVerification()
                                     BlinkMenuDestination.UPDATES -> page = "updates"
-                                    BlinkMenuDestination.SETTINGS -> onSettings()
+                                    BlinkMenuDestination.SETTINGS -> page = "settings"
                                     BlinkMenuDestination.HELP -> page = "help"
                                     BlinkMenuDestination.LOGOUT -> showLogoutConfirm = true
                                 }
@@ -257,7 +261,11 @@ fun BlinkReferenceMenuScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Icon(Icons.Rounded.ArrowBack, null); Text("  Back to Menu") }
                 Text(
-                    if (page == "updates") "Update Center" else "Help & Support",
+                    when (page) {
+                        "updates" -> "Update Center"
+                        "settings" -> "Settings"
+                        else -> "Help & Support"
+                    },
                     fontSize = 28.sp, fontWeight = FontWeight.Black,
                     color = foreground,
                     modifier = Modifier.padding(vertical = 12.dp)
@@ -268,11 +276,26 @@ fun BlinkReferenceMenuScreen(
                     Button(onClick = onOpenUpdateWebsite, modifier = Modifier.fillMaxWidth()) {
                         Text("Check official app updates")
                     }
+                } else if (page == "settings") {
+                    DetailCard("Appearance", "Switch between BLINK's light and dark themes.", surface, border, foreground, muted)
+                    OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (isDark) "Switch to light theme" else "Switch to dark theme")
+                    }
+                    DetailCard("Privacy & account", "Manage private messaging, safety, blocked users, account settings, and data controls.", surface, border, foreground, muted)
+                    OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open privacy and security settings")
+                    }
+                    OutlinedButton(onClick = onCallSettings, modifier = Modifier.fillMaxWidth()) {
+                        Text("Calls & notification sounds")
+                    }
+                    OutlinedButton(onClick = onSwitchAccount, modifier = Modifier.fillMaxWidth()) {
+                        Text("Switch account")
+                    }
                 } else {
                     DetailCard("Account and profile", "Open My Profile to update your account details. Use Settings for privacy and security controls.", surface, border, foreground, muted)
                     DetailCard("Notifications and coins", "Notification preferences live in Settings. Your Wallet & Coins page shows real BLINK Coins and reward history.", surface, border, foreground, muted)
                     DetailCard("Need more help?", "Open the official BLINK website for current support and contact information.", surface, border, foreground, muted)
-                    OutlinedButton(onClick = onOpenUpdateWebsite, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onOpenHelpWebsite, modifier = Modifier.fillMaxWidth()) {
                         Text("Open official BLINK website")
                     }
                 }
