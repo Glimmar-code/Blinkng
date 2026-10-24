@@ -34,6 +34,7 @@ func load_from_disk() -> void:
         records[key] = {
             "cash": clampi(int(item.get("cash", 500)), 0, 1000000),
             "house_owned": bool(item.get("house_owned", false)),
+            "vehicle_owned": bool(item.get("vehicle_owned", false)),
             "furniture": clampi(int(item.get("furniture", 0)), 0, 12),
         }
 
@@ -58,6 +59,7 @@ func get_profile(account_id: String) -> Dictionary:
         records[account_id] = {
             "cash": 500,
             "house_owned": false,
+            "vehicle_owned": false,
             "furniture": 0,
         }
     return records[account_id].duplicate(true)
@@ -69,6 +71,7 @@ func update_profile(account_id: String, profile: Dictionary) -> bool:
     var clean := {
         "cash": clampi(int(profile.get("cash", 0)), 0, 1000000),
         "house_owned": bool(profile.get("house_owned", false)),
+        "vehicle_owned": bool(profile.get("vehicle_owned", false)),
         "furniture": clampi(int(profile.get("furniture", 0)), 0, 12),
     }
     var previous: Dictionary = records.get(account_id, {}).duplicate(true)

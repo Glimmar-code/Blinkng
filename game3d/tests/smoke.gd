@@ -96,6 +96,27 @@ func _run() -> void:
         _assert_true(player.global_position.x > 50.0, "My Home must teleport into a physical 3D interior")
         social.call("_server_action", 1, "city", 0)
         _assert_true(player.global_position.x < 20.0, "Return to City must restore gameplay")
+
+        # Testlab privacy and invitation controls: no requests without an opt-in.
+        profiles = social.get("people")
+        _assert_true(not bool(profiles[1].get("allow_requests", true)), "Private invites must default OFF")
+        profiles[2] = social.call("_make_profile", "Guest", 1)
+        social.set("people", profiles)
+        _assert_true(not bool(social.call("_can_request", 2, 1)), "Uninvited guest cannot request access")
+        social.call("_server_action", 1, "invites", 0)
+        _assert_true(bool(social.call("_can_request", 2, 1)), "Owner can allow optional invitations")
+        var now_ms: int = Time.get_ticks_msec()
+        _assert_true(bool(social.call("_fresh_request", {1: {"source": 2, "issued": now_ms}}, 1, 2)),
+            "A recent consent request should be eligible for approval")
+        _assert_true(not bool(social.call("_fresh_request", {1: {"source": 2, "issued": now_ms - 61000}}, 1, 2)),
+            "Expired consent requests must be rejected")
+        social.call("_server_action", 1, "block", 2)
+        _assert_true(bool(social.call("_is_blocked", 1, 2)), "Server must remember session block")
+        _assert_true(not bool(social.call("_can_request", 2, 1)), "Blocking must prevent requests")
+        social.call("_server_action", 1, "block", 2)
+        _assert_true(not bool(social.call("_is_blocked", 1, 2)), "Owner can clear session-only block")
+        social.call("_server_action", 1, "invites", 0)
+        _assert_true(not bool(social.call("_can_request", 2, 1)), "Revoking opt-in must disable requests")
         social.call("_disconnect")
         _assert_true(not bool(social.get("is_online")), "Disconnect must return to offline mode")
 
