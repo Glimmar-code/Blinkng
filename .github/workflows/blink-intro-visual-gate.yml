@@ -43,6 +43,29 @@ jobs:
             echo "::error::Narrow and tablet intro snapshots are identical; verify viewport qualifiers."
             exit 1
           fi
+      - name: Fail on synthetic accessibility overlays or missing BLINK art
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          for image_path in sorted(Path("app/src/test/screenshots").glob("intro-*.png")):
+              im = Image.open(image_path).convert("RGB")
+              sample = list(im.getdata())[::4]
+              dark = sum(1 for r, g, b in sample if max(r, g, b) < 35)
+              white = sum(1 for r, g, b in sample if min(r, g, b) > 220)
+              blue = sum(1 for r, g, b in sample if b > 145 and b > r * 1.6 and b > g * 1.2)
+              yellow = sum(1 for r, g, b in sample if r > 140 and g > 120 and b < 85)
+              assert dark > len(sample) * 0.6, f"{image_path}: black background missing"
+              assert white > 30, f"{image_path}: white BLINK wordmark missing"
+              assert blue > 3, f"{image_path}: brand-blue b dot missing"
+              assert yellow < len(sample) * 0.003, f"{image_path}: legacy accessibility overlay, not real pixels"
+              print(image_path, im.size, "black", dark, "white", white, "blue", blue)
+          PY
+
       - name: Upload BLINK intro actual-render evidence
         uses: actions/upload-artifact@v4
         with:
