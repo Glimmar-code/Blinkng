@@ -17,6 +17,7 @@ const checks=[];
 const postDeploy=process.env.BLINK_SEO_POST_DEPLOY==='1';
 const existingPublicPaths=['/','/about/','/features/','/download/','/faq/','/privacy/'];
 const newPublicPaths=['/students/','/marketplace/','/safety/'];
+const expectedPublishedCommit=(process.env.BLINK_EXPECTED_MAIN_SHA||'').trim();
 const get=async(path)=>{
   const res=await fetch(site+path,{headers:{Accept:'text/html,application/xml,application/json,*/*'},signal:AbortSignal.timeout(18000),redirect:'follow'});
   if(!res.ok)throw new Error(path+': HTTP '+res.status);
@@ -56,6 +57,23 @@ await check('Live sitemap and robots discovery',async()=>{
  assert.ok(robots.includes('Allow: /'),'Public crawling not permitted');
  assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'),'Sitemap discovery directive missing');
 });
+if(postDeploy){
+ await check('Published GitHub Pages commit matches the approved deployment',async()=>{
+  assert.match(expectedPublishedCommit,/^[0-9a-f]{40}$/,'Missing expected main commit SHA');
+  // Cache-busting prevents stale CDN metadata from being mistaken for a new release.
+  let actual='';
+  for(let attempt=0;attempt<4;attempt++){
+   const response=await get('/blink-build.json?deployment='+encodeURIComponent(expectedPublishedCommit)+'&attempt='+attempt);
+   const data=JSON.parse(response.body);
+   assert.equal(data.application,'BLINK','Incorrect published project');
+   assert.equal(data.source,'github-pages','Incorrect publishing source');
+   actual=String(data.commit||'');
+   if(actual===expectedPublishedCommit)return;
+   if(attempt<3)await new Promise(resolve=>setTimeout(resolve,5000));
+  }
+  assert.equal(actual,expectedPublishedCommit,'Live website still serves a different commit');
+ });
+}
 if(postDeploy){
  await check('New SEO pages are live with static content and correct canonicals',async()=>{
   for(const slug of ['students','marketplace','safety']){
