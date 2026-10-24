@@ -19,7 +19,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Screenshots at different viewport sizes are CI artifacts for comparing with the
- * approved 6.4-second video. They are NOT a substitute for on-device visual signoff.
+ * approved Beyond LINK transition. They are NOT a substitute for on-device visual signoff.
  * The timing check also prevents the intro from trapping navigation.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -56,15 +56,18 @@ class BlinkBeyondLinkIntroTest {
         // Replacing it with another logo would break this invariant.
         composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
             .assertCountEquals(1)
-        composeRule.mainClock.advanceTimeBy(3_700)
-        composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
-            .assertCountEquals(1)
-        composeRule.onRoot().captureRoboImage(filePath = snapshot)
+        // Capture the FIRST frame: no half-second blank black intro.
+        composeRule.onRoot().captureRoboImage(filePath = snapshot.removeSuffix(".png") + "-start.png")
         composeRule.mainClock.advanceTimeBy(1_500)
         composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
             .assertCountEquals(1)
-        composeRule.mainClock.advanceTimeBy(BLINK_INTRO_DURATION_MS.toLong() + 200)
+        composeRule.onRoot().captureRoboImage(filePath = snapshot.removeSuffix(".png") + "-transition.png")
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
+            .assertCountEquals(1)
+        composeRule.onRoot().captureRoboImage(filePath = snapshot)
+        composeRule.mainClock.advanceTimeBy(350)
         composeRule.runOnIdle { assertTrue("Launch must continue after animation", finished) }
-        assertEquals(6_400, BLINK_INTRO_DURATION_MS)
+        assertEquals(3_200, BLINK_INTRO_DURATION_MS)
     }
 }
