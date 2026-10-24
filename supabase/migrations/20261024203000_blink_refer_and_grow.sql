@@ -244,3 +244,26 @@ as $$
 $$;
 revoke all on function public.blink_referral_recommendations(integer) from public, anon;
 grant execute on function public.blink_referral_recommendations(integer) to authenticated;
+
+
+-- Auth-trigger notifications may be committed without an HTTP JWT request context.
+-- After the referred student signs in, return only their own confirmed referral's
+-- notification ID so the existing actor-authenticated, idempotent FCM dispatcher
+-- can send the push to a referrer even when the referrer is offline.
+create or replace function public.blink_my_referral_push_ids()
+returns table(notification_id uuid)
+language sql stable security definer set search_path = ''
+as $$
+  select n.id
+    from public.notifications n
+    join public.blink_referrals r
+      on r.referred_user_id = n.actor_id
+     and r.referrer_user_id = n.user_id
+   where n.actor_id = (select auth.uid())
+     and r.status = 'confirmed'
+     and n.metadata->>'kind' = 'blink_referral_confirmed'
+   order by n.id
+   limit 3;
+$$;
+revoke all on function public.blink_my_referral_push_ids() from public, anon;
+grant execute on function public.blink_my_referral_push_ids() to authenticated;
