@@ -2041,6 +2041,17 @@ fun MainAppContent(
                             .putExtra("section", "privacy")
                     )
                 },
+                onToggleTheme = { viewModel.toggleDarkMode() },
+                onCallSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context,
+                        com.example.notification.NotificationAndCallSettingsActivity::class.java))
+                },
+                onSwitchAccount = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context,
+                        com.example.auth.AccountSwitcherActivity::class.java))
+                },
                 onLogOut = {
                     viewModel.openMenu(false)
                     viewModel.logout()
@@ -2055,6 +2066,14 @@ fun MainAppContent(
                     viewModel.setFeedSubTab(3)
                 },
                 onOpenUpdateWebsite = { openOfficialBlinkWebsite(context) },
+                onOpenHelpWebsite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.blink.com.ng"))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                },
                 onHome = {
                     viewModel.openMenu(false)
                     viewModel.setTab(MainTab.HOME)
