@@ -33,6 +33,10 @@ import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkMenuDestination
 import com.example.R
 import com.example.data.models.UserProfile
+import com.example.data.supabase.AdminSupabaseService
+import com.example.update.WebsiteApkUpdateCoordinator
+import com.example.BuildConfig
+import kotlinx.coroutines.launch
 import com.example.ui.components.FeedBottomBar
 import com.example.viewmodel.MainTab
 import java.text.NumberFormat
@@ -61,6 +65,7 @@ fun BlinkReferenceMenuScreen(
     onToggleTheme: () -> Unit,
     onCallSettings: () -> Unit,
     onSwitchAccount: () -> Unit,
+    onOpenAdmin: () -> Unit,
     onLogOut: () -> Unit,
     onSearch: () -> Unit,
     onGames: () -> Unit,
@@ -81,6 +86,14 @@ fun BlinkReferenceMenuScreen(
         LocalDensity.current.fontScale >= 1.5f
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
+    var adminModeAvailable by remember(profile.id) { mutableStateOf(false) }
+    var updateMessage by rememberSaveable { mutableStateOf("Check for the latest verified BLINK release.") }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    val updateScope = rememberCoroutineScope()
+    LaunchedEffect(profile.id) {
+        adminModeAvailable = runCatching { AdminSupabaseService().fetchCapability().getOrNull()?.isAdmin == true }
+            .getOrDefault(false)
+    }
 
     BackHandler {
         if (showLogoutConfirm) showLogoutConfirm = false
@@ -272,9 +285,25 @@ fun BlinkReferenceMenuScreen(
                 )
                 if (page == "updates") {
                     DetailCard("Your BLINK version", appVersion, surface, border, foreground, muted)
-                    DetailCard("Stay up to date", "Check the official BLINK download page for the latest APK. Installation always requires your approval.", surface, border, foreground, muted)
-                    Button(onClick = onOpenUpdateWebsite, modifier = Modifier.fillMaxWidth()) {
-                        Text("Check official app updates")
+                    DetailCard("Stay up to date", "BLINK checks the published release metadata before offering an APK. Google Play installations also use the built-in Play updater.", surface, border, foreground, muted)
+                    DetailCard("Update status", updateMessage, surface, border, foreground, muted)
+                    Button(
+                        enabled = !checkingUpdate,
+                        onClick = {
+                            checkingUpdate = true
+                            updateScope.launch {
+                                val latest = WebsiteApkUpdateCoordinator.checkForUpdate(BuildConfig.VERSION_CODE)
+                                updateMessage = if (latest != null) {
+                                    "A newer verified BLINK update is available on the official website."
+                                } else {
+                                    "No verified website update was found. If you are offline, check again when connected."
+                                }
+                                checkingUpdate = false
+                            }
+                        }, modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (checkingUpdate) "Checking…" else "Check for updates") }
+                    OutlinedButton(onClick = onOpenUpdateWebsite, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open official download page")
                     }
                 } else if (page == "settings") {
                     DetailCard("Appearance", "Switch between BLINK's light and dark themes.", surface, border, foreground, muted)
@@ -290,6 +319,11 @@ fun BlinkReferenceMenuScreen(
                     }
                     OutlinedButton(onClick = onSwitchAccount, modifier = Modifier.fillMaxWidth()) {
                         Text("Switch account")
+                    }
+                    if (adminModeAvailable) {
+                        OutlinedButton(onClick = onOpenAdmin, modifier = Modifier.fillMaxWidth()) {
+                            Text("Open BLINK Administration")
+                        }
                     }
                 } else {
                     DetailCard("Account and profile", "Open My Profile to update your account details. Use Settings for privacy and security controls.", surface, border, foreground, muted)
