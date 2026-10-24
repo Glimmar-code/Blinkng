@@ -49,7 +49,7 @@ def main():
         # channels even where the app references only a subset directly.
         if asset.get("format") == "PNG":
             data = infile.read_bytes()
-            if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+            if not data.startswith(b"\x89PNG\r\n\x1a\n"):
                 raise SystemExit("Not a real PNG: " + rel)
             width, height = struct.unpack(">II", data[16:24])
             expected = asset.get("size", "")
@@ -132,14 +132,15 @@ def main():
     else:
         print("EDIT web/manifest.webmanifest")
     edit("web/sw.js", "blink-web-v10-logo-display-fix", "blink-web-v11-approved-logo")
-    edit("web/sw.js", "  './blink-logo-v2.png',",
-         "  './blink-logo-v2.png',\\n"
-         "  './favicon.ico',\\n"
-         "  './favicon-32.png',\\n"
-         "  './apple-touch-icon.png',\\n"
-         "  './pwa-192.png',\\n"
-         "  './pwa-512.png',\\n"
-         "  './maskable-512.png',\\n"
+    if "  './favicon.ico'," not in (ROOT / "web/sw.js").read_text():
+        edit("web/sw.js", "  './blink-logo-v2.png',",
+         "  './blink-logo-v2.png',\n"
+         "  './favicon.ico',\n"
+         "  './favicon-32.png',\n"
+         "  './apple-touch-icon.png',\n"
+         "  './pwa-192.png',\n"
+         "  './pwa-512.png',\n"
+         "  './maskable-512.png',\n"
          "  './og-blink.png',")
     cp("windows/blink-logo.png", "desktopApp/src/main/resources/blink-logo.png")
     cp("windows/BLINK.ico", "desktopApp/src/main/resources/BLINK.ico")
