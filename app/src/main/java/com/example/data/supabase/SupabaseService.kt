@@ -412,10 +412,11 @@ class SupabaseService {
 
                         return@withContext Result.failure(
                             Exception(
-                                parseSupabaseError(
-                                    responseBody,
-                                    "Invalid email or password."
-                                )
+                                when (response.code) {
+                                    429 -> "Too many requests."
+                                    in 500..599 -> "Authentication service temporarily unavailable."
+                                    else -> parseSupabaseError(responseBody, "Invalid email or password.")
+                                }
                             )
                         )
                     }
