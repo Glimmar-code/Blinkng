@@ -740,11 +740,18 @@
       const rows=await rpc('blink_referral_dashboard');
       if(!stats.isConnected)return;
       const row=Array.isArray(rows)?rows[0]:null;
+      const milestone=row?.achievement_next_target;
       stats.textContent=row
-        ? 'Successful referrals: '+fmt(row.total_referrals)+
-          ' · Active this month: '+fmt(row.active_referrals)+
-          ' · Discovery points: '+fmt(row.visibility_points)+
-          ' · '+String(row.visibility_label||'Normal discovery')
+        ? 'Lifetime confirmed referrals: '+fmt(row.total_referrals)+
+          ' · Achievement: '+String(row.achievement_tier||'New member')+
+          ' · '+(milestone == null
+                ? 'All referral milestones unlocked'
+                : fmt(Math.max(0,Number(milestone)-Number(row.total_referrals||0)))+
+                  ' more to reach '+fmt(milestone))+
+          ' · Active last 30 days: '+fmt(row.active_referrals)+
+          ' · Temporary visibility: '+fmt(row.visibility_points)+' points ('+
+          String(row.visibility_label||'Normal discovery')+')'+
+          ' · Each new confirmation adds 3 points for 10 days, then 2, then 1; after 30 days it expires. Your achievement never fades.'
         : 'No referral activity yet.';
     }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
     document.getElementById('share-referral')?.addEventListener('click',async()=>{
