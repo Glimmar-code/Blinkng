@@ -32,7 +32,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                     Text("Successful referrals: ${it.total}")
                     Text("Active (last 30 days): ${it.activeLast30Days}")
                     Text("Visibility level: ${it.visibilityLabel}")
-                    Text("Discovery advantage: up to ${it.bonusPercent}% (not guaranteed views or follows)")
+                    Text("Referral discovery points: ${it.visibilityPoints} (not guaranteed views or follows)")
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text("Share your invite link. A new account must be confirmed to count.")
