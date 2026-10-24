@@ -50,6 +50,7 @@ import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
 import com.example.data.supabase.BlinkLiveRemoteConfig
 import com.example.data.supabase.BlinkLiveCampaignService
+import com.example.data.supabase.BlinkReferralClient
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.blinkng.shared.live.BlinkLiveCampaign
 import com.example.data.supabase.BlinkPaystackCheckoutService
@@ -585,6 +586,9 @@ class MainActivity : ComponentActivity() {
             var justCompletedOnboardingAccount by rememberSaveable {
                 mutableStateOf<String?>(null)
             }
+            var newStudentDiscoveryAccount by rememberSaveable {
+                mutableStateOf<String?>(null)
+            }
 
             // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
             // Stopping the Activity suspends checks, resuming it checks straight away.
@@ -657,6 +661,9 @@ class MainActivity : ComponentActivity() {
             // Keying by destination + user id prevents repeated writes during recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    // Safe actor-authorized dispatch: no service-role secrets in Android.
+                    // Backend may not yet expose the RPC; never block normal app startup.
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
                     AccountSessionStore.recordCurrentSession(
                         context = this@MainActivity,
                         userId = uiState.myProfile.id,
@@ -882,6 +889,7 @@ class MainActivity : ComponentActivity() {
                                             NewMemberPerksStore.markSeen(
                                                 this@MainActivity, uiState.myProfile.id
                                             )
+                                            newStudentDiscoveryAccount = uiState.myProfile.id
                                             justCompletedOnboardingAccount = null
                                         },
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
@@ -900,6 +908,14 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        if (uiState.destination == AppDestination.MAIN &&
+                            newStudentDiscoveryAccount != null &&
+                            newStudentDiscoveryAccount == uiState.myProfile.id
+                        ) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { newStudentDiscoveryAccount = null }
+                            )
+                        }
                         if (uiState.destination == AppDestination.MAIN) {
                             BlinkInAppNotificationHost(
                                 onOpen = ::handleInAppNotification,
