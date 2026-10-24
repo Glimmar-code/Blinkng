@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/blink-live-integrations-smoke.yml'
       - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/normalize_public_html.mjs'
       - 'scripts/verify_live_browser_analytics.mjs'
       - '.github/workflows/deploy-web-preview.yml'
   workflow_run:
