@@ -74,6 +74,33 @@ object BlinkReferralClient {
         )
     }
 
+    /**
+     * Wake the existing actor-validated, idempotent FCM dispatcher on new signup/login.
+     * Referral notification rows are created by the server (not by clients).
+     */
+    suspend fun dispatchConfirmedReferralPushes() = withContext(Dispatchers.IO) {
+        val accessToken = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+            ?: return@withContext
+        val rows = invoke("blink_my_referral_push_ids", JSONObject(), authenticated = true)
+        for (i in 0 until rows.length().coerceAtMost(3)) {
+            val notificationId = rows.getJSONObject(i).optString("notification_id")
+            if (notificationId.isBlank()) continue
+            val req = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/functions/v1/send-activity-notification")
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer $accessToken")
+                .post(JSONObject().put("notification_id", notificationId).toString()
+                    .toRequestBody(mediaType))
+                .build()
+            client.newCall(req).execute().use { response ->
+                // Don't block registration if delivery is delayed or push is unavailable.
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Referral push dispatch unavailable (${response.code}).")
+                }
+            }
+        }
+    }
+
     suspend fun recommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
         val rows = invoke(
             "blink_referral_recommendations", JSONObject().put("p_limit", 10),
