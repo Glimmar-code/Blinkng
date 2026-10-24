@@ -2127,31 +2127,12 @@ private fun MessageContent(
                 }
             }
             if (message.isVoiceNote) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
-                        .clickable(enabled = !message.voiceAudioUrl.isNullOrBlank()) {
-                            message.voiceAudioUrl?.let { url ->
-                                openExternalUri(context, Uri.parse(url), "Play voice note")
-                            }
-                        }.testTag("chat_voice_playback"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        if (message.voiceAudioUrl.isNullOrBlank()) Icons.Default.Mic else Icons.Default.PlayCircle,
-                        contentDescription = if (message.voiceAudioUrl.isNullOrBlank()) "Voice note unavailable" else "Play voice note",
-                        tint = contentColor, modifier = Modifier.size(25.dp)
-                    )
-                    Spacer(Modifier.width(9.dp))
-                    Text(
-                        if (message.voiceAudioUrl.isNullOrBlank()) "Voice note unavailable"
-                        else "Play voice note",
-                        color = contentColor, fontSize = 12.sp
-                    )
-                    if (message.voiceDuration.isNotBlank()) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(message.voiceDuration, color = contentColor, fontSize = 10.sp)
-                    }
-                }
+                BlinkChatVoicePlayer(
+                    url = message.voiceAudioUrl,
+                    durationLabel = message.voiceDuration,
+                    tint = contentColor,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp)
+                )
             }
             if (message.attachedDocumentUrl != null || message.attachedDocumentName != null) {
                 val documentUrl = message.attachedDocumentUrl
