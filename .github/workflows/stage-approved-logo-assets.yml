@@ -1,0 +1,75 @@
+name: Install approved BLINK logo assets (Testlab staging)
+
+# Short-lived, feature-branch-only asset builder. This never publishes or
+# modifies production. Owner's original attached image is reduced only for
+# repository transport; all generated assets use its approved visible design.
+on:
+  push:
+    branches: [feature/approved-blink-logo-assets-20261024]
+    paths:
+      - branding/approved/BLINK-logo-source.webp
+      - scripts/generate_owner_logo_assets.py
+      - .github/workflows/stage-approved-logo-assets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install-testlab-assets:
+    if: github.ref == 'refs/heads/feature/approved-blink-logo-assets-20261024'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned image converter
+        run: python -m pip install Pillow==12.3.0
+      - name: Check owner logo source and produce every platform size
+        run: |
+          python scripts/generate_owner_logo_assets.py
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          from PIL import Image
+          root=Path('.')
+          for path,size in [
+            ('web/pwa-192.png',(192,192)),
+            ('web/pwa-512.png',(512,512)),
+            ('web/og-blink.png',(1200,630)),
+            ('app/src/main/res/drawable/app_icon.png',(512,512)),
+            ('ios/BLINKiOS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png',(1024,1024)),
+          ]:
+            assert Image.open(root/path).size==size, (path,size)
+          assert (root/'branding/approved/exports/manifest.json').is_file()
+          print('PASS: branded assets created at platform-required sizes')
+          PY
+      - name: Commit only approved branding assets onto feature branch
+        env:
+          EXPECTED_BRANCH: feature/approved-blink-logo-assets-20261024
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- \
+            branding/approved/exports/ \
+            app/src/main/AndroidManifest.xml app/src/main/res/drawable \
+            app/src/main/res/drawable-* app/src/main/res/mipmap-* \
+            desktopApp/src/main/resources \
+            ios/BLINKiOS/Assets.xcassets \
+            web/index.html web/manifest.webmanifest web/sw.js \
+            web/blink-logo.png web/blink-logo-v2.png web/favicon.ico \
+            web/favicon-32.png web/apple-touch-icon.png web/pwa-192.png \
+            web/pwa-512.png web/maskable-512.png web/og-blink.png \
+            scripts/prepare_ios_icon.sh
+          if git diff --staged --quiet; then
+            echo "All approved logo assets already staged; no commit needed."
+            exit 0
+          fi
+          git commit -m "brand: install owner-approved logo assets across Android iOS Windows and website"
+          git push origin "HEAD:refs/heads/$EXPECTED_BRANCH"
