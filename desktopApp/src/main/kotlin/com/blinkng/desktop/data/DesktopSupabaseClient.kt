@@ -5,6 +5,7 @@ import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.BlinkAuthFeedback
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -81,15 +82,23 @@ class DesktopSupabaseClient(
         require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
         val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
-        val response = if (identifier.contains("@") && !identifier.startsWith("@")) {
-            runCatching {
+        val response = try {
+            // An invalid email login must not be retried as a username: that masked
+            // wrong-password messages and caused duplicate authentication requests.
+            if (identifier.contains("@") && !identifier.startsWith("@")) {
                 authPost("/auth/v1/token?grant_type=password",
                     JSONObject().put("email", identifier).put("password", password))
-            }.getOrElse {
+            } else {
                 authPost("/functions/v1/username-login", body)
             }
-        } else {
-            authPost("/functions/v1/username-login", body)
+        } catch (error: Exception) {
+            val code = (error as? DesktopApiException)?.statusCode
+            val feedback = when (code) {
+                429 -> "Too many attempts. Please wait a little and try again."
+                in 500..599 -> "Unable to sign in. Please try again later."
+                else -> BlinkAuthFeedback.friendly(error.message, "Unable to sign in.")
+            }
+            throw IllegalStateException(feedback, error)
         }
         saveAuthResponse(response, identifier)
     }
