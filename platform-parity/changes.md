@@ -1,3 +1,10 @@
+## 2026-10-24 — Referral achievement permanence versus temporary discovery boost (Testlab draft)
+
+- **Lifetime, permanent achievements:** A confirmed referral atomically increments a private server-owned `blink_referral_achievements` aggregate (no referred-user identity stored in that aggregate). It is unaffected by age or referred-member deletion. The referring member retains earned badges **Starter 1 / Builder 5 / Advocate 10 / Connector 25 / Champion 50 / Ambassador 100** as long as their own account exists.
+- **Temporary discovery:** Every fresh confirmed referral contributes **3 points for days 0–9, 2 for days 10–19, 1 for days 20–29, 0 after day 30**; summed points are capped at 30 and recalculated at read time, without recurring cron or writing expired state. Fresh referrals add new points without changing historical earned achievements.
+- **Android, Windows and web:** Dashboard now explicitly distinguishes lifetime count, achievement badge and next milestone from active referrals/temporary points. Search suggestions select a maximum of three boosted profiles using the same decaying server-side scores. The already shared Kotlin policy defines milestones and age boundaries.
+- **Verification:** Disposable PostgreSQL fixtures test confirmation credit, decline at 11/21/31 days, new-referral replenishment, exact milestone tiers, prevention of duplicate credit, RLS and deletion permanence. Shared Kotlin tests cover the same policy boundaries. No production Supabase changes, merge or APK publication are authorized without real checks.
+
 ## 2026-10-24 — BLINK Refer & Grow (Testlab-only candidate)
 
 - **Shared contract:** `BlinkReferralPolicy` defines referral signup display, search matching priority, exact-usernames-first ordering, invitation URL and non-guaranteed discovery copy for both Android and Windows.
