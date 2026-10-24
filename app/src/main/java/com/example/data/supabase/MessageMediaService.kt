@@ -228,24 +228,9 @@ object MessageMediaService {
                 val row = JSONArray(raw).getJSONObject(0)
                 val messageId = row.optString("id")
                 if (messageId.isBlank()) throw IllegalStateException("Message not confirmed by server.")
-                // Metadata is best-effort and never creates a duplicate chat message.
-                runCatching {
-                    val data = JSONObject()
-                        .put("message_id", messageId)
-                        .put("conversation_id", conversationId)
-                        .put("uploader_id", senderId)
-                        .put("kind", kind.wireType)
-                        .put("storage_bucket", PRIVATE_BUCKET)
-                        .put("storage_path", objectPath)
-                        .put("display_name", staged.name)
-                        .put("mime_type", staged.mime)
-                        .put("byte_size", staged.size)
-                    if (durationMs > 0) data.put("duration_ms", durationMs)
-                    client.newCall(
-                        builder("/rest/v1/message_attachments")
-                            .post(data.toString().toRequestBody(jsonType)).build()
-                    ).execute().close()
-                }
+                // Keep the v1 wire contract compatible with production:
+                // message_attachments is not deployed there yet. The durable
+                // type, reference and filename live in the messages row.
                 val url = signedUrl(objectPath)
                 Result.success(
                     ChatMessage(
