@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -350,6 +352,7 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     onBottomBarTravelChange: (Float) -> Unit = {},
+    isMainPageActive: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
     routedReelId: String? = null,
@@ -424,6 +427,7 @@ fun PremiumFeedScreen(
     ) { page ->
     when (page) {
         0 -> PremiumHomeFeed(
+            isScreenActive = isMainPageActive,
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
@@ -487,6 +491,7 @@ fun PremiumFeedScreen(
         )
 
         1 -> FeedScreen(
+            isScreenActive = isMainPageActive,
             posts = posts,
             reels = reels,
             followingReels = followingPosts.filter { it.isReel || !it.videoUrl.isNullOrBlank() },
@@ -602,6 +607,7 @@ fun PremiumFeedScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PremiumHomeFeed(
+    isScreenActive: Boolean,
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     profiles: List<UserProfile>,
@@ -769,7 +775,18 @@ private fun PremiumHomeFeed(
     val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
     val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
     val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
-    var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
+    var fabExpanded by remember(laneResumeKey) { mutableStateOf(false) }
+    var idleSignal by remember(laneResumeKey) { mutableIntStateOf(0) }
+    var fingerDown by remember(laneResumeKey) { mutableStateOf(false) }
+
+    // Only show the label after six uninterrupted seconds with no active gesture.
+    LaunchedEffect(laneResumeKey, idleSignal, fingerDown, listState.isScrollInProgress, isScreenActive) {
+        fabExpanded = false
+        if (isScreenActive && !fingerDown && !listState.isScrollInProgress) {
+            delay(6_000L)
+            if (!fingerDown && !listState.isScrollInProgress) fabExpanded = true
+        }
+    }
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -1069,8 +1086,10 @@ private fun PremiumHomeFeed(
                 val nextOffset = -nextTravel
                 if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
-                    fabExpanded = direction > 0
+                    fabExpanded = false
                 }
+                // Hide the complete rail on downward movement; restore on upward movement.
+                onBottomBarVisibilityChange(direction > 0)
                 val nextNavPx = BlinkFeedScrollMotion.advance(
                     previous = navScrollTravelPx.value,
                     scrollUpPx = -deltaY,
@@ -1140,7 +1159,7 @@ private fun PremiumHomeFeed(
                 }
 
                 delay(if (reduceMotion) 0 else 120)
-                fabExpanded = true
+                fabExpanded = false
                 pendingDirectionDistancePx[0] = 0f
                 lastFlingVelocityY[0] = 0f
                 hadScroll = false
@@ -1160,7 +1179,7 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
             navScrollTravelPx.value = 0f
             onBottomBarTravelChange(0f)
@@ -1289,7 +1308,7 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
         }
     }
@@ -1458,6 +1477,27 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(homeBackground)
                 .nestedScroll(scrollConnection)
+                .pointerInput(laneResumeKey) {
+                    var lastActivitySignalMs = 0L
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressed = event.changes.any { it.pressed }
+                            fingerDown = pressed
+                            if (event.type == PointerEventType.Press ||
+                                event.type == PointerEventType.Release ||
+                                (event.type == PointerEventType.Move && pressed)
+                            ) {
+                                fabExpanded = false
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (event.type == PointerEventType.Release || now - lastActivitySignalMs >= 300L) {
+                                    idleSignal++
+                                    lastActivitySignalMs = now
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
             Column(
                 modifier = Modifier
@@ -1562,7 +1602,7 @@ private fun PremiumHomeFeed(
                                     headerScrollDirection[0] = 0
                                     pendingDirectionDistancePx[0] = 0f
                                     lastFlingVelocityY[0] = 0f
-                                    fabExpanded = true
+                                    fabExpanded = false
                                     onBottomBarVisibilityChange(true)
                                     requestSafeRefresh()
                                 }
@@ -1831,8 +1871,8 @@ private fun PremiumHomeFeed(
                                             val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
-                                                isActive = activeInlineReelKey == previewKey,
-                                                shouldPreload = preloadedInlineReelKey == previewKey,
+                                                isActive = isScreenActive && activeInlineReelKey == previewKey,
+                                                shouldPreload = isScreenActive && preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1919,7 +1959,7 @@ private fun PremiumHomeFeed(
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
                                         lastFlingVelocityY[0] = 0f
-                                        fabExpanded = true
+                                        fabExpanded = false
                                         onBottomBarVisibilityChange(true)
                                         requestSafeRefresh()
                                     }

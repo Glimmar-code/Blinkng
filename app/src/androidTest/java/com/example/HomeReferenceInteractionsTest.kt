@@ -33,11 +33,13 @@ class HomeReferenceInteractionsTest {
                 CreatePostFab(expanded = true, onClick = { createCount++ })
             }
         }
+        // The Create button is a single action, never a speed-dial menu.
         composeRule.onNodeWithTag("create_post_fab").assertIsDisplayed().performClick()
-        composeRule.onNodeWithTag("create_post_action").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, createCount) }
+        composeRule.onNodeWithTag("create_post_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_ai_fab").assertDoesNotExist()
         composeRule.onNodeWithTag("create_post_fab").performClick()
-        composeRule.onNodeWithTag("blink_ai_fab").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(2, createCount) }
     }
 
     @Test fun realPostActionsRemainClickableWithReferenceFooter() {
