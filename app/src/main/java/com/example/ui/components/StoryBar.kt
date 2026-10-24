@@ -90,6 +90,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.blinkng.shared.notification.BlinkStoryLifecycle
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
@@ -106,10 +107,20 @@ fun StoryBar(
     onStoryClick: (Story) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val visibleStories = remember(stories) {
-        // Keep real stories uploaded by the current user. Only hide the synthetic
-        // "Your Story" placeholder when it has no media.
-        stories.filterNot { it.id == "story_me" && it.storyImage.isBlank() }
+    // Expired stories disappear from the visible rail even on an offline session.
+    var expiryClock by remember { mutableStateOf(java.time.Instant.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            expiryClock = java.time.Instant.now()
+        }
+    }
+    val visibleStories = remember(stories, expiryClock) {
+        stories.filter {
+            it.id != "story_me" &&
+                (it.storyImage.isNotBlank() || it.caption.isNotBlank()) &&
+                BlinkStoryLifecycle.isActive(it.createdAt, true, expiryClock)
+        }
     }
 
     val listState = rememberLazyListState()

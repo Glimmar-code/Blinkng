@@ -54,6 +54,9 @@ try {
   }
   // Independent disposable DB validates marketplace order contracts against
   // the actual tracked SQL migration; no production credentials are used.
+  await (await import('./story-expiration-tests.mjs')).storyExpirationTests();
+  await (await import('./story-insights-tests.mjs')).storyInsightsTests();
+  await (await import('./story-consent-visibility-tests.mjs')).storyConsentVisibilityTests();
   await (await import('./marketplace-order-tests.mjs')).marketplaceOrderTests();
   // PGlite has no Supabase-managed storage schema. Provide only the storage
   // interfaces used by this migration, then apply the COMPLETE migration on

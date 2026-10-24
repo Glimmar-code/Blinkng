@@ -2700,6 +2700,9 @@ fun MainAppContent(
                 onBack = { viewModel.openCreateStory(false) },
                 onPublish = { uri, caption, isVideo ->
                     viewModel.publishStory(uri, caption, isVideo)
+                },
+                onPublishText = { statusText, background ->
+                    viewModel.publishTextStory(statusText, background)
                 }
             )
         }
@@ -2791,7 +2794,13 @@ fun MainAppContent(
                 onStoryViewed = { storyId -> viewModel.markStoryViewed(storyId) },
                 onLikeStory = { storyId -> viewModel.toggleStoryLike(storyId) },
                 onReactStory = { storyId, emoji -> viewModel.reactToStory(storyId, emoji) },
-                onReplyStory = { username, text -> viewModel.replyToStory(username, text) },
+                onReplyStory = { story, text -> viewModel.replyToStory(story, text) },
+                onDeleteStory = { storyId -> viewModel.deleteStory(storyId) },
+                onSetStoryRepostsAllowed = { storyId, allowed ->
+                    viewModel.setStoryRepostsAllowed(storyId, allowed)
+                },
+                onRepostStory = { story -> viewModel.repostStory(story) },
+                onMuteUser = { username -> viewModel.muteUser(username) },
                 onProfileClick = { username -> viewModel.openProfile(username) }
             )
         }

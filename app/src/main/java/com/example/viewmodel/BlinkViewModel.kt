@@ -22,6 +22,8 @@ import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
+import com.blinkng.shared.notification.BlinkStoryLifecycle
+import com.blinkng.shared.notification.BlinkStoryReplyReference
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.BlinkEconomyService
@@ -6720,12 +6722,62 @@ private suspend fun restoreSupabaseSession() {
     fun closeStory() { _uiState.value = _uiState.value.copy(activeViewingStory = null) }
     fun createStory(storyImage: String, caption: String, faculty: String = "") {
         val p=_uiState.value.myProfile
-        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
+        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString())
         viewModelScope.launch(Dispatchers.IO){
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
                 showToast("✨ Story published!")
             }else showToast("Couldn't save your story. Please try again.")
+        }
+    }
+
+    fun publishTextStory(text: String, background: String) {
+        if (_uiState.value.isCreatingStory) return
+        val safeText = com.blinkng.shared.notification.BlinkStatusTextPolicy.text(text)
+        if (safeText == null) {
+            showToast("Write something before sharing your status.")
+            return
+        }
+        val safeBackground =
+            com.blinkng.shared.notification.BlinkStatusTextPolicy.background(background)
+        _uiState.value = _uiState.value.copy(isCreatingStory = true)
+        viewModelScope.launch {
+            try {
+                val uid = supabaseService.getCurrentUserId()
+                    ?: throw IllegalStateException("Sign in to publish.")
+                val profile = _uiState.value.myProfile
+                val story = Story(
+                    id = UUID.randomUUID().toString(),
+                    username = profile.username,
+                    avatar = profile.avatarUrl,
+                    hasUnseen = false,
+                    isUser = true,
+                    caption = safeText,
+                    timeAgo = "Just now",
+                    faculty = profile.faculty,
+                    university = profile.university,
+                    verificationBadge = profile.verificationBadge,
+                    createdAt = Instant.now().toString(),
+                    background = safeBackground
+                )
+                if (!postRepository.createTextStory(story)) {
+                    throw IllegalStateException("Status creation failed.")
+                }
+                com.example.ui.screens.BlinkStatusDraftStore.clear(appContext, uid)
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    stories = listOf(story) + current.stories.filterNot {
+                        it.id == "story_me" || it.id == story.id
+                    },
+                    isCreateStoryOpen = false
+                )
+                showToast("Text status shared.")
+            } catch (e: Exception) {
+                Log.e(TAG, "publishTextStory failed", e)
+                showToast("Couldn't share your status. Please try again.")
+            } finally {
+                _uiState.value = _uiState.value.copy(isCreatingStory = false)
+            }
         }
     }
 
@@ -6737,22 +6789,53 @@ private suspend fun restoreSupabaseSession() {
                 val uid=supabaseService.getCurrentUserId()?:throw IllegalStateException("Please sign in again.")
                 val uri=Uri.parse(uriString)
                 val mime=appContext.contentResolver.getType(uri)?:if(isVideo)"video/mp4" else "image/jpeg"
-                val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
+                if (isVideo && !mime.startsWith("video/") || !isVideo && !mime.startsWith("image/")) {
+                    throw IllegalArgumentException("Please select a supported photo or video.")
+                }
+                // Bounded buffering stops large camera files from exhausting memory.
+                // The upload service will later use streaming/resumable transport.
+                val maxBytes = if (isVideo) 50L * 1024 * 1024 else 15L * 1024 * 1024
+                val bytes=withContext(Dispatchers.IO){
+                    appContext.contentResolver.openInputStream(uri)?.use { input ->
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(64 * 1024)
+                        var length = 0L
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n == -1) break
+                            length += n
+                            if (length > maxBytes) {
+                                throw IllegalArgumentException("Media is too large for a status. Choose a shorter video or smaller image.")
+                            }
+                            output.write(buffer, 0, n)
+                        }
+                        output.toByteArray().takeIf { it.isNotEmpty() }
+                    }
+                }?:throw IllegalStateException("Unable to read selected media.")
                 val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
                 val p=_uiState.value.myProfile
-                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
+                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,createdAt=Instant.now().toString(),isVideo=isVideo)
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
                 _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
+                com.example.ui.screens.BlinkStatusDraftStore.clear(appContext, uid)
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
-                showToast("Unable to share your story. Please try again.")
+                showToast(if (e is IllegalArgumentException) e.message.orEmpty()
+                          else "Unable to share your story. Please try again.")
             }finally{
                 _uiState.value=_uiState.value.copy(isCreatingStory=false)
             }
         }
     }
-    fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
+    fun markStoryViewed(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser || story.id == "story_me") return
+        _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map {
+            if (it.id == storyId) it.copy(hasUnseen = false) else it
+        })
+        viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) }
+    }
     fun toggleStoryLike(storyId: String) {
         var next = false
         var count = 0
@@ -6784,32 +6867,111 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private val sendingStoryReactions = mutableSetOf<String>()
+
     fun reactToStory(storyId: String, emoji: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser || !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status is no longer available for reactions.")
+            return
+        }
+        if (emoji !in setOf("🔥", "❤️", "👏", "😂", "⚡", "🙌")) return
+        if (!sendingStoryReactions.add(storyId)) return
         viewModelScope.launch {
-            val success = runCatching { postRepository.reactToStory(storyId, emoji) }.getOrDefault(false)
-            if (success) showToast("Reacted $emoji")
-            else showToast("Reaction wasn't sent.")
+            try {
+                val success = runCatching { postRepository.reactToStory(storyId, emoji) }.getOrDefault(false)
+                if (success) showToast("Reacted $emoji")
+                else showToast("Reaction wasn't sent.")
+            } finally {
+                sendingStoryReactions.remove(storyId)
+            }
         }
     }
 
-    fun replyToStory(storyUsername: String, replyText: String) {
-        val cleanText = replyText.trim()
-        val cleanUser = storyUsername.trim().removePrefix("@")
-        if (cleanText.isBlank() || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+    fun replyToStory(story: Story, replyText: String) {
+        val cleanUser = story.username.trim().removePrefix("@")
+        val payload = BlinkStoryReplyReference.encode(story.id, replyText)
+        if (payload == null || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+        if (story.isUser || !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status is no longer available.")
+            return
+        }
         viewModelScope.launch {
-            chatRepository.sendMessage(cleanUser, cleanText).fold(
+            chatRepository.sendMessage(cleanUser, payload).fold(
                 onSuccess = {
-                    showToast("💬 Message sent to @$cleanUser")
+                    showToast("Status reply sent in Messages.")
                     supabaseService.recordActivity(
-                        cleanUser,
-                        "replied to your story",
-                        NotificationFilter.ALL,
+                        cleanUser, "replied to your status", NotificationFilter.ALL,
                         targetUsername = _uiState.value.myProfile.username,
                         targetType = "CHAT"
                     )
                 },
-                onFailure = { showToast("Story reply wasn't sent.") }
+                onFailure = { showToast("Status reply wasn't sent.") }
             )
+        }
+    }
+
+    fun setStoryRepostsAllowed(storyId: String, allowed: Boolean) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (!story.isUser || story.repostedFromId != null ||
+            !BlinkStoryLifecycle.isActive(story.createdAt, true)) return
+        viewModelScope.launch {
+            val saved = runCatching {
+                supabaseService.setStoryRepostsAllowed(storyId, allowed)
+            }.getOrDefault(false)
+            if (saved) {
+                val state = _uiState.value
+                val next = state.stories.map {
+                    if (it.id == storyId) it.copy(allowReposts = allowed) else it
+                }.let { stories ->
+                    if (allowed) stories else stories.filterNot { it.repostedFromId == storyId }
+                }
+                _uiState.value = state.copy(
+                    stories = next,
+                    activeViewingStory = next.firstOrNull {
+                        it.id == state.activeViewingStory?.id
+                    }
+                )
+                showToast(if (allowed) "Reposts enabled for this status."
+                    else "Reposts disabled and existing shares revoked.")
+            } else showToast("Couldn't change status sharing.")
+        }
+    }
+
+    fun repostStory(story: Story) {
+        if (story.isUser || !story.allowReposts || story.repostedFromId != null ||
+            !BlinkStoryLifecycle.isActive(story.createdAt, true)) {
+            showToast("This status isn't available for reposting.")
+            return
+        }
+        viewModelScope.launch {
+            val done = runCatching { supabaseService.repostStory(story.id) }.getOrDefault(false)
+            if (done) {
+                val updated = runCatching { postRepository.fetchStories() }.getOrNull()
+                if (updated != null) _uiState.value = _uiState.value.copy(stories = updated)
+                showToast("Reposted to your Status.")
+            } else showToast("Couldn't repost this status.")
+        }
+    }
+
+    fun deleteStory(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull {
+            it.id == storyId && it.isUser
+        } ?: return
+        viewModelScope.launch {
+            val result = runCatching {
+                supabaseService.deleteOwnedStory(story.id, if (story.repostedFromId == null) story.storyImage else "")
+            }.getOrNull()
+            if (result?.first == true) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    stories = current.stories.filterNot { it.id == storyId },
+                    activeViewingStory = if (current.activeViewingStory?.id == storyId) null
+                        else current.activeViewingStory
+                )
+                showToast(if (result.second) "Status deleted."
+                    else "Status removed, but its media cleanup is incomplete.")
+            } else showToast("Couldn't delete this status. Please try again.")
         }
     }
 

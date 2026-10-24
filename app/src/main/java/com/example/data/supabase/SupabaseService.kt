@@ -3190,6 +3190,8 @@ suspend fun uploadPostMedia(
     // ============================================================
     suspend fun fetchStories(): List<Story> = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId()
+        // Keep expired stories hidden even before the staged database policy ships.
+        val cutoff = java.time.Instant.now().minusSeconds(24 * 60 * 60L).toString()
         val viewed = if (uid != null) {
             executeRequest(newRequestBuilder("/rest/v1/story_views?user_id=eq.${encodeValue(uid)}&select=story_id", true).get().build()).use { r ->
                 val b = r.body?.string().orEmpty()
@@ -3208,7 +3210,7 @@ suspend fun uploadPostMedia(
                 } else emptySet()
             }
         } else emptySet()
-        val raw = executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&order=created_at.desc&limit=50", uid != null).get().build()).use { r ->
+        val raw = executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&created_at=gte.${encodeValue(cutoff)}&order=created_at.desc&limit=50", uid != null).get().build()).use { r ->
             val b = r.body?.string().orEmpty()
             if (!r.isSuccessful) return@withContext emptyList()
             b
@@ -3220,7 +3222,16 @@ suspend fun uploadPostMedia(
                 val o = arr.getJSONObject(i)
                 val sid = o.optString("id")
                 val u = o.optString("user_id")
-                val prof = if (u.isNotBlank()) fetchProfileById(u)?.also { cache[u] = it } else null
+                val createdAt = o.optString("created_at")
+                if (!com.blinkng.shared.notification.BlinkStoryLifecycle.isActive(createdAt, o.optBoolean("active", true))) continue
+                val mediaType = o.optString("media_type")
+                val urls = if (mediaType.equals("video", true)) {
+                    listOf(o.optString("video_url"), o.optString("media_url"), o.optString("image_url"))
+                } else {
+                    listOf(o.optString("image_url"), o.optString("media_url"), o.optString("video_url"))
+                }
+                val mediaUrl = urls.firstOrNull { it.isNotBlank() && !it.equals("null", true) }.orEmpty()
+                val prof = if (u.isNotBlank()) cache[u] ?: fetchProfileById(u)?.also { cache[u] = it } else null
                 add(
                     Story(
                         id = sid,
@@ -3229,14 +3240,20 @@ suspend fun uploadPostMedia(
                         displayName = prof?.fullName.orEmpty(),
                         hasUnseen = !viewed.contains(sid),
                         isUser = (uid != null && u == uid),
-                        storyImage = o.optString("image_url", o.optString("media_url", o.optString("video_url", ""))),
+                        storyImage = mediaUrl,
                         caption = o.optString("caption", o.optString("text", "")),
                         timeAgo = formatTimeAgo(o.optString("created_at")),
                         faculty = prof?.faculty.orEmpty(),
                         university = prof?.university.orEmpty(),
                         likesCount = o.optInt("likes_count", 0),
                         isLiked = liked.contains(sid),
-                        verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
+                        verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE,
+                        createdAt = createdAt,
+                        isVideo = mediaType.equals("video", true),
+                        allowReposts = o.optBoolean("allow_reposts", false),
+                        repostedFromId = o.optString("reposted_from_id")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        background = o.optString("background")
                     )
                 )
             }
@@ -3273,6 +3290,34 @@ suspend fun uploadPostMedia(
         } catch(e:Exception){Log.e(TAG,"createStory exception",e);false}
     }
 
+    /** Text-only public status; no media upload, no private audience claim. */
+    suspend fun createTextStory(story: Story): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        val text = com.blinkng.shared.notification.BlinkStatusTextPolicy.text(story.caption)
+            ?: return@withContext false
+        val background = com.blinkng.shared.notification.BlinkStatusTextPolicy.background(story.background)
+        val body = JSONObject().apply {
+            put("id", story.id)
+            put("user_id", uid)
+            put("active", true)
+            put("media_type", "text")
+            put("text", text)
+            put("caption", text)
+            put("background", background)
+        }
+        executeRequest(
+            newRequestBuilder("/rest/v1/stories", true)
+                .addHeader("Prefer", "return=minimal")
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Text status failed."))
+            }
+            true
+        }
+    }
+
     suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
@@ -3299,6 +3344,94 @@ suspend fun uploadPostMedia(
         val body=JSONObject().apply{put("story_id",storyId);put("user_id",uid);put("content",replyText)}
         executeRequest(newRequestBuilder("/rest/v1/story_replies",true).post(body.toString().toRequestBody(jsonMediaType)).build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Story reply failed."));true}
     }
+
+    /**
+     * Story viewer identities are returned only by the backend RPC after
+     * verifying the authenticated caller owns an active 24-hour story.
+     */
+    suspend fun myStoryInsights(storyId: String): JSONObject = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: throw IllegalStateException("Sign in to view story insights.")
+        require(storyId.isNotBlank()) { "Story id required." }
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/get_my_story_insights", authenticated = true)
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Story insights unavailable."))
+            }
+            JSONObject(raw)
+        }
+    }
+
+    /**
+     * Owner-scoped metadata removal; then best-effort storage cleanup limited
+     * to this account's canonical story-media path. A cached public copy may
+     * remain accessible elsewhere, so this is not secure private archiving.
+     */
+    /** Server validates ownership; disabling consent also revokes derived reposts. */
+    suspend fun setStoryRepostsAllowed(storyId: String, allowed: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId() ?: return@withContext false
+            val body = JSONObject().put("p_story_id", storyId).put("p_allow", allowed)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/set_my_story_reposts_allowed", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    parseSupabaseError(raw, "Couldn't update status repost permissions.")
+                )
+                raw.trim() == "true"
+            }
+        }
+
+    /** Reposts inherit the original expiry and cannot bypass opt-in or blocks. */
+    suspend fun repostStory(storyId: String): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        val body = JSONObject().put("p_story_id", storyId)
+        executeRequest(
+            newRequestBuilder("/rest/v1/rpc/repost_blink_story", true)
+                .post(body.toString().toRequestBody(jsonMediaType)).build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw IllegalStateException(
+                parseSupabaseError(raw, "This status can't be reposted.")
+            )
+            raw.trim().trim('"').isNotBlank() && raw.trim() != "null"
+        }
+    }
+
+    suspend fun deleteOwnedStory(storyId: String, mediaUrl: String): Pair<Boolean, Boolean> =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId() ?: return@withContext false to false
+            val request = newRequestBuilder(
+                "/rest/v1/stories?id=eq.${encodeValue(storyId)}&user_id=eq.${encodeValue(uid)}&select=id",
+                true
+            ).addHeader("Prefer", "return=representation").delete().build()
+            val removed = executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Status deletion failed."))
+                }
+                JSONArray(if (raw.isBlank()) "[]" else raw).length() > 0
+            }
+            if (!removed) return@withContext false to false
+            if (mediaUrl.isBlank()) return@withContext true to true
+            val prefix = "$baseUrl/storage/v1/object/public/story-media/$uid/"
+            val name = if (mediaUrl.startsWith(prefix)) mediaUrl.removePrefix(prefix) else ""
+            if (name.isBlank() || !name.matches(Regex("[a-zA-Z0-9_-]+\\.(mp4|webm|jpg|png|webp)"))) {
+                return@withContext true to false
+            }
+            val mediaRemoved = runCatching {
+                executeRequest(
+                    newRequestBuilder("/storage/v1/object/story-media/$uid/$name", true)
+                        .delete().build()
+                ).use { it.isSuccessful }
+            }.getOrDefault(false)
+            true to mediaRemoved
+        }
 
     suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")

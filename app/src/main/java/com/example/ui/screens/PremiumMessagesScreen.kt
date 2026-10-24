@@ -173,6 +173,8 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
+import com.blinkng.shared.notification.BlinkStoryReplyReference
+import com.blinkng.shared.notification.BlinkStoryLifecycle
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.util.safeString
@@ -374,6 +376,14 @@ fun PremiumMessagesScreen(
                                 isLoadingMessages = isLoadingMessages,
                                 interactionActions = interactionActions,
                                 onProfileClick = onProfileClick,
+                                onStoryReferenceClick = { storyId ->
+                                    val original = stories.firstOrNull {
+                                        it.id == storyId && BlinkStoryLifecycle.isActive(it.createdAt, true)
+                                    }
+                                    if (original != null) onStoryClick(original)
+                                    else Toast.makeText(context, "Status expired, deleted or unavailable.",
+                                        Toast.LENGTH_SHORT).show()
+                                },
                                 onStartCall = { conversation, kind ->
                                     launchSecureCall(context, conversation, kind)
                                 },
@@ -475,6 +485,7 @@ private fun PremiumMessagesMasterDetail(
     isLoadingMessages: (String) -> Boolean,
     interactionActions: ChatInteractionActions,
     onProfileClick: (String) -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
     isConnected: Boolean
 ) {
@@ -536,6 +547,7 @@ private fun PremiumMessagesMasterDetail(
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
                 onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                onStoryReferenceClick = onStoryReferenceClick,
                 onAudioCall = {
                     onStartCall(displayedConversation, MessageCallKind.AUDIO)
                 },
@@ -1294,7 +1306,8 @@ private fun ConversationCard(
                     when {
                         conversation.presenceLabel.isNotBlank() -> conversation.presenceLabel
                         !draft.isNullOrBlank() -> "Draft: $draft"
-                        else -> conversation.lastMessage.ifBlank { "Start the conversation" }
+                        else -> BlinkStoryReplyReference.inboxPreview(conversation.lastMessage)
+                            .ifBlank { "Start the conversation" }
                     },
                     color = when {
                         conversation.presenceLabel.isNotBlank() -> palette.accent
@@ -1363,6 +1376,7 @@ private fun PremiumChatDetail(
     allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
+    onStoryReferenceClick: (String) -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
     isConnected: Boolean,
@@ -1792,7 +1806,8 @@ private fun PremiumChatDetail(
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
-                            allowLinkPreviews = allowLinkPreviews
+                            allowLinkPreviews = allowLinkPreviews,
+                            onStoryReferenceClick = onStoryReferenceClick
                             )
                         }
                     }
@@ -2554,7 +2569,8 @@ private fun MessageBubble(
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
     onRetry: () -> Unit,
-    allowLinkPreviews: Boolean
+    allowLinkPreviews: Boolean,
+    onStoryReferenceClick: (String) -> Unit
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -2658,7 +2674,8 @@ private fun MessageBubble(
                         message = message,
                         isMine = isMine,
                         palette = palette,
-                        allowLinkPreviews = allowLinkPreviews
+                        allowLinkPreviews = allowLinkPreviews,
+                        onStoryReferenceClick = onStoryReferenceClick
                     )
                 }
 
@@ -2719,10 +2736,15 @@ private fun MessageContent(
     message: ChatMessage,
     isMine: Boolean,
     palette: MessagePalette,
-    allowLinkPreviews: Boolean
+    allowLinkPreviews: Boolean,
+    onStoryReferenceClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
+    val storyReply = remember(message.text, message.deletedForEveryone) {
+        if (message.deletedForEveryone) null
+        else BlinkStoryReplyReference.parse(message.text)
+    }
     Column(modifier = Modifier.padding(5.dp)) {
         if (message.deletedForEveryone) {
             Text(
@@ -2829,14 +2851,30 @@ private fun MessageContent(
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
+                if (storyReply != null) {
+                    Surface(
+                        color = contentColor.copy(alpha = .10f),
+                        contentColor = contentColor,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, contentColor.copy(alpha = .18f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 5.dp)
+                            .clickable { onStoryReferenceClick(storyReply.storyId) }
+                    ) {
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Text("BLINK status", fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                            Text("Tap to view original · unavailable after 24h",
+                                fontSize = 10.sp, color = contentColor.copy(alpha = .72f))
+                        }
+                    }
+                }
                 Text(
-                    message.text,
+                    storyReply?.text ?: message.text,
                     color = contentColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
-                if (allowLinkPreviews) firstHttpUrl(message.text)?.let { url ->
+                if (allowLinkPreviews && storyReply == null) firstHttpUrl(message.text)?.let { url ->
                     val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
                     Surface(
                         color = contentColor.copy(alpha = .08f),

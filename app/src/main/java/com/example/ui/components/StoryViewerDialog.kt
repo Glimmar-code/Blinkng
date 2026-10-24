@@ -31,6 +31,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.blinkng.shared.notification.BlinkStoryLifecycle
+import com.blinkng.shared.notification.BlinkStatusTextPolicy
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkGold
@@ -58,24 +69,24 @@ fun StoryViewerDialog(
     onStoryViewed: (String) -> Unit = {},
     onLikeStory: (String) -> Unit = {},
     onReactStory: (storyId: String, emoji: String) -> Unit = { _, _ -> },
-    onReplyStory: (storyUsername: String, replyText: String) -> Unit = { _, _ -> },
+    onReplyStory: (story: Story, replyText: String) -> Unit = { _, _ -> },
+    onDeleteStory: (storyId: String) -> Unit = {},
+    onSetStoryRepostsAllowed: (storyId: String, allowed: Boolean) -> Unit = { _, _ -> },
+    onRepostStory: (Story) -> Unit = {},
+    onMuteUser: (String) -> Unit = {},
     onProfileClick: (String) -> Unit = {}
 ) {
-    if (stories.isEmpty()) {
-        onDismiss()
-        return
-    }
-
+    // Synthetic "Your Story" cards are not media; actual owner stories are viewable.
     val storyList = remember(stories) {
-        stories.filter { !it.isUser }
+        stories.filter {
+            it.id != "story_me" &&
+                (it.storyImage.isNotBlank() || it.caption.isNotBlank()) &&
+                BlinkStoryLifecycle.isActive(it.createdAt, true)
+        }
     }
+    if (storyList.isEmpty()) return
 
-    if (storyList.isEmpty()) {
-        onDismiss()
-        return
-    }
-
-    var currentIndex by rememberSaveable {
+    var currentIndex by rememberSaveable(initialStory.id) {
         val idx = storyList.indexOfFirst { it.id == initialStory.id || it.username == initialStory.username }
         mutableIntStateOf(if (idx >= 0) idx else 0)
     }
@@ -93,6 +104,21 @@ fun StoryViewerDialog(
     var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
+    val viewerLifecycleOwner = LocalLifecycleOwner.current
+    var viewerForeground by remember(viewerLifecycleOwner) {
+        mutableStateOf(viewerLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(viewerLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewerForeground = true
+                Lifecycle.Event.ON_STOP -> viewerForeground = false
+                else -> Unit
+            }
+        }
+        viewerLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { viewerLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Floating reaction animation effect
     LaunchedEffect(floatingReaction) {
@@ -102,18 +128,21 @@ fun StoryViewerDialog(
         }
     }
 
-    // 5-second automatic progression
-    LaunchedEffect(currentIndex, isPaused) {
+    // Pause/resume must not reset progress. Video duration follows its real runtime.
+    var videoDurationMs by remember(currentStory.id) { mutableLongStateOf(5_000L) }
+    var videoReady by remember(currentStory.id) { mutableStateOf(!currentStory.isVideo) }
+    var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    var confirmMute by rememberSaveable(currentStory.id) { mutableStateOf(false) }
+    LaunchedEffect(currentStory.id) {
         progress = 0f
+        var elapsedMs = 0L
         val stepMs = 50L
-        val totalMs = 5000L
-        val increment = stepMs.toFloat() / totalMs.toFloat()
-
         while (progress < 1f) {
             delay(stepMs)
-            if (!isPaused) {
-                progress = (progress + increment).coerceAtMost(1f)
-            }
+            if (!isPaused && viewerForeground && videoReady && !showInsights) elapsedMs += stepMs
+            val totalMs = if (currentStory.isVideo) videoDurationMs.coerceAtLeast(1_000L) else 5_000L
+            progress = (elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
         }
 
         if (!isPaused && progress >= 1f) {
@@ -134,13 +163,41 @@ fun StoryViewerDialog(
         // Story Background Image / Media
         Crossfade(targetState = currentStory.id, animationSpec = tween(180), label = "storyMediaReveal") { storyId ->
             val displayedStory = storyList.firstOrNull { it.id == storyId } ?: currentStory
-            if (displayedStory.storyImage.isNotBlank()) {
+            if (displayedStory.isVideo && displayedStory.storyImage.isNotBlank()) {
+                BlinkStoryVideoPlayer(
+                    story = displayedStory,
+                    paused = isPaused || !viewerForeground || showInsights || displayedStory.id != currentStory.id,
+                    onDuration = { if (displayedStory.id == currentStory.id) videoDurationMs = it },
+                    onReady = { if (displayedStory.id == currentStory.id) videoReady = it }
+                )
+            } else if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(
                 model = displayedStory.storyImage,
                 contentDescription = "Story by ${displayedStory.displayLabel}",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (displayedStory.caption.isNotBlank()) {
+            // Text statuses use a fixed safe palette and never load external media.
+            val safeBackground = BlinkStatusTextPolicy.background(displayedStory.background)
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Color(android.graphics.Color.parseColor(safeBackground))
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = displayedStory.caption,
+                    color = Color.White,
+                    fontSize = 25.sp,
+                    lineHeight = 31.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp),
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         } else {
             // Fallback rich gradient background
             Box(
@@ -400,7 +457,7 @@ fun StoryViewerDialog(
         }
 
         // Caption Overlay (if available)
-        if (currentStory.caption.isNotBlank()) {
+        if (currentStory.caption.isNotBlank() && currentStory.storyImage.isNotBlank()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -429,6 +486,60 @@ fun StoryViewerDialog(
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
+            if (currentStory.isUser) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showInsights = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text("Viewers & Likes")
+                    }
+                    OutlinedButton(
+                        onClick = { confirmDelete = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Delete") }
+                }
+                if (currentStory.repostedFromId == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Allow reposts",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = currentStory.allowReposts,
+                            onCheckedChange = {
+                                onSetStoryRepostsAllowed(currentStory.id, it)
+                            }
+                        )
+                    }
+                }
+            } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (currentStory.allowReposts && currentStory.repostedFromId == null) {
+                    OutlinedButton(
+                        onClick = { onRepostStory(currentStory) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) { Text("Repost to Status") }
+                }
+                OutlinedButton(
+                    onClick = { confirmMute = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) { Text("Mute") }
+            }
             // Quick Emojis Row (Togglable or permanent)
             Row(
                 modifier = Modifier
@@ -500,7 +611,7 @@ fun StoryViewerDialog(
                         if (replyText.isNotBlank()) {
                             IconButton(
                                 onClick = {
-                                    onReplyStory(currentStory.username, replyText.trim())
+                                    onReplyStory(currentStory, replyText.trim())
                                     replyText = ""
                                 },
                                 modifier = Modifier.size(32.dp)
@@ -534,6 +645,138 @@ fun StoryViewerDialog(
                     )
                 }
             }
+            }
         }
+    }
+    if (showInsights && currentStory.isUser) {
+        BlinkStoryInsightsDialog(
+            storyId = currentStory.id,
+            onDismiss = { showInsights = false },
+            onProfileClick = onProfileClick
+        )
+    }
+    if (confirmMute && !currentStory.isUser) {
+        AlertDialog(
+            onDismissRequest = { confirmMute = false },
+            title = { Text("Mute this account?") },
+            text = { Text("Hide this account's posts, reels and statuses. You can unmute later.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMute = false
+                    onDismiss()
+                    onMuteUser(currentStory.username)
+                }) { Text("Mute") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMute = false }) { Text("Cancel") }
+            }
+        )
+    }
+    if (confirmDelete && currentStory.isUser) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete status?") },
+            text = { Text("This removes the status and its interactions. It cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDeleteStory(currentStory.id)
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+/**
+ * The player is scoped to a single status and releases codecs on dismissal.
+ * Backgrounding the app always pauses playback; this is not a looped Reel.
+ */
+@Composable
+private fun BlinkStoryVideoPlayer(
+    story: Story,
+    paused: Boolean,
+    onDuration: (Long) -> Unit,
+    onReady: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestPaused by rememberUpdatedState(paused)
+    val latestOnReady by rememberUpdatedState(onReady)
+    val latestOnDuration by rememberUpdatedState(onDuration)
+    var mediaError by remember(story.id) { mutableStateOf(false) }
+    val player = remember(story.id) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(story.storyImage))
+            repeatMode = Player.REPEAT_MODE_OFF
+            prepare()
+        }
+    }
+    DisposableEffect(player, lifecycleOwner) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                latestOnReady(mediaError ||
+                    playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED)
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                mediaError = true
+                latestOnDuration(5_000L)
+                latestOnReady(true)
+            }
+        }
+        player.addListener(listener)
+        latestOnReady(player.playbackState == Player.STATE_READY)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> player.pause()
+                Lifecycle.Event.ON_START -> if (!latestPaused) player.play()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    LaunchedEffect(player, paused, lifecycleOwner) {
+        if (!paused && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            player.play()
+        } else {
+            player.pause()
+        }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            val durationMs = player.duration
+            if (durationMs > 0 && durationMs != androidx.media3.common.C.TIME_UNSET) {
+                onDuration(durationMs)
+                break
+            }
+            delay(200)
+        }
+    }
+    if (mediaError) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("This video couldn't load. Moving to the next story.",
+                color = Color.White, modifier = Modifier.padding(20.dp))
+        }
+    } else {
+        AndroidView(
+            factory = { androidContext ->
+                PlayerView(androidContext).apply {
+                    this.player = player
+                    useController = false
+                }
+            },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
