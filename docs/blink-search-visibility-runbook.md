@@ -3,7 +3,7 @@
 Scope: `https://blink.com.ng/`. This checklist complements the repository's static SEO regression guard. Passing repository tests does **not** prove a Google ranking, crawler access through Cloudflare, or production deployment.
 
 ## Deployment and canonical host
-1. Confirm GitHub Pages successfully deployed the approved `main` web commit. Record the deployment SHA; do not equate a passing PR with a deployment.
+1. Confirm GitHub Pages successfully deployed the approved `main` web commit. The build stamps `/blink-build.json` with the deployed GitHub SHA; the production smoke checks that it matches the actual workflow-run SHA. Never equate a passing PR with a published website. The marker contains only public build metadata.
 2. From an external connection, check `https://blink.com.ng/`, `/robots.txt`, `/sitemap.xml`, `/features/`, `/download/`, `/students/`, `/marketplace/`, and `/safety/`. Each intended public URL must return a successful response with the expected HTML/XML.
 3. Confirm that `https://www.blink.com.ng/` and HTTP variants permanently redirect to the canonical HTTPS apex host with no loop. GitHub Pages does not interpret `web/_redirects` or `web/vercel.json`. Check the actual DNS/Cloudflare/GitHub Pages setup instead.
 4. Check `/this-page-does-not-exist` for an appropriate non-success HTTP status. The JavaScript SPA fallback should not become a discoverable soft-404.
