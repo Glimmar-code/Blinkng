@@ -1,0 +1,120 @@
+-- Synthetic data only; fail loudly on regression.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000001','2025-01-01T00:00:00Z',now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000001','alpha','Alpha Referrer','FUTA',true);
+
+-- New signup selects alpha, but credit must not be confirmed until email confirmation.
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000002','2026-01-01T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000001"}'
+);
+do $$
+begin
+  if (select status from public.blink_referrals
+      where referred_user_id='00000000-0000-0000-0000-000000000002') <> 'pending'
+  then raise exception 'Referral must remain pending before email confirmation'; end if;
+  if exists (select 1 from public.notifications where actor_id='00000000-0000-0000-0000-000000000002')
+  then raise exception 'Unconfirmed signup must not notify anyone'; end if;
+end $$;
+
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000002','beta','Beta Newcomer','FUTA',false);
+
+update auth.users set email_confirmed_at=now()
+where id='00000000-0000-0000-0000-000000000002';
+do $$
+begin
+  if (select status from public.blink_referrals
+      where referred_user_id='00000000-0000-0000-0000-000000000002') <> 'confirmed'
+  then raise exception 'Email-confirmed referral must be credited'; end if;
+  if (select count(*) from public.notifications
+      where actor_id='00000000-0000-0000-0000-000000000002'
+        and metadata->>'kind'='blink_referral_confirmed') <> 1
+  then raise exception 'Confirmed referral must produce exactly one notification'; end if;
+end $$;
+
+-- Repeated updates cannot award again.
+update auth.users set email_confirmed_at=now()
+where id='00000000-0000-0000-0000-000000000002';
+do $$
+begin
+  if (select count(*) from public.notifications
+      where actor_id='00000000-0000-0000-0000-000000000002'
+        and metadata->>'kind'='blink_referral_confirmed') <> 1
+  then raise exception 'Duplicate confirmation created multiple notifications'; end if;
+end $$;
+
+-- Self-referral and nonexistent/unonboarded referral cannot earn credit.
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000003','2026-01-02T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000003"}'
+);
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000004','2026-01-03T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000003"}'
+);
+do $$
+begin
+  if exists (select 1 from public.blink_referrals
+             where referred_user_id in (
+              '00000000-0000-0000-0000-000000000003',
+              '00000000-0000-0000-0000-000000000004'
+             ))
+  then raise exception 'Self or unonboarded referral accepted'; end if;
+end $$;
+
+-- Public suggestions protect private profiles, rank exact username first.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000005','2025-01-02T00:00:00Z',now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000005','alphaprivate','Alpha Private','FUTA',true);
+insert into public.user_settings(user_id,private_account)
+values ('00000000-0000-0000-0000-000000000005',true);
+do $$
+declare first_username text;
+begin
+  select username into first_username from public.blink_referrer_suggestions('alpha',10,0) limit 1;
+  if first_username <> 'alpha'
+  then raise exception 'Exact referrer match not ranked first: %', first_username; end if;
+  if exists(select 1 from public.blink_referrer_suggestions('alpha',10,0) where username='alphaprivate')
+  then raise exception 'Private user was leaked in public signup suggestions'; end if;
+end $$;
+
+-- Logged-in referrer sees exactly one confirmed referral and active discovery score.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+declare total bigint; active bigint; points integer;
+begin
+  select total_referrals,active_referrals,visibility_points into total,active,points
+  from public.blink_referral_dashboard();
+  if total<>1 or active<>1 or points<>3
+  then raise exception 'Dashboard totals invalid: %, %, %',total,active,points; end if;
+  if exists(select 1 from public.blink_referral_recommendations(10) where id='00000000-0000-0000-0000-000000000001')
+  then raise exception 'Self-profile suggested to viewer'; end if;
+end $$;
+
+-- RLS must hide other people's referrals; clients cannot directly forge referral rows.
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',false);
+do $$
+begin
+  if exists(select 1 from public.blink_referrals)
+  then raise exception 'Referral records leaked through RLS'; end if;
+  begin
+    insert into public.blink_referrals(referred_user_id,referrer_user_id,status)
+    values (
+      '00000000-0000-0000-0000-000000000003',
+      '00000000-0000-0000-0000-000000000005',
+      'confirmed'
+    );
+    raise exception 'Unprivileged client forged a referral';
+  exception when insufficient_privilege then
+    null; -- expected: no direct INSERT grant
+  end;
+end $$;
+reset role;
+select 'BLINK Refer & Grow disposable PostgreSQL integration passed' as result;
