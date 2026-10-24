@@ -114,5 +114,39 @@ if(process.env.BLINK_VERIFY_SYNTHETIC_ANALYTICS==='1'){
   console.log('INFO One synthetic FAQ view was sent for deployment diagnostics; not a unique visitor.');
  });
 }
-console.log(JSON.stringify({checksPassed:checks.length,checksFailed:fail.length,publicOnly:true}));
+// Advisory checks identify DNS/Cloudflare or Pages configuration that cannot
+// be repaired by changing GitHub's static files alone. Never claim they passed.
+const warnings=[];
+async function diagnose(name,url,validate){
+ try{
+  const response=await fetch(url,{
+   redirect:'manual',
+   headers:{Accept:'text/html'},
+   signal:AbortSignal.timeout(12000)
+  });
+  const location=response.headers.get('location')||'';
+  if(!validate(response,location)){
+   warnings.push(name+': HTTP '+response.status+'; Location '+location.slice(0,100));
+   console.warn('WARN '+warnings.at(-1));
+  }else console.log('PASS advisory '+name);
+ }catch(e){
+  warnings.push(name+': '+String(e.message).slice(0,100));
+  console.warn('WARN '+warnings.at(-1));
+ }
+}
+await diagnose('Canonical www host redirects to apex','https://www.blink.com.ng/',(res,loc)=>{
+ try{
+  return [301,302,307,308].includes(res.status)
+   &&new URL(loc,'https://www.blink.com.ng/').origin===site;
+ }catch{return false;}
+});
+await diagnose('HTTP redirects to canonical HTTPS','http://blink.com.ng/',(res,loc)=>{
+ try{
+  return [301,302,307,308].includes(res.status)
+   &&new URL(loc,'http://blink.com.ng/').protocol==='https:';
+ }catch{return false;}
+});
+await diagnose('Missing page returns actual HTTP 404',site+'/seo-verification-nonexistent-page-20261024',(res)=>res.status===404);
+console.log(JSON.stringify({checksPassed:checks.length,checksFailed:fail.length,advisoryWarnings:warnings.length,publicOnly:true}));
+
 if(fail.length){console.error('Public-integration failures:',fail.join(' | '));process.exitCode=1;}
