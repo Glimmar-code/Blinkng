@@ -30,3 +30,17 @@ Scope: `https://blink.com.ng/`. This checklist complements the repository's stat
 
 ## Privacy and indexing eligibility
 BLINK user profiles, posts, reels, private messages, account settings, activity and marketplace transactions must not be bulk-indexed by default. A future public-content SEO system needs **explicit user control**, privacy checks, moderation checks, deletions and opt-out behavior, correct per-URL HTML metadata, and no exposure of personal data. It is out of scope for this foundation patch.
+
+## Bing / IndexNow notifications — not proof of indexing
+1. The site includes a publicly hosted IndexNow key at `/c7a33ad1df24b04816761dc5dae7fbfa.txt`. It is intentionally **public** for host ownership verification, not an application credential.
+2. After a successful deployment from `main`, `Notify Bing IndexNow of changed public BLINK pages` selects only approved canonical HTML pages that changed in that deployment. When the key is first published, it sends the nine approved public sitemap pages once. Private profiles, posts, inbox, settings, user content, and other app routes are explicitly disallowed.
+3. The notification is blocked until the key file and every selected page are publicly available with HTTP 200 and matching canonical metadata. Accepted IndexNow responses (200, or 202 pending validation) prove **only receipt**, not crawling, indexing, or ranking.
+4. When needed, an owner can manually dispatch the same GitHub workflow with `bootstrap_all_public_urls=true` to notify all nine approved URLs again. Do not repeatedly submit unchanged pages.
+5. Use a verified **Bing Webmaster Tools** property to confirm receipt, last crawl, and actual per-page indexing via URL Inspection. IndexNow does not submit to Google.
+
+## Google Search Console requires verified access
+1. Sign in to Search Console, add the Domain property `blink.com.ng`, and verify its DNS TXT record at the DNS provider; alternatively use a URL-prefix property and the specific verification method presented in the UI. Do **not** invent a verification token or publish one from another account.
+2. Under **Sitemaps**, submit `https://blink.com.ng/sitemap.xml` and check that all nine canonical public URLs were discovered without fetch errors.
+3. Use **URL Inspection** on each URL, including `/students/`, `/marketplace/`, and `/safety/`, to check the **Google Index** view (not just the live test). Request indexing only for URLs that need it. Google may take days or weeks and does not guarantee indexing.
+4. In Bing Webmaster Tools, verify ownership of the same canonical site (or use its Google Search Console import if offered), submit the sitemap, and inspect **Index Coverage**, **Site Explorer**, and **URL Inspection**. Manual inspection is still needed after an accepted IndexNow notification.
+5. Record separately: (a) technical eligibility, (b) sitemap discovery, (c) notification accepted, (d) crawler visit, (e) URL actually indexed. Never report any of (b)–(e) as confirmed from static website tests alone.
