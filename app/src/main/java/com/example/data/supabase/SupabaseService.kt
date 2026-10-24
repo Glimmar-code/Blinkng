@@ -571,7 +571,8 @@ class SupabaseService {
         fullName: String,
         faculty: String = "",
         university: String = "",
-        accountType: String = ""
+        accountType: String = "",
+        referrerId: String? = null
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -604,6 +605,8 @@ class SupabaseService {
                         com.blinkng.shared.discovery.BlinkUniversitySearch.idOf(university)
                             ?.let { put("university_id", it) }
                         if (accountType.isNotBlank()) put("account_type", accountType)
+                        referrerId?.takeIf { it.matches(Regex("[0-9a-fA-F-]{36}")) }
+                            ?.let { put("blink_referrer_id", it) }
                     })
                 }
 

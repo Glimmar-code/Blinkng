@@ -48,6 +48,9 @@ import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
 import com.example.data.models.UserProfile
 import com.example.viewmodel.SearchDiscoveryViewModel
+import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.example.data.supabase.BlinkReferralClient
 import java.util.Locale
 
 /**
@@ -114,6 +117,13 @@ internal fun BlinkReferenceSearchScreen(
     }
     var selectedDetail by remember { mutableStateOf<DiscoveryResult?>(null) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
+    var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    LaunchedEffect(accountKey) {
+        if (myProfile.id.isNotBlank()) {
+            referralRecommendations = runCatching { BlinkReferralClient.recommendations() }.getOrDefault(emptyList())
+        }
+    }
 
     val bg = if (isDark) Color(0xFF0C0D10) else Color.White
     val fg = if (isDark) Color.White else Color(0xFF111111)
@@ -194,6 +204,10 @@ internal fun BlinkReferenceSearchScreen(
     val liveMarket = live.filter { it.type == DiscoveryResultType.MARKET_ITEM }
     val liveCommunities = live.filter { it.type == DiscoveryResultType.COMMUNITY }
     val limit = if (category == ReferenceCategory.ALL) 2 else 20
+
+    if (showReferralDashboard) {
+        BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
+    }
 
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
@@ -306,6 +320,25 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            Surface(
+                onClick = { showReferralDashboard = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = subtle,
+                border = BorderStroke(1.dp, line),
+            ) {
+                Column(Modifier.padding(13.dp)) {
+                    Text(BlinkReferralPolicy.PROMO_TITLE,
+                        color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(BlinkReferralPolicy.PROMO_MESSAGE,
+                        color = muted, fontSize = 12.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Invite friends  ›", color = fg, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             if (query.isBlank() && category == ReferenceCategory.ALL) {
                 val largeFont = LocalDensity.current.fontScale >= 1.6f
                 if (largeFont) {
@@ -348,6 +381,35 @@ internal fun BlinkReferenceSearchScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+                if (referralRecommendations.isNotEmpty()) {
+                    Text("Discover students on BLINK", color = fg, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text("Follow students you may know. Some earned extra discovery through referrals.",
+                        color = muted, fontSize = 11.sp)
+                    referralRecommendations.take(10).forEach { person ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                Modifier.weight(1f).clickable { onProfileClick(person.username) },
+                            ) {
+                                Text(person.fullName.ifBlank { person.username },
+                                    color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("@${person.username} · ${person.university.orEmpty()}",
+                                    color = muted, fontSize = 11.sp, maxLines = 1)
+                            }
+                            TextButton(
+                                onClick = { toggleFollow(person.id) },
+                                enabled = busyFollowId == null && person.id !in followingIds,
+                            ) {
+                                Text(if (person.id in followingIds) "Following" else "Follow")
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
             }
 
             if (discovery.backendAvailable && discovery.isLoading) {
