@@ -7,6 +7,14 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
+import android.os.Build
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
+import java.io.File
+import com.blinkng.shared.BlinkChatAttachmentKind
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -107,6 +115,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -213,6 +222,7 @@ fun PremiumMessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long) -> Unit = { _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -348,6 +358,7 @@ fun PremiumMessagesScreen(
                         onCloseConversation = onCloseConversation,
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
+                        onSendAttachment = onSendAttachment,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -464,6 +475,7 @@ private fun PremiumMessagesMasterDetail(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -526,6 +538,9 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendAttachment = { uri, kind, duration ->
+                    onSendAttachment(displayedConversation.partnerUsername, uri, kind, duration)
+                },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
@@ -1229,6 +1244,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendAttachment: (Uri, BlinkChatAttachmentKind, Long) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onStoryReferenceClick: (String) -> Unit,
