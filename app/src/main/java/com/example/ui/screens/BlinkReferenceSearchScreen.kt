@@ -48,6 +48,7 @@ import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
 import com.example.data.models.UserProfile
 import com.example.viewmodel.SearchDiscoveryViewModel
+import com.blinkng.shared.discovery.BlinkReferralPolicy
 import java.util.Locale
 
 /**
@@ -114,6 +115,7 @@ internal fun BlinkReferenceSearchScreen(
     }
     var selectedDetail by remember { mutableStateOf<DiscoveryResult?>(null) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
 
     val bg = if (isDark) Color(0xFF0C0D10) else Color.White
     val fg = if (isDark) Color.White else Color(0xFF111111)
@@ -194,6 +196,10 @@ internal fun BlinkReferenceSearchScreen(
     val liveMarket = live.filter { it.type == DiscoveryResultType.MARKET_ITEM }
     val liveCommunities = live.filter { it.type == DiscoveryResultType.COMMUNITY }
     val limit = if (category == ReferenceCategory.ALL) 2 else 20
+
+    if (showReferralDashboard) {
+        BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
+    }
 
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
@@ -306,6 +312,25 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            Surface(
+                onClick = { showReferralDashboard = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = subtle,
+                border = BorderStroke(1.dp, line),
+            ) {
+                Column(Modifier.padding(13.dp)) {
+                    Text(BlinkReferralPolicy.PROMO_TITLE,
+                        color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(BlinkReferralPolicy.PROMO_MESSAGE,
+                        color = muted, fontSize = 12.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Invite friends  ›", color = fg, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             if (query.isBlank() && category == ReferenceCategory.ALL) {
                 val largeFont = LocalDensity.current.fontScale >= 1.6f
                 if (largeFont) {
