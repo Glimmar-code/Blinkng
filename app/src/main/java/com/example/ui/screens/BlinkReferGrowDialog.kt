@@ -29,10 +29,13 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                 Text(BlinkReferralPolicy.PROMO_MESSAGE)
                 if (stats == null && error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                 stats?.let {
-                    Text("Successful referrals: ${it.total}")
-                    Text("Active (last 30 days): ${it.activeLast30Days}")
-                    Text("Visibility level: ${it.visibilityLabel}")
-                    Text("Referral discovery points: ${it.visibilityPoints} (not guaranteed views or follows)")
+                    Text("Lifetime confirmed referrals: ${it.total}")
+                    Text("Achievement: ${it.achievementTier}")
+                    Text(BlinkReferralPolicy.milestoneLabel(it))
+                    Text("Active referrals (last 30 days): ${it.activeLast30Days}")
+                    Text("Current visibility: ${it.visibilityLabel} (${it.visibilityPoints} points)")
+                    Text("Each referral adds 3 points for 10 days, then 2 for 10 days, then 1 for 10 days. The boost expires after 30 days, but achievements remain.")
+                    Text("No guaranteed views, follows or Coins.")
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text("Share your invite link. A new account must be confirmed to count.")
