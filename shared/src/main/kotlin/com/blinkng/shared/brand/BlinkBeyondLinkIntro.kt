@@ -129,62 +129,72 @@ fun BlinkBeyondLinkIntro(
             Text(" link", fontSize = textSize, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
         }
 
-        Row(
-            modifier = Modifier.alpha(blinkReveal),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IntroBLogo(
-                scale = scale,
-                blueAlpha = fraction(time, 3_260, 3_630),
-            )
-            Text(
-                text = "link",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = (54f * scale / fontCompensation).sp,
-                letterSpacing = (-1.6f * scale / fontCompensation).sp,
-                maxLines = 1,
-                modifier = Modifier.offset(x = (16f * scale * (1f - blinkReveal)).dp),
-            )
-        }
+        ApprovedVideoWordmark(
+            scale = scale,
+            blueAlpha = fraction(time, 3_260, 3_630),
+            modifier = Modifier.alpha(blinkReveal)
+                .offset(x = (11f * scale * (1f - blinkReveal)).dp),
+        )
     }
 }
 
-// Outline traced from the user's approved video, not a font approximation.
-// Coordinates are relative to the 135x182 icon crop from the final frame.
-private val introBOutline = intArrayOf(
-    10,6, 5,11, 2,19, 2,122, 5,136, 9,145, 17,156, 23,161,
-    39,170, 43,170, 46,172, 76,172, 94,165, 106,156, 111,150,
-    120,134, 122,126, 122,105, 120,101, 120,96, 113,81,
-    100,67, 82,57, 76,57, 73,55, 55,55, 49,57, 47,59,
-    47,79, 50,82, 68,82, 81,87, 91,97, 95,109,
-    94,123, 91,129, 84,137, 71,144, 59,144, 49,139,
-    40,128, 38,121, 38,15, 31,6, 24,3, 18,3,
+// Contours traced from the user's APPROVED 3.7-second video frame. Coordinates
+// are from the 391 x 171 wordmark crop, preserving the exact glyph proportions.
+private val referenceWordmarkContours = listOf(
+    intArrayOf(
+        14,0, 5,5, 2,9, 2,11, 0,14, 0,122, 1,123, 2,131,
+        5,137, 5,139, 12,150, 20,158, 31,165, 33,165, 42,169, 45,169,
+        46,170, 55,170, 56,171, 58,170, 59,171, 60,170, 71,170, 72,169,
+        76,169, 79,167, 82,167, 85,165, 87,165, 91,162, 96,160, 109,148,
+        116,137, 116,135, 118,132, 118,129, 120,125, 120,120, 121,119, 121,106,
+        120,105, 120,99, 116,87, 106,71, 99,64, 86,56, 84,56, 81,54,
+        77,54, 73,52, 50,52, 46,54, 45,56, 45,77, 49,80, 68,80,
+        77,83, 87,92, 92,102, 92,117, 91,118, 91,121, 87,128, 81,134,
+        80,134, 79,136, 77,136, 75,138, 73,138, 70,140, 56,140, 48,136,
+        41,129, 37,119, 37,16, 36,15, 36,11, 34,7, 29,2, 27,2,
+        24,0
+    ),
+    intArrayOf(148,54, 148,169, 166,169, 166,54),
+    intArrayOf(
+        187,55, 183,61, 183,67, 184,69, 190,74, 198,74, 200,73, 205,67,
+        205,60, 204,58, 201,55, 197,53, 192,53
+    ),
+    intArrayOf(185,87, 185,169, 203,169, 203,87),
+    intArrayOf(
+        287,94, 282,90, 275,87, 261,86, 260,87, 254,88, 249,91, 241,100,
+        240,99, 240,87, 222,87, 222,169, 240,169, 240,121, 241,120, 241,115,
+        244,109, 248,105, 255,102, 263,102, 268,104, 274,110, 276,115, 276,169,
+        295,169, 295,114, 294,113, 294,108, 292,102
+    ),
+    intArrayOf(
+        314,54, 314,169, 332,169, 332,142, 340,134, 343,136, 349,145,
+        353,149, 368,169, 390,169, 355,123, 364,112, 388,87, 365,87,
+        364,89, 344,109, 344,110, 334,120, 332,119, 332,54
+    )
 )
 
 @Composable
-private fun IntroBLogo(scale: Float, blueAlpha: Float) {
-    Canvas(
-        modifier = Modifier
-            .width((50f * scale).dp)
-            .height((69f * scale).dp),
-    ) {
-        val sx = size.width / 135f
-        val sy = size.height / 182f
-        val mark = Path().apply {
-            for (index in introBOutline.indices step 2) {
-                val x = introBOutline[index] * sx
-                val y = introBOutline[index + 1] * sy
-                if (index == 0) moveTo(x, y) else lineTo(x, y)
+private fun ApprovedVideoWordmark(scale: Float, blueAlpha: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier.width((145f * scale).dp).height((64f * scale).dp)) {
+        val sx = size.width / 391f
+        val sy = size.height / 171f
+        referenceWordmarkContours.forEach { coordinates ->
+            val outline = Path().apply {
+                coordinates.forEachIndexed { index, c ->
+                    if (index % 2 == 0) {
+                        val x = c.toFloat() * sx
+                        val y = coordinates[index + 1].toFloat() * sy
+                        if (index == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                }
+                close()
             }
-            close()
+            drawPath(outline, Color.White)
         }
-        drawPath(mark, Color.White)
-        // Exact placement and blue tone from the preview's brand-eye.
         drawCircle(
-            color = Color(0xFF236BF5).copy(alpha = blueAlpha),
-            radius = 19f * sx,
-            center = Offset(64.7f * sx, 113.5f * sy),
+            Color(0xFF236BF5).copy(alpha = blueAlpha),
+            radius = 18.25f * sx,
+            center = Offset(63f * sx, 111f * sy),
         )
     }
 }
