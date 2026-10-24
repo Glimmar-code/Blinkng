@@ -140,6 +140,10 @@ as $$
     from public.profiles p
    where length(trim(coalesce(p_query,''))) between 1 and 40
      and p.onboarding_completed is true
+     and not exists (
+       select 1 from public.user_settings settings
+       where settings.user_id = p.id and settings.private_account is true
+     )
      and nullif(trim(p.username),'') is not null
      and (
        lower(p.username) like '%' || lower(trim(p_query)) || '%'
@@ -162,7 +166,7 @@ grant execute on function public.blink_referrer_suggestions(text,integer,integer
 
 -- Only actual confirmed referrals count; a visibility advantage decays after 30 days.
 create or replace function public.blink_referral_dashboard()
-returns table(total_referrals bigint, active_referrals bigint, visibility_bonus integer, visibility_label text)
+returns table(total_referrals bigint, active_referrals bigint, visibility_points integer, visibility_label text)
 language sql stable security invoker set search_path = ''
 as $$
   with stats as (
@@ -206,6 +210,10 @@ as $$
     from public.profiles p cross join viewer v
     left join active a on a.referrer_user_id = p.id
     where p.id <> v.id and p.onboarding_completed is true
+      and not exists (
+        select 1 from public.user_settings settings
+        where settings.user_id = p.id and settings.private_account is true
+      )
       and nullif(trim(p.username),'') is not null
       and (v.university is null or v.university = '' or p.university = v.university)
       and not exists (
