@@ -186,6 +186,11 @@ fun runBlinkDesktopApplication() = application {
     LaunchedEffect(Unit) { appState.initialize() }
 
     LaunchedEffect(appState.session?.userId) {
+        if (appState.session?.userId != null)
+            runCatching { appState.client.dispatchConfirmedReferralPushes() }
+    }
+
+    LaunchedEffect(appState.session?.userId) {
         incomingCall = null
         lastNotifiedCallId = null
         while (appState.session != null) {
