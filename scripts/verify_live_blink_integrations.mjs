@@ -193,6 +193,20 @@ await diagnose('Canonical www host redirects to apex','https://www.blink.com.ng/
    &&new URL(loc,'https://www.blink.com.ng/').origin===site;
  }catch{return false;}
 });
+// Search Console reported these four historical www redirect errors on Oct 16–17.
+// Verify the exact paths, not just the host root, without falsely requiring
+// Google to index a redirecting www URL.
+for(const slug of ['faq','features','about','privacy']){
+ await diagnose('Google Search Console www /'+slug+'/ canonical redirect',
+  'https://www.blink.com.ng/'+slug+'/',(res,loc)=>{
+   try{
+    const target=new URL(loc,'https://www.blink.com.ng/'+slug+'/');
+    return [301,302,307,308].includes(res.status)
+      &&target.origin===site &&target.pathname==='/'+slug+'/'
+      &&!target.search &&!target.hash;
+   }catch{return false;}
+  });
+}
 await diagnose('HTTP redirects to canonical HTTPS','http://blink.com.ng/',(res,loc)=>{
  try{
   return [301,302,307,308].includes(res.status)
@@ -200,6 +214,10 @@ await diagnose('HTTP redirects to canonical HTTPS','http://blink.com.ng/',(res,l
  }catch{return false;}
 });
 await diagnose('Missing page returns actual HTTP 404',site+'/seo-verification-nonexistent-page-20261024',(res)=>res.status===404);
+// This legacy URL is absent from the approved sitemap and must not become a
+// soft-404 homepage. A real 404 is correct unless a genuine replacement exists.
+await diagnose('Obsolete /index2.html remains a real 404',
+ site+'/index2.html',(res)=>res.status===404);
 console.log(JSON.stringify({checksPassed:checks.length,checksFailed:fail.length,advisoryWarnings:warnings.length,publicOnly:true}));
 
 if(fail.length){console.error('Public-integration failures:',fail.join(' | '));process.exitCode=1;}
