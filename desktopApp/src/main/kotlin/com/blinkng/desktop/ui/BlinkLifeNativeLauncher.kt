@@ -23,7 +23,8 @@ internal object BlinkLifeNativeLauncher {
         if (!executable.isFile || !File(gameProject, "project.godot").isFile) return false
 
         return runCatching {
-            ProcessBuilder(executable.absolutePath, "--path", gameProject.absolutePath)
+            ProcessBuilder(executable.absolutePath, "--path", gameProject.absolutePath,
+                "--", "--blink-transport=wss")
                 .directory(gameProject)
                 .start()
             true

@@ -2,7 +2,7 @@
  * BLINK LIFE dedicated server join ticket.
  * This function does not modify balances, houses, auth identities or wallets.
  * Only authenticated BLINK users may request 90-second server tickets.
- * Deploy only after staging checks and a dedicated Godot host are configured.
+ * Only issue encrypted WSS destinations. Never return a raw UDP endpoint\n * because the signed ticket would otherwise travel without confidentiality.\n * Deploy only after staging checks and a dedicated Godot TLS host are configured.
  */
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       port,
       ticket: `${unsigned}.${signature}`,
       expires_at: expires,
-      transport: "enet_udp",
+      transport: "wss",
     });
   } catch (_error) {
     return answer({ error: "SESSION_ISSUER_UNAVAILABLE" }, 503);
