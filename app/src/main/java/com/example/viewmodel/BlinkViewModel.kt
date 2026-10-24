@@ -49,6 +49,7 @@ import com.example.util.safeInt
 import com.example.util.safeString
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
@@ -282,6 +283,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingRepostPostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private var chatUiForeground = false
+    private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var syncJob: Job? = null
     // An inbox visit must never refetch the entire feed, Market and Connect payload.
     private var inboxEntryJob: Job? = null
@@ -1160,6 +1164,71 @@ private suspend fun restoreSupabaseSession() {
      * Never replace the local list outright: doing so erases visible chat history
      * and optimistic/offline messages whenever a realtime summary event arrives.
      */
+    private fun strongestReceipt(existing: MessageStatus, incoming: MessageStatus): MessageStatus =
+        MessageStatus.valueOf(BlinkDeliveryReceipt.strongest(existing.name, incoming.name))
+
+    private fun sameMessageTime(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        if (a == b) return true
+        return runCatching {
+            java.time.OffsetDateTime.parse(a).toInstant() ==
+                java.time.OffsetDateTime.parse(b).toInstant()
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Fetch only a visible inbox row's latest receipt with the membership-scoped
+     * Supabase RPC. This does not load the chat or mark anything as read.
+     * Cache briefly so Compose recomposition/scrolling cannot flood the backend.
+     */
+    fun refreshVisibleInboxReceipt(conversationId: String, expectedTimestamp: String) {
+        if (conversationId.isBlank() || conversationId.startsWith("local_")) return
+        val snapshot = _uiState.value
+        val owner = snapshot.myProfile.id
+        if (owner.isBlank() || !snapshot.isOnline) return
+        val key = "$owner:$conversationId:$expectedTimestamp"
+        val now = SystemClock.elapsedRealtime()
+        val previous = inboxReceiptFetchedAt[key]
+        if (previous != null && now - previous in 0 until 45_000L) return
+        if (!inboxReceiptInFlight.add(key)) return
+        inboxReceiptFetchedAt[key] = now
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val receipt = chatRepository.fetchLatestConversationReceipt(conversationId)
+                withContext(Dispatchers.Main) {
+                    val latest = _uiState.value
+                    if (latest.myProfile.id != owner) return@withContext
+                    val updated = latest.conversations.map { conversation ->
+                        if (conversation.id != conversationId ||
+                            !sameMessageTime(conversation.lastMessageRawTime, expectedTimestamp)
+                        ) return@map conversation
+                        if (receipt == null ||
+                            !sameMessageTime(conversation.lastMessageRawTime, receipt.createdAt)
+                        ) return@map conversation
+                        val incoming = receipt.outgoingStatus
+                        val status = if (incoming != null &&
+                            conversation.lastReceiptMessageId == receipt.messageId &&
+                            conversation.lastOutgoingStatus != null
+                        ) strongestReceipt(conversation.lastOutgoingStatus, incoming) else incoming
+                        conversation.copy(
+                            lastOutgoingStatus = status,
+                            lastReceiptMessageId = receipt.messageId
+                        )
+                    }
+                    if (updated != latest.conversations) {
+                        _uiState.value = latest.copy(conversations = updated)
+                        persistConversations()
+                    }
+                }
+            } catch (e: Exception) {
+                // An offline/error state is not evidence of delivery or reading.
+                Log.w(TAG, "Inbox receipt could not be refreshed", e)
+            } finally {
+                inboxReceiptInFlight.remove(key)
+            }
+        }
+    }
+
     private fun mergeConversationSummaries(
         summaries: List<ChatConversation>,
         local: List<ChatConversation>
@@ -1170,7 +1239,14 @@ private suspend fun restoreSupabaseSession() {
                 val cached = local.firstOrNull {
                     it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
                 }
-                summary.copy(messages = cached?.messages?.toMutableList() ?: mutableListOf())
+                summary.copy(
+                    messages = cached?.messages?.toMutableList() ?: mutableListOf(),
+                    lastOutgoingStatus = cached?.lastOutgoingStatus
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) },
+                    lastReceiptMessageId = cached?.lastReceiptMessageId
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) }
+                        .orEmpty()
+                )
             }
 
         val localOnly = local.filter { cached ->
@@ -4298,6 +4374,19 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Mark as read only while the chat is genuinely visible in the foreground. */
+    fun setChatUiForeground(isForeground: Boolean) {
+        chatUiForeground = isForeground
+        val current = _uiState.value
+        val partner = current.activeConversationPartner
+        if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
+            (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
+            viewModelScope.launch {
+                runCatching { chatRepository.markConversationRead(partner) }
+            }
+        }
+    }
+
     fun openChatWithUser(username: String, sellerName: String? = null, sellerAvatar: String? = null) {
         val clean = username.trim().removePrefix("@")
         if (clean.isBlank() || clean.equals("null", true)) {
@@ -4474,7 +4563,13 @@ private suspend fun restoreSupabaseSession() {
                     // Server rows win for matching IDs so delivery/read status is refreshed.
                     page.forEach { message ->
                         val key = message.id.ifBlank { "server:${message.rawTimestamp}:${message.text}" }
-                        merged[key] = message.copy(conversationId = resolvedConversationId)
+                        val cached = merged[key]
+                        merged[key] = message.copy(
+                            conversationId = resolvedConversationId,
+                            status = cached?.let { strongestReceipt(it.status, message.status) }
+                                ?: message.status,
+                            isRead = message.isRead || cached?.isRead == true
+                        )
                     }
                     val messages = merged.values
                         .sortedWith(compareBy<ChatMessage> { it.rawTimestamp.ifBlank { "9999" } }.thenBy { it.id })
@@ -4497,7 +4592,11 @@ private suspend fun restoreSupabaseSession() {
             // Make the merged page durable before acknowledging it to the server.
             persistConversationsNow()
             runCatching { chatRepository.ackPendingDeliveries() }
-            if (!older && _uiState.value.chatPrivacySettings.sendReadReceipts) {
+            // Read only after this chat is actively visible, never merely hydrated.
+            if (!older && chatUiForeground &&
+                _uiState.value.chatPrivacySettings.sendReadReceipts &&
+                (_uiState.value.selectedTab == MainTab.MESSAGES || _uiState.value.isConversationFullScreen) &&
+                _uiState.value.activeConversationPartner.equals(partnerUsername, ignoreCase = true)) {
                 runCatching { chatRepository.markConversationRead(partnerUsername) }
             }
         } catch (e: Exception) {
@@ -5280,7 +5379,7 @@ private suspend fun restoreSupabaseSession() {
 
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
-            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
+            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message, event.eventType)
             is RealtimeEvent.ConversationPresenceEvent -> {
                 val myId = _uiState.value.myProfile.id
                 if (event.userId.isNotBlank() && event.userId != myId && event.conversationId.isNotBlank()) {
@@ -5610,7 +5709,7 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
-    private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
+    private fun handleIncomingRealtimeMessage(msg: ChatMessage, eventType: String) {
         val myId = supabaseService.getCurrentUserId().orEmpty()
         val isMine = msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)
         if (isMine) {
@@ -5620,13 +5719,27 @@ private suspend fun restoreSupabaseSession() {
                 var messageChanged = false
                 val messages = conversation.messages.map { existing ->
                     if (existing.id == msg.id && msg.id.isNotBlank()) {
-                        messageChanged = true
-                        existing.copy(status = msg.status, isRead = msg.isRead)
+                        val status = strongestReceipt(existing.status, msg.status)
+                        if (status != existing.status || msg.isRead != existing.isRead) messageChanged = true
+                        existing.copy(status = status, isRead = existing.isRead || msg.isRead)
                     } else existing
                 }.toMutableList()
-                if (messageChanged) {
+                // Realtime receipts also update the inbox if this conversation was
+                // never opened and its message page is not loaded.
+                val latestOutgoing = conversation.id == msg.conversationId &&
+                    conversation.lastMessageRawTime.isNotBlank() &&
+                    sameMessageTime(conversation.lastMessageRawTime, msg.rawTimestamp)
+                val newStatus = if (latestOutgoing) {
+                    conversation.lastOutgoingStatus?.let { strongestReceipt(it, msg.status) } ?: msg.status
+                } else conversation.lastOutgoingStatus
+                if (messageChanged || (latestOutgoing &&
+                    (newStatus != conversation.lastOutgoingStatus || msg.id != conversation.lastReceiptMessageId))) {
                     changed = true
-                    conversation.copy(messages = messages)
+                    conversation.copy(
+                        messages = messages,
+                        lastOutgoingStatus = newStatus,
+                        lastReceiptMessageId = if (latestOutgoing) msg.id else conversation.lastReceiptMessageId
+                    )
                 } else conversation
             }
             if (changed) {
@@ -5636,6 +5749,9 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
+        // Delivery/read UPDATEs are not new incoming messages: never increment
+        // unread count, show another alert or overwrite last-message summaries.
+        if (!eventType.equals("INSERT", ignoreCase = true)) return
         viewModelScope.launch {
             if (msg.id.isNotBlank()) {
                 runCatching { chatRepository.markMessageDelivered(msg.id) }
@@ -5679,7 +5795,9 @@ private suspend fun restoreSupabaseSession() {
             )
 
             val latest = _uiState.value
-            val active = latest.activeConversationPartner?.equals(partner, true) == true
+            val active = chatUiForeground &&
+                (latest.selectedTab == MainTab.MESSAGES || latest.isConversationFullScreen) &&
+                latest.activeConversationPartner?.equals(partner, true) == true
             val conversations = latest.conversations.toMutableList()
             val index = conversations.indexOfFirst {
                 it.id == conversationId || it.partnerUsername.equals(partner, true)
@@ -5698,6 +5816,8 @@ private suspend fun restoreSupabaseSession() {
                     lastMessageTime = enriched.timestamp,
                     lastMessageRawTime = enriched.rawTimestamp,
                     unreadCount = if (active) 0 else old.unreadCount + 1,
+                    lastOutgoingStatus = null,
+                    lastReceiptMessageId = enriched.id,
                     messages = messages.distinctBy { it.id }.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList()
                 )
             } else {
@@ -5719,6 +5839,8 @@ private suspend fun restoreSupabaseSession() {
                         lastMessageTime = enriched.timestamp,
                         lastMessageRawTime = enriched.rawTimestamp,
                         unreadCount = if (active) 0 else 1,
+                        lastOutgoingStatus = null,
+                        lastReceiptMessageId = enriched.id,
                         messages = mutableListOf(enriched)
                     )
                 )
@@ -5761,8 +5883,12 @@ private suspend fun restoreSupabaseSession() {
 
     private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
         val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
-        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList()) }
-        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
+        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList(),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id) }
+        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id))
         _uiState.value = _uiState.value.copy(conversations = conversations)
         persistConversations()
     }
@@ -5785,7 +5911,9 @@ private suspend fun restoreSupabaseSession() {
                     lastMessage = newMsg.text,
                     lastMessageTime = newMsg.timestamp,
                     lastMessageRawTime = newMsg.rawTimestamp,
-                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId))
+                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId)),
+                    lastOutgoingStatus = if (newMsg.isFromMe) newMsg.status else null,
+                    lastReceiptMessageId = newMsg.id
                 )
             )
             _uiState.value = state.copy(conversations = conversations)
@@ -5808,6 +5936,8 @@ private suspend fun restoreSupabaseSession() {
             lastMessage = normalized.text,
             lastMessageTime = normalized.timestamp,
             lastMessageRawTime = normalized.rawTimestamp,
+            lastOutgoingStatus = if (normalized.isFromMe) normalized.status else null,
+            lastReceiptMessageId = normalized.id,
             messages = messages.distinctBy { it.id.ifBlank { "${it.rawTimestamp}:${it.text}" } }
                 .sortedBy { it.rawTimestamp.ifBlank { "9999" } }
                 .toMutableList()

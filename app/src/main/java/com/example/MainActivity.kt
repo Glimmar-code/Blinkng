@@ -483,6 +483,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.setChatUiForeground(true)
         playInAppUpdateCoordinator.onResume()
         startBugShakeListener()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
@@ -511,6 +512,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        viewModel.setChatUiForeground(false)
         // Save the exact navigation surface before Android backgrounds or kills the task.
         try {
             viewModel.persistResumePoint()
@@ -1668,7 +1670,10 @@ fun MainAppContent(
                         onGameClick = { feedUtilitySheet = "game" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
-                        isLoading = uiState.isConversationsLoading
+                        isLoading = uiState.isConversationsLoading,
+                        onVisibleInboxReceipt = { id, timestamp ->
+                            viewModel.refreshVisibleInboxReceipt(id, timestamp)
+                        }
                     )
                 }
             }

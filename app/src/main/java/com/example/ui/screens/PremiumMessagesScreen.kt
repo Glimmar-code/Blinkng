@@ -249,7 +249,8 @@ fun PremiumMessagesScreen(
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -336,7 +337,8 @@ fun PremiumMessagesScreen(
                             hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
-                            isDark = isDark
+                            isDark = isDark,
+                            onVisibleInboxReceipt = onVisibleInboxReceipt
                         )
                     }
 
@@ -661,7 +663,8 @@ private fun PremiumMessagesHome(
     hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
-    isDark: Boolean
+    isDark: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
@@ -718,6 +721,7 @@ private fun PremiumMessagesHome(
         onOpenSettings = onOpenAppearance,
         isConnected = isConnected,
         isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
+        onVisibleInboxReceipt = onVisibleInboxReceipt,
         filterContent = {
             MessageInboxTabs(
                 selected = inboxTab,

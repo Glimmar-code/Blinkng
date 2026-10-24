@@ -337,7 +337,9 @@ data class ChatConversation(
     val inboxCategory: String = "primary",
     val notificationMode: String = "all",
     val muteUntil: String? = null,
-    val presenceLabel: String = ""
+    val presenceLabel: String = "",
+    val lastOutgoingStatus: MessageStatus? = null,
+    val lastReceiptMessageId: String = ""
 )
 
 data class ChatPrivacySettings(
