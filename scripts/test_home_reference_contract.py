@@ -15,6 +15,7 @@ POST = (ROOT / "app/src/main/java/com/example/ui/components/PostCard.kt").read_t
 NAV = (ROOT / "app/src/main/java/com/example/ui/components/FloatingBottomBar.kt").read_text()
 ITEMS = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkItemsScreen.kt").read_text()
 MAIN = (ROOT / "app/src/main/java/com/example/MainActivity.kt").read_text()
+DESKTOP = (ROOT / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt").read_text()
 
 
 def method_body(code: str, start: str, end: str) -> str:
@@ -85,6 +86,19 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', POST)
         self.assertIn('authorUniversity.trim().ifBlank', POST)
         self.assertIn('onOpenPost?.invoke()', POST)
+
+    def test_windows_feed_follows_social_action_and_views_hierarchy(self):
+        start = DESKTOP.index("internal fun DesktopFeedPostCard(")
+        footer = DESKTOP.index("// Five social actions first;", start)
+        end = DESKTOP.index("} else {\\n                val primaryMetrics", footer)
+        contents = DESKTOP[footer:end]
+        order = ('IconButton(onClick = onLike)', 'IconButton(onClick = onComments)',
+                 'IconButton(onClick = onRepost)', 'IconButton(onClick = onBookmark)',
+                 'TextButton(onClick = onCopyLink)')
+        starts = [contents.index(icon) for icon in order]
+        self.assertEqual(starts, sorted(starts))
+        self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', DESKTOP)
 
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
