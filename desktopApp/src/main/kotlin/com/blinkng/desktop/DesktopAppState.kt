@@ -24,6 +24,7 @@ class DesktopAppState(
         private set
     var selectedRoute by mutableStateOf("home")
     var globalSearch by mutableStateOf("")
+    var showNewStudentSuggestions by mutableStateOf(false)
     var busy by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
@@ -54,6 +55,7 @@ class DesktopAppState(
     ) = authAction {
         session = client.signUp(email, password, username, fullName, university, accountType, referrerId)
         loadAuthenticatedState()
+        showNewStudentSuggestions = true
     }
 
     suspend fun signInWithGoogle() = authAction {
