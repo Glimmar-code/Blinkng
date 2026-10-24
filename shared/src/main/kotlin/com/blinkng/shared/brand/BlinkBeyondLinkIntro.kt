@@ -3,46 +3,53 @@ package com.blinkng.shared.brand
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * BLINK's approved 6.4-second "…beyond link" -> "blink" launch sequence.
+ * BLINK's approved 6.4-second "...beyond link" -> "blink" intro.
  *
- * This is one shared Compose animation for Android and Windows: pure black,
- * moving three dots, collapsing "eyond", and the white lowercase b with its
- * blue dot. No network, video decoder or auth/session wait is required.
+ * A single cache-backed draw node replaces nine relayout/recomposition-heavy
+ * text/width nodes and repeated per-frame Path construction. This is rendered
+ * directly in Compose: no MP4/video decoder, I/O, or network on the draw path.
+ * Original frame timings and traced white/blue logo geometry are unchanged.
  */
 const val BLINK_INTRO_DURATION_MS = 6_400
 
-private fun fraction(time: Float, from: Int, to: Int): Float =
-    ((time - from) / (to - from).toFloat()).coerceIn(0f, 1f)
+/** Pure timeline values shared with inexpensive tests (not coupled to FPS). */
+internal fun introFraction(timeMs: Float, fromMs: Int, untilMs: Int): Float =
+    ((timeMs - fromMs) / (untilMs - fromMs).toFloat()).coerceIn(0f, 1f)
+
+internal val introLetterExitTimings = listOf(
+    1_950 to 2_240,
+    2_080 to 2_340,
+    2_190 to 2_450,
+    2_460 to 2_920,
+    2_640 to 3_160,
+)
 
 @Composable
 fun BlinkBeyondLinkIntro(
@@ -51,90 +58,138 @@ fun BlinkBeyondLinkIntro(
 ) {
     val latestOnFinished by rememberUpdatedState(onFinished)
     val timeline = remember { Animatable(0f) }
+    val textMeasurer = rememberTextMeasurer(cacheSize = 0)
+
     LaunchedEffect(Unit) {
         timeline.animateTo(1f, tween(BLINK_INTRO_DURATION_MS, easing = LinearEasing))
         latestOnFinished()
     }
 
-    val time = timeline.value * BLINK_INTRO_DURATION_MS
-    // Timings measured against frames of the approved 6.4 s landscape preview.
-    val appear = fraction(time, 230, 560)
-    val dotsExit = fraction(time, 1_230, 2_070)
-    val firstFade = 1f - fraction(time, 3_000, 3_570)
-    val blinkReveal = fraction(time, 2_870, 3_550)
-
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .semantics { contentDescription = "Beyond link. BLINK." },
-        contentAlignment = Alignment.Center,
+        modifier = modifier.fillMaxSize().background(Color.Black)
+            .semantics { contentDescription = "Beyond link. BLINK." }
     ) {
-        // Scale within the available width; no fixed screen resolution assumed.
         val scale = (maxWidth.value / 390f).coerceIn(0.72f, 1.55f)
-        // A logo behaves like artwork: accessibility font settings must not
-        // double the word width and clip it on a compact phone.
         val fontCompensation = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val textSize = (33f * scale / fontCompensation).sp
-        val initialHeight = (59f * scale).dp
 
-        Row(
-            modifier = Modifier.alpha(appear * firstFade),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .width((50f * scale * (1f - dotsExit)).dp)
-                    .height(initialHeight)
-                    .clipToBounds(),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = "...",
-                    fontSize = textSize,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .offset(x = (-26f * scale * dotsExit).dp)
-                        .alpha(1f - dotsExit),
-                )
-            }
-            Text("b", fontSize = textSize, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-            // In the reference, e/y/o vanish first, briefly leaving "bnd link",
-            // then n/d disappear as "blink" resolves. Collapse each glyph, not
-            // one whole "eyond" strip, so intermediate frames remain legible.
-            val exitTimes = listOf(1_950 to 2_240, 2_080 to 2_340,
-                2_190 to 2_450, 2_460 to 2_920, 2_640 to 3_160)
-            "eyond".forEachIndexed { index, character ->
-                val (from, to) = exitTimes[index]
-                val disappearance = fraction(time, from, to)
-                Box(
-                    modifier = Modifier
-                        .width((20f * scale * (1f - disappearance)).dp)
-                        .height(initialHeight)
-                        .clipToBounds(),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Text(
-                        text = character.toString(),
-                        fontSize = textSize,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        modifier = Modifier.alpha(1f - disappearance),
-                    )
+        // Only draws are invalidated on an animation frame. Font layout and
+        // traced path coordinates are cached until the viewport changes.
+        Spacer(Modifier.fillMaxSize().drawWithCache {
+            val style = TextStyle(
+                color = Color.White,
+                fontSize = textSize,
+                fontWeight = FontWeight.Bold
+            )
+            val cells = listOf("...", "b", "e", "y", "o", "n", "d", " link")
+                .map { textMeasurer.measure(text = it, style = style, softWrap = false, maxLines = 1) }
+            val dotsWidth = (50f * scale).dp.toPx()
+            val cellWidth = (20f * scale).dp.toPx()
+            val dotsShift = (26f * scale).dp.toPx()
+            val wordmarkWidth = (145f * scale).dp.toPx()
+            val wordmarkHeight = (64f * scale).dp.toPx()
+            val logoShift = (11f * scale).dp.toPx()
+            val sx = wordmarkWidth / 391f
+            val sy = wordmarkHeight / 171f
+            val whitePaths = referenceWordmarkContours.map { coordinates ->
+                Path().apply {
+                    for (index in coordinates.indices step 2) {
+                        val x = coordinates[index] * sx
+                        val y = coordinates[index + 1] * sy
+                        if (index == 0) moveTo(x, y) else lineTo(x, y)
+                    }
+                    close()
                 }
             }
-            Text(" link", fontSize = textSize, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-        }
 
-        ApprovedVideoWordmark(
-            scale = scale,
-            blueAlpha = fraction(time, 3_260, 3_630),
-            modifier = Modifier.alpha(blinkReveal)
-                .offset(x = (11f * scale * (1f - blinkReveal)).dp),
-        )
+            onDrawBehind {
+                // Read this animation state in draw, never in composition/cache.
+                val nowMs = timeline.value * BLINK_INTRO_DURATION_MS
+                val appear = introFraction(nowMs, 230, 560)
+                val dotsExit = introFraction(nowMs, 1_230, 2_070)
+                val firstFade = 1f - introFraction(nowMs, 3_000, 3_570)
+                val blinkReveal = introFraction(nowMs, 2_870, 3_550)
+                val blueAlpha = introFraction(nowMs, 3_260, 3_630)
+                val initialAlpha = appear * firstFade
+                // No per-frame lists/arrays: the five original exit windows
+                // retain their exact timings without allocating at 60/120 FPS.
+                val exit0 = introFraction(nowMs, 1_950, 2_240)
+                val exit1 = introFraction(nowMs, 2_080, 2_340)
+                val exit2 = introFraction(nowMs, 2_190, 2_450)
+                val exit3 = introFraction(nowMs, 2_460, 2_920)
+                val exit4 = introFraction(nowMs, 2_640, 3_160)
+
+                // Original Row widths: 50dp dots + actual b width + five
+                // 20dp character cells + actual " link" width (scaled).
+                val activeDotsWidth = dotsWidth * (1f - dotsExit)
+                val activeLettersWidth = cellWidth * (
+                    5f - exit0 - exit1 - exit2 - exit3 - exit4
+                )
+                val totalWidth = activeDotsWidth + cells[1].size.width +
+                    activeLettersWidth + cells[7].size.width
+                var left = (size.width - totalWidth) / 2f
+                val baselineCenter = size.height / 2f
+
+                if (initialAlpha > 0f) {
+                    if (activeDotsWidth > 0f) {
+                        clipRect(left = left, right = left + activeDotsWidth) {
+                            drawText(cells[0],
+                                topLeft = Offset(left - dotsShift * dotsExit,
+                                    baselineCenter - cells[0].size.height / 2f),
+                                alpha = initialAlpha * (1f - dotsExit)
+                            )
+                        }
+                    }
+                    left += activeDotsWidth
+                    drawText(cells[1],
+                        topLeft = Offset(left, baselineCenter - cells[1].size.height / 2f),
+                        alpha = initialAlpha
+                    )
+                    left += cells[1].size.width
+                    for (index in 0 until 5) {
+                        val exit = when (index) {
+                            0 -> exit0
+                            1 -> exit1
+                            2 -> exit2
+                            3 -> exit3
+                            else -> exit4
+                        }
+                        val availableWidth = cellWidth * (1f - exit)
+                        if (availableWidth > 0f) {
+                            clipRect(left = left, right = left + availableWidth) {
+                                drawText(cells[index + 2],
+                                    topLeft = Offset(left,
+                                        baselineCenter - cells[index + 2].size.height / 2f),
+                                    alpha = initialAlpha * (1f - exit)
+                                )
+                            }
+                        }
+                        left += availableWidth
+                    }
+                    drawText(cells[7],
+                        topLeft = Offset(left, baselineCenter - cells[7].size.height / 2f),
+                        alpha = initialAlpha
+                    )
+                }
+
+                if (blinkReveal > 0f) {
+                    val wordmarkLeft = (size.width - wordmarkWidth) / 2f +
+                        logoShift * (1f - blinkReveal)
+                    val wordmarkTop = (size.height - wordmarkHeight) / 2f
+                    withTransform({ translate(left = wordmarkLeft, top = wordmarkTop) }) {
+                        whitePaths.forEach {
+                            drawPath(it, Color(0xFFF9FAFD), alpha = blinkReveal)
+                        }
+                        drawCircle(
+                            color = Color(0xFF1E66F9),
+                            radius = 18.25f * sx,
+                            center = Offset(63f * sx, 111f * sy),
+                            alpha = blinkReveal * blueAlpha
+                        )
+                    }
+                }
+            }
+        })
     }
 }
 
@@ -173,28 +228,3 @@ private val referenceWordmarkContours = listOf(
     )
 )
 
-@Composable
-private fun ApprovedVideoWordmark(scale: Float, blueAlpha: Float, modifier: Modifier = Modifier) {
-    Canvas(modifier.width((145f * scale).dp).height((64f * scale).dp)) {
-        val sx = size.width / 391f
-        val sy = size.height / 171f
-        referenceWordmarkContours.forEach { coordinates ->
-            val outline = Path().apply {
-                coordinates.forEachIndexed { index, c ->
-                    if (index % 2 == 0) {
-                        val x = c.toFloat() * sx
-                        val y = coordinates[index + 1].toFloat() * sy
-                        if (index == 0) moveTo(x, y) else lineTo(x, y)
-                    }
-                }
-                close()
-            }
-            drawPath(outline, Color(0xFFF9FAFD))
-        }
-        drawCircle(
-            Color(0xFF1E66F9).copy(alpha = blueAlpha),
-            radius = 18.25f * sx,
-            center = Offset(63f * sx, 111f * sy),
-        )
-    }
-}
