@@ -71,14 +71,20 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('authorUniversity: String', POST)
         self.assertIn('Icons.Default.MoreVert', POST)
         self.assertIn('onDoubleTapLike = if (xFeedStyle) onLike else null', POST)
-        a = POST.index('// Five-action reference rail;')
-        b = POST.index('if (displayImages.isEmpty())', a)
+        a = POST.index('// Like remains visible for every post,')
+        b = POST.index('} else {', a)
         footer = POST[a:b]
-        order = ('Icons.Default.Visibility', 'Icons.Default.Repeat',
-                 'Icons.Default.ChatBubbleOutline', 'Icons.Default.Bookmark',
-                 'Icons.Default.Share')
+        order = ('Icons.Default.FavoriteBorder',
+                 'Icons.Default.ChatBubbleOutline', 'Icons.Default.Repeat',
+                 'Icons.Default.BookmarkBorder', 'Icons.Default.Share')
         starts = [footer.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
+        self.assertNotIn('Icons.Default.Visibility', footer)
+        self.assertIn('value = if (post.hideLikes) null else formatNumber(post.likes)', footer)
+        self.assertIn('text = "${formatNumber(displayedViewsCount)} views"', footer)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', POST)
+        self.assertIn('authorUniversity.trim().ifBlank', POST)
+        self.assertIn('onOpenPost?.invoke()', POST)
 
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
