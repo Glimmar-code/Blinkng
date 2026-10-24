@@ -8,6 +8,7 @@ on:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
@@ -21,6 +22,7 @@ on:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
@@ -40,6 +42,9 @@ jobs:
 
       - name: BLINK official domain, SEO, routes and APK alias
         run: python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
 
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs
