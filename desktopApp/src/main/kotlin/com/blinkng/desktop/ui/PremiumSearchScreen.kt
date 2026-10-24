@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -229,6 +230,13 @@ private fun DesktopSearchCore(
         )
     }
     val scope = rememberCoroutineScope()
+    var referralRecommendations by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var followedSuggestions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var referralFollowError by remember { mutableStateOf(false) }
+    LaunchedEffect(state.session?.userId) {
+        if (state.session?.userId != null)
+            referralRecommendations = runCatching { state.client.referralRecommendations() }.getOrDefault(emptyList())
+    }
 
     fun rememberSearch(value: String) {
         val valueToStore = value.trim()
@@ -461,6 +469,44 @@ private fun DesktopSearchCore(
                                     modifier = Modifier.size(30.dp),
                                 ) { Icon(Icons.Rounded.Close, "Remove", modifier = Modifier.size(15.dp)) }
                             }
+                        }
+                    }
+                    if (referralRecommendations.isNotEmpty()) {
+                        item { DesktopSearchSection(
+                            "Discover students on BLINK",
+                            "Referral growth can improve discovery; following is always your choice.",
+                        ) }
+                        items(referralRecommendations, key = { "referral:" + it.id }) { person ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.Person, null, modifier = Modifier.size(22.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(person.fullName.ifBlank { person.username },
+                                            fontWeight = FontWeight.Bold)
+                                        Text("@${person.username} · ${person.university.orEmpty()}",
+                                            fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    TextButton(
+                                        enabled = person.id !in followedSuggestions,
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching { state.client.followBack(person.id) }
+                                                    .onSuccess { followedSuggestions = followedSuggestions + person.id }
+                                                    .onFailure { referralFollowError = true }
+                                            }
+                                        },
+                                    ) { Text(if (person.id in followedSuggestions) "Following" else "Follow") }
+                                }
+                            }
+                        }
+                        if (referralFollowError) item {
+                            Text("Couldn't follow right now. Please try again.",
+                                color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
                     if (discoveryTrending.isNotEmpty()) {
