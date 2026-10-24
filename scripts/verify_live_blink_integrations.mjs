@@ -83,12 +83,23 @@ if(verifyStaticSource){
    const suffix='blink_source_rev='+expectedPublishedCommit+'&attempt='+attempt;
    const mismatches=[];
    for(const [source,url] of publishedAssets){
-    const expected=sha256(readFileSync(new URL('../'+source,import.meta.url),'utf8'));
+    const expectedText=readFileSync(new URL('../'+source,import.meta.url),'utf8');
+    const expected=sha256(expectedText);
     try{
      const path=url+(url.includes('?')?'&':'?')+suffix;
      const {body}=await get(path);
      const actual=sha256(body);
-     if(actual!==expected)mismatches.push(source+': expected '+expected.slice(0,12)+' received '+actual.slice(0,12));
+     if(actual!==expected){
+      mismatches.push(source+': expected '+expected.slice(0,12)+' received '+actual.slice(0,12));
+      if(attempt===0){
+       const limit=Math.min(expectedText.length,body.length);
+       let at=0;while(at<limit&&expectedText[at]===body[at])at++;
+       console.warn('INFO public static mismatch '+source+
+        ' localLength='+expectedText.length+' liveLength='+body.length+' firstDifferent='+at+
+        ' localSnippet='+JSON.stringify(expectedText.slice(Math.max(0,at-20),at+60))+
+        ' liveSnippet='+JSON.stringify(body.slice(Math.max(0,at-20),at+60)));
+      }
+     }
     }catch(e){mismatches.push(source+': '+String(e.message).slice(0,110));}
    }
    if(!mismatches.length){
