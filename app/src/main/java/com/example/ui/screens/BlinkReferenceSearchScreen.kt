@@ -72,6 +72,7 @@ internal fun BlinkReferenceSearchScreen(
     serverPosts: List<FeedPost>,
     marketItems: List<MarketItem>,
     currentUsername: String,
+    myProfile: UserProfile,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
@@ -161,7 +162,7 @@ internal fun BlinkReferenceSearchScreen(
         ) }.take(30)
     }
     val marketById = remember(marketItems) { marketItems.associateBy { it.id } }
-    val currentProfile = allProfiles.firstOrNull { it.username.equals(currentUsername, true) }
+    val currentProfile = myProfile.takeIf { it.id.isNotBlank() } ?: allProfiles.firstOrNull { it.username.equals(currentUsername, true) }
     val localPeople = remember(allProfiles, query) {
         allProfiles.filter {
             query.isBlank() || it.fullName.contains(query, true) ||
