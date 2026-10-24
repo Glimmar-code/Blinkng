@@ -9,7 +9,7 @@ mkdir -p "$OUT"
 TMP_JPEG="$(mktemp "${RUNNER_TEMP:-/tmp}/blink-icon.XXXXXX")"
 trap 'rm -f "$TMP_JPEG"' EXIT
 APPROVED_ICON="$OUT/AppIcon-1024.png"
-APPROVED_ICON_SHA256="cc986e2faabb39ebdfc41e349a4b277bba1d872fdf4f50ea39996c7ce94a7ab8"
+APPROVED_ICON_SHA256="9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
 if [[ -s "$APPROVED_ICON" ]]; then
   ACTUAL_SHA256="$(shasum -a 256 "$APPROVED_ICON" | cut -d " " -f 1)"
   if [[ "$ACTUAL_SHA256" == "$APPROVED_ICON_SHA256" ]]; then

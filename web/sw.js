@@ -1,4 +1,4 @@
-const CACHE='blink-web-v10-logo-display-fix';
+const CACHE='blink-web-v12-owner-approved-logo';
 const SHELL=[
   './',
   './index.html',
@@ -11,6 +11,13 @@ const SHELL=[
   './blink-icon.svg',
   './blink-logo.png',
   './blink-logo-v2.png',
+  './favicon.ico',
+  './favicon-32.png',
+  './apple-touch-icon.png',
+  './pwa-192.png',
+  './pwa-512.png',
+  './maskable-512.png',
+  './og-blink.png',
   './manifest.webmanifest'
 ];
 
