@@ -101,37 +101,37 @@ end $$;
 update public.blink_referrals
   set confirmed_at=now()-interval '11 days'
   where referred_user_id='00000000-0000-0000-0000-000000000002';
-do $
+do $$
 declare total bigint; points integer; badge text;
 begin
   select total_referrals, visibility_points, achievement_tier into total, points, badge
   from public.blink_referral_dashboard();
   if total<>1 or points<>2 or badge<>'Starter'
   then raise exception 'Day 11 fade must retain permanent achievement: %, %, %',total,points,badge; end if;
-end $;
+end $$;
 
 update public.blink_referrals
   set confirmed_at=now()-interval '21 days'
   where referred_user_id='00000000-0000-0000-0000-000000000002';
-do $
+do $$
 declare total bigint; points integer;
 begin
   select total_referrals, visibility_points into total, points from public.blink_referral_dashboard();
   if total<>1 or points<>1
   then raise exception 'Day 21 must have 1 point and still 1 lifelong referral: %, %', total, points; end if;
-end $;
+end $$;
 
 update public.blink_referrals
   set confirmed_at=now()-interval '31 days'
   where referred_user_id='00000000-0000-0000-0000-000000000002';
-do $
+do $$
 declare total bigint; active bigint; points integer; badge text;
 begin
   select total_referrals, active_referrals, visibility_points, achievement_tier
   into total, active, points, badge from public.blink_referral_dashboard();
   if total<>1 or active<>0 or points<>0 or badge<>'Starter'
   then raise exception 'Day 31 expiry cannot erase badge: %, %, %, %',total,active,points,badge; end if;
-end $;
+end $$;
 
 -- One NEW confirmation refreshes the temporary advantage, without resetting
 -- the old account's earned lifetime credit.
@@ -142,17 +142,17 @@ values (
 );
 insert into public.profiles(id,username,full_name,university,onboarding_completed)
 values ('00000000-0000-0000-0000-000000000006','gamma','Gamma Newcomer','FUTA',false);
-do $
+do $$
 declare total bigint; active bigint; points integer;
 begin
   select total_referrals, active_referrals, visibility_points into total,active,points
   from public.blink_referral_dashboard();
   if total<>2 or active<>1 or points<>3
   then raise exception 'New referral must replenish fading visibility: %, %, %',total,active,points; end if;
-end $;
+end $$;
 
 -- Test durable milestone tiers independent of the temporary 30-day score.
-do $
+do $$
 declare expected record; actual_tier text; next_target integer;
 begin
   for expected in
@@ -177,7 +177,7 @@ begin
   -- Restore the real synthetic aggregate after the tier table test.
   update public.blink_referral_achievements set confirmed_referrals=2
     where user_id='00000000-0000-0000-0000-000000000001';
-end $;
+end $$;
 
 -- RLS must hide other people's referrals; clients cannot directly forge referral rows.
 set role authenticated;
@@ -206,10 +206,10 @@ delete from public.notifications
 where actor_id='00000000-0000-0000-0000-000000000002';
 delete from auth.users where id='00000000-0000-0000-0000-000000000002';
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
-do $
+do $$
 declare total bigint;
 begin
   select total_referrals into total from public.blink_referral_dashboard();
   if total<>2 then raise exception 'Deleting a referred account erased lifetime badge progress: %',total; end if;
-end $;
+end $$;
 select 'BLINK Refer & Grow permanent achievements + fading visibility checks passed' as result;
