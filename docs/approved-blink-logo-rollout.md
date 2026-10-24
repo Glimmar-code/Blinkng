@@ -10,6 +10,14 @@
 - No production/main change until screenshots, builds and real runtime checks pass.
 - Hosted vendor dashboards, published stores, search indexing and users' installed APKs cannot be updated just by changing repository files.
 
+## October 24 implementation progress
+
+- Prepared the verified 99-export logo pack and binary-only GitHub asset overlay from the exact uploaded master (available in the ChatGPT conversation, **not yet committed as binaries to this PR**).
+- The installer now validates 99 exports, copies all categories into `branding/approved/exports/` and stages launcher, adaptive foreground, Android monochrome notification, web/PWA/social, Windows and iOS assets.
+- Configured Windows EXE/MSI packaging to use the approved `.ico` when present.
+- Configured iOS release icon preparation to preserve the SHA-256-verified official 1024px icon instead of replacing it with a newly converted icon.
+- Source-only integration commits have been pushed to the draft PR. They are not evidence of the logo being installed on any live client.
+
 ## Installation
 
 1. From the provided **BLINK_Official_Logo_Pack.zip**, extract `BLINK_Official_Logo_Pack/` outside the repository.
