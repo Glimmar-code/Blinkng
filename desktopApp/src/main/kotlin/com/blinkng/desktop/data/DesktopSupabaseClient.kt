@@ -179,6 +179,24 @@ class DesktopSupabaseClient(
             }
         }
 
+    suspend fun referralRecommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_referral_recommendations",
+            JSONObject().put("p_limit", 10),
+            "return=representation",
+        )
+        (0 until rows.length()).map { i ->
+            val person = rows.getJSONObject(i)
+            BlinkReferralSuggestion(
+                id = person.getString("id"),
+                username = person.getString("username"),
+                fullName = person.optString("full_name"),
+                avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
+                university = person.optString("university").takeIf(String::isNotBlank),
+            )
+        }
+    }
+
     suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
         val rows = postArray("/rest/v1/rpc/blink_referral_dashboard", JSONObject(), "return=representation")
         val row = rows.optJSONObject(0) ?: return@withContext BlinkReferralStats()
