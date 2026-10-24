@@ -1571,12 +1571,57 @@ private fun PremiumChatDetail(
                 EmojiRail(palette = palette, onEmoji = { text += it })
             }
 
+            if (recording != null || recordedFile != null) {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(1.dp, palette.border),
+                    modifier = Modifier.fillMaxWidth().testTag("chat_voice_recording_panel")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Mic, null, tint = palette.accent)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (recording != null) "Recording ${recordingSeconds}s / 120s"
+                            else "Voice note • ${readyDuration / 1000}s",
+                            color = palette.textPrimary,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1
+                        )
+                        if (recording != null) {
+                            IconButton(onClick = { finishRecording(true) }) {
+                                Icon(Icons.Default.Check, contentDescription = "Finish recording", tint = palette.accent)
+                            }
+                            IconButton(onClick = { finishRecording(false) }) {
+                                Icon(Icons.Default.Close, contentDescription = "Discard voice note", tint = palette.textSecondary)
+                            }
+                        } else {
+                            IconButton(onClick = {
+                                recordedFile?.delete()
+                                recordedFile = null
+                            }) {
+                                Icon(Icons.Default.Close, contentDescription = "Discard voice note", tint = palette.textSecondary)
+                            }
+                            IconButton(onClick = {
+                                recordedFile?.let { file ->
+                                    recordedFile = null
+                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration)
+                                }
+                            }) {
+                                Icon(Icons.Default.Send, contentDescription = "Send voice note", tint = palette.accent)
+                            }
+                        }
+                    }
+                }
+            }
             MessageComposer(
                 value = text,
                 onValueChange = { text = it },
                 palette = palette,
                 onAttachment = { showAttachmentSheet = true },
-                onDictation = startDictation,
+                onDictation = startVoiceNote,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
                 onQuickLike = { submitMessage("👍") }
@@ -1703,9 +1748,27 @@ private fun PremiumChatDetail(
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
+            onImage = {
+                showAttachmentSheet = false
+                imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"))
+            },
             onVideo = {
                 showAttachmentSheet = false
-                videoPicker.launch("video/*")
+                videoPicker.launch(arrayOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp"))
+            },
+            onVoice = startVoiceNote,
+            onDocument = {
+                showAttachmentSheet = false
+                documentPicker.launch(arrayOf(
+                    "application/pdf", "text/plain", "text/csv",
+                    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ))
+            },
+            onDictation = {
+                showAttachmentSheet = false
+                startDictation()
             },
             onDismiss = { showAttachmentSheet = false }
         )
