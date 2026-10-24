@@ -652,6 +652,7 @@ class MainActivity : ComponentActivity() {
                         // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
                             if (uiState.viewingProfile != null ||
+                                uiState.isMenuOpen ||
                                 (uiState.activeConversationPartner != null &&
                                     (uiState.selectedTab == MainTab.MESSAGES || uiState.isConversationFullScreen))
                             ) {
