@@ -1576,7 +1576,11 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -3114,8 +3118,10 @@ private fun MessageComposer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            // The chat root consumes overlapping IME/navigation-bar insets.
+            // Applying navigationBarsPadding here would create a second gap.
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("chat_message_composer")
     ) {
         Surface(
             color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),

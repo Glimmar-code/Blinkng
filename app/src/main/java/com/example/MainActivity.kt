@@ -701,6 +701,13 @@ class MainActivity : ComponentActivity() {
                             uiState.destination == AppDestination.SIGN_UP ->
                             WindowInsets(0, 0, 0, 0)
                         homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
+                        uiState.destination == AppDestination.MAIN &&
+                            uiState.activeConversationPartner != null &&
+                            (uiState.selectedTab == MainTab.MESSAGES ||
+                                uiState.isConversationFullScreen) ->
+                            // The full chat owns nav-bar + IME padding. The root
+                            // Scaffold must not also insert a bottom safe-area band.
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
                         routeManagesTopInset -> WindowInsets.safeDrawing.only(
                             WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
                         )
