@@ -90,7 +90,7 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_windows_feed_follows_social_action_and_views_hierarchy(self):
         start = DESKTOP.index("internal fun DesktopFeedPostCard(")
         footer = DESKTOP.index("// Five social actions first;", start)
-        end = DESKTOP.index("} else {\\n                val primaryMetrics", footer)
+        end = DESKTOP.index("} else {\n                val primaryMetrics", footer)
         contents = DESKTOP[footer:end]
         order = ('IconButton(onClick = onLike)', 'IconButton(onClick = onComments)',
                  'IconButton(onClick = onRepost)', 'IconButton(onClick = onBookmark)',
