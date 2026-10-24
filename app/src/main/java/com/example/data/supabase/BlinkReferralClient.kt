@@ -71,6 +71,9 @@ object BlinkReferralClient {
             activeLast30Days = row.optLong("active_referrals"),
             visibilityPoints = row.optInt("visibility_points"),
             visibilityLabel = row.optString("visibility_label", "Normal discovery"),
+            achievementTier = row.optString("achievement_tier", "New member"),
+            nextAchievementTarget = if (row.isNull("achievement_next_target"))
+                null else row.optInt("achievement_next_target", 1),
         )
     }
 
