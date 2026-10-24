@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,11 +34,13 @@ class HomeReferenceInteractionsTest {
                 CreatePostFab(expanded = true, onClick = { createCount++ })
             }
         }
+        // The Create button is a single action, never a speed-dial menu.
         composeRule.onNodeWithTag("create_post_fab").assertIsDisplayed().performClick()
-        composeRule.onNodeWithTag("create_post_action").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, createCount) }
+        composeRule.onNodeWithTag("create_post_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_ai_fab").assertDoesNotExist()
         composeRule.onNodeWithTag("create_post_fab").performClick()
-        composeRule.onNodeWithTag("blink_ai_fab").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(2, createCount) }
     }
 
     @Test fun realPostActionsRemainClickableWithReferenceFooter() {
