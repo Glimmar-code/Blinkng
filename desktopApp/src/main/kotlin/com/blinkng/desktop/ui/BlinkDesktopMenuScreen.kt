@@ -82,7 +82,7 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                             when (destination) {
                                 BlinkMenuDestination.PROFILE -> onNavigate("profile")
                                 BlinkMenuDestination.LEADERBOARD -> onNavigate("leaderboard")
-                                BlinkMenuDestination.WALLET -> onNavigate("profile")
+                                BlinkMenuDestination.WALLET -> onNavigate("wallet")
                                 BlinkMenuDestination.NOTIFICATIONS -> onNavigate("notifications")
                                 BlinkMenuDestination.SAVED -> onNavigate("profile")
                                 BlinkMenuDestination.VERIFICATION -> onNavigate("profile")
