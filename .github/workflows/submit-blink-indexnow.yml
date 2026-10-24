@@ -1,0 +1,44 @@
+name: Notify Bing IndexNow of changed public BLINK pages
+
+on:
+  workflow_run:
+    workflows: ["Deploy Blink web"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bootstrap_all_public_urls:
+        description: "Notify IndexNow about all nine approved public pages (only when needed)"
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blink-indexnow-public
+  cancel-in-progress: false
+
+jobs:
+  notify-indexnow:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the deployed main revision, not an unreviewed PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify IndexNow URL eligibility before network actions
+        run: node scripts/test_blink_indexnow.mjs
+      - name: Notify IndexNow only after key and public pages are live
+        env:
+          BLINK_INDEXNOW_BOOTSTRAP_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap_all_public_urls && '1' || '0' }}
+        run: node scripts/submit_blink_indexnow.mjs
