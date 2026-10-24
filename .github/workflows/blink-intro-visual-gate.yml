@@ -38,6 +38,8 @@ jobs:
           cd app/src/test/screenshots
           for size in 320 412 600; do
             test -s "intro-${size}dp.png"
+            test -s "intro-${size}dp-start.png"
+            test -s "intro-${size}dp-transition.png"
           done
           if cmp -s intro-320dp.png intro-600dp.png; then
             echo "::error::Narrow and tablet intro snapshots are identical; verify viewport qualifiers."
