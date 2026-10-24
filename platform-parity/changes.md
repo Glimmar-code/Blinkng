@@ -1,3 +1,10 @@
+## 2026-10-24 — PARITY-EXCEPTION: android-cold-start-brand-route
+
+- PR #515 repairs an Android Activity/ViewModel timing bug: restored sessions may leave the SPLASH destination before its Composable renders, skipping the approved shared intro. Android now overlays the already-shared intro on the root Activity for one cold launch and prevents intro-time tap-through.
+- **Why Android-only:** Windows already overlays exactly the same shared intro during its own process launch in `DesktopShell.kt`, and it has no Android Activity SPLASH destination or ViewModel race to repair. The closest Windows equivalent (a once-per-process startup overlay) is already implemented in Testlab PR #509; shared animation remains unchanged.
+- Android's splash route now performs normal fast session handoff beneath the independent overlay. No Windows UI/behavior change is required.
+- Visual frame screenshots (320/412/600dp) and launch-path verification remain required before production promotion.
+
 ## 2026-10-24 — BLINK Search reference screenshot review and action parity (Phase 4)
 
 - **Real screenshot evidence:** Reviewed CI-generated `search-reference-light.png`, `search-reference-dark.png` and `search-reference-320dp-font200.png` for the previous Search candidate. Dark and light mode were distinct and category layout matched the reference direction. The 320dp/200% capture exposed a People-name/Follow-button collision and a two-line Recent searches header; approval withheld.
