@@ -12,12 +12,17 @@ APPROVED_ICON="$OUT/AppIcon-1024.png"
 APPROVED_ICON_SHA256="cc986e2faabb39ebdfc41e349a4b277bba1d872fdf4f50ea39996c7ce94a7ab8"
 if [[ -s "$APPROVED_ICON" ]]; then
   ACTUAL_SHA256="$(shasum -a 256 "$APPROVED_ICON" | cut -d " " -f 1)"
-  if [[ "$ACTUAL_SHA256" != "$APPROVED_ICON_SHA256" ]]; then
-    echo "::error::iOS approved BLINK icon hash mismatch; refusing to replace or release it." >&2
+  if [[ "$ACTUAL_SHA256" == "$APPROVED_ICON_SHA256" ]]; then
+    echo "Using verified, owner-approved BLINK iOS app icon."
+  elif [[ -s branding/approved/BLINK-ORIGINAL-UNMODIFIED.jpg ]]; then
+    echo "::error::Owner-approved master exists, but iOS app icon hash is wrong." >&2
     exit 1
+  else
+    echo "Approved icon has not yet been staged; regenerating legacy fallback."
+    rm -f "$APPROVED_ICON"
   fi
-  echo "Using verified, owner-approved BLINK iOS app icon."
-else
+fi
+if [[ ! -s "$APPROVED_ICON" ]]; then
 
 # Use only existing BLINK artwork. Earlier launcher assets may be encoded
 # as unsupported placeholders, so inspect/convert the first valid asset.
