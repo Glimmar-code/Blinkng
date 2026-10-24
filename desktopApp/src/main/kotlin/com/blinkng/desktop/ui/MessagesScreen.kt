@@ -268,219 +268,26 @@ fun MessagesScreen(state: DesktopAppState) {
         label = "desktop_chat_slide"
     ) { active ->
     if (active == null) {
-        val filtered = remember(conversations, query, inbox) {
-            conversations.filter {
-                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
-                    BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
-            }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
-        }
-        val important = remember(conversations) {
-            conversations.filter { !it.isArchived && it.requestStatus != "pending" }.sortedWith(
-                compareByDescending<DesktopConversation> { it.isOnline }
-                    .thenByDescending { it.lastMessageAt.orEmpty() }
-            ).take(6)
-        }
-
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
-            ) {
-                Text(
-                    "B L I N K",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 22.sp,
-                    modifier = Modifier.align(Alignment.CenterStart)
-                )
-                Row(modifier = Modifier.align(Alignment.CenterEnd)) {
-                    IconButton(onClick = { inboxShowSearch = !inboxShowSearch; if (!inboxShowSearch) query = "" }) {
-                        Icon(Icons.Rounded.Search, contentDescription = "Search messages")
-                    }
-                    IconButton(onClick = { scope.launch { loadConversations() } }) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
-                    }
-                }
-            }
-
-            if (inboxShowSearch) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    placeholder = { Text("Search messages") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp, bottom = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = {
-                    inboxShowAll = !inboxShowAll
-                    inbox = if (inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY
-                }) {
-                    Text(if (inboxShowAll) "Close" else "See all")
-                }
-            }
-
-            if (important.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 18.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(important, key = { "important_${it.id}" }) { conversation ->
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(76.dp).clickable {
-                                error = null
-                                selected = conversation
-                            }
-                        ) {
-                            PresenceAvatar(
-                                name = conversation.title,
-                                isOnline = if (conversation.isGroup) null else conversation.isOnline,
-                                size = 48.dp
-                            )
-                            Text(
-                                conversation.title,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 5.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider()
-            if (inboxShowAll) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BlinkMessageInbox.entries.forEach { tab ->
-                        FilterChip(selected = inbox == tab, onClick = { inbox = tab },
-                            label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
-                    }
-                }
-            }
-
-            error?.let {
-                Text(
-                    it,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp
-                )
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                if (loading) {
-                    item {
-                        Text(
-                            "Loading conversations…",
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (!loading && filtered.isEmpty()) {
-                    item {
-                        Text(
-                            if (query.isBlank()) "No conversations yet." else "No conversations found.",
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                items(filtered, key = { it.id }) { conversation ->
-                    LaunchedEffect(conversation.id, conversation.lastMessageAt, myUserId, receiptRefreshEpoch) {
-                        val owner = myUserId
-                        if (owner.isNotBlank()) {
-                            val last = runCatching { state.client.fetchLatestMessage(conversation.id) }
-                                .getOrNull()
-                            if (state.session?.userId == owner) {
-                                latestInboxReceipts =
-                                    if (last == null) latestInboxReceipts - conversation.id
-                                    else latestInboxReceipts + (conversation.id to last)
-                            }
-                        }
-                    }
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            error = null
-                            selected = conversation
-                        },
-                        shape = RoundedCornerShape(0.dp),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PresenceAvatar(
-                                name = conversation.title,
-                                isOnline = if (conversation.isGroup) null else conversation.isOnline,
-                                size = 46.dp
-                            )
-                            Spacer(Modifier.width(11.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
-                                    fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
-                                    maxLines = 1)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val latest = latestInboxReceipts[conversation.id]
-                                    if (!conversation.isGroup && latest != null && latest.senderId == myUserId) {
-                                        val receipt = when {
-                                            latest.readAt != null || latest.isRead -> "READ"
-                                            latest.deliveredAt != null -> "DELIVERED"
-                                            else -> "SENT"
-                                        }
-                                        Text(
-                                            com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
-                                            fontSize = 12.sp,
-                                            color = if (receipt == "READ") Color(0xFF3B82F6)
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(end = 5.dp)
-                                        )
-                                    }
-                                    Text(
-                                        conversation.lastMessage.ifBlank {
-                                            if (conversation.isGroup) "Group conversation"
-                                            else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
-                                        },
-                                        fontSize = 13.sp, maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            if (conversation.unreadCount > 0 || conversation.markedUnread) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                ) {
-                                    Text(
-                                        if (conversation.unreadCount > 0) conversation.unreadCount.coerceAtMost(99).toString() else "•",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.background,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                        HorizontalDivider(modifier = Modifier.padding(start = 77.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                    }
-                }
-            }
-        }
+        DesktopInboxPanel(
+            state = state,
+            conversations = conversations,
+            query = query,
+            inbox = inbox,
+            inboxShowSearch = inboxShowSearch,
+            inboxShowAll = inboxShowAll,
+            loading = loading,
+            error = error,
+            myUserId = myUserId,
+            receiptRefreshEpoch = receiptRefreshEpoch,
+            latestInboxReceipts = latestInboxReceipts,
+            onReceiptsChange = { latestInboxReceipts = it },
+            onSelect = { conversation -> error = null; selected = conversation },
+            onQueryChange = { query = it },
+            onSearchVisibleChange = { inboxShowSearch = it },
+            onShowAllChange = { inboxShowAll = it },
+            onInboxChange = { inbox = it },
+            onRefresh = { scope.launch { loadConversations() } },
+        )
         return@AnimatedContent
     }
 
@@ -1151,6 +958,247 @@ fun MessagesScreen(state: DesktopAppState) {
         )
     }
     }
+}
+
+/**
+ * Separate the inbox from the full chat surface to prevent the Windows Kotlin
+ * compiler from transforming one enormous Compose lambda. State and network
+ * ownership remain with MessagesScreen and are passed via callbacks.
+ */
+@Composable
+private fun DesktopInboxPanel(
+    state: DesktopAppState,
+    conversations: List<DesktopConversation>,
+    query: String,
+    inbox: BlinkMessageInbox,
+    inboxShowSearch: Boolean,
+    inboxShowAll: Boolean,
+    loading: Boolean,
+    error: String?,
+    myUserId: String,
+    receiptRefreshEpoch: Int,
+    latestInboxReceipts: Map<String, DesktopMessage>,
+    onReceiptsChange: (Map<String, DesktopMessage>) -> Unit,
+    onSelect: (DesktopConversation) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSearchVisibleChange: (Boolean) -> Unit,
+    onShowAllChange: (Boolean) -> Unit,
+    onInboxChange: (BlinkMessageInbox) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val filtered = remember(conversations, query, inbox) {
+        conversations.filter {
+            BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
+                BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
+        }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
+    }
+    val important = remember(conversations) {
+        conversations.filter { !it.isArchived && it.requestStatus != "pending" }.sortedWith(
+            compareByDescending<DesktopConversation> { it.isOnline }
+                .thenByDescending { it.lastMessageAt.orEmpty() }
+        ).take(6)
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
+        ) {
+            Text(
+                "B L I N K",
+                fontWeight = FontWeight.Black,
+                fontSize = 22.sp,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+            Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "Search messages")
+                }
+                IconButton(onClick = { onRefresh() }) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
+                }
+            }
+        }
+
+        if (inboxShowSearch) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                placeholder = { Text("Search messages") },
+                singleLine = true,
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = {
+                onShowAllChange(!inboxShowAll)
+                onInboxChange(if (!inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY)
+            }) {
+                Text(if (inboxShowAll) "Close" else "See all")
+            }
+        }
+
+        if (important.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(important, key = { "important_${it.id}" }) { conversation ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(76.dp).clickable {
+                            onSelect(conversation)
+                        }
+                    ) {
+                        PresenceAvatar(
+                            name = conversation.title,
+                            isOnline = if (conversation.isGroup) null else conversation.isOnline,
+                            size = 48.dp
+                        )
+                        Text(
+                            conversation.title,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 5.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider()
+        if (inboxShowAll) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BlinkMessageInbox.entries.forEach { tab ->
+                    FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
+                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                }
+            }
+        }
+
+        error?.let {
+            Text(
+                it,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            if (loading) {
+                item {
+                    Text(
+                        "Loading conversations…",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (!loading && filtered.isEmpty()) {
+                item {
+                    Text(
+                        if (query.isBlank()) "No conversations yet." else "No conversations found.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            items(filtered, key = { it.id }) { conversation ->
+                LaunchedEffect(conversation.id, conversation.lastMessageAt, myUserId, receiptRefreshEpoch) {
+                    val owner = myUserId
+                    if (owner.isNotBlank()) {
+                        val last = runCatching { state.client.fetchLatestMessage(conversation.id) }
+                            .getOrNull()
+                        if (state.session?.userId == owner) {
+                            onReceiptsChange(
+                                if (last == null) latestInboxReceipts - conversation.id
+                                else latestInboxReceipts + (conversation.id to last)
+                            )
+                        }
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onSelect(conversation)
+                    },
+                    shape = RoundedCornerShape(0.dp),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PresenceAvatar(
+                            name = conversation.title,
+                            isOnline = if (conversation.isGroup) null else conversation.isOnline,
+                            size = 46.dp
+                        )
+                        Spacer(Modifier.width(11.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
+                                fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
+                                maxLines = 1)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val latest = latestInboxReceipts[conversation.id]
+                                if (!conversation.isGroup && latest != null && latest.senderId == myUserId) {
+                                    val receipt = when {
+                                        latest.readAt != null || latest.isRead -> "READ"
+                                        latest.deliveredAt != null -> "DELIVERED"
+                                        else -> "SENT"
+                                    }
+                                    Text(
+                                        com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
+                                        fontSize = 12.sp,
+                                        color = if (receipt == "READ") Color(0xFF3B82F6)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(end = 5.dp)
+                                    )
+                                }
+                                Text(
+                                    conversation.lastMessage.ifBlank {
+                                        if (conversation.isGroup) "Group conversation"
+                                        else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
+                                    },
+                                    fontSize = 13.sp, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (conversation.unreadCount > 0 || conversation.markedUnread) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.onBackground
+                            ) {
+                                Text(
+                                    if (conversation.unreadCount > 0) conversation.unreadCount.coerceAtMost(99).toString() else "•",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.background,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(start = 77.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        }
+    }
+
 }
 
 @Composable
