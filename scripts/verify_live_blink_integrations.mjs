@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {normalizePublicHtml} from './normalize_public_html.mjs';
 
 const site='https://blink.com.ng';
 const supabase='https://jhwgifrlxwspoedxjaly.supabase.co';
@@ -88,17 +89,13 @@ if(verifyStaticSource){
     try{
      const path=url+(url.includes('?')?'&':'?')+suffix;
      const {body}=await get(path);
-     const actual=sha256(body);
+     // Cloudflare's automatic web-analytics beacon is injected after our
+     // published HTML. Strip ONLY that precisely recognized single script.
+     const clean=source.endsWith('.html')?normalizePublicHtml(body,expectedText):body;
+     const actual=sha256(clean);
      if(actual!==expected){
       mismatches.push(source+': expected '+expected.slice(0,12)+' received '+actual.slice(0,12));
-      if(attempt===0){
-       const limit=Math.min(expectedText.length,body.length);
-       let at=0;while(at<limit&&expectedText[at]===body[at])at++;
-       console.warn('INFO public static mismatch '+source+
-        ' localLength='+expectedText.length+' liveLength='+body.length+' firstDifferent='+at+
-        ' localSnippet='+JSON.stringify(expectedText.slice(Math.max(0,at-20),at+60))+
-        ' liveSnippet='+JSON.stringify(body.slice(Math.max(0,at-20),at+60)));
-      }
+
      }
     }catch(e){mismatches.push(source+': '+String(e.message).slice(0,110));}
    }
