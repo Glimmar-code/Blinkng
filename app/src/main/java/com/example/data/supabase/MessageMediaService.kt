@@ -267,6 +267,49 @@ object MessageMediaService {
         }
     }
 
+    /** Convert a page's private references to short-lived signed URLs only
+     * after the server has returned messages in the current conversation. */
+    suspend fun hydrateMediaPage(messages: List<ChatMessage>, conversationId: String):
+        List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty() || SupabaseService.accessToken().isNullOrBlank()) {
+            return@withContext messages
+        }
+        val signedCache = mutableMapOf<String, String?>()
+        messages.map { message ->
+            val kind = when {
+                message.attachedImageUrl != null -> BlinkChatAttachmentKind.IMAGE
+                message.attachedVideoUrl != null -> BlinkChatAttachmentKind.VIDEO
+                message.isVoiceNote -> BlinkChatAttachmentKind.VOICE
+                message.attachedDocumentUrl != null -> BlinkChatAttachmentKind.DOCUMENT
+                else -> null
+            }
+            val reference = when (kind) {
+                BlinkChatAttachmentKind.IMAGE -> message.attachedImageUrl
+                BlinkChatAttachmentKind.VIDEO -> message.attachedVideoUrl
+                BlinkChatAttachmentKind.VOICE -> message.voiceAudioUrl
+                BlinkChatAttachmentKind.DOCUMENT -> message.attachedDocumentUrl
+                else -> null
+            }
+            // Only sign storage references belonging to the opened conversation.
+            val prefix = "$PRIVATE_BUCKET:conversations/$conversationId/users/"
+            val url = when {
+                reference?.startsWith(prefix) == true -> {
+                    val objectPath = reference.removePrefix("$PRIVATE_BUCKET:")
+                    signedCache.getOrPut(objectPath) { signedUrl(objectPath) }
+                }
+                reference?.startsWith("https://") == true -> reference
+                else -> null
+            }
+            when (kind) {
+                BlinkChatAttachmentKind.IMAGE -> message.copy(attachedImageUrl = url)
+                BlinkChatAttachmentKind.VIDEO -> message.copy(attachedVideoUrl = url)
+                BlinkChatAttachmentKind.VOICE -> message.copy(voiceAudioUrl = url)
+                BlinkChatAttachmentKind.DOCUMENT -> message.copy(attachedDocumentUrl = url)
+                null -> message
+            }
+        }
+    }
+
     suspend fun hydrateVideos(
         conversations: List<ChatConversation>
     ): List<ChatConversation> = withContext(Dispatchers.IO) {
