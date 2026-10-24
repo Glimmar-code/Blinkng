@@ -699,6 +699,8 @@ class MainActivity : ComponentActivity() {
                     uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
                 Scaffold(
                     contentWindowInsets = when {
+                        // The intro paints behind both system bars on every device size.
+                        uiState.destination == AppDestination.SPLASH -> WindowInsets(0, 0, 0, 0)
                         // The new profile owns both status and gesture-bar safe
                         // areas; don't reserve another inset in the host scaffold.
                         uiState.destination == AppDestination.MAIN &&
@@ -726,11 +728,7 @@ class MainActivity : ComponentActivity() {
                         )
                         else -> ScaffoldDefaults.contentWindowInsets
                     },
-                    containerColor = if (homeManagesSystemInsets) {
-                        MaterialTheme.colorScheme.background
-                    } else {
-                        MaterialTheme.colorScheme.background
-                    },
+                    containerColor = if (uiState.destination == AppDestination.SPLASH) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
