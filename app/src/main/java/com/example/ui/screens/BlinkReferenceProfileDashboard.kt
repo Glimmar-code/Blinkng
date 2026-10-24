@@ -77,6 +77,8 @@ internal fun BlinkReferenceProfileDashboard(
     onShare: () -> Unit,
     onCopyUsername: () -> Unit,
     onVisitors: () -> Unit,
+    onFollowers: () -> Unit = {},
+    onFollowing: () -> Unit = {},
     onTopAction: (String) -> Unit,
     // Existing Follow → Interact capabilities are surfaced here rather than
     // retaining a second, older profile header below this dashboard.
@@ -476,12 +478,18 @@ internal fun BlinkReferenceProfileDashboard(
                     color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text("Posts", color = muted, fontSize = 10.sp)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier.clickable(onClick = onFollowers),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(NumberFormat.getIntegerInstance().format(profile.followerCount),
                     color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text("Followers", color = muted, fontSize = 10.sp)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier.clickable(onClick = onFollowing),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(NumberFormat.getIntegerInstance().format(profile.followingCount),
                     color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text("Following", color = muted, fontSize = 10.sp)
