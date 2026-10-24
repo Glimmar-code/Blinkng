@@ -1,7 +1,9 @@
 package com.example
 
 import android.app.Application
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
 import com.blinkng.shared.brand.BlinkBeyondLinkIntro
 import com.blinkng.shared.brand.BLINK_INTRO_DURATION_MS
@@ -50,8 +52,17 @@ class BlinkBeyondLinkIntroTest {
         composeRule.setContent {
             BlinkBeyondLinkIntro(onFinished = { finished = true })
         }
+        // This exact B is the ONLY brand mark throughout the transition.
+        // Replacing it with another logo would break this invariant.
+        composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
+            .assertCountEquals(1)
         composeRule.mainClock.advanceTimeBy(3_700)
+        composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
+            .assertCountEquals(1)
         composeRule.onRoot().captureRoboImage(filePath = snapshot)
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.onAllNodesWithTag("blink_intro_brand_b", useUnmergedTree = true)
+            .assertCountEquals(1)
         composeRule.mainClock.advanceTimeBy(BLINK_INTRO_DURATION_MS.toLong() + 200)
         composeRule.runOnIdle { assertTrue("Launch must continue after animation", finished) }
         assertEquals(6_400, BLINK_INTRO_DURATION_MS)
