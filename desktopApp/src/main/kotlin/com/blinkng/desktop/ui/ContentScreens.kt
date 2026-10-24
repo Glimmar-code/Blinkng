@@ -3188,6 +3188,15 @@ fun ProfileScreen(state: DesktopAppState) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        profile.coverPhotoUrl?.takeIf(String::isNotBlank)?.let { cover ->
+                            AsyncImage(
+                                model = cover,
+                                contentDescription = "Profile cover photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(112.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                            )
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             DesktopPremiumAvatarFrame(
                                 catalogIds = premiumCatalogIds,
@@ -3200,12 +3209,18 @@ fun ProfileScreen(state: DesktopAppState) {
                             Column {
                                 VerifiedName(profile.fullName, profile.isVerified, 21.sp)
                                 Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                profile.professionalHeadline?.takeIf(String::isNotBlank)?.let {
+                                    Text(it, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
                                 Text(
                                     desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                     fontSize = 11.sp,
                                     color = if (profile.isOnline) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
+                                Text(listOfNotNull(profile.university, profile.academicLevel, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
+                                if (profile.dailyStreak > 0) {
+                                    Text("🔥 ${profile.dailyStreak} day streak", fontSize = 11.sp)
+                                }
                             }
                         }
                         profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }

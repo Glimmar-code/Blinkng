@@ -416,6 +416,8 @@ fun ProfileScreen(
                         isDark = isDark,
                         isFollowing = isFollowing,
                         followBusy = followBusy,
+                        postCount = userPosts.count { !it.isReel },
+                        profileCompletion = profileCompletion,
                         onAvatarClick = { showAvatarViewer = true },
                         onBack = onBack,
                         onEdit = onEditProfileClick,

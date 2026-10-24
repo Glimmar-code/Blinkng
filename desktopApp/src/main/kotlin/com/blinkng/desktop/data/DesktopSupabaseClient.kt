@@ -310,7 +310,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -1113,6 +1113,33 @@ class DesktopSupabaseClient(
         Unit
     }
 
+    /** One latest message per visible inbox conversation; existing participant RPC enforces membership. */
+    suspend fun fetchLatestMessage(conversationId: String): DesktopMessage? = withContext(Dispatchers.IO) {
+        if (!conversationId.matches(Regex("^[0-9a-fA-F-]{36}$"))) return@withContext null
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_limit", 1).put("p_before", JSONObject.NULL)
+                .put("p_before_id", JSONObject.NULL)
+        )
+        (result as? JSONArray)?.optJSONObject(0)?.let(::parseMessage)
+    }
+
+    suspend fun acknowledgePendingMessageDeliveries(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { postObject("/rest/v1/rpc/ack_pending_message_deliveries", JSONObject()); true }
+            .getOrDefault(false)
+    }
+
+    suspend fun markVisibleConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        val username = partnerUsername.trim()
+        if (username.isBlank()) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/mark_conversation_read",
+                JSONObject().put("p_partner_username", username))
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun fetchMessages(
         conversationId: String,
         beforeCreatedAt: String? = null,
@@ -1736,6 +1763,13 @@ class DesktopSupabaseClient(
         ) as JSONObject
     }
 
+    // Shared receipt semantics with Android, but without changing existing
+    // call sites that consume Paystack's complete JSON response.
+    suspend fun paystackV2ReceiptState(reference: String): com.blinkng.shared.BlinkCheckoutVerificationState =
+        com.blinkng.shared.BlinkCheckoutStatusPolicy.parse(
+            verifyPaystackV2Checkout(reference).optString("status")
+        )
+
     suspend fun verifyPaystackCashOrder(orderId: String): JSONObject = withContext(Dispatchers.IO) {
         require(orderId.isNotBlank()) { "Payment order is missing." }
         postObject(
@@ -1878,6 +1912,9 @@ class DesktopSupabaseClient(
         fullName = row.optString("full_name").ifBlank { row.optString("name").ifBlank { row.optString("username") } },
         username = row.optString("username").ifBlank { row.optString("handle") },
         avatarUrl = row.optNullableString("avatar_url"),
+        coverPhotoUrl = row.optNullableString("cover_photo_url"),
+        professionalHeadline = row.optNullableString("professional_headline"),
+        dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),

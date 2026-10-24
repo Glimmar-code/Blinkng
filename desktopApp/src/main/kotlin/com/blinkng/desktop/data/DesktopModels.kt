@@ -43,6 +43,9 @@ data class DesktopProfile(
     val phone: String? = null,
     val whatsapp: String? = null,
     val presenceVisibility: String = "PUBLIC",
+    val coverPhotoUrl: String? = null,
+    val professionalHeadline: String? = null,
+    val dailyStreak: Int = 0,
 )
 
 data class DesktopProfileFollowerPoint(
