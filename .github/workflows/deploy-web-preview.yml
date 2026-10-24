@@ -137,6 +137,34 @@ jobs:
           python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
           echo "Generated verified Android App Links metadata for BLINK custom domain."
 
+      - name: Stamp public website deployment commit
+        shell: bash
+        env:
+          BLINK_DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          sha = os.environ["BLINK_DEPLOY_SHA"]
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              raise SystemExit("Invalid GitHub deployment commit SHA")
+          Path("web/blink-build.json").write_text(
+              json.dumps({
+                  "application": "BLINK",
+                  "source": "github-pages",
+                  "commit": sha,
+                  "deployedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              }, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          python3 -m json.tool web/blink-build.json >/dev/null
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
@@ -157,6 +185,7 @@ jobs:
           tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './.well-known/assetlinks.json'
           tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './app-ads.txt'
           tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './landing.css'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './blink-build.json'
 
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
