@@ -50,9 +50,9 @@ class DesktopAppState(
 
     suspend fun signUp(
         email: String, password: String, username: String, fullName: String,
-        university: String, accountType: String,
+        university: String, accountType: String, referrerId: String? = null,
     ) = authAction {
-        session = client.signUp(email, password, username, fullName, university, accountType)
+        session = client.signUp(email, password, username, fullName, university, accountType, referrerId)
         loadAuthenticatedState()
     }
 
