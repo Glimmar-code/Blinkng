@@ -458,3 +458,10 @@ Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, n
 - **Backend/behavior:** Android ranked feed requests that hit the specific PostgreSQL statement-timeout condition may make one authenticated first-page chronological fallback through the existing RLS-protected `get_feed_page` RPC. Subsequent pages stay in chronological mode until a new ranked first page succeeds (no cursor mixing). A repository mutex serializes concurrent heavyweight ranking RPCs; unrelated failures and cancellations never trigger fallback. Secondary realtime errors are caught to preserve loaded content.
 - **Windows parity:** No feature or backend contract changed. Windows already uses desktop window sizing rather than Android's status bars, phone width breakpoints and mobile auth/header composition; it continues using the same Supabase feed/post permissions and ranking endpoints. Do not stretch the Android mobile layout onto desktop.
 - **Release gate:** Unit tests for error classification and breakpoints, Android assemble/lint/unit checks, visual capture at 320/360/393/412dp and 100/130/150/200% font scaling, Windows parity, and read-only production timeout monitoring. Production ranking migration is not applied by this patch. This PR alone does not establish the root-cause SQL performance fix.
+
+
+## 2026-10-24 — Beyond Link launch animation (Android + Windows)
+- Added one shared 6.4-second, black-background Compose animation, transitioning `...beyond link` into `blink` with the white lowercase-b logo and blue center dot.
+- Android replaces the existing 120ms SplashScreen with the shared intro and paints its launch window/Scaffold black to avoid light flashes; runs on cold launch, not on every resume or deep-link.
+- Windows uses the same shared animation in an initial window overlay. Both platforms continue normal account/session initialization independently and dismiss the intro on its normal completion.
+- No backend contracts, authentication routes, analytics, permissions, payment flows, or stored data changed. Verify rendering at multiple phone/window sizes and confirm navigation after the intro before production promotion.

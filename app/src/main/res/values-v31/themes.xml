@@ -4,8 +4,10 @@
     <!-- Android 12+ always shows a system splash window before the first app frame.
          Override the default launcher icon so startup shows only Blink branding. -->
     <style name="Theme.MyApplication" parent="android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowSplashScreenBackground">@color/blink_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/app_icon</item>
+        <!-- Start with pure black; Compose animates ...beyond link into the branded b. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/blink_splash_empty</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>
