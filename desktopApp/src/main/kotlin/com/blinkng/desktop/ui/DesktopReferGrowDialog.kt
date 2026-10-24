@@ -33,7 +33,7 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                     Text("Successful referrals: ${it.total}")
                     Text("Active in 30 days: ${it.activeLast30Days}")
                     Text("Visibility level: ${it.visibilityLabel}")
-                    Text("Discovery advantage: up to ${it.bonusPercent}%")
+                    Text("Referral discovery points: ${it.visibilityPoints}")
                 }
                 if (error) Text("Referrals are unavailable until the server update is ready.")
                 Text("Referral visibility increases discovery opportunities, not guaranteed followers.")
