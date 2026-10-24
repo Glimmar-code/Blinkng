@@ -2145,23 +2145,28 @@ fun MainAppContent(
             )
         }
 
-        // Menu → Earning: account-bound earned balances and actual transactions.
+        // Menu → Wallet & Coins: a real full-page destination, not the old Earning sheet.
+        // Account-bound state is loaded from the authenticated store RPC.
         if (showEarning && uiState.myProfile.id.isNotBlank()) {
-            BlinkEarningSheet(
+            BlinkWalletScreen(
                 accountId = uiState.myProfile.id,
-                balance = uiState.blinkCoinBalance,
+                lastKnownBalance = uiState.blinkCoinBalance,
                 dailyStreak = uiState.myProfile.dailyStreak,
                 adsToday = uiState.rewardedAdsToday,
                 policy = uiState.economyPolicy,
                 missions = uiState.dailyMissions,
                 loadingMissions = uiState.isDailyMissionsLoading,
-                onDismiss = { showEarning = false },
+                isDark = uiState.isDarkMode,
+                onBack = { showEarning = false; viewModel.openMenu(true) },
                 onRefresh = { viewModel.refreshProfileRewards() },
                 onClaimMission = { viewModel.claimDailyMission(it) },
                 onWatchOptionalAd = onWatchAdForCoins,
                 onOpenVerification = {
                     showEarning = false
                     viewModel.openGetVerified(true)
+                },
+                onOpenStore = {
+                    context.startActivity(Intent(context, BlinkStoreActivity::class.java))
                 },
             )
         }
