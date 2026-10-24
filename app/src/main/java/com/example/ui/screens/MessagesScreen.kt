@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import com.blinkng.shared.BlinkChatAttachmentKind
 import androidx.compose.runtime.Composable
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
@@ -19,6 +20,7 @@ fun MessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long) -> Unit = { _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -42,6 +44,7 @@ fun MessagesScreen(
         onCloseConversation = onCloseConversation,
         onSendMessage = { partner, text, _ -> onSendMessage(partner, text) },
         onSendVideo = onSendVideo,
+        onSendAttachment = onSendAttachment,
         onRetryMessage = onRetryMessage,
         hasMoreMessages = hasMoreMessages,
         isLoadingOlder = isLoadingOlder,
@@ -69,6 +72,7 @@ fun ChatConversationView(
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
     onSendVideo: (Uri) -> Unit = {},
+    onSendAttachment: (Uri, BlinkChatAttachmentKind, Long) -> Unit = { _, _, _ -> },
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
     isConnected: Boolean = true,
@@ -90,6 +94,7 @@ fun ChatConversationView(
         onCloseConversation = onBack,
         onSendMessage = { _, text, _ -> onSendMessage(text) },
         onSendVideo = { _, uri -> onSendVideo(uri) },
+        onSendAttachment = { _, uri, kind, duration -> onSendAttachment(uri, kind, duration) },
         onRetryMessage = onRetryMessage?.let { retry -> { _, message -> retry(message) } },
         hasMoreMessages = { hasMoreMessages },
         isLoadingOlder = { isLoadingOlder },
