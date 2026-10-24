@@ -639,7 +639,11 @@ class MainActivity : ComponentActivity() {
                     // The main pages paint behind the status bar. Their own headers
                     // apply statusBarsPadding once; keep the bottom/side safe areas
                     // so the floating navigation stays clear of gesture navigation.
-                    contentWindowInsets = if (uiState.destination == AppDestination.MAIN) {
+                    containerColor = if (uiState.destination == AppDestination.SPLASH) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
+                    contentWindowInsets = if (uiState.destination == AppDestination.SPLASH) {
+                        // Full-bleed black behind system bars for the launch video reference.
+                        WindowInsets(0, 0, 0, 0)
+                    } else if (uiState.destination == AppDestination.MAIN) {
                         // The reference profile owns its navigation-bar inset so its
                         // content and bottom bar reach the physical screen edge.
                         // Other main tabs retain their original bottom safe area.
