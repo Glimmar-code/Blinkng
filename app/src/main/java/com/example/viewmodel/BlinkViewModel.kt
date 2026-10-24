@@ -1856,6 +1856,7 @@ private suspend fun restoreSupabaseSession() {
         faculty: String = "",
         university: String = "",
         accountType: String = "",
+        referrerId: String? = null,
     ) {
         if (fullName.trim().length < 2 || username.trim().length < 3) {
             showToast("Enter a valid full name and username."); return
@@ -1883,7 +1884,7 @@ private suspend fun restoreSupabaseSession() {
             try {
                 val result = authRepository.signUpWithEmail(
                     cleanEmail, password, cleanUsername, cleanName,
-                    faculty.trim(), canonicalUniversity, accountType,
+                    faculty.trim(), canonicalUniversity, accountType, referrerId,
                 )
                 if (result.isSuccess && result.userProfile != null) {
                     // Auth database triggers may create the profile before metadata

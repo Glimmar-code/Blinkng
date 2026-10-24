@@ -103,6 +103,7 @@ import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
+import com.blinkng.desktop.ui.DesktopNewStudentSuggestionsDialog
 import com.blinkng.desktop.ui.DesktopPaystackCheckoutPanel
 import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.ConnectScreen
@@ -183,6 +184,11 @@ fun runBlinkDesktopApplication() = application {
     }
 
     LaunchedEffect(Unit) { appState.initialize() }
+
+    LaunchedEffect(appState.session?.userId) {
+        if (appState.session?.userId != null)
+            runCatching { appState.client.dispatchConfirmedReferralPushes() }
+    }
 
     LaunchedEffect(appState.session?.userId) {
         incomingCall = null
@@ -300,6 +306,13 @@ fun runBlinkDesktopApplication() = application {
                                 }
                                 AuthenticatedShell(appState)
                             }
+                        }
+
+                        if (appState.session != null && appState.showNewStudentSuggestions) {
+                            DesktopNewStudentSuggestionsDialog(
+                                state = appState,
+                                onDismiss = { appState.showNewStudentSuggestions = false },
+                            )
                         }
 
                         // Shared guide sequence; Windows uses native dialog and per-account
