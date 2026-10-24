@@ -96,7 +96,7 @@ internal fun BlinkReferenceSearchScreen(
 
     fun rememberQuery(value: String) {
         val clean = value.trim().take(200)
-        if (clean.isBlank()) return
+        if (clean.isBlank() || discovery.privateHistory) return
         recents = (listOf(clean) + recents.filterNot { it.equals(clean, ignoreCase = true) }).take(10)
         prefs.edit().putString(REF_RECENTS_KEY, recents.joinToString(REF_RECENTS_SEPARATOR)).apply()
     }
@@ -133,7 +133,7 @@ internal fun BlinkReferenceSearchScreen(
                 it.author.contains(query, true) || it.tags.any { tag -> tag.contains(query, true) })
         }.take(30)
     }
-    val live = if (discovery.backendAvailable) discovery.results else emptyList()
+    val live = if (discovery.backendAvailable && discovery.query == query && !discovery.isLoading) discovery.results else emptyList()
     val livePeople = live.filter { it.type == DiscoveryResultType.PROFILE }
     val livePosts = live.filter { it.type == DiscoveryResultType.POST }
     val liveMarket = live.filter { it.type == DiscoveryResultType.MARKET_ITEM }
