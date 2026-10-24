@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.data.models.FeedPost
+import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 
 /**
@@ -21,10 +22,15 @@ fun SearchScreen(
     currentUsername: String,
     serverProfiles: List<UserProfile> = emptyList(),
     serverPosts: List<FeedPost> = emptyList(),
+    marketItems: List<MarketItem> = emptyList(),
     isSearching: Boolean = false,
     onSearchQueryChange: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onMarketItemClick: (MarketItem) -> Unit = {},
+    onGameClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     onLikePost: (String) -> Unit = {},
     onCommentPost: (String) -> Unit = {},
     onBookmarkPost: (String) -> Unit = {},
@@ -41,15 +47,20 @@ fun SearchScreen(
             posts = posts,
             serverProfiles = serverProfiles,
             serverPosts = serverPosts,
+            marketItems = marketItems,
             currentUsername = currentUsername,
             onProfileClick = onProfileClick,
             onPostClick = onPostClick,
+            onMarketItemClick = onMarketItemClick,
+            onGameClick = onGameClick,
+            onNotificationsClick = onNotificationsClick,
+            hasUnreadNotifications = hasUnreadNotifications,
             onOpenAdvanced = { showAdvanced = true },
             onBackToHome = onBackToHome,
             isDark = isDark,
         )
     } else {
-    UnifiedPremiumSearchHost(
+        UnifiedPremiumSearchHost(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
@@ -67,6 +78,6 @@ fun SearchScreen(
         onDeletePost = onDeletePost,
         onBackToHome = { showAdvanced = false },
         isDark = isDark,
-    )
+        )
     }
 }
