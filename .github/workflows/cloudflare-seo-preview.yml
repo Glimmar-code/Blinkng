@@ -1,0 +1,29 @@
+name: BLINK Cloudflare SEO preview smoke
+
+on:
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - 'scripts/verify_cloudflare_seo_preview.mjs'
+      - '.github/workflows/cloudflare-seo-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout staged SEO candidate
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect real Cloudflare Pages preview without accessing private data
+        env:
+          BLINK_SEO_PREVIEW_URL: https://testlab-web-seo-foundation-2.blinkng.pages.dev
+        run: node scripts/verify_cloudflare_seo_preview.mjs
