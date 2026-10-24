@@ -25,12 +25,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Storefront
@@ -54,7 +54,7 @@ import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, REELS, MARKET, CONNECT, MESSAGE
+    HOME, REELS, MARKET, CONNECT, MENU
 }
 
 private data class FeedBottomItem(
@@ -69,7 +69,7 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.REELS, Icons.Outlined.SmartDisplay, Icons.Outlined.SmartDisplay, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
     FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
-    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
+    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Outlined.Menu, "Menu")
 )
 
 @Composable
@@ -92,7 +92,7 @@ fun FeedBottomBar(
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
-        currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
+        isMenuOpen -> FeedBottomDestination.MENU
         else -> null
     }
 
@@ -128,14 +128,14 @@ fun FeedBottomBar(
                     selected = selected,
                     isDark = isDark,
                     reduceMotion = reduceMotion,
-                    showUnreadDot = hasUnreadMessages && item.destination == FeedBottomDestination.MESSAGE,
+                    showUnreadDot = hasUnreadMessages && item.destination == FeedBottomDestination.MENU,
                     onClick = {
                         when (item.destination) {
                             FeedBottomDestination.HOME -> onHomeClick()
                             FeedBottomDestination.REELS -> onReelsClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.CONNECT -> onConnectClick()
-                            FeedBottomDestination.MESSAGE -> onMessageClick()
+                            FeedBottomDestination.MENU -> onMenuClick()
                         }
                     }
                 )
