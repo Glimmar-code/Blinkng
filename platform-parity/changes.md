@@ -1,3 +1,10 @@
+## 2026-10-24 — Startup intro optical alignment and startup responsiveness (Testlab candidate)
+
+- **Android + Windows:** Both platforms use `BlinkBeyondLinkIntro` from shared code; no platform-specific clone, auth/session routing change or database modification.
+- **Repair:** Render the approved B with blue dot and LINK vectors in a unified Canvas; baseline-align all five "eyond" letters, reduce the optical oversize of B, remove the original LINK vector's 27-unit left inset, introduce explicit separation between the three dots and the brand B, keep the final BLINK word tightly joined, and make the opening artwork visible on the first Compose frame.
+- **Timing:** Remove the former 230–560ms forced blank fade, streamline from 6.4s to 3.2s with the same ordered collapse, continuous B and one enlarged wordmark.
+- **Evidence:** Robolectric screenshots of first, transition and final frames at 320, 412 and 600 dp must be checked against the requested baseline and optical balance; Android/Windows CI and cold-start real-device smoothness/navigation still must pass. Testlab first, main/published APK unchanged until verified.
+
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
