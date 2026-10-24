@@ -2390,7 +2390,7 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
-                    initialTab = if (isMyProfile && showSavedProfile) 3 else 0,
+                    initialTab = if (isMyProfile && showSavedProfile) 5 else 0,
                     userPosts = profilePosts,
                     isPostsLoading = isProfilePostsLoading,
                     hasPostsLoadError = profilePostsLoadFailed,
