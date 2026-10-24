@@ -51,7 +51,7 @@ def release_snapshot(repository, tag=""):
             not EXPECTED_ASSETS.issubset(names) or
             (extra and "deltas.txt" not in names) or
             len(extra) > 10 or
-            any(not re.fullmatch(r"delta-[1-9][0-9]{0,9}\\.bdp", name)
+            any(not re.fullmatch(r"delta-[1-9][0-9]{0,9}\.bdp", name)
                 for name in extra) or
             (set(names) - EXPECTED_ASSETS != extra | {"deltas.txt"} and
              set(names) != EXPECTED_ASSETS)):
