@@ -1,7 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.data.models.FeedPost
+import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 
 /**
@@ -15,12 +20,18 @@ fun SearchScreen(
     profiles: List<UserProfile>,
     posts: List<FeedPost>,
     currentUsername: String,
+    myProfile: UserProfile = UserProfile(),
     serverProfiles: List<UserProfile> = emptyList(),
     serverPosts: List<FeedPost> = emptyList(),
+    marketItems: List<MarketItem> = emptyList(),
     isSearching: Boolean = false,
     onSearchQueryChange: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onMarketItemClick: (MarketItem) -> Unit = {},
+    onGameClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     onLikePost: (String) -> Unit = {},
     onCommentPost: (String) -> Unit = {},
     onBookmarkPost: (String) -> Unit = {},
@@ -31,7 +42,33 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    UnifiedPremiumSearchHost(
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    if (!showAdvanced) {
+        BlinkReferenceSearchScreen(
+            profiles = profiles,
+            posts = posts,
+            currentUsername = currentUsername,
+            myProfile = myProfile,
+            serverProfiles = serverProfiles,
+            serverPosts = serverPosts,
+            marketItems = marketItems,
+            onProfileClick = onProfileClick,
+            onPostClick = onPostClick,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onSharePost = onSharePost,
+            onBookmarkPost = onBookmarkPost,
+            onOptionsClick = onOptionsClick,
+            onMarketItemClick = onMarketItemClick,
+            onGameClick = onGameClick,
+            onNotificationsClick = onNotificationsClick,
+            hasUnreadNotifications = hasUnreadNotifications,
+            onOpenAdvanced = { showAdvanced = true },
+            onBackToHome = onBackToHome,
+            isDark = isDark,
+        )
+    } else {
+        UnifiedPremiumSearchHost(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
@@ -48,7 +85,8 @@ fun SearchScreen(
         onSharePost = onSharePost,
         onOptionsClick = onOptionsClick,
         onDeletePost = onDeletePost,
-        onBackToHome = onBackToHome,
+        onBackToHome = { showAdvanced = false },
         isDark = isDark,
-    )
+        )
+    }
 }
