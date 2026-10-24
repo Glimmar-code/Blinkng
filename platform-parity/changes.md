@@ -1,3 +1,11 @@
+## 2026-10-24 — Search production candidate resynced with current main after auth upgrade
+
+- Main advanced to d1c559f05d1fa24f19bf9ae88b3bf3354afb7a36 with approved auth routing (PR #503) while the previous Search production candidate PR #504 was open. The prior PR developed a genuine conflict with MainActivity and must not be force-merged.
+- This fresh main-based candidate ports only Search landing, history submission behavior, matching Android/Windows search improvements, Search visual tests, and scoped MainActivity Search callback additions. It keeps the approved auth routes and MainActivity changes intact.
+- Provenance: Search PR #500 was merged into Testlab at fd5dd79b383bb8e920ab9703c7f105b8ffb1cec5; all four post-merge Testlab gates passed.
+- Do not merge to main until all current-head CI is green, runtime behavior verified, and repository-owner production approval is posted exactly as `BLINK APPROVE <PR-head-SHA>` on the active production PR.
+- No backend or production APK deployment performed by the branch creation.
+
 ## 2026-10-24 — Android approved Auth welcome was unreachable in production
 
 - **Root cause:** the approved `BlinkAuthReferenceLanding` was already wired through `OnboardingScreen`, and the Testlab shell used it, but the production `MainActivity` destination still invoked the older dark `BlinkWelcomeScreen`. Passing standalone reference screenshots did not test the production entry route.
