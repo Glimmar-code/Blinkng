@@ -292,13 +292,17 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            if (query.isBlank() && category == ReferenceCategory.ALL && recents.isNotEmpty()) {
+            if (query.isBlank() && category == ReferenceCategory.ALL) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Recent searches", Modifier.weight(1f), color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     TextButton(onClick = {
                         recents = emptyList()
                         prefs.edit().remove(REF_RECENTS_KEY).apply()
                     }) { Text("Clear all", fontSize = 11.sp, color = muted) }
+                }
+                if (recents.isEmpty()) {
+                    Text("Your searches will appear here", fontSize = 11.sp, color = muted,
+                        modifier = Modifier.padding(vertical = 6.dp))
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     items(recents, key = { it.lowercase(Locale.ROOT) }) { term ->
