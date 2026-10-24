@@ -71,7 +71,9 @@ export async function storyConsentVisibilityTests() {
         id uuid primary key default gen_random_uuid(),
         story_id uuid not null, user_id uuid not null
       );
-      grant select,insert,update,delete on all tables in schema public to authenticated;
+      -- Reproduce the excessively broad legacy production grants before fixing them.
+      grant select,insert,update,delete,truncate,trigger,references
+        on all tables in schema public to authenticated;
       alter table public.stories enable row level security;
       create policy select_stories on public.stories for select
         to authenticated using (true);
@@ -118,6 +120,28 @@ export async function storyConsentVisibilityTests() {
     await db.exec(migration);
     await db.exec(migration);
     console.log('PASS consent migration SQL and idempotent replay');
+    const rolePrivs = (await q(`
+      select relname,
+        has_table_privilege('authenticated', oid, 'SELECT') as can_read,
+        has_table_privilege('authenticated', oid, 'TRUNCATE') as can_truncate,
+        has_table_privilege('authenticated', oid, 'TRIGGER') as can_trigger,
+        has_table_privilege('authenticated', oid, 'REFERENCES') as can_reference
+      from pg_class
+      where relnamespace = 'public'::regnamespace
+        and relname in ('stories','story_views','story_likes',
+                        'story_reactions','story_replies')
+      order by relname
+    `)).rows;
+    assert.equal(rolePrivs.length,5);
+    for (const privilege of rolePrivs) {
+      assert.equal(privilege.can_read,true,
+        `${privilege.relname} should remain available for authorized reads`);
+      assert.equal(privilege.can_truncate,false,
+        `${privilege.relname} must never be truncatable by authenticated`);
+      assert.equal(privilege.can_trigger,false);
+      assert.equal(privilege.can_reference,false);
+    }
+    console.log('PASS story table grants keep CRUD but revoke RLS-bypassing TRUNCATE');
 
     await asUser(ids.viewer);
     const visibleViewer = (await q('select id::text from public.stories order by id'))

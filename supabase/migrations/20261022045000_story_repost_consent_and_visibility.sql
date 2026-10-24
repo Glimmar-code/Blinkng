@@ -251,4 +251,13 @@ with check (
     )
 );
 
+-- Authenticated clients have historically been granted TRUNCATE, TRIGGER
+-- and REFERENCES on these tables. TRUNCATE bypasses RLS entirely, and no
+-- BLINK client requires these elevated DDL-adjacent table privileges.
+-- Remove them without changing CRUD or service-role privileges.
+revoke truncate, trigger, references
+on table public.stories, public.story_views, public.story_likes,
+         public.story_reactions, public.story_replies
+from anon, authenticated;
+
 commit;
