@@ -69,7 +69,7 @@ object BlinkReferralClient {
         BlinkReferralStats(
             total = row.optLong("total_referrals"),
             activeLast30Days = row.optLong("active_referrals"),
-            bonusPercent = row.optInt("visibility_bonus"),
+            visibilityPoints = row.optInt("visibility_points"),
             visibilityLabel = row.optString("visibility_label", "Normal discovery"),
         )
     }
