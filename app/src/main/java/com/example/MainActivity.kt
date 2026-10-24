@@ -31,6 +31,7 @@ import com.blinkng.shared.BlinkSwipeNavigation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -530,6 +531,7 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            var showStartupIntro by remember { mutableStateOf(true) }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
@@ -547,7 +549,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val idleHomeForPrompts = uiState.destination == AppDestination.MAIN &&
+            val idleHomeForPrompts = !showStartupIntro && uiState.destination == AppDestination.MAIN &&
                 uiState.selectedTab == MainTab.HOME &&
                 uiState.feedSubTab == 0 &&
                 !uiState.isFeedLoading &&
@@ -635,6 +637,7 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
+                Box(modifier = Modifier.fillMaxSize()) {
                 Scaffold(
                     // The main pages paint behind the status bar. Their own headers
                     // apply statusBarsPadding once; keep the bottom/side safe areas
@@ -871,6 +874,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // This independent overlay prevents fast cached-session restoration from
+                // skipping the animation when the ViewModel leaves SPLASH immediately.
+                if (showStartupIntro) {
+                    com.blinkng.shared.brand.BlinkBeyondLinkIntro(
+                        onFinished = { showStartupIntro = false },
+                        modifier = Modifier.fillMaxSize().zIndex(1000f)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                    )
+                }
+                } // Startup overlay host
             }
         }
 
