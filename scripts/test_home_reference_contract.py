@@ -83,15 +83,21 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
         self.assertEqual(nav.count('FeedBottomItem('), 5)
-        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MENU'):
+        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MESSAGE'):
             self.assertIn(f'FeedBottomDestination.{tag}', nav)
         self.assertIn('hasUnreadMessages', NAV)
-        self.assertIn('FeedBottomDestination.MENU -> onMenuClick()', NAV)
-        # The five-slot Menu redesign moves Messages to an actual Menu route.
+        self.assertIn('FeedBottomDestination.MESSAGE -> onMessageClick()', NAV)
+        # The fifth slot is Message, and Menu stays a separately accessible header route.
         menu = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkReferenceMenuScreen.kt").read_text()
         self.assertIn('onMessages: () -> Unit', menu)
         self.assertIn('"Messages & inbox" to onMessages', menu)
         self.assertIn('onMessages = {', MAIN)
+        self.assertIn('onMessageClick = onMessages,', menu)
+        self.assertIn('hasUnreadMessages = uiState.conversations.any', MAIN)
+        search = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceSearchScreen.kt').read_text()
+        inbox = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceInbox.kt').read_text()
+        self.assertIn('Icons.Rounded.GridView, "Open Items"', search)
+        self.assertIn('Icons.Outlined.GridView, contentDescription = "Open Items"', inbox)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)

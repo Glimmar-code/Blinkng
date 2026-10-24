@@ -1,5 +1,13 @@
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
+## 2026-10-24 — Restore Android Message tab and Items header routing on current main
+
+- **Android navigation fix:** The reference phone bottom bar accidentally replaced the fifth **Message** destination with **Menu**. Restore the canonical Home → Reels → Market → Connect → Message order, selected state, unread indication, and working Message tap in the Menu overlay; preserve access to Menu via the top-right header.
+- **Android header consistency:** Search, Inbox and Menu headers were showing Game directly where the approved four-square **Items** destination belongs. Use the Items grid and route it to the Items hub, where Game remains available, without altering other Game shortcuts.
+- **PARITY-EXCEPTION: android-reference-phone-nav-restoration-20261024** — This is a correction to Android's compact five-icon edge-to-edge bottom navigation and phone-specific Items header controls. **Windows equivalent already exists**: `DesktopShell.kt` has a dedicated **Messages** drawer destination (before **Games**) and separate **Menu**, **Games**, and other utility destinations. Windows does not use a five-icon bottom bar or the Android Items sheet; it keeps its desktop-native navigation and existing functionality. No Windows feature is intentionally removed or deferred by this repair.
+- **Release validation:** Scoped to a main-based staging branch to avoid clobbering the heavily divergent Testlab branch; verify Android builds, Windows parity, Search/Inbox/Menu route behavior and screenshot parity before reconciliation and main release.
+
+
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
 - Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
 - Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.

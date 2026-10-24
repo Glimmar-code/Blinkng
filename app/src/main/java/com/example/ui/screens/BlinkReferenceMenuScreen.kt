@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -143,7 +144,7 @@ fun BlinkReferenceMenuScreen(
                 )
             }
             HeaderAction(Icons.Rounded.Search, "Search", foreground, onSearch)
-            HeaderAction(Icons.Rounded.SportsEsports, "BLINK LIFE games", foreground, onGames)
+            HeaderAction(Icons.Rounded.GridView, "Open Items", foreground, onGames)
             Box {
                 HeaderAction(Icons.Rounded.NotificationsNone, "Notifications", foreground, onNotifications)
                 if (hasUnreadNotifications) {
@@ -378,7 +379,7 @@ fun BlinkReferenceMenuScreen(
             onReelsClick = onReels,
             onMarketClick = onMarket,
             onConnectClick = onConnect,
-            onMessageClick = {},
+            onMessageClick = onMessages,
             isDark = isDark,
             isMenuOpen = true,
             onMenuClick = { page = "menu" }
