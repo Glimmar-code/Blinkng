@@ -86,6 +86,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardVoice
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
@@ -2470,58 +2473,64 @@ private fun MessageComposer(
 @Composable
 private fun AttachmentSheet(
     palette: MessagePalette,
+    onImage: () -> Unit,
     onVideo: () -> Unit,
+    onVoice: () -> Unit,
+    onDocument: () -> Unit,
+    onDictation: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = palette.glass,
-        contentColor = palette.textPrimary,
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(vertical = 11.dp)
-                    .size(width = 42.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(palette.textMuted.copy(alpha = .55f))
-            )
-        }
+        contentColor = palette.textPrimary
     ) {
-        Text(
-            "Share with this chat",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-        )
-        Surface(
-            color = palette.glassElevated.copy(alpha = .75f),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, palette.border),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .clickable(onClick = onVideo)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = null,
-                        tint = palette.accent,
-                        modifier = Modifier.padding(10.dp).size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Choose a video from your device", color = palette.textSecondary, fontSize = 11.sp)
+            Text(
+                "Share with this chat",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            listOf(
+                Triple("Photo", "Choose a picture", Icons.Default.Image),
+                Triple("Video", "Share a video clip", Icons.Default.VideoLibrary),
+                Triple("Voice note", "Record with your microphone", Icons.Default.Mic),
+                Triple("Document", "PDF, Word, spreadsheet or presentation", Icons.Default.Description),
+                Triple("Voice typing", "Speak to type a text message", Icons.Default.KeyboardVoice)
+            ).forEachIndexed { index, item ->
+                Surface(
+                    color = palette.glassElevated.copy(alpha = .75f),
+                    border = BorderStroke(1.dp, palette.border),
+                    shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable {
+                            when (index) {
+                                0 -> onImage()
+                                1 -> onVideo()
+                                2 -> onVoice()
+                                3 -> onDocument()
+                                else -> onDictation()
+                            }
+                        }.testTag("chat_attachment_$index")
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(item.third, null, tint = palette.accent, modifier = Modifier.size(23.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column {
+                            Text(item.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(item.second, fontSize = 11.sp, color = palette.textSecondary)
+                        }
+                    }
                 }
             }
+            Spacer(Modifier.height(16.dp).navigationBarsPadding())
         }
-        Spacer(Modifier.height(18.dp).navigationBarsPadding())
     }
 }
 
