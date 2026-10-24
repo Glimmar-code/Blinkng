@@ -1,3 +1,12 @@
+## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
+
+- Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
+- Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
+- Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.
+- Production port starts from the latest `main` instead of merging 589 unrelated Testlab commits and overwriting newer production functionality. Shared/Supabase business contracts are unchanged.
+- Passing Android/Windows static and build checks does not establish pixel-exact match against the MP4 or prove on-device post-animation navigation. Device visual and launch-path sign-off must precede production merge/publish.
+- Keep the current `main` branch intact until current-head PR checks and required owner SHA approval.
+
 ## 2026-10-24 — Scoped production logo asset promotion (PR #507 from Testlab)
 
 - Official lowercase white **b** with electric-blue center dot and black rounded-square background applied via shared Android launcher/drawables, Windows Compose/taskbar/installer art, and web favicon/PWA/social metadata and website UI image.
