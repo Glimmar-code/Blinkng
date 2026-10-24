@@ -4792,7 +4792,10 @@ private suspend fun restoreSupabaseSession() {
         )
 
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendAttachmentMessage(appContext, cleanPartner, uri, cleanKind).fold(
+            MessageMediaService.sendAttachmentMessage(
+                appContext, cleanPartner, uri, cleanKind,
+                clientMessageId = tempId.removePrefix("temp_attachment_")
+            ).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
                         replaceMessageInState(
@@ -4831,7 +4834,8 @@ private suspend fun restoreSupabaseSession() {
                 appContext,
                 partnerUsername.trim().removePrefix("@"),
                 uri,
-                failedMessage.messageType
+                failedMessage.messageType,
+                clientMessageId = failedMessage.id.removePrefix("temp_attachment_")
             ).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
