@@ -519,9 +519,7 @@ class MainActivity : ComponentActivity() {
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
         )
         adConsentManager = BlinkAdConsentManager(this)
-        adConsentManager.gatherConsent {
-            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
-        }
+        // Let the first launch frames render before requesting consent or ads.
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -532,6 +530,18 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             var showStartupIntro by remember { mutableStateOf(true) }
+            LaunchedEffect(showStartupIntro) {
+                if (!showStartupIntro) {
+                    // UMP can initialize WebViews; starting it during the splash
+                    // can monopolize the same main thread used by Compose frames.
+                    delay(300L)
+                    if (!isFinishing && !isDestroyed) {
+                        adConsentManager.gatherConsent {
+                            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
+                        }
+                    }
+                }
+            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
