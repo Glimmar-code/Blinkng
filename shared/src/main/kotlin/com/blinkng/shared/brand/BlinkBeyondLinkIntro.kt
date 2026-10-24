@@ -25,9 +25,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -141,34 +138,41 @@ fun BlinkBeyondLinkIntro(
     }
 }
 
+// Outline traced from the user's approved video, not a font approximation.
+// Coordinates are relative to the 135x182 icon crop from the final frame.
+private val introBOutline = intArrayOf(
+    10,6, 5,11, 2,19, 2,122, 5,136, 9,145, 17,156, 23,161,
+    39,170, 43,170, 46,172, 76,172, 94,165, 106,156, 111,150,
+    120,134, 122,126, 122,105, 120,101, 120,96, 113,81,
+    100,67, 82,57, 76,57, 73,55, 55,55, 49,57, 47,59,
+    47,79, 50,82, 68,82, 81,87, 91,97, 95,109,
+    94,123, 91,129, 84,137, 71,144, 59,144, 49,139,
+    40,128, 38,121, 38,15, 31,6, 24,3, 18,3,
+)
+
 @Composable
 private fun IntroBLogo(scale: Float, blueAlpha: Float) {
     Canvas(
         modifier = Modifier
-            .width((52f * scale).dp)
-            .height((67f * scale).dp),
+            .width((50f * scale).dp)
+            .height((69f * scale).dp),
     ) {
-        val s = size.width / 62f
-        val white = Color.White
-        // The BLINK lowercase b: rounded upright, connected bowl, dark aperture.
-        val outline = Path().apply {
-            moveTo(17f * s, 7f * s)
-            lineTo(17f * s, 45f * s)
-            cubicTo(17f * s, 65f * s, 50f * s, 69f * s, 52f * s, 46f * s)
-            cubicTo(54f * s, 28f * s, 36f * s, 22f * s, 27f * s, 30f * s)
+        val sx = size.width / 135f
+        val sy = size.height / 182f
+        val mark = Path().apply {
+            for (index in introBOutline.indices step 2) {
+                val x = introBOutline[index] * sx
+                val y = introBOutline[index + 1] * sy
+                if (index == 0) moveTo(x, y) else lineTo(x, y)
+            }
+            close()
         }
-        drawPath(
-            outline,
-            white,
-            style = Stroke(width = 12.5f * s, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-        // Deliberate black ring around the brand-blue dot, matching the preview.
-        val eye = Offset(35f * s, 45f * s)
-        drawCircle(Color.Black, radius = 10f * s, center = eye)
+        drawPath(mark, Color.White)
+        // Exact placement and blue tone from the preview's brand-eye.
         drawCircle(
-            Color(0xFF236BF5).copy(alpha = blueAlpha),
-            radius = 8f * s,
-            center = eye,
+            color = Color(0xFF236BF5).copy(alpha = blueAlpha),
+            radius = 19f * sx,
+            center = Offset(64.7f * sx, 113.5f * sy),
         )
     }
 }
