@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPaystackRefreshJob: Job? = null
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
+    private var showNewStudentSuggestions by mutableStateOf(false)
     private var showPaystackReceipts by mutableStateOf(false)
     private var loadingPaystackReceipts by mutableStateOf(false)
     private var paystackReceiptError by mutableStateOf<String?>(null)
@@ -754,6 +755,7 @@ class MainActivity : ComponentActivity() {
                                         initialUniversity = uiState.myProfile.university,
                                         initialAccountType = uiState.myProfile.accountType,
                                         onComplete = { uni, faculty, dept, level, type, bio, skills ->
+                                            showNewStudentSuggestions = true
                                             viewModel.completeProfileOnboarding(uni, faculty, dept, level, type, bio, skills)
                                         }
                                     )
@@ -790,6 +792,12 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && showNewStudentSuggestions) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { showNewStudentSuggestions = false }
+                            )
                         }
 
                         if (uiState.destination == AppDestination.MAIN) {
