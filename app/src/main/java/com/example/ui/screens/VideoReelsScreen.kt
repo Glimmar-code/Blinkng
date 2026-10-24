@@ -138,6 +138,7 @@ fun VideoReelsScreen(
     isLoadingMoreFollowing: Boolean = false,
     onLoadMoreFollowing: () -> Unit = {},
     isInteractionOverlayOpen: Boolean = false,
+    isScreenActive: Boolean = true,
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
@@ -204,6 +205,7 @@ fun VideoReelsScreen(
                     isLoadingMoreFollowing = isLoadingMoreFollowing,
                     onLoadMoreFollowing = onLoadMoreFollowing,
                     isInteractionOverlayOpen = isInteractionOverlayOpen,
+                    isScreenActive = isScreenActive,
                     isRefreshing = activeRefreshing,
                     onRefreshSelected = refreshSelected,
                     onFirstPageChanged = { firstPageVisible = it },
@@ -319,6 +321,7 @@ private fun ReelsContent(
     isLoadingMoreFollowing: Boolean,
     onLoadMoreFollowing: () -> Unit,
     isInteractionOverlayOpen: Boolean,
+    isScreenActive: Boolean,
     isRefreshing: Boolean,
     onRefreshSelected: () -> Unit,
     onFirstPageChanged: (Boolean) -> Unit,
@@ -525,7 +528,7 @@ private fun ReelsContent(
                     ReelPage(
                         reel = reel,
                         pageOffset = pageOffset,
-                        isActive = index == pager.currentPage,
+                        isActive = isScreenActive && index == pager.currentPage,
                         shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
@@ -563,11 +566,11 @@ private fun ReelsContent(
                     val placement = item.placement
                     val reel = placement.post ?: return@VerticalPager
                     LaunchedEffect(index == pager.currentPage, pager.isScrollInProgress, placement.campaignId) {
-                        if (index == pager.currentPage && !pager.isScrollInProgress) {
+                        if (isScreenActive && index == pager.currentPage && !pager.isScrollInProgress) {
                             // Ignore fly-through pages: a boosted video should only
                             // count after being visibly settled for half a second.
                             delay(500)
-                            if (index == pager.currentPage && !pager.isScrollInProgress) {
+                            if (isScreenActive && index == pager.currentPage && !pager.isScrollInProgress) {
                                 boostGrowthService.recordBoostDelivery(
                                     placement.campaignId,
                                     "IMPRESSION",
@@ -579,7 +582,7 @@ private fun ReelsContent(
                     ReelPage(
                         reel = reel,
                         pageOffset = pageOffset,
-                        isActive = index == pager.currentPage,
+                        isActive = isScreenActive && index == pager.currentPage,
                         shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
