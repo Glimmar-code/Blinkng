@@ -616,8 +616,27 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentFeed()
     }
 
+    /** Open a Feed card without switching tabs, re-ranking posts or losing scroll position. */
+    fun openFeedPostDetails(post: FeedPost) {
+        if (post.isReel) {
+            openSearchPost(post)
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = post,
+            activeCommentsPostId = null,
+            activePostOptionsPost = null
+        )
+    }
+
     fun closeDeepLinkedPost() {
-        _uiState.value = _uiState.value.copy(deepLinkedPost = null)
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = null,
+            activeCommentsPostId = null,
+            comments = emptyList(),
+            isCommentsLoading = false,
+            isPostingComment = false
+        )
     }
 
     private fun observeAuthState() {
