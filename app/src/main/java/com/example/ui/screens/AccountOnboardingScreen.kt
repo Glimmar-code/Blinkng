@@ -704,12 +704,10 @@ fun AccountOnboardingScreen(
     }
 
     if (universityPicker) {
-        SearchablePickerDialog(
-            title = "Select university",
-            items = NigerianUniversities.all,
+        UniversityCampusPickerDialog(
             selected = university,
             onDismiss = { universityPicker = false },
-            onSelected = {
+            onSelect = {
                 university = it
                 universityPicker = false
             }

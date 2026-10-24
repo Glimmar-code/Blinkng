@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,7 +47,8 @@ import com.example.R
 import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthLaunchGate
 import com.example.auth.RememberedLoginStore
-import com.example.data.models.NigerianUniversities
+import com.example.data.models.BlinkUniversitySearch
+import kotlinx.coroutines.delay
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
@@ -176,9 +179,11 @@ private fun OrSeparator() {
 }
 
 @Composable
-private fun GoogleOutlineButton(loading: Boolean, onClick: () -> Unit, tag: String) {
+private fun GoogleOutlineButton(
+    loading: Boolean, onClick: () -> Unit, tag: String, enabled: Boolean = true
+) {
     OutlinedButton(
-        onClick = onClick, enabled = !loading,
+        onClick = onClick, enabled = enabled && !loading,
         modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag(tag),
         border = BorderStroke(1.2.dp, Ink),
         shape = RoundedCornerShape(11.dp),
@@ -324,6 +329,16 @@ private fun AuthSocialCircle(
     )
 }
 
+
+/** Do not start an expensive login request when Android confirms there is no network. */
+private fun isLoginOffline(context: Context): Boolean = runCatching {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return@runCatching false
+    val network = cm.activeNetwork ?: return@runCatching true
+    val capabilities = cm.getNetworkCapabilities(network) ?: return@runCatching true
+    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}.getOrDefault(false)
+
 @Composable
 fun BlinkReferenceSignInScreen(
     initialIdentifier: String = "",
@@ -334,12 +349,29 @@ fun BlinkReferenceSignInScreen(
     onSwitchToSignUp: () -> Unit
 ) {
     val context = LocalContext.current
+    // Existing Android Keystore-protected Supabase sessions keep users signed in.
+    // A saved password is not needed for future launches; migrate only the identifier.
     val stored = remember { RememberedLoginStore.load(context) }
-    var identifier by rememberSaveable { mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier) }
-    var password by remember { mutableStateOf(stored?.password.orEmpty()) }
-    val rememberCredentials = stored != null
+    var identifier by rememberSaveable {
+        mutableStateOf(stored?.identifier?.ifBlank { initialIdentifier } ?: initialIdentifier)
+    }
+    var password by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        stored?.identifier?.takeIf { it.isNotBlank() }?.let {
+            AccountSessionStore.rememberIdentifier(context, it)
+        }
+        if (stored != null) RememberedLoginStore.clear(context)
+    }
     var visible by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
+    var slowLogin by remember { mutableStateOf(false) }
+    LaunchedEffect(submitting) {
+        slowLogin = false
+        if (submitting) {
+            delay(8_000L)
+            slowLogin = true
+        }
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var forgot by remember { mutableStateOf(false) }
     val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
@@ -403,27 +435,45 @@ fun BlinkReferenceSignInScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            SolidAuthButton("Log In", enabled = !submitting, working = submitting,
-                tag = "signin_submit_btn") {
-                if (identifier.isBlank() || password.isBlank()) {
-                    error = "Enter your email or username and password."
-                } else {
-                    submitting = true
-                    error = null
-                    onSignInWithCredentials(identifier.trim(), password) { success, message ->
-                        submitting = false
-                        if (success) {
-                            AccountSessionStore.setSignInRequired(context, !rememberCredentials)
-                            if (rememberCredentials) RememberedLoginStore.save(context, identifier.trim(), password)
-                            else RememberedLoginStore.clear(context)
-                        } else {
-                            error = message ?: "Unable to log in. Please try again."
+            SolidAuthButton("Log In", enabled = !submitting && !googleLoading,
+                working = submitting, tag = "signin_submit_btn") {
+                if (submitting || googleLoading) return@SolidAuthButton
+                when {
+                    identifier.isBlank() || password.isBlank() ->
+                        error = "Enter your email or username and password."
+                    isLoginOffline(context) ->
+                        error = "You're offline. Connect to the internet and try again."
+                    else -> {
+                        submitting = true
+                        error = null
+                        val submittedIdentifier = identifier.trim()
+                        onSignInWithCredentials(submittedIdentifier, password) { success, message ->
+                            submitting = false
+                            if (success) {
+                                // Persist the authenticated session, not a reusable password.
+                                AccountSessionStore.rememberIdentifier(context, submittedIdentifier)
+                                AccountSessionStore.setSignInRequired(context, false)
+                                RememberedLoginStore.clear(context)
+                            } else {
+                                error = message ?: "Unable to log in. Please try again."
+                            }
                         }
                     }
                 }
             }
+            if (slowLogin && submitting) {
+                Text(
+                    "Connection is taking longer than usual. Check your network.",
+                    color = Hint, fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
             OrSeparator()
-            GoogleOutlineButton(googleLoading, { onGoogleSignIn("") }, "signin_google_btn")
+            GoogleOutlineButton(
+                googleLoading, { onGoogleSignIn("") }, "signin_google_btn",
+                enabled = !submitting
+            )
             Spacer(Modifier.height(21.dp))
             AuthAccountSwitcher("Don't have an account?", "Sign Up", onSwitchToSignUp)
         }
@@ -439,38 +489,99 @@ fun BlinkReferenceSignInScreen(
 }
 
 @Composable
-private fun CampusDialog(selected: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    var search by remember { mutableStateOf("") }
-    val results = remember(search) {
-        NigerianUniversities.all.filter { it.contains(search.trim(), ignoreCase = true) }
+internal fun UniversityCampusPickerDialog(
+    selected: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var search by rememberSaveable { mutableStateOf("") }
+    var selectedState by rememberSaveable { mutableStateOf(BlinkUniversitySearch.ALL_STATES) }
+    var statesMenuOpen by remember { mutableStateOf(false) }
+    val results = remember(search, selectedState) {
+        BlinkUniversitySearch.search(search, selectedState)
     }
+    val groups = remember(results) { results.groupBy { it.state } }
     AlertDialog(
+        modifier = Modifier.testTag("university_picker"),
         onDismissRequest = onDismiss,
         title = { Text("Choose your university", color = Ink, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(
-                    value = search, onValueChange = { search = it },
-                    singleLine = true, label = { Text("Search universities") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Ink, unfocusedTextColor = Ink)
+                    value = search,
+                    onValueChange = { search = it.take(80) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    placeholder = { Text("University name or acronym, e.g. FUTA") },
+                    modifier = Modifier.fillMaxWidth().testTag("university_search"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Ink, unfocusedTextColor = Ink
+                    )
                 )
                 Spacer(Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                    items(results) { university ->
-                        Text(
-                            university, color = Ink,
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { onSelect(university) }
-                                .padding(vertical = 11.dp, horizontal = 5.dp),
-                            fontWeight = if (selected == university) FontWeight.Bold else FontWeight.Normal
-                        )
-                        HorizontalDivider(color = Line)
+                Box {
+                    OutlinedButton(
+                        onClick = { statesMenuOpen = true },
+                        modifier = Modifier.fillMaxWidth().testTag("university_state_filter")
+                    ) {
+                        Text(selectedState, maxLines = 1, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ExpandMore, contentDescription = "Choose state")
+                    }
+                    DropdownMenu(
+                        expanded = statesMenuOpen,
+                        onDismissRequest = { statesMenuOpen = false }
+                    ) {
+                        BlinkUniversitySearch.states.forEach { state ->
+                            DropdownMenuItem(
+                                text = { Text(state) },
+                                onClick = {
+                                    selectedState = state
+                                    statesMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (results.isEmpty()) {
+                    Text("No university found. Try another name or select All states.",
+                        color = Hint, modifier = Modifier.padding(vertical = 18.dp))
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        groups.forEach { (state, universities) ->
+                            item(key = "heading:$state") {
+                                Text(
+                                    "$state · ${universities.size}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Hint,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(top = 9.dp, bottom = 5.dp)
+                                )
+                            }
+                            items(universities, key = { it.name }) { entry ->
+                                Text(
+                                    entry.name,
+                                    color = Ink,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable { onSelect(entry.name) }
+                                        .padding(vertical = 11.dp, horizontal = 5.dp),
+                                    fontWeight = if (selected == entry.name)
+                                        FontWeight.Bold else FontWeight.Normal
+                                )
+                                HorizontalDivider(color = Line)
+                            }
+                        }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink) } },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Ink) }
+        },
         containerColor = Color.White
     )
 }
@@ -651,7 +762,7 @@ fun BlinkReferenceCreateAccountScreen(
         )
     }
     if (pickingUniversity) {
-        CampusDialog(
+        UniversityCampusPickerDialog(
             university, { pickingUniversity = false },
             { university = it; pickingUniversity = false; error = null }
         )

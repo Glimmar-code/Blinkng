@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
 private val authInk = Color(0xFF080808)
@@ -46,7 +47,33 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var fullName by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var authActionPending by remember { mutableStateOf(false) }
+    var slowAuthAction by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(authActionPending) {
+        slowAuthAction = false
+        if (authActionPending) {
+            delay(8_000L)
+            slowAuthAction = true
+        }
+    }
+
+    // Desktop parity: the busy flag can be updated after click handling.
+    // Guard locally so rapid taps never initiate duplicate provider calls.
+    fun runAuthOnce(action: suspend () -> Unit) {
+        if (authActionPending || state.busy) return
+        authActionPending = true
+        state.clearError()
+        scope.launch {
+            try {
+                action()
+            } catch (error: Exception) {
+                notice = error.message ?: "Unable to connect. Please try again."
+            } finally {
+                authActionPending = false
+            }
+        }
+    }
     val textColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = authInk,
         unfocusedTextColor = authInk,
@@ -112,10 +139,9 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     ) { Text("Create Account", color = authInk) }
                     OutlinedButton(
                         onClick = {
-                            state.clearError()
-                            scope.launch { runCatching { state.signInWithGoogle() } }
+                            runAuthOnce { state.signInWithGoogle() }
                         },
-                        enabled = !state.busy,
+                        enabled = !state.busy && !authActionPending,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         border = BorderStroke(1.dp, authLine),
                         shape = RoundedCornerShape(12.dp),
@@ -206,25 +232,28 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 notice?.let {
                     Text(it, color = Color(0xFF3B3B3B), fontSize = 13.sp)
                 }
+                if (slowAuthAction && authActionPending) {
+                    Text(
+                        "Connection is slower than usual. Check your network.",
+                        color = authHint, fontSize = 12.sp
+                    )
+                }
 
                 Button(
                     onClick = {
-                        state.clearError()
                         notice = null
-                        scope.launch {
-                            runCatching {
-                                when (mode) {
-                                    AuthMode.SIGN_IN -> state.signIn(email, password)
-                                    AuthMode.SIGN_UP -> state.signUp(email, password, fullName)
-                                    AuthMode.RESET -> {
-                                        state.sendPasswordReset(email)
-                                        notice = "Password reset email sent. Check your inbox."
-                                    }
+                        runAuthOnce {
+                            when (mode) {
+                                AuthMode.SIGN_IN -> state.signIn(email, password)
+                                AuthMode.SIGN_UP -> state.signUp(email, password, fullName)
+                                AuthMode.RESET -> {
+                                    state.sendPasswordReset(email)
+                                    notice = "Password reset email sent. Check your inbox."
                                 }
                             }
                         }
                     },
-                    enabled = !state.busy,
+                    enabled = !state.busy && !authActionPending,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = authInk, contentColor = Color.White,
                         disabledContainerColor = Color(0xFF6E6E6E),
@@ -259,10 +288,9 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     }
                     OutlinedButton(
                         onClick = {
-                            state.clearError()
-                            scope.launch { runCatching { state.signInWithGoogle() } }
+                            runAuthOnce { state.signInWithGoogle() }
                         },
-                        enabled = !state.busy,
+                        enabled = !state.busy && !authActionPending,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, authInk),

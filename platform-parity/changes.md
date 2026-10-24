@@ -1,3 +1,11 @@
+## 2026-10-24 — Only items 4, 5 and 7 from BLINK Auth follow-up
+
+- **4 · Faster, safer login (Android):** Preserve the authenticated Supabase session instead of re-prompting after every login; remember the identifier only; stop refilling or persisting an account password, migrate and erase legacy encrypted remembered-password entries on auth screen; block duplicate credentials/Google submits, show early offline errors and a slow-connection hint. Do not bypass server identity validation. Existing logout/account-switch logic remains authoritative.
+- **4 · Windows equivalent:** Keep DesktopAppState's existing provider session logic; add a local auth-in-flight gate for credential, reset and Google actions and slow-connection hint, without changing token format.
+- **5 · University chooser:** All existing NigerianUniversities entries remain selectable offline; add fast case-insensitive search with vetted campus acronyms, grouped filters by Nigerian state, and an honest "Other / nationwide" group for institutions without verified campus location. Reuse the same chooser in Android signup and profile onboarding. No NUC accreditation or university list completeness claim.
+- **7 · Optional post-onboarding monetization discovery:** After successful account onboarding **only**, offer a dismissible once-per-account guide to existing Blue/Gold verification, Coins and Boost screens. No automatic payment, permission changes, checkout bypass, enrollment or auto-renewal changes. Windows existing account and payment surfaces remain unchanged, as this is a one-time Android orientation overlay rather than a new purchase flow.
+- **QA:** Focused alias, state, directory preservation and one-time modal preference unit tests; Android and Windows gate checks. Changes stage on a short-lived Testlab-based review branch from main before merge. All other recommended items are explicitly out of scope.
+
 ## 2026-10-23 — Responsive reference-form repair (staging)
 
 - **Problem found:** The previous Android auth update used one heavily compressed campus photo for both login and three sign-up portraits, added unapproved visible controls, and had fixed-size image crops that did not adapt to narrow phones.

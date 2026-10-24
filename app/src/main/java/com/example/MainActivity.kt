@@ -540,6 +540,11 @@ class MainActivity : ComponentActivity() {
             val websiteRefreshSignal by BlinkWebsiteReleaseAlerts.refreshSignal.collectAsStateWithLifecycle()
             val websiteOpenSignal by BlinkWebsiteReleaseAlerts.openPromptSignal.collectAsStateWithLifecycle()
             var adminAnnouncementOpen by remember { mutableStateOf(false) }
+            // Only a completed *new* onboarding may show optional BLINK perks.
+            // Never open a purchase prompt during registration or on every login.
+            var justCompletedOnboardingAccount by rememberSaveable {
+                mutableStateOf<String?>(null)
+            }
 
             // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
             // Stopping the Activity suspends checks, resuming it checks straight away.
@@ -796,7 +801,13 @@ class MainActivity : ComponentActivity() {
                                             viewModel.saveOnboardingInterests(interests, onResult)
                                         },
                                         onFinish = { onResult ->
-                                            viewModel.finishAccountOnboarding(onResult)
+                                            viewModel.finishAccountOnboarding { ok, message ->
+                                                val id = uiState.myProfile.id
+                                                if (ok && NewMemberPerksStore.shouldShow(this@MainActivity, id)) {
+                                                    justCompletedOnboardingAccount = id
+                                                }
+                                                onResult(ok, message)
+                                            }
                                         },
                                         onRefreshSuggestions = {
                                             viewModel.refreshOnboardingSuggestions()
@@ -811,6 +822,14 @@ class MainActivity : ComponentActivity() {
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         itemsOpenSignal = itemsOpenSignal,
                                         boostOpenSignal = boostOpenSignal,
+                                        showNewMemberPerks = justCompletedOnboardingAccount ==
+                                            uiState.myProfile.id && uiState.myProfile.id.isNotBlank(),
+                                        onDismissNewMemberPerks = {
+                                            NewMemberPerksStore.markSeen(
+                                                this@MainActivity, uiState.myProfile.id
+                                            )
+                                            justCompletedOnboardingAccount = null
+                                        },
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions,
                                         onReportBug = { showBugReportSheet = true },
@@ -944,6 +963,8 @@ fun MainAppContent(
     onWatchAdForCoins: () -> Unit,
     itemsOpenSignal: Int,
     boostOpenSignal: Int,
+    showNewMemberPerks: Boolean = false,
+    onDismissNewMemberPerks: () -> Unit = {},
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit,
     onReportBug: () -> Unit,
@@ -982,6 +1003,56 @@ fun MainAppContent(
         if (boostOpenSignal > 0) feedUtilitySheet = "boost"
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    if (showNewMemberPerks && uiState.myProfile.id.isNotBlank() &&
+        NewMemberPerksStore.shouldShow(context, uiState.myProfile.id) &&
+        feedUtilitySheet == null && !uiState.isMenuOpen && !uiState.isGetVerifiedOpen
+    ) {
+        AlertDialog(
+            modifier = Modifier.testTag("new_member_perks"),
+            onDismissRequest = onDismissNewMemberPerks,
+            title = { Text("Welcome to your BLINK campus") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Explore optional features any time. BLINK is free to use.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            viewModel.openGetVerified(true)
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_verify")
+                    ) { Text("Explore Blue / Gold verification") }
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            viewModel.buyBlinkCoins()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_coins")
+                    ) { Text("Explore BLINK Coins") }
+                    OutlinedButton(
+                        onClick = {
+                            onDismissNewMemberPerks()
+                            feedUtilitySheet = "boost"
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("perks_boost")
+                    ) { Text("Explore post and Reel Boost") }
+                    Text(
+                        "Nothing is charged automatically. Availability and prices " +
+                            "are confirmed on each feature's own screen.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag("perks_continue"),
+                    onClick = onDismissNewMemberPerks
+                ) { Text("Continue to BLINK") }
+            }
+        )
+    }
     var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
     LaunchedEffect(Unit) {
         while (isActive) {
