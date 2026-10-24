@@ -2,6 +2,8 @@
 
 ## 2026-10-24 — Android Items respects active Light/Dark appearance
 
+- **Android header responsiveness:** Keep Search, Items, Notifications and Menu in a compact single row on 320–389dp devices when they physically fit; reserve two rows for extremely narrow or large-accessibility-font layouts. Avoids the unwanted top gap from the old below-390dp mandatory split.
+- **PARITY-EXCEPTION: android-feed-header-breakpoint-fix-20261024** — The Android reference feed header uses dp-specific phone gestures/insets, unlike Windows' desktop-native navigation. **Windows equivalent remains** its existing spacious drawer/toolbar in `DesktopShell.kt`. No Windows features or control routes are changed.
 - **Android:** Replace legacy dark-only `FeedBackground`, `FeedElevatedSurface`, `FeedBorder`, `FeedTextPrimary`, and `FeedTextSecondary` references across Items' tools with Material3's active semantic palette. Preserves Game, Boost, Drops, Update Center, Weather, Steps, private location UI and existing functionality.
 - **PARITY-EXCEPTION: android-items-semantic-palette-fix-20261024** — Items includes Android-specific phone utilities (sensor pedometer, Android permission-based live location, phone-specific APK updater) and is not a one-to-one desktop window. **Windows equivalent already present:** `BlinkDesktopTheme` provides Light/Dark semantics to desktop Items-like tools; this repair fixes an Android-only regression without adding, removing or diverging Windows behavior.
 - **Validation:** Android compilation, static token regression test, Windows parity, and device screenshots in both appearances still required before release.
