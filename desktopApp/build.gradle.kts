@@ -66,6 +66,10 @@ compose.desktop {
             vendor = "Blinkng"
 
             windows {
+                // Applied only once the owner-approved .ico file has been staged.
+                // Existing Testlab builds remain compatible before that asset lands.
+                val approvedIcon = project.file("src/main/resources/BLINK.ico")
+                if (approvedIcon.isFile) iconFile.set(approvedIcon)
                 dirChooser = true
                 perUserInstall = true
                 menuGroup = "Blinkng"
