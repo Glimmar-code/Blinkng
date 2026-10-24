@@ -73,6 +73,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.blinkng.shared.BlinkSwipeNavigation
+import com.blinkng.shared.brand.BlinkBeyondLinkIntro
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -161,6 +162,7 @@ fun runBlinkDesktopApplication() = application {
     val rpc = remember(appState.client) { DesktopRpcActions(appState.client) }
     val trayState = rememberTrayState()
     var isWindowVisible by remember { mutableStateOf(true) }
+    var showStartupIntro by remember { mutableStateOf(true) }
     var incomingCall by remember { mutableStateOf<DesktopCall?>(null) }
     var incomingCallerName by remember { mutableStateOf("Blink user") }
     var lastNotifiedCallId by remember { mutableStateOf<String?>(null) }
@@ -325,6 +327,15 @@ fun runBlinkDesktopApplication() = application {
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
                         }
+                    }
+
+                    // Android/Windows brand parity: the same 6.4 s shared
+                    // sequence overlays the app only on initial process launch.
+                    if (showStartupIntro) {
+                        BlinkBeyondLinkIntro(
+                            onFinished = { showStartupIntro = false },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
