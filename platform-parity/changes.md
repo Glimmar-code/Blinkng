@@ -1140,3 +1140,13 @@ publisher-signed APK directly from any of up to 10 compatible past releases.
 Windows does not use APKs or Android's installer; its native desktop update
 and distribution flow is unchanged. Full APK and Google Play update routes
 remain independent and intact. QA and Testlab approval required before main.
+
+
+## 2026-10-24 — Main reconciliation candidate: notifications and cancelled Paystack checkouts
+
+- **Purpose:** Main and Testlab contain substantially different implementations. This candidate selectively ports verified behavior from Testlab without replacing later main features. It is a **partial production reconciliation**, not the complete five-feature promotion.
+- **Android DM notifications:** Preserve the existing production `NotificationMessageHistory` and `NotificationIdentity` mechanisms. Add account-scoped notification grouping and a silent Messages-inbox summary; existing reply actions and message payload treatment remain unchanged.
+- **Android Paystack:** V2 checkout reconciliation is server-authoritative, throttled per account/reference (at most one automatic check per minute), and no longer emits a repeated "payment pending" toast. Abandoned/failed/reversed responses clear only the local reference. Pending, processing, unknown and transport errors remain recoverable; fulfilled grants remain backend-controlled. No live payments were initiated.
+- **Shared/Windows:** The shared `BlinkCheckoutStatusPolicy` and `BlinkDeliveryReceipt` business contracts plus JVM tests are carried forward. Windows retains existing JSON Paystack V2 confirmation and gains a typed status adapter; desktop receipt UI parity and chat-specific runtime behavior are **not complete** in this candidate.
+- **Backend:** `paystack-confirm` reports safe provider non-success statuses without changing order status or the signed-webhook fulfillment route. No production Edge Function, database or policy was deployed in this PR.
+- **Release gate:** Requires full CI and controlled provider test-mode and Android two-account runtime verification; production and signed APK publication must remain unchanged until missing profile/chat/read-tick ports are complete and verified.
