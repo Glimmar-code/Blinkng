@@ -598,128 +598,67 @@ private fun FeedTabLabel(label: String, selected: Boolean, modifier: Modifier, o
  * button; expanding reveals Blink AI and New post horizontally so the control never grows
  * upward over post engagement content.
  */
+/**
+ * Single-action Feed create button: tap always opens Create Post.
+ * The parent controls the six-second idle expansion of the optional label.
+ */
 @Composable
 fun CreatePostFab(
     expanded: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showBlinkAi by remember { mutableStateOf(false) }
-    var actionsExpanded by remember { mutableStateOf(false) }
-    val mainInteractionSource = remember { MutableInteractionSource() }
-    val mainPressed by mainInteractionSource.collectIsPressedAsState()
-    val mainScale by animateFloatAsState(
-        targetValue = if (mainPressed) 0.94f else 1f,
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
         animationSpec = tween(90),
-        label = "createMenuPressScale"
+        label = "createPostPressScale"
     )
     val pill = RoundedCornerShape(28.dp)
 
-    if (showBlinkAi) {
-        BlinkAiSheet(onDismiss = { showBlinkAi = false })
-    }
-
     Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        AnimatedVisibility(
-            visible = actionsExpanded,
-            enter = fadeIn(tween(130)) + expandHorizontally(tween(160)),
-            exit = fadeOut(tween(100)) + shrinkHorizontally(tween(140))
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FeedCreateAction(
-                    label = "Blink AI",
-                    contentDescription = "Open Blink AI",
-                    onClick = {
-                        actionsExpanded = false
-                        showBlinkAi = true
-                    },
-                    leading = {
-                        Box(
-                            modifier = Modifier
-                                .size(27.dp)
-                                .background(MaterialTheme.colorScheme.onSurface, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "AI",
-                                color = MaterialTheme.colorScheme.surface,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    },
-                    modifier = Modifier.testTag("blink_ai_fab")
-                )
-                FeedCreateAction(
-                    label = "New post",
-                    contentDescription = "Create Post",
-                    onClick = {
-                        actionsExpanded = false
-                        onClick()
-                    },
-                    leading = {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.surface,
-                            modifier = Modifier.size(21.dp)
-                        )
-                    },
-                    modifier = Modifier.testTag("create_post_action")
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .shadow(10.dp, pill, clip = false)
-                .graphicsLayer { scaleX = mainScale; scaleY = mainScale }
-                .background(MaterialTheme.colorScheme.onSurface, pill)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f), pill)
-                .clickable(
-                    interactionSource = mainInteractionSource,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = { actionsExpanded = !actionsExpanded }
-                )
-                .semantics {
-                    role = Role.Button
-                    contentDescription = if (actionsExpanded) "Close create menu" else "Open create menu"
-                }
-                .testTag("create_post_fab")
-                .heightIn(min = 54.dp)
-                .padding(horizontal = if (expanded) 17.dp else 15.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = if (actionsExpanded) Icons.Default.Close else Icons.Default.Add,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.size(23.dp)
+        modifier = modifier
+            .shadow(10.dp, pill, clip = false)
+            .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
+            .background(MaterialTheme.colorScheme.onSurface, pill)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f), pill)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
             )
-            AnimatedVisibility(
-                visible = expanded && !actionsExpanded,
-                enter = fadeIn(tween(120)),
-                exit = fadeOut(tween(90))
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Create",
-                        color = MaterialTheme.colorScheme.surface,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
-                }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Create post"
+            }
+            .testTag("create_post_fab")
+            .heightIn(min = 54.dp)
+            .padding(horizontal = if (expanded) 17.dp else 15.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.size(23.dp)
+        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(120)) + expandHorizontally(tween(160)),
+            exit = fadeOut(tween(90)) + shrinkHorizontally(tween(140))
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Create",
+                    color = MaterialTheme.colorScheme.surface,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
             }
         }
     }
