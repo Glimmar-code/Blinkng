@@ -40,6 +40,12 @@ assert.match(deployWorkflow,/Stamp public website deployment commit/,'Site deplo
 assert.match(deployWorkflow,/web\/blink-build\.json/,'Commit marker must be included in deployment');
 assert.match(deployWorkflow,/tar -tf.*blink-build\.json/,'Deploy artifact must contain commit marker');
 assert.match(smokeWorkflow,/BLINK_EXPECTED_MAIN_SHA:/,'Post-deploy check must receive immutable commit ID');
-assert.match(liveSmoke,/Published GitHub Pages commit matches the approved deployment/);
-assert.match(liveSmoke,/blink-build\.json\?deployment=/,'Live check must load uncached marker');
-console.log('PASS: HTML-first public discovery, early private-route noindex, and exact production deployment identity');
+assert.match(liveSmoke,/Published SEO assets match the tested Git revision/);
+assert.match(liveSmoke,/createHash\('sha256'\)/,'Live check compares the actual content of public files');
+assert.match(liveSmoke,/blink_source_rev=/,'Live check must bypass stale CDN caches');
+assert.ok(!liveSmoke.includes("get('/blink-build.json?deployment="),'Do not require a GitHub Pages-only marker from Cloudflare Pages');
+for(const path of ['web/index.html','web/sitemap.xml','web/students/index.html','web/marketplace/index.html','web/safety/index.html']){
+ assert.ok(liveSmoke.includes("'"+path+"'"),'Missing live content fingerprint for '+path);
+}
+assert.match(smokeWorkflow,/BLINK_VERIFY_STATIC_SOURCE: '1'/,'Staging needs a real-site fingerprint comparison');
+console.log('PASS: HTML-first discovery, early private-route noindex and host-neutral public asset verification');
