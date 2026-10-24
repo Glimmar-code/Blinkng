@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -300,12 +301,30 @@ internal fun BlinkReferenceSearchScreen(
                 .padding(horizontal = 16.dp),
         ) {
             if (query.isBlank() && category == ReferenceCategory.ALL) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Recent searches", Modifier.weight(1f), color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = {
-                        recents = emptyList()
-                        prefs.edit().remove(recentsKey).apply()
-                    }) { Text("Clear all", fontSize = 11.sp, color = muted) }
+                val largeFont = LocalDensity.current.fontScale >= 1.6f
+                if (largeFont) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text("Recent searches", color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        if (recents.isNotEmpty()) {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                                Text("Clear all", Modifier.clickable {
+                                    recents = emptyList()
+                                    prefs.edit().remove(recentsKey).apply()
+                                }.padding(vertical = 8.dp), fontSize = 11.sp, color = muted)
+                            }
+                        }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Recent searches", Modifier.weight(1f), maxLines = 1,
+                            color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        if (recents.isNotEmpty()) {
+                            Text("Clear all", Modifier.clickable {
+                                recents = emptyList()
+                                prefs.edit().remove(recentsKey).apply()
+                            }.padding(horizontal = 6.dp, vertical = 9.dp), fontSize = 11.sp, color = muted)
+                        }
+                    }
                 }
                 if (recents.isEmpty()) {
                     Text("Your searches will appear here", fontSize = 11.sp, color = muted,
@@ -525,13 +544,14 @@ internal fun BlinkReferenceSearchScreen(
 @Composable
 private fun ReferenceTitle(title: String, fg: Color, muted: Color, onSeeAll: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp),
+        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 7.dp).heightIn(min = 34.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, Modifier.weight(1f), color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        TextButton(onClick = onSeeAll, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-            Text("See all  ›", fontSize = 11.sp, color = muted)
-        }
+        Text(title, Modifier.weight(1f), color = fg, fontSize = 15.sp,
+            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("See all  ›", Modifier.clickable(onClick = onSeeAll)
+            .padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            fontSize = 11.sp, color = muted, maxLines = 1)
     }
 }
 
@@ -542,42 +562,63 @@ private fun ReferencePersonRow(
     followable: Boolean, following: Boolean, isBusy: Boolean,
     onFollow: () -> Unit, onClick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49) }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f).clickable(onClick = onClick)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (verified) {
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Rounded.Verified, "Verified", Modifier.size(15.dp), tint = Color(0xFF159CF5))
+    val largeFont = LocalDensity.current.fontScale >= 1.6f
+    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49) }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f).clickable(onClick = onClick)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, modifier = Modifier.weight(1f, fill = false),
+                        color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (verified) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Rounded.Verified, "Verified", Modifier.size(15.dp),
+                            tint = Color(0xFF159CF5))
+                    }
                 }
+                Text(subtitle, color = muted, fontSize = 10.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Text(subtitle, color = muted, fontSize = 10.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!largeFont) {
+                Spacer(Modifier.width(8.dp))
+                ReferencePersonAction(fg, line, followable, following, isBusy, onFollow, onClick)
+            }
         }
-        Surface(
-            onClick = if (followable) onFollow else onClick,
-            enabled = !isBusy,
-            shape = RoundedCornerShape(12.dp),
-            color = if (followable && following) Color.Transparent else fg,
-            border = if (followable && following) BorderStroke(1.dp, line) else null,
-        ) {
-            Text(
-                when {
-                    isBusy -> "..."
-                    !followable -> "View"
-                    following -> "Following"
-                    else -> "Follow"
-                },
-                Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                color = if (followable && following) fg else if (fg == Color.White) Color.Black else Color.White,
-                fontWeight = FontWeight.Bold, fontSize = 11.sp,
-            )
+        if (largeFont) {
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                ReferencePersonAction(fg, line, followable, following, isBusy, onFollow, onClick)
+            }
         }
     }
     HorizontalDivider(color = line)
+}
+
+@Composable
+private fun ReferencePersonAction(
+    fg: Color, line: Color, followable: Boolean, following: Boolean, isBusy: Boolean,
+    onFollow: () -> Unit, onClick: () -> Unit,
+) {
+    Surface(
+        onClick = if (followable) onFollow else onClick,
+        enabled = !isBusy, shape = RoundedCornerShape(12.dp),
+        color = if (followable && following) Color.Transparent else fg,
+        border = if (followable && following) BorderStroke(1.dp, line) else null,
+    ) {
+        Text(
+            when {
+                isBusy -> "..."
+                !followable -> "View"
+                following -> "Following"
+                else -> "Follow"
+            },
+            Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            color = if (followable && following) fg else if (fg == Color.White) Color.Black else Color.White,
+            fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
+        )
+    }
 }
 
 @Composable
