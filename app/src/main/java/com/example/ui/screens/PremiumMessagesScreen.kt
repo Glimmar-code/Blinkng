@@ -13,6 +13,9 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import com.blinkng.shared.BlinkChatAttachmentKind
 import android.speech.RecognizerIntent
@@ -1258,6 +1261,7 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
@@ -1309,9 +1313,15 @@ private fun PremiumChatDetail(
     fun beginRecording() {
         if (recording != null) return
         val file = File.createTempFile("blink-voice-", ".m4a", context.cacheDir)
-        val recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
+        val recorder = runCatching {
+            if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+        }.getOrElse {
+            file.delete()
+            Toast.makeText(context, "Recorder is not available.", Toast.LENGTH_SHORT).show()
+            return
         }
         runCatching {
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -1319,6 +1329,11 @@ private fun PremiumChatDetail(
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             recorder.setOutputFile(file.absolutePath)
             recorder.setMaxDuration(120_000)
+            recorder.setOnInfoListener { _, code, _ ->
+                if (code == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                    finishRecording(true)
+                }
+            }
             recorder.prepare()
             recorder.start()
         }.onSuccess {
@@ -1364,12 +1379,23 @@ private fun PremiumChatDetail(
             delay(300L)
         }
     }
-    DisposableEffect(conversation.id) {
+    DisposableEffect(conversation.id, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && recording != null) {
+                // Android backgrounding must never leave the microphone active.
+                finishRecording(true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             runCatching { recording?.stop() }
             runCatching { recording?.release() }
             recordingFile?.delete()
+            recordedFile?.delete()
             recording = null
+            recordingFile = null
+            recordedFile = null
         }
     }
     val startDictation = rememberSpeechInput { spoken ->
