@@ -36,7 +36,11 @@ jobs:
         run: sleep 20
       - name: Check live SEO, Auth provider, official App Links and anonymous analytics
         env:
-          BLINK_VERIFY_SYNTHETIC_ANALYTICS: '1'
+          # A Testlab branch checks the current public website only. After a
+          # successful main deployment, verify newly published SEO pages too.
+          BLINK_SEO_POST_DEPLOY: ${{ github.event_name == 'workflow_run' && '1' || '0' }}
+          # Do not add synthetic production visits during a Testlab-only check.
+          BLINK_VERIFY_SYNTHETIC_ANALYTICS: ${{ github.event_name == 'workflow_run' && '1' || '0' }}
         run: node scripts/verify_live_blink_integrations.mjs
       - name: Install Playwright Chrome for a real public-only browser measurement
         run: |
