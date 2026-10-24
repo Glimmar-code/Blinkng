@@ -45,6 +45,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     var authActionPending by remember { mutableStateOf(false) }
@@ -210,6 +211,11 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     )
                 }
                 if (mode == AuthMode.SIGN_UP) {
+                    DesktopReferrerPicker(
+                        state = state,
+                        selected = selectedReferrer,
+                        onSelected = { selectedReferrer = it },
+                    )
                     Text(
                         "Choose your university when completing your campus profile.",
                         color = authHint, fontSize = 12.sp,
@@ -245,7 +251,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         runAuthOnce {
                             when (mode) {
                                 AuthMode.SIGN_IN -> state.signIn(email, password)
-                                AuthMode.SIGN_UP -> state.signUp(email, password, fullName)
+                                AuthMode.SIGN_UP -> state.signUpWithReferral(email, password, fullName, selectedReferrer?.id)
                                 AuthMode.RESET -> {
                                     state.sendPasswordReset(email)
                                     notice = "Password reset email sent. Check your inbox."

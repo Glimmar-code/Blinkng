@@ -25,6 +25,8 @@ class DesktopAppState(
         private set
     var selectedRoute by mutableStateOf("home")
     var globalSearch by mutableStateOf("")
+    var showNewStudentSuggestions by mutableStateOf(false)
+    private var pendingNewMemberDiscovery = false
     var busy by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
@@ -51,6 +53,12 @@ class DesktopAppState(
 
     suspend fun signUp(email: String, password: String, fullName: String) = authAction {
         session = client.signUp(email, password, fullName)
+        loadAuthenticatedState()
+    }
+
+    suspend fun signUpWithReferral(email: String, password: String, fullName: String, referrerId: String?) = authAction {
+        session = client.signUpWithReferral(email, password, fullName, referrerId)
+        pendingNewMemberDiscovery = session != null
         loadAuthenticatedState()
     }
 
@@ -85,6 +93,8 @@ class DesktopAppState(
         adminCapability = DesktopAdminCapability(false, null, false)
         selectedRoute = "home"
         globalSearch = ""
+        pendingNewMemberDiscovery = false
+        showNewStudentSuggestions = false
     }
 
     suspend fun refreshProfile() {
@@ -164,6 +174,10 @@ class DesktopAppState(
             onboardingStep = BlinkOnboardingPolicy.TOTAL_STEPS,
             onboardingCompleted = true,
         )
+        if (pendingNewMemberDiscovery) {
+            showNewStudentSuggestions = true
+            pendingNewMemberDiscovery = false
+        }
     }
 
     suspend fun updateSettings(value: DesktopUserSettings) {

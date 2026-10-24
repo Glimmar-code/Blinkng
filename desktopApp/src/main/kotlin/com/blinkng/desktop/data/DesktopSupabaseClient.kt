@@ -118,11 +118,22 @@ class DesktopSupabaseClient(
         return signUp(email, password, temporaryUsername, fullName)
     }
 
+    suspend fun signUpWithReferral(
+        email: String,
+        password: String,
+        fullName: String,
+        referrerId: String?,
+    ): DesktopSession {
+        val username = "blink_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        return signUp(email, password, username, fullName, referrerId)
+    }
+
     suspend fun signUp(
         email: String,
         password: String,
         username: String,
         fullName: String,
+        referrerId: String? = null,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
@@ -139,7 +150,11 @@ class DesktopSupabaseClient(
                 JSONObject()
                     .put("username", cleanUsername)
                     .put("full_name", fullName.trim().ifBlank { cleanUsername })
-                    .put("name", fullName.trim().ifBlank { cleanUsername }),
+                    .put("name", fullName.trim().ifBlank { cleanUsername })
+                    .apply {
+                        referrerId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                            ?.let { put("blink_referrer_id", it) }
+                    },
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
