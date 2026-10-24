@@ -121,7 +121,7 @@ fun BlinkBeyondLinkIntro(
 
             val dp = density.density * artworkScale
             val linkHeight = 42f * dp
-            val bHeight = 35f * dp // optical balance: B larger than lowercase, NOT oversized
+            val bHeight = 29f * dp // match the approved LINK l height (28.2dp) optically
             val bWidth = bHeight * 555f / 785f
             val linkWidth = 242f * linkHeight / 171f
             val dotsWidth = dots.size.width.toFloat()
