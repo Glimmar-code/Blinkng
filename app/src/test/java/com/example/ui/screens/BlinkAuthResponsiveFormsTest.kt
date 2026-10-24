@@ -34,7 +34,7 @@ class BlinkAuthNarrowScreenTest {
     @Test fun signupKeepsEveryInputAndProviderReachable() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }
@@ -55,7 +55,7 @@ class BlinkAuthNarrowScreenTest {
             val d = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(d.density, scale)) {
                 BlinkReferenceCreateAccountScreen(
-                    onBack = {}, onCreateAccount = { _, _, _ -> },
+                    onBack = {}, onCreateAccount = { _, _, _, _ -> },
                     onGoogle = {}, onLogin = {}
                 )
             }
@@ -100,7 +100,7 @@ class BlinkAuthExpandedScreenTest {
     @Test fun tabletKeepsPosterSeparateFromInteractivePhone() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }
