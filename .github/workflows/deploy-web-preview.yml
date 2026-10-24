@@ -10,6 +10,7 @@ on:
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
       # Keep live SEO, Auth provider and browser-analytics checks aligned with web publication.
       - '.github/workflows/blink-live-integrations-smoke.yml'
       - 'scripts/verify_live_blink_integrations.mjs'
@@ -42,6 +43,9 @@ jobs:
           test "$(tr -d '\r\n' < web/CNAME)" = "blink.com.ng"
           python3 -m json.tool web/manifest.webmanifest >/dev/null
           python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
 
       - name: Set up Java for Android link verification
         uses: actions/setup-java@v5
