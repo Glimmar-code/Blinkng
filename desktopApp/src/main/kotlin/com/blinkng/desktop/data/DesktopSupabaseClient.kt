@@ -93,9 +93,9 @@ class DesktopSupabaseClient(
             }
         } catch (error: Exception) {
             val code = (error as? DesktopApiException)?.statusCode
-            val feedback = when (code) {
-                429 -> "Too many attempts. Please wait a little and try again."
-                in 500..599 -> "Unable to sign in. Please try again later."
+            val feedback = when {
+                code == 429 -> "Too many attempts. Please wait a little and try again."
+                code != null && code in 500..599 -> "Unable to sign in. Please try again later."
                 else -> BlinkAuthFeedback.friendly(error.message, "Unable to sign in.")
             }
             throw IllegalStateException(feedback, error)
