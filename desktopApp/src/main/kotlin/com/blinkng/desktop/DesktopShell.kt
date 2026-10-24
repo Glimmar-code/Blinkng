@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
@@ -105,6 +107,8 @@ import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.BlinkDesktopMenuScreen
+import com.blinkng.desktop.ui.BlinkDesktopWalletScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
@@ -145,6 +149,8 @@ private val desktopDestinations = listOf(
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
+    DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
+    DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
 )
 
 fun runBlinkDesktopApplication() = application {
@@ -558,6 +564,8 @@ private fun AuthenticatedShell(
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
+                        "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
+                        "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })
                         "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
