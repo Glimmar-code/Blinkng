@@ -159,9 +159,10 @@ fun ProfileScreen(
     currentUserId: String = "",
     selectedMainTabRoute: String = "home",
     onNavigateMainTab: (String) -> Unit = {},
-    onTopAction: (String) -> Unit = {}
+    onTopAction: (String) -> Unit = {},
+    initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id) { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 6)) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }

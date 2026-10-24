@@ -2,6 +2,8 @@ package com.example.data.supabase
 
 import android.content.Context
 import android.net.Uri
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
 import com.example.data.models.ChatConversation
@@ -75,9 +77,16 @@ object MessageMediaService {
                 if (!response.isSuccessful) throw IllegalStateException(error(raw, "Could not open private media."))
                 val obj = JSONObject(raw)
                 val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
-                if (signed.isBlank()) null
-                else if (signed.startsWith("http")) signed
-                else "${SupabaseConfig.url.trimEnd('/')}$signed"
+                when {
+                    signed.isBlank() -> null
+                    signed.startsWith("https://") &&
+                        signed.startsWith(SupabaseConfig.url.trimEnd('/')) -> signed
+                    signed.startsWith("/storage/v1/") ->
+                        SupabaseConfig.url.trimEnd('/') + signed
+                    signed.startsWith("/object/") ->
+                        SupabaseConfig.url.trimEnd('/') + "/storage/v1" + signed
+                    else -> null
+                }
             }
         }.getOrNull()
     }
@@ -93,215 +102,148 @@ object MessageMediaService {
         kind = "video"
     )
 
+    /**
+     * Upload a verified private file without loading the entire source into RAM.
+     * All direct conversation membership is established by the existing backend
+     * RPC (never by client-side insertion of another user's membership).
+     * Retrying with the same message UUID cannot create another chat message.
+     */
     suspend fun sendAttachmentMessage(
         context: Context,
         receiverUsername: String,
         uri: Uri,
         kind: String,
-        displayName: String? = null
+        displayName: String? = null,
+        clientMessageId: String = UUID.randomUUID().toString()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
-            val normalizedKind = kind.trim().lowercase().let {
-                when (it) {
-                    "image", "video", "audio", "voice", "document" -> it
-                    else -> return@withContext Result.failure(Exception("Unsupported attachment type."))
-                }
-            }
-            val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
+            val normalized = kind.trim().lowercase()
+            val policy = BlinkChatAttachmentKind.fromWireType(normalized)
+                ?: if (normalized == "audio") BlinkChatAttachmentKind.VOICE else
+                    throw IllegalArgumentException("Unsupported attachment type.")
+            val senderId = uid() ?: throw IllegalStateException("Please sign in again.")
             val receiver = receiverUsername.trim().removePrefix("@")
-            if (receiver.isBlank() || receiver.equals("null", ignoreCase = true)) {
-                return@withContext Result.failure(Exception("Recipient is required."))
-            }
+            require(receiver.isNotBlank()) { "Recipient is required." }
+            val stableMessageId = UUID.fromString(clientMessageId).toString()
 
-            val target = client.newCall(
-                builder(
-                    "/rest/v1/profiles?username=eq.${
-                        URLEncoder.encode(receiver, StandardCharsets.UTF_8.name())
-                    }&select=id,username&limit=1"
-                ).get().build()
+            val conversationText = client.newCall(
+                builder("/rest/v1/rpc/get_or_create_direct_conversation")
+                    .post(JSONObject().put("p_receiver_username", receiver)
+                        .toString().toRequestBody(jsonType)).build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Recipient lookup failed."))
+                if (!response.isSuccessful)
+                    throw IllegalStateException(error(raw, "Cannot open conversation."))
+                raw.trim().trim('"')
+            }
+            val conversationId = UUID.fromString(conversationText).toString()
+
+            // Resolve an ambiguous/timeout retry BEFORE uploading anything.
+            val previous = client.newCall(
+                builder("/rest/v1/messages?id=eq.$stableMessageId&select=id,conversation_id," +
+                    "sender_id,content,created_at,media_url,message_type&limit=1")
+                    .get().build()
+            ).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    error(raw, "Could not verify previous send.")
+                )
                 JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
-            } ?: return@withContext Result.failure(Exception("Recipient not found."))
-
-            val targetId = target.optString("id")
-            if (targetId == senderId) return@withContext Result.failure(Exception("Cannot message yourself."))
-
-            val mine = client.newCall(
-                builder(
-                    "/rest/v1/conversation_participants?user_id=eq.${
-                        URLEncoder.encode(senderId, StandardCharsets.UTF_8.name())
-                    }&select=conversation_id"
-                ).get().build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation lookup failed."))
-                JSONArray(raw.ifBlank { "[]" })
+            }
+            if (previous != null) {
+                check(previous.optString("sender_id") == senderId &&
+                    previous.optString("conversation_id") == conversationId) {
+                    "Attachment message ID belongs to a different conversation."
+                }
+                val stored = previous.optString("media_url")
+                val url = if (stored.startsWith("$PRIVATE_BUCKET:conversations/$conversationId/users/")) {
+                    signedUrl(stored.removePrefix("$PRIVATE_BUCKET:"))
+                } else null
+                return@withContext Result.success(
+                    ChatMessage(
+                        id = stableMessageId, conversationId = conversationId,
+                        senderId = senderId, text = previous.optString("content"),
+                        rawTimestamp = previous.optString("created_at"),
+                        timestamp = "Just now", isFromMe = true, isRead = false,
+                        status = MessageStatus.SENT, messageType = normalized,
+                        isVoiceNote = normalized == "voice",
+                        attachedImageUrl = url.takeIf { normalized == "image" },
+                        attachedVideoUrl = url.takeIf { normalized == "video" },
+                        attachedAudioUrl = url.takeIf { normalized == "voice" || normalized == "audio" },
+                        attachedDocumentUrl = url.takeIf { normalized == "document" },
+                        attachmentName = previous.optString("content")
+                    )
+                )
             }
 
-            var conversationId = ""
-            for (i in 0 until mine.length()) {
-                val cid = mine.optJSONObject(i)?.optString("conversation_id").orEmpty()
-                if (cid.isBlank()) continue
-                val exists = client.newCall(
-                    builder(
-                        "/rest/v1/conversation_participants?conversation_id=eq.${
-                            URLEncoder.encode(cid, StandardCharsets.UTF_8.name())
-                        }&user_id=eq.${
-                            URLEncoder.encode(targetId, StandardCharsets.UTF_8.name())
-                        }&select=user_id&limit=1"
-                    ).get().build()
-                ).execute().use { response ->
-                    response.isSuccessful && response.body?.string().orEmpty() != "[]"
-                }
-                if (exists) {
-                    conversationId = cid
-                    break
-                }
-            }
-
-            if (conversationId.isBlank()) {
-                val conversationBody = JSONObject()
-                    .put("created_by", senderId)
-                    .put("is_group", false)
-                val created = client.newCall(
-                    builder("/rest/v1/conversations")
-                        .addHeader("Prefer", "return=representation")
-                        .post(conversationBody.toString().toRequestBody(jsonType))
-                        .build()
+            BoundedMessageAttachment.open(context, uri, policy).use { staged ->
+                val extension = staged.extension
+                // Deterministic owner-conversation key also prevents duplicate
+                // stored files on retries when a send result was lost.
+                val objectPath =
+                    "conversations/$conversationId/users/$senderId/${normalized}s/$stableMessageId.$extension"
+                client.newCall(
+                    builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
+                        .addHeader("x-upsert", "false")
+                        .post(staged.requestBody()).build()
                 ).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation creation failed."))
-                    raw
-                }
-                conversationId = JSONArray(created).getJSONObject(0).optString("id")
-                for (member in listOf(senderId, targetId)) {
-                    val memberBody = JSONObject()
-                        .put("conversation_id", conversationId)
-                        .put("user_id", member)
-                    client.newCall(
-                        builder("/rest/v1/conversation_participants")
-                            .post(memberBody.toString().toRequestBody(jsonType))
-                            .build()
-                    ).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
-                        if (!response.isSuccessful) {
-                            throw IllegalStateException(error(raw, "Conversation membership failed."))
-                        }
+                    if (!response.isSuccessful &&
+                        response.code != 409 &&
+                        !(response.code == 400 && raw.contains("already exists", true))) {
+                        throw IllegalStateException(error(raw, "Attachment upload failed."))
                     }
                 }
-            }
 
-            val resolver = context.contentResolver
-            val mime = resolver.getType(uri) ?: when (normalizedKind) {
-                "image" -> "image/jpeg"
-                "video" -> "video/mp4"
-                "voice", "audio" -> "audio/mp4"
-                else -> "application/octet-stream"
-            }
-            val bytes = if (uri.scheme.equals("file", true)) {
-                java.io.File(uri.path.orEmpty()).takeIf { it.isFile }?.readBytes()
-            } else {
-                resolver.openInputStream(uri)?.use { it.readBytes() }
-            } ?: return@withContext Result.failure(Exception("Could not read attachment."))
-
-            if (bytes.isEmpty()) return@withContext Result.failure(Exception("Attachment is empty."))
-            val maxBytes = if (normalizedKind == "video") 256L * 1024L * 1024L else 64L * 1024L * 1024L
-            if (bytes.size.toLong() > maxBytes) {
-                val maxMb = maxBytes / 1024L / 1024L
-                return@withContext Result.failure(Exception("Attachment is larger than $maxMb MB."))
-            }
-
-            val resolvedName = displayName?.takeIf { it.isNotBlank() }
-                ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-                ?: "$normalizedKind-${System.currentTimeMillis()}"
-            val extension = resolvedName.substringAfterLast('.', "").takeIf { it.length in 1..8 }
-                ?: when {
-                    mime.contains("png", true) -> "png"
-                    mime.contains("webp", true) -> "webp"
-                    mime.contains("jpeg", true) || mime.contains("jpg", true) -> "jpg"
-                    mime.contains("webm", true) -> "webm"
-                    mime.contains("quicktime", true) -> "mov"
-                    mime.contains("mpeg", true) -> "mp3"
-                    mime.contains("ogg", true) -> "ogg"
-                    mime.contains("wav", true) -> "wav"
-                    mime.contains("pdf", true) -> "pdf"
-                    normalizedKind == "video" -> "mp4"
-                    normalizedKind == "voice" || normalizedKind == "audio" -> "m4a"
-                    else -> "bin"
+                val name = safeChatFilename(displayName ?: staged.name)
+                val label = when (normalized) {
+                    "image" -> "Photo"
+                    "video" -> "Video"
+                    "voice" -> "Voice message"
+                    "audio" -> "Audio"
+                    else -> name
                 }
-            val directory = when (normalizedKind) {
-                "image" -> "images"
-                "video" -> "videos"
-                "voice" -> "voice"
-                "audio" -> "audio"
-                else -> "documents"
-            }
-            val objectPath =
-                "conversations/$conversationId/users/$senderId/$directory/${UUID.randomUUID()}.$extension"
+                val data = JSONObject()
+                    .put("id", stableMessageId)
+                    .put("conversation_id", conversationId)
+                    .put("sender_id", senderId)
+                    .put("content", label)
+                    .put("media_url", "$PRIVATE_BUCKET:$objectPath")
+                    .put("is_read", false)
+                    .put("message_type", normalized)
 
-            client.newCall(
-                builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
-                    .addHeader("Content-Type", mime)
-                    .addHeader("x-upsert", "false")
-                    .post(bytes.toRequestBody(mime.toMediaType()))
-                    .build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Attachment upload failed."))
-            }
-
-            val storedReference = "$PRIVATE_BUCKET:$objectPath"
-            val label = when (normalizedKind) {
-                "image" -> "Photo"
-                "video" -> "Video"
-                "voice" -> "Voice message"
-                "audio" -> "Audio"
-                else -> resolvedName
-            }
-            val messageBody = JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", senderId)
-                .put("content", label)
-                .put("media_url", storedReference)
-                .put("is_read", false)
-                .put("message_type", normalizedKind)
-
-            val raw = client.newCall(
-                builder("/rest/v1/messages")
-                    .addHeader("Prefer", "return=representation")
-                    .post(messageBody.toString().toRequestBody(jsonType))
-                    .build()
-            ).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(text, "Attachment message failed."))
-                text
-            }
-            val row = JSONArray(raw).getJSONObject(0)
-            val playableUrl = signedUrl(objectPath)
-
-            Result.success(
-                ChatMessage(
-                    id = row.optString("id"),
-                    senderId = senderId,
-                    text = label,
-                    timestamp = "Just now",
-                    isFromMe = true,
-                    conversationId = conversationId,
-                    rawTimestamp = row.optString("created_at"),
-                    isRead = false,
-                    status = MessageStatus.SENT,
-                    isVoiceNote = normalizedKind == "voice",
-                    attachedImageUrl = playableUrl.takeIf { normalizedKind == "image" },
-                    attachedVideoUrl = playableUrl.takeIf { normalizedKind == "video" },
-                    attachedAudioUrl = playableUrl.takeIf { normalizedKind == "audio" || normalizedKind == "voice" },
-                    attachedDocumentUrl = playableUrl.takeIf { normalizedKind == "document" },
-                    attachmentName = resolvedName,
-                    attachmentMimeType = mime,
-                    messageType = normalizedKind
+                val saved = client.newCall(
+                    builder("/rest/v1/messages")
+                        .addHeader("Prefer", "return=representation")
+                        .post(data.toString().toRequestBody(jsonType)).build()
+                ).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException(
+                        error(raw, "Attachment message could not be saved.")
+                    )
+                    JSONArray(raw).getJSONObject(0)
+                }
+                val url = signedUrl(objectPath)
+                Result.success(
+                    ChatMessage(
+                        id = saved.optString("id"),
+                        conversationId = conversationId,
+                        senderId = senderId,
+                        text = label,
+                        timestamp = "Just now",
+                        rawTimestamp = saved.optString("created_at"),
+                        isFromMe = true, isRead = false,
+                        status = MessageStatus.SENT, messageType = normalized,
+                        isVoiceNote = normalized == "voice",
+                        attachedImageUrl = url.takeIf { normalized == "image" },
+                        attachedVideoUrl = url.takeIf { normalized == "video" },
+                        attachedAudioUrl = url.takeIf { normalized == "audio" || normalized == "voice" },
+                        attachedDocumentUrl = url.takeIf { normalized == "document" },
+                        attachmentName = name,
+                        attachmentMimeType = staged.mime
+                    )
                 )
-            )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "sendAttachmentMessage failed", e)
             Result.failure(e)

@@ -2765,40 +2765,14 @@ private fun MessageContent(
                 }
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
-                Surface(
-                    color = Color.Transparent,
-                    contentColor = contentColor,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .widthIn(min = 190.dp)
-                        .clickable { openExternalUri(context, Uri.parse(message.attachedAudioUrl)) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (message.isVoiceNote) Icons.Default.Mic else Icons.Default.MusicNote,
-                            contentDescription = if (message.isVoiceNote) "Play voice message" else "Play audio",
-                            tint = contentColor,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            Modifier
-                                .width(104.dp)
-                                .height(3.dp)
-                                .clip(CircleShape)
-                                .background(contentColor.copy(alpha = .55f))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
-                            color = contentColor,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
+                BlinkChatVoicePlayer(
+                    url = message.attachedAudioUrl,
+                    durationLabel = if (message.isVoiceNote) {
+                        message.voiceDuration.ifBlank { "Voice note" }
+                    } else "Audio",
+                    tint = contentColor,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
                 Surface(
