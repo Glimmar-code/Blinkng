@@ -191,7 +191,7 @@
     if(!state.session)return;
     try{
       const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
-      await loadMyProfile(); await loadFollowing(); await refreshUnreadCount();
+      await loadMyProfile(); await loadFollowing(); await refreshUnreadCount(); void wakeReferralPush();
     }catch(e){ console.warn('session bootstrap',e); clearSession(); }
   }
 
@@ -285,15 +285,30 @@
       try { data=await api('/auth/v1/token?grant_type=password',{method:'POST',body:{email:input,password},auth:false}); }
       catch { data=await api('/functions/v1/username-login',{method:'POST',body:{username:input,password},auth:false}); }
     } else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
-    if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount();
+    if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount(); void wakeReferralPush();
   }
+  async function wakeReferralPush(){
+    if(!isAuthed())return;
+    try{
+      const rows=await rpc('blink_my_referral_push_ids');
+      for(const row of (Array.isArray(rows)?rows:[]).slice(0,3)){
+        if(!row.notification_id)continue;
+        await api('/functions/v1/send-activity-notification',{
+          method:'POST',body:{notification_id:String(row.notification_id)}
+        });
+      }
+    }catch(e){
+      console.warn('Referral push confirmation was deferred:',e?.message||e);
+    }
+  }
+
   async function signup(fullName,username,email,password,referrerId=''){
     if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/\d/.test(password)||!/[\W_]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
     const cleanUser=username.trim().toLowerCase().replace(/^@/,''); if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(cleanUser))throw new Error('Use 2–30 lowercase letters, numbers, dots, dashes or underscores.');
     const metadata={username:cleanUser,full_name:fullName.trim(),name:fullName.trim()};
     if(/^[0-9a-fA-F-]{36}$/.test(String(referrerId)))metadata.blink_referrer_id=referrerId;
     const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:metadata}});
-    if(data?.access_token){saveSession(data);await loadMyProfile();} return data;
+    if(data?.access_token){saveSession(data);await loadMyProfile();void wakeReferralPush();} return data;
   }
   function googleLogin(){
     state.authError=null;
