@@ -52,6 +52,7 @@ import com.example.data.supabase.BlinkLiveCampaignService
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.blinkng.shared.live.BlinkLiveCampaign
 import com.example.data.supabase.BlinkPaystackCheckoutService
+import com.blinkng.shared.BlinkCheckoutVerificationState
 import com.example.data.supabase.BlinkPaystackReceipt
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
@@ -441,26 +442,42 @@ class MainActivity : ComponentActivity() {
         val reference = preferences.getString("reference", null)?.trim().orEmpty()
         if (!reference.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) return
 
+        // A browser return or repeated activity resumes are not proof of payment.
+        // Throttle outstanding references; no verification toast for an unfinished
+        // or cancelled checkout, and no five-request burst on every resume.
+        val now = System.currentTimeMillis()
+        if (preferences.getString("last_silent_reference", null) == reference &&
+            now >= preferences.getLong("last_silent_attempt_ms", 0L) &&
+            now - preferences.getLong("last_silent_attempt_ms", 0L) < 60_000L) return
+        preferences.edit()
+            .putString("last_silent_reference", reference)
+            .putLong("last_silent_attempt_ms", now)
+            .apply()
         pendingPaystackRefreshJob = lifecycleScope.launch {
-            val service = BlinkPaystackCheckoutService()
-            for (attempt in 0 until 5) {
-                if (viewModel.uiState.value.myProfile.id != accountId ||
-                    preferences.getString("reference", null) != reference) return@launch
-                val confirmed = runCatching { service.confirmPayment(reference) }.getOrDefault(false)
-                // Payment confirmation is asynchronous; never update a switched account.
-                if (viewModel.uiState.value.myProfile.id != accountId ||
-                    preferences.getString("reference", null) != reference) return@launch
-                if (confirmed) {
+            val status = runCatching { BlinkPaystackCheckoutService().paymentStatus(reference) }
+                .getOrNull() ?: return@launch // Network issue: retain reference.
+            if (viewModel.uiState.value.myProfile.id != accountId ||
+                preferences.getString("reference", null) != reference) return@launch
+            when (status) {
+                BlinkCheckoutVerificationState.FULFILLED -> {
                     val kind = preferences.getString("kind", null)
-                    preferences.edit().remove("reference").remove("kind").apply()
+                    preferences.edit().remove("reference").remove("kind")
+                        .remove("last_silent_reference").remove("last_silent_attempt_ms")
+                        .apply()
                     refreshVerifiedPaystackPurchase(kind)
                     viewModel.showToast("Payment confirmed. Your BLINK purchase is updating.")
-                    return@launch
                 }
-                if (attempt < 4) delay(2000L * (attempt + 1))
+                BlinkCheckoutVerificationState.ABANDONED,
+                BlinkCheckoutVerificationState.FAILED,
+                BlinkCheckoutVerificationState.REVERSED -> {
+                    // Clear the LOCAL reminder, never the server order: a delayed
+                    // signed webhook can still fulfil a genuine successful charge.
+                    preferences.edit().remove("reference").remove("kind")
+                        .remove("last_silent_reference").remove("last_silent_attempt_ms")
+                        .apply()
+                }
+                else -> Unit // Pending, processing or unknown: reconcile quietly.
             }
-            // Keep the reference for recovery on the next foreground entry.
-            viewModel.showToast("Payment verification is pending. Please don't pay again.")
         }
     }
 

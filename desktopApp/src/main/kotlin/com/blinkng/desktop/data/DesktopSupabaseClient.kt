@@ -1736,6 +1736,13 @@ class DesktopSupabaseClient(
         ) as JSONObject
     }
 
+    // Shared receipt semantics with Android, but without changing existing
+    // call sites that consume Paystack's complete JSON response.
+    suspend fun paystackV2ReceiptState(reference: String): com.blinkng.shared.BlinkCheckoutVerificationState =
+        com.blinkng.shared.BlinkCheckoutStatusPolicy.parse(
+            verifyPaystackV2Checkout(reference).optString("status")
+        )
+
     suspend fun verifyPaystackCashOrder(orderId: String): JSONObject = withContext(Dispatchers.IO) {
         require(orderId.isNotBlank()) { "Payment order is missing." }
         postObject(
