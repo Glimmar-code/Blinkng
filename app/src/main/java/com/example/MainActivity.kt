@@ -2056,6 +2056,46 @@ fun MainAppContent(
                     viewModel.openMenu(false)
                     context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
                 },
+                onEditProfile = {
+                    viewModel.openMenu(false)
+                    viewModel.openEditProfile(true)
+                },
+                onFindFriends = {
+                    viewModel.openMenu(false)
+                    onFindFriends()
+                },
+                onPostItem = {
+                    viewModel.openMenu(false)
+                    viewModel.openPostItem(true)
+                },
+                onSellerHub = {
+                    viewModel.openMenu(false)
+                    viewModel.openBecomeSeller(true)
+                },
+                onScheduledPosts = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "scheduled"))
+                },
+                onGroups = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "groups"))
+                },
+                onOrdersAndWishlist = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "market"))
+                },
+                onCallHistory = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, com.example.call.CallHistoryActivity::class.java))
+                },
+                showAdPrivacyOptions = isAdPrivacyOptionsRequired,
+                onAdPrivacyOptions = {
+                    viewModel.openMenu(false)
+                    onAdPrivacyOptions()
+                },
                 onLogOut = {
                     viewModel.openMenu(false)
                     viewModel.logout()
