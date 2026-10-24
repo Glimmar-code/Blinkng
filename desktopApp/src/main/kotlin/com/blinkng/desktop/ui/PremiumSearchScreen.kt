@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,7 +82,7 @@ private enum class DesktopSearchCollection(val label: String, val icon: ImageVec
 }
 
 private enum class DesktopSearchCategory(val label: String) {
-    ALL("All"), PEOPLE("People"), POSTS("Posts"), REELS("Reels"), HASHTAGS("Hashtags")
+    ALL("All"), PEOPLE("People"), POSTS("Posts"), MARKET("Market"), COMMUNITIES("Communities"), REELS("Reels"), HASHTAGS("Hashtags")
 }
 
 private enum class DesktopSearchSort(val label: String) {
@@ -119,7 +121,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when (collection) {
-                        DesktopSearchCollection.SEARCH -> "Search Blink"
+                        DesktopSearchCollection.SEARCH -> "B L I N K"
                         DesktopSearchCollection.TRENDING -> "Trending now"
                         DesktopSearchCollection.PLACES -> "Places"
                     },
@@ -128,7 +130,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
                 )
                 Text(
                     text = when (collection) {
-                        DesktopSearchCollection.SEARCH -> "People, posts, reels, hashtags and campus discovery"
+                        DesktopSearchCollection.SEARCH -> "Search across your campus"
                         DesktopSearchCollection.TRENDING -> "High-momentum posts, reels and topics on Blink"
                         DesktopSearchCollection.PLACES -> "Discover locations already used across Blink"
                     },
@@ -138,7 +140,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             }
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = .12f)) {
                 Text(
-                    "Windows parity",
+                    "People · Posts · Market · Communities",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 11.sp,
@@ -166,7 +168,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             modifier = Modifier.weight(1f),
         ) { selected ->
             when (selected) {
-                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts)
+                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts, marketItems = marketItems)
                 DesktopSearchCollection.TRENDING -> DesktopTrendingCollection(
                     posts = discoveryPosts,
                     loading = discoveryLoading,
@@ -185,6 +187,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
 private fun DesktopSearchCore(
     state: DesktopAppState,
     discoveryPosts: List<DesktopFeedPost>,
+    marketItems: List<DesktopMarketItem>,
 ) {
     val prefs = remember { Preferences.userRoot().node("blinkng/search") }
     var query by remember { mutableStateOf(state.globalSearch) }
@@ -262,6 +265,12 @@ private fun DesktopSearchCore(
             }
         )
     }
+    val visibleMarket = remember(marketItems, clean) {
+        marketItems.filter { !it.isSold && (clean.isBlank() ||
+            it.title.contains(clean, true) || it.category.contains(clean, true) ||
+            it.university.contains(clean, true) || it.location.contains(clean, true))
+        }.take(30)
+    }
     val posts = content.filterNot { it.isReel }
     val reels = content.filter { it.isReel }
     val hashtags = remember(results.posts, clean) {
@@ -303,7 +312,7 @@ private fun DesktopSearchCore(
                         IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear") }
                     }
                 },
-                placeholder = { Text("Search name, @username, #hashtag, post or reel") },
+                placeholder = { Text("Search people, posts, market, communities...") },
                 shape = RoundedCornerShape(18.dp),
             )
             IconButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Rounded.FilterList, "Filters") }
@@ -316,6 +325,8 @@ private fun DesktopSearchCore(
                     DesktopSearchCategory.ALL -> null
                     DesktopSearchCategory.PEOPLE -> people.size
                     DesktopSearchCategory.POSTS -> posts.size
+                    DesktopSearchCategory.MARKET -> visibleMarket.size
+                    DesktopSearchCategory.COMMUNITIES -> null
                     DesktopSearchCategory.REELS -> reels.size
                     DesktopSearchCategory.HASHTAGS -> hashtags.size
                 }
@@ -323,6 +334,12 @@ private fun DesktopSearchCore(
                     selected = category == item,
                     onClick = { category = item },
                     label = { Text(if (clean.isNotBlank() && count != null) "${item.label} $count" else item.label) },
+                    shape = RoundedCornerShape(22.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        selectedContainerColor = if (MaterialTheme.colorScheme.background == Color.Black) Color.White else Color.Black,
+                        selectedLabelColor = if (MaterialTheme.colorScheme.background == Color.Black) Color.Black else Color.White,
+                    ),
                 )
             }
         }
@@ -387,7 +404,7 @@ private fun DesktopSearchCore(
             label = "desktopSearchMode",
             modifier = Modifier.weight(1f),
         ) { discovery ->
-            if (discovery) {
+            if (discovery && category == DesktopSearchCategory.ALL) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -479,6 +496,22 @@ private fun DesktopSearchCore(
                             }
                         }
                     }
+                    if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.MARKET) && visibleMarket.isNotEmpty()) {
+                        item { DesktopSearchSection("Market", "${visibleMarket.size} real marketplace listings") }
+                        items(visibleMarket, key = { "market-${it.id}" }) { product ->
+                            Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Text(product.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(product.category + " · " + product.university, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                    Text(product.currency + " " + String.format(Locale.US, "%,d", product.price), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    if (category == DesktopSearchCategory.COMMUNITIES) {
+                        item { DesktopSearchSection("Communities", "Community search needs the shared discovery service") }
+                        item { Text("No community results available here yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+                    }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.PEOPLE) && people.isNotEmpty()) {
                         item { DesktopSearchSection("People", "${people.size} results") }
                         items(people, key = { "person-${it.id}" }) { profile -> DesktopPremiumPerson(profile) }
@@ -505,7 +538,7 @@ private fun DesktopSearchCore(
                         item { DesktopSearchSection("Posts", "${posts.size} matches") }
                         items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post) }
                     }
-                    if (!loading && people.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty()) {
+                    if (!loading && people.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty() && visibleMarket.isEmpty() && category != DesktopSearchCategory.COMMUNITIES) {
                         item {
                             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
                                 Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {

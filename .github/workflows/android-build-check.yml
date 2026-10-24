@@ -73,6 +73,31 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Targeted visual evidence for the Search reference, not a global test gate.
+      - name: Capture BLINK Search reference snapshots
+        if: steps.scope.outputs.search_visual == 'true'
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkSearchReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/search-reference-${name}.png" || {
+              echo "::error::Missing search-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/search-reference-light.png app/src/test/screenshots/search-reference-dark.png; then
+            echo "::error::Search light/dark screenshots are identical."
+            exit 1
+          fi
+
+      - name: Upload BLINK Search reference snapshots
+        if: steps.scope.outputs.search_visual == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-search-reference-screenshots-${{ github.sha }}
+          path: '**/search-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Android lint
         if: steps.scope.outputs.android == 'true'
         shell: bash

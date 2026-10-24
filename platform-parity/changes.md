@@ -1,3 +1,25 @@
+## 2026-10-24 — BLINK Search reference screenshot review and action parity (Phase 4)
+
+- **Real screenshot evidence:** Reviewed CI-generated `search-reference-light.png`, `search-reference-dark.png` and `search-reference-320dp-font200.png` for the previous Search candidate. Dark and light mode were distinct and category layout matched the reference direction. The 320dp/200% capture exposed a People-name/Follow-button collision and a two-line Recent searches header; approval withheld.
+- **Android corrections:** For font scale >= 160%, show the Follow button beneath the profile identity; constrain titles and section labels to avoid action overlap, preserve large readable type, keep clear-recents accessible and reduce section-header whitespace. Real online status is displayed on matching People avatars.
+- **Post actions:** Show like, comment, repost/share and bookmark controls, forwarding to existing post callbacks. Post menu uses the existing options callback; tapping the card still opens its post. No simulated backend actions.
+- **Status:** These corrections require a fresh compile and captured screenshots from the **final** candidate; earlier passing screenshots/checks do not prove this commit. Testlab promotion only after latest CI and rendering verification. Main and production APK untouched.
+
+## 2026-10-24 — Reference Search Phase 2 navigation and authenticated actions
+
+- **Android header:** BLINK wordmark, signed-in profile avatar and online dot, existing Home game route, and real notification center route/unread indicator. No duplicate overlay or invented notification data.
+- **Android results:** User cards share the existing FollowStateStore server-backed follow/unfollow transaction with rollback and progress state. Own account never receives a Follow button. Marketplace cards use genuine in-memory listings as fallback, open actual product details whenever the listing can be resolved, and use a seller/detail fallback for a search-only item.
+- **Android regression repair:** The Testlab baseline contained an invalid `BlinkUiState.chatPrivacySettings` reference in the chat-foreground read acknowledgement guard. Removed only the dangling reference; foreground, connectivity and active-conversation checks stay in place, consistent with the repository's existing read-receipt acknowledgement when message history hydrates. This compile fix should not be interpreted as a new chat privacy controls feature.
+- **Windows:** Existing market category and listing parity from Phase 1 remains in scope; no Android-only backend contract introduced. Game and notification shortcuts use existing Android app shell routes; desktop navigation stays native.
+- **Verification:** Android/Windows compile, actual follow/market navigation, large-font and narrow-screen screenshots remain required. PR targets Testlab only; main and release remain untouched.
+
+## 2026-10-24 — Reference-inspired campus Search landing (Phase 1, Testlab candidate)
+
+- **Android:** New white/black responsive Search landing based on the approved phone reference: centered BLINK mark, real account avatar, pill search field, filter entry, All/People/Posts/Market/Communities chips, horizontally scrollable recent-search chips, grouped real results and See all actions. Actual Discover/Phase 3 data is used when the capability is available; local real feed/profiles are the fallback. No sample users, prices or fake communities are rendered. Advanced/Explore and visual/voice search remain reachable via the filter entry.
+- **Android interactions:** Actual profile and post navigation, the existing community membership toggle, live market details and seller navigation, on-device recent-query clearing and private-history guard. The Follow button, dedicated market detail navigation, synced-history deletion, game/notification header shortcuts and precise screenshot match remain for subsequent phases; current person-card action is honestly labelled View. No server schema change and no production rollout.
+- **Windows:** Preserve Windows's native responsive Search/Trending/Places routes, filters and API results; align search branding, placeholder and category chip treatments, show actual marketplace results and explicitly mark Communities as awaiting the shared discovery integration instead of fabricating listings.
+- **Required verification:** Android Compose compile plus screen capture compared against supplied reference at compact/regular widths and 100/130/150/200% font scaling, Windows compile/parity checks and search navigation/regression checks. Existing production main and Supabase stay unchanged until verified Testlab checks pass.
+
 ## 2026-10-23 — Reference-matched authentication welcome screen (Testlab candidate)
 
 - **Android:** Replace the animated purple onboarding illustration with a real, clickable welcome layout matching the approved BLINK auth reference: campus-student hero image, full-width rounded white card, four colored campus benefits, black Log In button, outlined Create Account, light Continue with Google and branded G icon, plus the subtitle "Connect, discover and grow Beyond LINK" with "Beyond LINK" underlined.
