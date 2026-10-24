@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
@@ -31,6 +32,9 @@ import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +50,7 @@ import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, REELS, MARKET, CONNECT, MESSAGE
+    HOME, REELS, MARKET, CONNECT, MENU
 }
 
 private data class FeedBottomItem(
@@ -61,7 +65,7 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.REELS, Icons.Filled.VideoLibrary, Icons.Filled.VideoLibrary, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
     FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
-    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Messages")
+    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
 )
 
 @Composable
@@ -79,11 +83,12 @@ fun FeedBottomBar(
     modifier: Modifier = Modifier
 ) {
     val selectedDestination = when {
+        isMenuOpen -> FeedBottomDestination.MENU
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME && feedSubTab == 1 -> FeedBottomDestination.REELS
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
-        currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
+        currentTab == MainTab.MESSAGES -> null
         else -> null
     }
 
@@ -101,7 +106,7 @@ fun FeedBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp),
+                .height(65.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -116,7 +121,7 @@ fun FeedBottomBar(
                             FeedBottomDestination.REELS -> onReelsClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.CONNECT -> onConnectClick()
-                            FeedBottomDestination.MESSAGE -> onMessageClick()
+                            FeedBottomDestination.MENU -> onMenuClick()
                         }
                     }
                 )
@@ -136,7 +141,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(58.dp)
+            .height(65.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -148,7 +153,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
                 .height(3.dp)
                 .background(if (selected) FeedBlue else Color.Transparent)
         )
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(4.dp))
         Box(
             modifier = Modifier.size(40.dp),
             contentAlignment = Alignment.Center
@@ -157,9 +162,16 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
                 imageVector = if (selected) item.filledIcon else item.outlinedIcon,
                 contentDescription = item.label,
                 tint = tint,
-                modifier = Modifier.size(25.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
+        Text(
+            text = item.label,
+            color = tint,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1
+        )
     }
 }
 
