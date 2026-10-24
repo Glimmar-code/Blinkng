@@ -15,6 +15,8 @@ create index if not exists blink_referrals_referrer_idx
 alter table public.blink_referrals enable row level security;
 revoke all on public.blink_referrals from public, anon, authenticated;
 grant select on public.blink_referrals to authenticated;
+-- Explicit Data API least-privilege declaration; server triggers own all mutations.
+grant select on public.blink_referrals to service_role;
 drop policy if exists blink_referrals_read_own on public.blink_referrals;
 create policy blink_referrals_read_own on public.blink_referrals
   for select to authenticated
@@ -33,6 +35,8 @@ create table if not exists public.blink_referral_achievements (
 alter table public.blink_referral_achievements enable row level security;
 revoke all on public.blink_referral_achievements from public, anon, authenticated;
 grant select on public.blink_referral_achievements to authenticated;
+-- Service role can inspect without direct forgery rights; only the trigger awards credits.
+grant select on public.blink_referral_achievements to service_role;
 drop policy if exists blink_referral_achievements_read_own on public.blink_referral_achievements;
 create policy blink_referral_achievements_read_own on public.blink_referral_achievements
   for select to authenticated using (user_id = (select auth.uid()));
