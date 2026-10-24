@@ -1,5 +1,13 @@
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
+## 2026-10-24 — Feed post footer, preview and opening behavior (Android and Windows)
+
+- **Android:** Normal feed posts preview four lines before `See more`; the xFeed action row now shows Like → Comment → Repost → Save → Share for all text/image posts. True backend view count appears as small muted text below actions, not as an eye icon. Header whitespace, university and time metadata open full post while profile/Follow/options keep their own routes. Preserve media interaction, poll controls, saved state and author-hidden likes.
+- **Windows equivalent:** `DesktopFeedPostCard` adopts the same Like → Comment → Repost → Save → Share order, four-line excerpts and small views label beneath. Desktop's xFeed card surface now follows the chosen app colour scheme rather than always painting black.
+- **Regression tests:** Android screenshot interaction test covers liking an image post and tapping university metadata; shared Home static contract asserts action order and Windows/Android counts. Required device screenshot and actual link handling verification remain release gates.
+- **Safety:** No Supabase or ranking modifications; backend-provided counts only. No claimed user engagement changes.
+
+
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
 - Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
 - Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.
