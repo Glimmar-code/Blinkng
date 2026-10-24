@@ -199,6 +199,8 @@ class ChatRepository(
                             else -> MessageStatus.SENT
                         },
                         isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        voiceDuration = o.optString("content").removePrefix("Voice note: ")
+                            .takeIf { it.matches(Regex("^\\d+s$")) }.orEmpty(),
                         voiceAudioUrl = mediaUrl.takeIf { mediaType.equals("voice", true) || mediaType.equals("audio", true) },
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
