@@ -1034,6 +1034,8 @@ fun MainAppContent(
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
     // MainAppContent hosts the Home feed: keep permission state in this scope.
@@ -2120,7 +2122,7 @@ fun MainAppContent(
                 uiState.activePostOptionsPost == null &&
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
-                !uiState.isMenuOpen
+                !uiState.isMenuOpen && !showWallet
 
         androidx.compose.animation.AnimatedVisibility(
             // A downward Home scroll hides the entire rail, including its shadow,
@@ -2379,6 +2381,7 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
+                    initialTab = if (isMyProfile && showSavedProfile) 3 else 0,
                     userPosts = profilePosts,
                     isPostsLoading = isProfilePostsLoading,
                     hasPostsLoadError = profilePostsLoadFailed,
@@ -2389,7 +2392,7 @@ fun MainAppContent(
                     userMarketItems = userMarketItems,
                     isMarketLoading = isProfileMarketLoading,
                     hasMarketLoadError = isProfileMarketFailed,
-                    onBack = { viewModel.closeProfile() },
+                    onBack = { showSavedProfile = false; viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
                         viewModel.closeProfile()
@@ -2906,27 +2909,192 @@ fun MainAppContent(
             )
         }
 
-        // Modals: 3-Dot App Menu Sheet
-        if (uiState.isMenuOpen) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            AppMenuSheet(
+        // BLINK Menu reference — all routes preserve existing production services.
+        if (uiState.isMenuOpen && !showWallet) {
+            BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
+                hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
-                onViewProfile = { viewModel.openProfile("you") },
-                onEditProfile = { viewModel.openEditProfile(true) },
-                onOpenMarket = { viewModel.setTab(MainTab.MARKET) },
-                onOpenPostItem = { viewModel.openPostItem(true) },
-                onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
-                onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
-                onOpenActivity = { viewModel.openActivity(true) },
+                onViewProfile = {
+                    showSavedProfile = false
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onLeaderboard = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onWallet = {
+                    viewModel.openMenu(false)
+                    showWallet = true
+                },
+                onNotifications = {
+                    viewModel.openMenu(false)
+                    viewModel.openActivity(true)
+                },
+                onSaved = {
+                    showSavedProfile = true
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onVerification = {
+                    viewModel.openMenu(false)
+                    viewModel.openGetVerified(true)
+                },
+                onSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java)
+                            .putExtra("section", "privacy"),
+                        "Could not open settings."
+                    )
+                },
                 onToggleTheme = { viewModel.toggleDarkMode() },
-                onLogout = { viewModel.logout() },
-                onShowToast = { viewModel.showToast(it) },
+                onCallSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.notification.NotificationAndCallSettingsActivity::class.java),
+                        "Could not open call settings."
+                    )
+                },
+                onSwitchAccount = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.auth.AccountSwitcherActivity::class.java),
+                        "Could not switch account."
+                    )
+                },
+                onOpenAdmin = {
+                    viewModel.openMenu(false)
+                    if (canOpenAdmin) context.startActivitySafely(
+                        Intent(context, AdminControlCenterActivity::class.java),
+                        "Could not open administration."
+                    )
+                },
+                onMessages = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                onEditProfile = {
+                    viewModel.openMenu(false)
+                    viewModel.openEditProfile(true)
+                },
+                onFindFriends = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onPostItem = {
+                    viewModel.openMenu(false)
+                    viewModel.openPostItem(true)
+                },
+                onSellerHub = {
+                    viewModel.openMenu(false)
+                    viewModel.openBecomeSeller(true)
+                },
+                onScheduledPosts = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "scheduled"),
+                        "Could not open scheduled posts."
+                    )
+                },
+                onGroups = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "groups"),
+                        "Could not open groups."
+                    )
+                },
+                onOrdersAndWishlist = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "market"),
+                        "Could not open orders."
+                    )
+                },
+                onCallHistory = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.call.CallHistoryActivity::class.java),
+                        "Could not open call history."
+                    )
+                },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
-                onAdPrivacyOptions = onAdPrivacyOptions,
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) },
-                onReportBug = onReportBug
+                onAdPrivacyOptions = {
+                    viewModel.openMenu(false)
+                    onAdPrivacyOptions()
+                },
+                onLogOut = {
+                    viewModel.openMenu(false)
+                    showWallet = false
+                    viewModel.logout()
+                },
+                onSearch = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onGames = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(3)
+                },
+                onOpenUpdateWebsite = onOpenWebsiteUpdate,
+                onOpenHelpWebsite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.blink.com.ng"))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                },
+                onHome = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                },
+                onReels = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                },
+                onMarket = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                },
+                onConnect = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                }
+            )
+        }
+
+        // The wallet always reads this account's authoritative state from Supabase.
+        if (showWallet && uiState.myProfile.id.isNotBlank()) {
+            BlinkWalletScreen(
+                accountId = uiState.myProfile.id,
+                lastKnownBalance = uiState.blinkCoinBalance,
+                dailyStreak = uiState.myProfile.dailyStreak,
+                adsToday = uiState.rewardedAdsToday,
+                policy = uiState.economyPolicy,
+                missions = uiState.dailyMissions,
+                loadingMissions = uiState.isDailyMissionsLoading,
+                isDark = uiState.isDarkMode,
+                onBack = { showWallet = false; viewModel.openMenu(true) },
+                onRefresh = { viewModel.refreshProfileRewards() },
+                onClaimMission = { viewModel.claimDailyMission(it) },
+                onWatchOptionalAd = onWatchAdForCoins,
+                onOpenVerification = {
+                    showWallet = false
+                    viewModel.openGetVerified(true)
+                },
+                onOpenStore = {
+                    if (BlinkStoreAvailability.isPaused) {
+                        showStoreComingSoon = true
+                    } else context.startActivitySafely(
+                        Intent(context, BlinkStoreActivity::class.java),
+                        "Unable to open BLINK Store."
+                    )
+                }
             )
         }
 
