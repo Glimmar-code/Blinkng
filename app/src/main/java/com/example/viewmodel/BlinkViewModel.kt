@@ -3067,7 +3067,8 @@ private suspend fun restoreSupabaseSession() {
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
                 MessageMediaService.sendAttachment(
-                    appContext, partner, pending.uri, pending.kind, pending.durationMs
+                    appContext, partner, pending.uri, pending.kind, pending.durationMs,
+                    tempId.removePrefix("temp_attachment_")
                 ).fold(
                     onSuccess = { message ->
                         pendingAttachments.remove(tempId)
