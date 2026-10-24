@@ -5363,14 +5363,18 @@ private suspend fun restoreSupabaseSession() {
                         hiddenFeedPostIds = current.hiddenFeedPostIds + event.postId
                     )
                     persistCurrentFeed()
-                     // Separate failures must never cancel the realtime event coroutine.
-                // Preserve cached For You/Following/Reels when a database RPC times out.
+                    return@launch
+                }
+
+                // Timeouts are independent for the For You and Following lanes.
+                // Preserve cached lists and do not cancel this realtime handler
+                // on ordinary HTTP/SQL failures. Keep coroutine cancellation intact.
                 val fresh = try {
                     postRepository.fetchFeed()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.w(TAG, "Realtime ranked feed refresh failed; preserving cached feed", error)
+                    Log.w(TAG, "Realtime ranked refresh failed; retaining cached posts", error)
                     emptyList()
                 }
                 val following = try {
@@ -5378,10 +5382,9 @@ private suspend fun restoreSupabaseSession() {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.w(TAG, "Realtime Following refresh failed; preserving cached feed", error)
+                    Log.w(TAG, "Realtime Following refresh failed; retaining cached posts", error)
                     emptyList()
                 }
-       val following = followingRequest.await()
                 val latest = _uiState.value
                 val muted = latest.mutedUsers
 
