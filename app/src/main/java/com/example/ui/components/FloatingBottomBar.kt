@@ -88,7 +88,7 @@ fun FeedBottomBar(
         currentTab == MainTab.HOME && feedSubTab == 1 -> FeedBottomDestination.REELS
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
-        currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
+        currentTab == MainTab.MESSAGES -> null
         else -> null
     }
 
@@ -141,7 +141,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(58.dp)
+            .height(65.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
