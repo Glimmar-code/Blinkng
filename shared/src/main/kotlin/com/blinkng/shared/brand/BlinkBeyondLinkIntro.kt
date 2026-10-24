@@ -188,18 +188,22 @@ private fun pathFromPoints(points: IntArray, subtractX: Int = 0): Path = Path().
     close()
 }
 
-// Precise silhouette sampled from the supplied 1536px BLINK logo. Coordinates
+// Silhouette extracted from the white glyph pixels of the supplied 1536px PNG. Coordinates
 // are relative to the actual white glyph's 553 x 783 bounds, NOT its black
 // rounded-square launcher background. The splash remains edge-to-edge black.
 private val ownerApprovedBPoints = intArrayOf(
-    45,9, 21,27, 9,44, 0,67, 0,552, 9,599, 24,639, 48,678,
-    81,714, 127,747, 174,768, 226,780, 292,781, 341,774, 394,756, 441,729,
-    483,693, 513,654, 537,606, 552,541, 552,487, 543,440, 525,390, 495,339,
-    459,300, 423,273, 388,255, 352,243, 318,237, 244,237, 220,240, 210,246,
-    204,255, 202,265, 202,343, 207,359, 216,366, 227,369, 310,369, 352,385,
-    373,400, 401,433, 414,461, 420,489, 420,517, 408,561, 386,595, 357,620,
-    324,636, 279,641, 248,635, 217,618, 201,604, 187,584, 177,563, 171,539,
-    171,76, 168,59, 153,30, 138,15, 116,3, 105,0, 72,0,
+    52,7, 36,16, 19,31, 4,57, 0,76, 0,534, 4,576, 10,602,
+    22,635, 46,676, 58,691, 85,718, 127,748, 144,757, 183,772,
+    223,781, 279,784, 332,778, 334,776, 366,769, 396,757,
+    439,733, 469,709, 490,688, 511,661, 523,641, 538,608,
+    547,578, 553,545, 553,485, 544,439, 526,390, 505,353,
+    473,313, 438,283, 397,259, 355,244, 323,238, 239,238,
+    220,241, 214,244, 205,255, 202,265, 202,346, 205,356,
+    211,364, 224,370, 306,370, 324,374, 352,386, 372,400,
+    396,426, 411,453, 420,488, 420,520, 411,556, 393,588,
+    372,610, 341,630, 309,640, 267,640, 243,633, 226,624,
+    210,612, 199,600, 185,579, 175,552, 172,534, 172,72,
+    169,58, 163,44, 152,28, 143,19, 125,7, 107,1, 97,0, 70,1,
 )
 
 @Composable
@@ -208,16 +212,16 @@ private fun BlinkBrandB(artworkScale: Float, modifier: Modifier = Modifier) {
     val heightDp = 42f * artworkScale
     Canvas(
         modifier = modifier
-            .width((heightDp * 553f / 783f).dp)
+            .width((heightDp * 555f / 785f).dp)
             .height(heightDp.dp)
             .testTag("blink_intro_brand_b"),
     ) {
         withTransform({
-            scale(scaleX = size.width / 553f, scaleY = size.height / 783f, pivot = Offset.Zero)
+            scale(scaleX = size.width / 555f, scaleY = size.height / 785f, pivot = Offset.Zero)
         }) {
             drawPath(bPath, Color.White)
             // Same round blue dot as the uploaded logo, visible from frame one.
-            drawCircle(Color(0xFF1E65FB), radius = 85.5f, center = Offset(287f, 506f))
+            drawCircle(Color(0xFF1E65FB), radius = 86f, center = Offset(289f, 507f))
         }
     }
 }
