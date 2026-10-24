@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -39,6 +40,9 @@ import coil.compose.AsyncImage
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.FeedPost
+import com.example.data.models.MarketItem
+import com.example.data.repository.FollowStateStore
+import kotlinx.coroutines.launch
 import com.example.data.models.UserProfile
 import com.example.viewmodel.SearchDiscoveryViewModel
 import java.util.Locale
@@ -66,9 +70,14 @@ internal fun BlinkReferenceSearchScreen(
     posts: List<FeedPost>,
     serverProfiles: List<UserProfile>,
     serverPosts: List<FeedPost>,
+    marketItems: List<MarketItem>,
     currentUsername: String,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onMarketItemClick: (MarketItem) -> Unit,
+    onGameClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     onOpenAdvanced: () -> Unit,
     onBackToHome: () -> Unit,
     isDark: Boolean,
@@ -77,6 +86,11 @@ internal fun BlinkReferenceSearchScreen(
     val discovery by search.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val followScope = rememberCoroutineScope()
+    val followingIds by FollowStateStore.followingIds.collectAsStateWithLifecycle()
+    var busyFollowId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { FollowStateStore.refresh() }
     val prefs = remember(context) { context.getSharedPreferences(REF_RECENTS_PREF, Context.MODE_PRIVATE) }
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf(ReferenceCategory.ALL) }
@@ -101,6 +115,16 @@ internal fun BlinkReferenceSearchScreen(
         if (clean.isBlank() || discovery.privateHistory) return
         recents = (listOf(clean) + recents.filterNot { it.equals(clean, ignoreCase = true) }).take(10)
         prefs.edit().putString(REF_RECENTS_KEY, recents.joinToString(REF_RECENTS_SEPARATOR)).apply()
+    }
+    fun toggleFollow(profileId: String) {
+        if (profileId.isBlank() || busyFollowId != null) return
+        busyFollowId = profileId
+        val next = profileId !in followingIds
+        followScope.launch {
+            val okay = FollowStateStore.setFollowing(profileId, next)
+            busyFollowId = null
+            if (!okay) Toast.makeText(context, "Follow request failed. Try again.", Toast.LENGTH_SHORT).show()
+        }
     }
     fun select(value: ReferenceCategory) {
         category = value
@@ -129,6 +153,14 @@ internal fun BlinkReferenceSearchScreen(
             .distinctBy { it.id.ifBlank { it.username.lowercase(Locale.ROOT) } }
     }
     val allPosts = remember(posts, serverPosts) { (posts + serverPosts).distinctBy { it.id } }
+    val actualMarket = remember(marketItems, query) {
+        marketItems.filter { !it.isSold && (
+            query.isBlank() || it.title.contains(query, true) ||
+            it.category.contains(query, true) || it.university.contains(query, true) ||
+            it.description.contains(query, true) || it.location.contains(query, true)
+        ) }.take(30)
+    }
+    val marketById = remember(marketItems) { marketItems.associateBy { it.id } }
     val currentProfile = allProfiles.firstOrNull { it.username.equals(currentUsername, true) }
     val localPeople = remember(allProfiles, query) {
         allProfiles.filter {
@@ -155,19 +187,30 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(42.dp).clip(CircleShape).background(subtle), contentAlignment = Alignment.Center) {
-                if (!currentProfile?.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = currentProfile?.avatarUrl, contentDescription = "Your profile",
-                        modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+            Box(Modifier.size(42.dp).clickable { if (currentUsername.isNotBlank()) onProfileClick(currentUsername) }, contentAlignment = Alignment.Center) {
+                ReferenceAvatar(currentProfile?.avatarUrl, 42)
+                if (currentProfile?.onlineNow == true) {
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).size(11.dp).clip(CircleShape)
+                            .background(Color(0xFF18C95C))
                     )
-                } else Text("B", fontSize = 20.sp, fontWeight = FontWeight.Black, color = fg)
+                }
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text("B L I N K", fontSize = 20.sp, fontWeight = FontWeight.Black, color = fg, maxLines = 1)
+                Text("BLINK", fontSize = 21.sp, letterSpacing = 4.sp,
+                    fontWeight = FontWeight.Black, color = fg, maxLines = 1)
             }
-            IconButton(onClick = onOpenAdvanced, modifier = Modifier.size(42.dp)) {
-                Icon(Icons.Rounded.Tune, "Advanced search", tint = fg)
+            IconButton(onClick = onGameClick, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Rounded.SportsEsports, "Game", modifier = Modifier.size(23.dp), tint = fg)
+            }
+            Box(Modifier.size(40.dp)) {
+                IconButton(onClick = onNotificationsClick, modifier = Modifier.fillMaxSize()) {
+                    Icon(Icons.Rounded.NotificationsNone, "Notifications", modifier = Modifier.size(23.dp), tint = fg)
+                }
+                if (hasUnreadNotifications) {
+                    Box(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 5.dp).size(7.dp)
+                        .clip(CircleShape).background(Color(0xFFFA2B33)))
+                }
             }
         }
 
@@ -282,18 +325,27 @@ internal fun BlinkReferenceSearchScreen(
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.PEOPLE) {
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
                 if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
+                    val profileId = result.id
                     ReferencePersonRow(
                         title = result.title, subtitle = result.subtitle, avatar = result.avatarUrl,
                         verified = result.verified, fg = fg, muted = muted, line = line,
-                        onClick = { if (result.username.isNotBlank()) onProfileClick(result.username) }
+                        followable = profileId.isNotBlank() && profileId != currentProfile?.id,
+                        following = profileId in followingIds, isBusy = busyFollowId == profileId,
+                        onFollow = { toggleFollow(profileId) },
+                        onClick = { if (result.username.isNotBlank()) onProfileClick(result.username) },
                     )
                 } else localPeople.take(limit).forEach { profile ->
+                    val profileId = profile.id
                     ReferencePersonRow(
                         title = profile.fullName.ifBlank { profile.username },
                         subtitle = listOf(profile.university, profile.department).filter(String::isNotBlank).joinToString(" · "),
-                        avatar = profile.avatarUrl, verified = profile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
+                        avatar = profile.avatarUrl,
+                        verified = profile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
                         fg = fg, muted = muted, line = line,
-                        onClick = { onProfileClick(profile.username) }
+                        followable = profileId.isNotBlank() && profileId != currentProfile?.id,
+                        following = profileId in followingIds, isBusy = busyFollowId == profileId,
+                        onFollow = { toggleFollow(profileId) },
+                        onClick = { onProfileClick(profile.username) },
                     )
                 }
                 if (livePeople.isEmpty() && localPeople.isEmpty()) ReferenceNoResults("No people found", muted)
@@ -317,30 +369,28 @@ internal fun BlinkReferenceSearchScreen(
 
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.MARKET) {
                 ReferenceTitle("Market", fg, muted) { select(ReferenceCategory.MARKET) }
-                if (liveMarket.isEmpty()) ReferenceNoResults(
-                    if (discovery.backendAvailable) "No market listings found" else "Market discovery is not available yet",
-                    muted
-                )
-                liveMarket.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                    Surface(
-                        onClick = { selectedDetail = item },
-                        shape = RoundedCornerShape(14.dp), color = bg, border = BorderStroke(1.dp, line),
-                    ) {
-                        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ReferenceThumbnail(item.imageUrl, 96)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = fg, maxLines = 1)
-                                Text(item.category, fontSize = 11.sp, color = muted)
-                                item.price?.let {
-                                    Text("₦" + String.format(Locale.US, "%,d", it), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = fg)
-                                }
-                                Text(item.location, fontSize = 10.sp, color = muted, maxLines = 1)
+                if (liveMarket.isNotEmpty()) {
+                    liveMarket.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
+                        ReferenceMarketRow(
+                            title = item.title, category = item.category, price = item.price,
+                            location = item.location, image = item.imageUrl,
+                            fg = fg, bg = bg, muted = muted, line = line,
+                            onClick = {
+                                val local = marketById[item.id]
+                                if (local != null) onMarketItemClick(local) else selectedDetail = item
                             }
-                            Icon(Icons.Rounded.ChevronRight, null, tint = muted)
-                        }
+                        )
                     }
-                }
+                } else if (actualMarket.isNotEmpty()) {
+                    actualMarket.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
+                        ReferenceMarketRow(
+                            title = item.title, category = item.category, price = item.price,
+                            location = item.university.ifBlank { item.location }, image = item.images.firstOrNull(),
+                            fg = fg, bg = bg, muted = muted, line = line,
+                            onClick = { onMarketItemClick(item) }
+                        )
+                    }
+                } else ReferenceNoResults("No market listings found", muted)
                 Spacer(Modifier.height(12.dp))
             }
 
@@ -409,28 +459,73 @@ private fun ReferenceTitle(title: String, fg: Color, muted: Color, onSeeAll: () 
 @Composable
 private fun ReferencePersonRow(
     title: String, subtitle: String, avatar: String?, verified: Boolean,
-    fg: Color, muted: Color, line: Color, onClick: () -> Unit,
+    fg: Color, muted: Color, line: Color,
+    followable: Boolean, following: Boolean, isBusy: Boolean,
+    onFollow: () -> Unit, onClick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        ReferenceAvatar(avatar, 49)
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49) }
         Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).clickable(onClick = onClick)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, color = fg, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (verified) {
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Rounded.Verified, "Verified", Modifier.size(15.dp), tint = Color(0xFF159CF5))
                 }
             }
-            Text(subtitle, color = muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = muted, fontSize = 10.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = fg) {
-            Text("View", Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-                color = if (fg == Color.White) Color.Black else Color.White,
-                fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Surface(
+            onClick = if (followable) onFollow else onClick,
+            enabled = !isBusy,
+            shape = RoundedCornerShape(12.dp),
+            color = if (followable && following) Color.Transparent else fg,
+            border = if (followable && following) BorderStroke(1.dp, line) else null,
+        ) {
+            Text(
+                when {
+                    isBusy -> "..."
+                    !followable -> "View"
+                    following -> "Following"
+                    else -> "Follow"
+                },
+                Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                color = if (followable && following) fg else if (fg == Color.White) Color.Black else Color.White,
+                fontWeight = FontWeight.Bold, fontSize = 11.sp,
+            )
         }
     }
     HorizontalDivider(color = line)
+}
+
+@Composable
+private fun ReferenceMarketRow(
+    title: String, category: String, price: Long?,
+    location: String, image: String?, fg: Color, bg: Color, muted: Color, line: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(14.dp),
+        color = bg, border = BorderStroke(1.dp, line),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            ReferenceThumbnail(image, 96)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = fg, maxLines = 1)
+                Text(category, fontSize = 11.sp, color = muted, maxLines = 1)
+                price?.let {
+                    Text("₦" + String.format(Locale.US, "%,d", it), fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold, color = fg)
+                }
+                Text(location, fontSize = 10.sp, color = muted, maxLines = 1)
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = muted)
+        }
+    }
 }
 
 @Composable
