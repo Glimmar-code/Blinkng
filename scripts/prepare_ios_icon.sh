@@ -8,6 +8,16 @@ command -v sips >/dev/null || { echo "::error::macOS sips is required"; exit 1; 
 mkdir -p "$OUT"
 TMP_JPEG="$(mktemp "${RUNNER_TEMP:-/tmp}/blink-icon.XXXXXX")"
 trap 'rm -f "$TMP_JPEG"' EXIT
+APPROVED_ICON="$OUT/AppIcon-1024.png"
+APPROVED_ICON_SHA256="cc986e2faabb39ebdfc41e349a4b277bba1d872fdf4f50ea39996c7ce94a7ab8"
+if [[ -s "$APPROVED_ICON" ]]; then
+  ACTUAL_SHA256="$(shasum -a 256 "$APPROVED_ICON" | cut -d " " -f 1)"
+  if [[ "$ACTUAL_SHA256" != "$APPROVED_ICON_SHA256" ]]; then
+    echo "::error::iOS approved BLINK icon hash mismatch; refusing to replace or release it." >&2
+    exit 1
+  fi
+  echo "Using verified, owner-approved BLINK iOS app icon."
+else
 
 # Use only existing BLINK artwork. Earlier launcher assets may be encoded
 # as unsupported placeholders, so inspect/convert the first valid asset.
@@ -33,13 +43,14 @@ if [[ -z "$SELECTED" ]]; then
   exit 1
 fi
 # JPEG intermediate flattens transparency. The App Store icon is opaque.
-sips -s format png "$TMP_JPEG" --out "$OUT/Icon-1024.png" >/dev/null
-echo "Derived BLINK release icon from: $SELECTED"
+sips -s format png "$TMP_JPEG" --out "$APPROVED_ICON" >/dev/null
+echo "Derived legacy BLINK release icon from: $SELECTED (approved asset not installed yet)."
+fi
 cat > "$OUT/Contents.json" <<'JSON'
 {
   "images": [
     { "idiom": "universal", "platform": "ios", "size": "1024x1024",
-      "filename": "Icon-1024.png" }
+      "filename": "AppIcon-1024.png" }
   ],
   "info": { "author": "xcode", "version": 1 }
 }
@@ -53,6 +64,9 @@ text = config.read_text()
 needle = "    sources:\n      - path: BLINKiOS/Sources\n"
 if text.count(needle) != 1:
     raise SystemExit("Unexpected iOS project shape")
+if "      - path: BLINKiOS/Assets.xcassets\n" in text:
+    print("App icon asset catalog already included")
+    raise SystemExit(0)
 text = text.replace(
     needle,
     needle + "      - path: BLINKiOS/Assets.xcassets\n",
@@ -60,5 +74,5 @@ text = text.replace(
 )
 config.write_text(text)
 PY
-echo "Release icon derived from existing BLINK icon: $OUT"
+echo "BLINK iOS icon catalog prepared: $OUT"
 echo "Visual review required before any public App Store release."
