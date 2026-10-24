@@ -897,7 +897,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
 // Centralized website route for in-app Menu Update Center and Help pages.
 private fun openOfficialBlinkWebsite(context: android.content.Context) {
     runCatching {
@@ -909,6 +908,7 @@ private fun openOfficialBlinkWebsite(context: android.content.Context) {
 }
 
 // MESSAGING_RELIABILITY_AUDIT_V3
+@Composable
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
