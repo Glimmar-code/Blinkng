@@ -2,6 +2,8 @@ package com.example.data.supabase
 
 import android.content.Context
 import android.net.Uri
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
 import com.example.data.models.ChatConversation
@@ -86,6 +88,14 @@ object MessageMediaService {
         context: Context,
         receiverUsername: String,
         uri: Uri
+    ): Result<ChatMessage> = sendAttachment(context, receiverUsername, uri, BlinkChatAttachmentKind.VIDEO)
+
+    suspend fun sendAttachment(
+        context: Context,
+        receiverUsername: String,
+        uri: Uri,
+        kind: BlinkChatAttachmentKind,
+        durationMs: Long = 0L
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
