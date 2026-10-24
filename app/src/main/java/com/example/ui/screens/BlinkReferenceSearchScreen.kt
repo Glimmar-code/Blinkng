@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -69,6 +70,7 @@ internal fun BlinkReferenceSearchScreen(
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
     onOpenAdvanced: () -> Unit,
+    onBackToHome: () -> Unit,
     isDark: Boolean,
 ) {
     val search: SearchDiscoveryViewModel = viewModel()
@@ -103,6 +105,14 @@ internal fun BlinkReferenceSearchScreen(
     fun select(value: ReferenceCategory) {
         category = value
         if (discovery.backendAvailable) search.selectType(value.discoveryType)
+    }
+
+    BackHandler {
+        when {
+            query.isNotBlank() -> query = ""
+            category != ReferenceCategory.ALL -> select(ReferenceCategory.ALL)
+            else -> onBackToHome()
+        }
     }
 
     LaunchedEffect(discovery.backendAvailable, query) {
@@ -140,7 +150,7 @@ internal fun BlinkReferenceSearchScreen(
     val liveCommunities = live.filter { it.type == DiscoveryResultType.COMMUNITY }
     val limit = if (category == ReferenceCategory.ALL) 2 else 20
 
-    Column(Modifier.fillMaxSize().background(bg)) {
+    Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
