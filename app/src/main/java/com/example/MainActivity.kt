@@ -1192,6 +1192,7 @@ fun MainAppContent(
                         profiles = uiState.profiles,
                         posts = (uiState.posts + uiState.reels).distinctBy { it.id },
                         currentUsername = uiState.myProfile.username,
+                        myProfile = uiState.myProfile,
                         serverProfiles = uiState.discoverProfiles,
                         serverPosts = uiState.discoverPosts,
                         marketItems = uiState.marketItems,
