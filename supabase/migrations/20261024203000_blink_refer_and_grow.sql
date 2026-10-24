@@ -21,6 +21,22 @@ create policy blink_referrals_read_own on public.blink_referrals
   using ((select auth.uid()) in (referrer_user_id, referred_user_id));
 -- No browser/mobile/desktop INSERT or UPDATE policy: all credits are server-owned.
 
+-- Lifetime achievement totals are durable, privacy-minimal aggregates. Removing a
+-- referred account clears its relationship row, but does not erase an earned badge.
+-- Deleting the REFERRER's account removes their achievements.
+create table if not exists public.blink_referral_achievements (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  confirmed_referrals bigint not null default 0 check (confirmed_referrals >= 0),
+  last_confirmed_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table public.blink_referral_achievements enable row level security;
+revoke all on public.blink_referral_achievements from public, anon, authenticated;
+grant select on public.blink_referral_achievements to authenticated;
+drop policy if exists blink_referral_achievements_read_own on public.blink_referral_achievements;
+create policy blink_referral_achievements_read_own on public.blink_referral_achievements
+  for select to authenticated using (user_id = (select auth.uid()));
+
 -- Auth metadata is an untrusted suggestion. Resolve it on the server, never in the client.
 -- The function only runs as an internal auth.users trigger.
 create or replace function public.blink_capture_signup_referral()
@@ -59,7 +75,8 @@ begin
       new.email_confirmed_at
     )
     on conflict (referred_user_id) do nothing;
-    credited := new.email_confirmed_at is not null;
+    -- Conflict/replay cannot grant the same referral a second time.
+    credited := found and new.email_confirmed_at is not null;
   elsif tg_op = 'UPDATE' then
     if old.email_confirmed_at is not null or new.email_confirmed_at is null then
       return new;
@@ -71,6 +88,22 @@ begin
   end if;
 
   if credited then
+    -- Atomic permanent accounting: count the transition into confirmed exactly once.
+    -- The aggregate contains no referred user's identity and is never decremented.
+    insert into public.blink_referral_achievements(
+      user_id, confirmed_referrals, last_confirmed_at, updated_at
+    )
+    select r.referrer_user_id, 1, r.confirmed_at, now()
+      from public.blink_referrals r
+     where r.referred_user_id = new.id and r.status = 'confirmed'
+    on conflict (user_id) do update
+      set confirmed_referrals = public.blink_referral_achievements.confirmed_referrals + 1,
+          last_confirmed_at = greatest(
+            public.blink_referral_achievements.last_confirmed_at,
+            excluded.last_confirmed_at
+          ),
+          updated_at = now();
+
     -- A safe retry guard protects against duplicate push on any repeated auth update.
     insert into public.notifications(
       user_id, actor_id, type, target_type, target_id, text, sub_text, is_read,
@@ -164,27 +197,67 @@ $$;
 revoke all on function public.blink_referrer_suggestions(text,integer,integer) from public;
 grant execute on function public.blink_referrer_suggestions(text,integer,integer) to anon, authenticated;
 
--- Only actual confirmed referrals count; a visibility advantage decays after 30 days.
+-- Permanent achievements are based on an immutable lifetime count, while
+-- the OPTIONAL discovery advantage is calculated from fresh confirmations.
+-- Each referral contributes 3 points for days 0-9, 2 for 10-19, 1 for 20-29,
+-- and 0 thereafter. New genuine referrals replenish points; lifetime count stays.
+-- Tier milestones: 1 Starter, 5 Builder, 10 Advocate, 25 Connector,
+-- 50 Champion, 100 Ambassador. No coins, followers, or views awarded.
 create or replace function public.blink_referral_dashboard()
-returns table(total_referrals bigint, active_referrals bigint, visibility_points integer, visibility_label text)
+returns table(
+  total_referrals bigint, active_referrals bigint, visibility_points integer,
+  visibility_label text, achievement_tier text, achievement_next_target integer
+)
 language sql stable security invoker set search_path = ''
 as $$
-  with stats as (
-    select
-      count(*) filter(where status = 'confirmed') total,
-      count(*) filter(where status = 'confirmed' and confirmed_at >= now() - interval '30 days') active
-    from public.blink_referrals where referrer_user_id = (select auth.uid())
+  with viewer as (select auth.uid() as user_id),
+  stats as (
+    select coalesce(a.confirmed_referrals,0) as total,
+           count(r.referred_user_id) filter (
+             where r.status='confirmed'
+               and r.confirmed_at <= now()
+               and r.confirmed_at > now() - interval '30 days'
+           ) as active,
+           least(30,coalesce(sum(
+             case when r.status <> 'confirmed' or r.confirmed_at > now() then 0
+                  when r.confirmed_at > now()-interval '10 days' then 3
+                  when r.confirmed_at > now()-interval '20 days' then 2
+                  when r.confirmed_at > now()-interval '30 days' then 1
+                  else 0 end
+           ),0)::integer) as points
+    from viewer v
+    left join public.blink_referral_achievements a on a.user_id=v.user_id
+    left join public.blink_referrals r on r.referrer_user_id=v.user_id
+    where v.user_id is not null
+    group by a.confirmed_referrals
   )
-  select total, active,
-         least(30, active::integer * 3),
+  select total, active, points,
          case
-           when active >= 10 then 'High visibility'
-           when active >= 5 then 'Enhanced discovery'
-           when active >= 3 then 'Growing visibility'
-           when active >= 1 then 'Discovery boost active'
+           when points >= 24 then 'High visibility'
+           when points >= 15 then 'Enhanced discovery'
+           when points >= 6 then 'Growing visibility'
+           when points >= 1 then 'Discovery boost active'
            else 'Normal discovery'
+         end,
+         case
+           when total >= 100 then 'Ambassador'
+           when total >= 50 then 'Champion'
+           when total >= 25 then 'Connector'
+           when total >= 10 then 'Advocate'
+           when total >= 5 then 'Builder'
+           when total >= 1 then 'Starter'
+           else 'New member'
+         end,
+         case
+           when total >= 100 then null::integer
+           when total >= 50 then 100
+           when total >= 25 then 50
+           when total >= 10 then 25
+           when total >= 5 then 10
+           when total >= 1 then 5
+           else 1
          end
-    from stats where (select auth.uid()) is not null;
+  from stats;
 $$;
 revoke all on function public.blink_referral_dashboard() from public, anon;
 grant execute on function public.blink_referral_dashboard() to authenticated;
@@ -199,14 +272,23 @@ as $$
     select p.id, p.university from public.profiles p where p.id = (select auth.uid())
   ),
   active as (
-    select r.referrer_user_id, count(*) as active_referrals
+    select r.referrer_user_id,
+           least(30,sum(
+             case
+               when r.confirmed_at > now() then 0
+               when r.confirmed_at > now()-interval '10 days' then 3
+               when r.confirmed_at > now()-interval '20 days' then 2
+               when r.confirmed_at > now()-interval '30 days' then 1
+               else 0
+             end
+           )::integer) as visibility_points
     from public.blink_referrals r
-    where r.status = 'confirmed' and r.confirmed_at >= now() - interval '30 days'
+    where r.status = 'confirmed' and r.confirmed_at > now() - interval '30 days'
     group by r.referrer_user_id
   ),
   candidates as (
     select p.id, p.username, p.full_name, p.avatar_url, p.university,
-           coalesce(a.active_referrals,0) as active_referrals
+           coalesce(a.visibility_points,0) as visibility_points
     from public.profiles p cross join viewer v
     left join active a on a.referrer_user_id = p.id
     where p.id <> v.id and p.onboarding_completed is true
@@ -224,8 +306,8 @@ as $$
   ),
   boosted as (
     select *, true as featured from candidates
-    where active_referrals > 0
-    order by least(active_referrals,10) desc, id
+    where visibility_points > 0
+    order by visibility_points desc, id
     limit 3
   ),
   organic as (
@@ -236,10 +318,11 @@ as $$
   )
   select id, username, full_name, avatar_url, university, featured
   from (
-    select * from boosted
+    select boosted.*, 0 as priority from boosted
     union all
-    select * from organic
+    select organic.*, 1 as priority from organic
   ) results
+  order by priority, visibility_points desc, id
   limit greatest(1,least(coalesce(p_limit,10),10));
 $$;
 revoke all on function public.blink_referral_recommendations(integer) from public, anon;
