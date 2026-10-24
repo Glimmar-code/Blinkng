@@ -1,3 +1,11 @@
+## 2026-10-24 — Reference Search Phase 2 navigation and authenticated actions
+
+- **Android header:** BLINK wordmark, signed-in profile avatar and online dot, existing Home game route, and real notification center route/unread indicator. No duplicate overlay or invented notification data.
+- **Android results:** User cards share the existing FollowStateStore server-backed follow/unfollow transaction with rollback and progress state. Own account never receives a Follow button. Marketplace cards use genuine in-memory listings as fallback, open actual product details whenever the listing can be resolved, and use a seller/detail fallback for a search-only item.
+- **Android regression repair:** The Testlab baseline contained an invalid `BlinkUiState.chatPrivacySettings` reference in the chat-foreground read acknowledgement guard. Removed only the dangling reference; foreground, connectivity and active-conversation checks stay in place, consistent with the repository's existing read-receipt acknowledgement when message history hydrates. This compile fix should not be interpreted as a new chat privacy controls feature.
+- **Windows:** Existing market category and listing parity from Phase 1 remains in scope; no Android-only backend contract introduced. Game and notification shortcuts use existing Android app shell routes; desktop navigation stays native.
+- **Verification:** Android/Windows compile, actual follow/market navigation, large-font and narrow-screen screenshots remain required. PR targets Testlab only; main and release remain untouched.
+
 ## 2026-10-24 — Reference-inspired campus Search landing (Phase 1, Testlab candidate)
 
 - **Android:** New white/black responsive Search landing based on the approved phone reference: centered BLINK mark, real account avatar, pill search field, filter entry, All/People/Posts/Market/Communities chips, horizontally scrollable recent-search chips, grouped real results and See all actions. Actual Discover/Phase 3 data is used when the capability is available; local real feed/profiles are the fallback. No sample users, prices or fake communities are rendered. Advanced/Explore and visual/voice search remain reachable via the filter entry.
