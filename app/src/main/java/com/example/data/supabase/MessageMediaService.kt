@@ -77,9 +77,16 @@ object MessageMediaService {
                 if (!response.isSuccessful) throw IllegalStateException(error(raw, "Could not open private video."))
                 val obj = JSONObject(raw)
                 val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
-                if (signed.isBlank()) null
-                else if (signed.startsWith("http")) signed
-                else "${SupabaseConfig.url.trimEnd('/')}$signed"
+                when {
+                    signed.isBlank() -> null
+                    signed.startsWith("https://") &&
+                        signed.startsWith(SupabaseConfig.url.trimEnd('/')) -> signed
+                    signed.startsWith("/storage/v1/") ->
+                        SupabaseConfig.url.trimEnd('/') + signed
+                    signed.startsWith("/object/") ->
+                        SupabaseConfig.url.trimEnd('/') + "/storage/v1" + signed
+                    else -> null
+                }
             }
         }.getOrNull()
     }
@@ -197,7 +204,7 @@ object MessageMediaService {
                 }
                 val label = when (kind) {
                     BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
-                    BlinkChatAttachmentKind.VOICE -> "Voice note"
+                    BlinkChatAttachmentKind.VOICE -> "Voice note: ${durationMs.coerceAtLeast(0) / 1000}s"
                     else -> kind.title
                 }
                 val messageBody = JSONObject()
