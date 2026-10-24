@@ -117,6 +117,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
+    var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
     // Drafts must never cross conversations or accounts, including after switching chats.
     val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
     val sendingConversations = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
@@ -129,8 +131,11 @@ fun MessagesScreen(state: DesktopAppState) {
             .onSuccess {
                 if (state.session?.userId == owner) {
                     conversations = it
+                    receiptRefreshEpoch++
                     selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
                     error = null
+                    // Recipient acknowledged device delivery, not chat read.
+                    scope.launch { runCatching { state.client.acknowledgePendingMessageDeliveries() } }
                 }
             }
             .onFailure { if (state.session?.userId == owner) error = it.message }
@@ -161,6 +166,14 @@ fun MessagesScreen(state: DesktopAppState) {
                     messages = it
                     hasMoreOlder = it.size >= 100
                     error = null
+                    if (!target.isGroup && state.settings?.readReceipts == true &&
+                        !target.partnerUsername.isNullOrBlank()) {
+                        scope.launch {
+                            runCatching {
+                                state.client.markVisibleConversationRead(target.partnerUsername!!)
+                            }
+                        }
+                    }
                 }
             }
             .onFailure {
@@ -215,6 +228,7 @@ fun MessagesScreen(state: DesktopAppState) {
         selected = null
         messages = emptyList()
         conversations = emptyList()
+        latestInboxReceipts = emptyMap()
         editingMessage = null
         deleteMessage = null
         reportMessage = null
@@ -385,6 +399,18 @@ fun MessagesScreen(state: DesktopAppState) {
                     }
                 }
                 items(filtered, key = { it.id }) { conversation ->
+                    LaunchedEffect(conversation.id, conversation.lastMessageAt, myUserId, receiptRefreshEpoch) {
+                        val owner = myUserId
+                        if (owner.isNotBlank()) {
+                            val last = runCatching { state.client.fetchLatestMessage(conversation.id) }
+                                .getOrNull()
+                            if (state.session?.userId == owner) {
+                                latestInboxReceipts =
+                                    if (last == null) latestInboxReceipts - conversation.id
+                                    else latestInboxReceipts + (conversation.id to last)
+                            }
+                        }
+                    }
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable {
                             error = null
@@ -408,16 +434,32 @@ fun MessagesScreen(state: DesktopAppState) {
                                 Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
                                     fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
                                     maxLines = 1)
-                                Text(
-                                    conversation.lastMessage.ifBlank {
-                                        if (conversation.isGroup) "Group conversation"
-                                        else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
-                                    },
-                                    fontSize = 13.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val latest = latestInboxReceipts[conversation.id]
+                                    if (!conversation.isGroup && latest != null && latest.senderId == myUserId) {
+                                        val receipt = when {
+                                            latest.readAt != null || latest.isRead -> "READ"
+                                            latest.deliveredAt != null -> "DELIVERED"
+                                            else -> "SENT"
+                                        }
+                                        Text(
+                                            com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
+                                            fontSize = 12.sp,
+                                            color = if (receipt == "READ") Color(0xFF3B82F6)
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = 5.dp)
+                                        )
+                                    }
+                                    Text(
+                                        conversation.lastMessage.ifBlank {
+                                            if (conversation.isGroup) "Group conversation"
+                                            else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
+                                        },
+                                        fontSize = 13.sp, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             if (conversation.unreadCount > 0 || conversation.markedUnread) {
                                 Surface(
@@ -644,15 +686,19 @@ fun MessagesScreen(state: DesktopAppState) {
                                         }
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        Text(
-                                            when {
-                                                message.readAt != null -> "Read"
-                                                message.deliveredAt != null -> "Delivered"
-                                                else -> "Sent"
-                                            },
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        if (mine) {
+                                            val receipt = when {
+                                                message.readAt != null || message.isRead -> "READ"
+                                                message.deliveredAt != null -> "DELIVERED"
+                                                else -> "SENT"
+                                            }
+                                            Text(
+                                                com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
+                                                fontSize = 11.sp,
+                                                color = if (receipt == "READ") Color(0xFF3B82F6)
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
                                     }
                                 }

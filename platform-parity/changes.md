@@ -1148,3 +1148,13 @@ publisher-signed APK directly from any of up to 10 compatible past releases.
 Windows does not use APKs or Android's installer; its native desktop update
 and distribution flow is unchanged. Full APK and Google Play update routes
 remain independent and intact. QA and Testlab approval required before main.
+
+
+## 2026-10-24 — Main reconciliation candidate: complete five-repair code port (DRAFT)
+
+- **Scope:** Safely port all five Testlab repair code paths onto main's newer implementation rather than merge divergent branches or overwrite additional profile, inbox, realtime, authentication and desktop features. This is an **unverified production candidate**, not a production deployment.
+- **Profile (Android/Windows):** The reference dashboard restores real cover, handle, headline, academic context, streak, post/follower stats, profile completion and Follow→Interact while retaining advanced profile actions behind the existing details control. Add the same identity data to Windows without stretching the phone layout. Extend shared phone-breakpoint policy *without removing main's existing adaptive APIs*.
+- **Notifications:** Preserve main's `NotificationMessageHistory` and `NotificationIdentity`; add account-scoped silent grouping and a summary that opens Messages without replacing quick actions or storing message previews to disk.
+- **Payments:** Reconcile V2 checkout at most once per minute, without repetitive pending toasts or unconfirmed benefit grants. Provider-verified abandoned/failed/reversed responses clear only local reminders. Preserve pending orders and signed-webhook idempotency, shared status policy and desktop typed response adapter. Existing legacy cash-order checkout is unchanged.
+- **Messages (Android/Windows):** Chat owns overlapping navigation/IME insets exactly once; composer no longer adds another bottom safe-area strip. Shared receipt policy expresses server-evidenced ✓ / ✓✓ / blue ✓✓; Android and Windows inboxes show only the actual latest **outgoing** receipt, with lazy membership-protected metadata loading. Background chat or disabled read-receipt settings cannot cause read acknowledgements; Windows retains advanced message controls, pagination, drafting and privacy settings.
+- **Backend and release gate:** No production Supabase schema/Edge Function was deployed, and no real payment was attempted. Relevant Android/Windows/shared tests, Paystack provider test-mode/late signed-webhook verification, and two-account online/offline/foreground Android 15 runtime checks must all pass before changing main or publishing one signed APK. No paid hosted staging without user approval.

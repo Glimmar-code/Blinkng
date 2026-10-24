@@ -76,6 +76,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -249,7 +250,8 @@ fun PremiumMessagesScreen(
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -336,7 +338,8 @@ fun PremiumMessagesScreen(
                             hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
-                            isDark = isDark
+                            isDark = isDark,
+                            onVisibleInboxReceipt = onVisibleInboxReceipt
                         )
                     }
 
@@ -661,7 +664,8 @@ private fun PremiumMessagesHome(
     hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
-    isDark: Boolean
+    isDark: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
@@ -718,6 +722,7 @@ private fun PremiumMessagesHome(
         onOpenSettings = onOpenAppearance,
         isConnected = isConnected,
         isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
+        onVisibleInboxReceipt = onVisibleInboxReceipt,
         filterContent = {
             MessageInboxTabs(
                 selected = inboxTab,
@@ -1576,7 +1581,11 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -3114,8 +3123,10 @@ private fun MessageComposer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            // The chat root consumes overlapping IME/navigation-bar insets.
+            // Applying navigationBarsPadding here would create a second gap.
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("chat_message_composer")
     ) {
         Surface(
             color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),
