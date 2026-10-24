@@ -462,6 +462,9 @@
             <a href="${routeHref('/features/')}">Features</a>
             <a href="${routeHref('/download/')}">Download BLINK App</a>
             <a href="${routeHref('/faq/')}">FAQ</a>
+            <a href="${routeHref('/students/')}">BLINK for Students</a>
+            <a href="${routeHref('/marketplace/')}">BLINK Market</a>
+            <a href="${routeHref('/safety/')}">Safety</a>
             <a href="${routeHref('/privacy/')}">Privacy Policy</a>
             <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
           </nav>
