@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -159,6 +160,7 @@ fun HomeScreen(
     var consumedPostRows by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
+    var postDetailsId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -611,6 +613,7 @@ fun HomeScreen(
                     }
                 },
                 onComments = { commentsFor = if (commentsFor == post.id) null else post.id },
+                onOpenPost = { postDetailsId = post.id },
                 onCopyLink = {
                     DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
                 },
@@ -629,6 +632,50 @@ fun HomeScreen(
             }
         }
     }
+    posts.firstOrNull { it.id == postDetailsId }?.let { selected ->
+        DesktopPostDetailsDialog(
+            state = state,
+            post = selected,
+            onClose = { postDetailsId = null },
+            onLike = { scope.launch { runCatching { state.client.toggleLike(selected.id) }; reload() } },
+            onBookmark = { scope.launch { runCatching { state.client.toggleBookmark(selected.id) }; reload() } },
+            onRepost = { scope.launch { runCatching { state.client.toggleRepost(selected.id) }; reload() } },
+        )
+    }
+}
+
+/** Desktop equivalent of the full-post destination; Home list scroll remains unchanged. */
+@Composable
+private fun DesktopPostDetailsDialog(
+    state: DesktopAppState,
+    post: DesktopFeedPost,
+    onClose: () -> Unit,
+    onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onRepost: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Post", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.width(680.dp).heightIn(max = 720.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DesktopFeedPostCard(
+                    post = post,
+                    onLike = onLike,
+                    onBookmark = onBookmark,
+                    onRepost = onRepost,
+                    onComments = {},
+                    onCopyLink = { DesktopShareLinkManager.copyToClipboard(post.id, post.isReel) },
+                    xFeedStyle = false,
+                )
+                DesktopCommentsPanel(state, post.id)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -3666,6 +3713,7 @@ internal fun DesktopFeedPostCard(
     onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
+    onOpenPost: (() -> Unit)? = null,
     xFeedStyle: Boolean = false,
 ) {
     var expandedText by remember(post.id) { mutableStateOf(false) }
@@ -3768,7 +3816,8 @@ internal fun DesktopFeedPostCard(
             if (body.isNotBlank()) {
                 Text(
                     text = body,
-                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp),
+                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                     fontSize = 15.sp,
                     maxLines = if (expandedText) Int.MAX_VALUE else 7,
                     overflow = TextOverflow.Ellipsis,
