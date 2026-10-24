@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Groups
@@ -103,6 +104,7 @@ import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopMenuScreen
+import com.blinkng.desktop.ui.BlinkDesktopWalletScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.DesktopPaystackCheckoutPanel
@@ -156,6 +158,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
     DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
+    DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
 )
 
 fun runBlinkDesktopApplication() = application {
@@ -520,6 +523,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
                         "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
+                        "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })
                         "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
