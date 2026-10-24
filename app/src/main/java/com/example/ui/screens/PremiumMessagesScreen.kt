@@ -1279,8 +1279,95 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendVideo(uri)
+    var recording by remember(conversation.id) { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember(conversation.id) { mutableStateOf<File?>(null) }
+    var recordedFile by remember(conversation.id) { mutableStateOf<File?>(null) }
+    var recordingStart by remember(conversation.id) { mutableStateOf(0L) }
+    var recordingSeconds by remember(conversation.id) { mutableIntStateOf(0) }
+    var readyDuration by remember(conversation.id) { mutableStateOf(0L) }
+
+    fun finishRecording(keep: Boolean) {
+        val current = recording ?: return
+        val file = recordingFile
+        val duration = (SystemClock.elapsedRealtime() - recordingStart).coerceAtLeast(0)
+        recording = null
+        recordingFile = null
+        val stopped = runCatching { current.stop() }.isSuccess
+        runCatching { current.release() }
+        if (stopped && keep && duration >= 700L && file != null && file.exists()) {
+            recordedFile?.delete()
+            recordedFile = file
+            readyDuration = duration
+        } else {
+            file?.delete()
+        }
+    }
+
+    fun beginRecording() {
+        if (recording != null) return
+        val file = File.createTempFile("blink-voice-", ".m4a", context.cacheDir)
+        val recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+        runCatching {
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setOutputFile(file.absolutePath)
+            recorder.setMaxDuration(120_000)
+            recorder.prepare()
+            recorder.start()
+        }.onSuccess {
+            recording = recorder
+            recordingFile = file
+            recordingStart = SystemClock.elapsedRealtime()
+            recordingSeconds = 0
+        }.onFailure {
+            runCatching { recorder.release() }
+            file.delete()
+            Toast.makeText(context, "Microphone could not start.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val microphonePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { approved ->
+        if (approved) beginRecording()
+        else Toast.makeText(context, "Microphone permission is required for voice notes.", Toast.LENGTH_SHORT).show()
+    }
+    val startVoiceNote = {
+        showAttachmentSheet = false
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED) beginRecording()
+        else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.IMAGE, 0L)
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L)
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L)
+    }
+    LaunchedEffect(recording) {
+        while (recording != null) {
+            recordingSeconds = ((SystemClock.elapsedRealtime() - recordingStart) / 1_000L).toInt()
+            if (recordingSeconds >= 119) {
+                finishRecording(true)
+                break
+            }
+            delay(300L)
+        }
+    }
+    DisposableEffect(conversation.id) {
+        onDispose {
+            runCatching { recording?.stop() }
+            runCatching { recording?.release() }
+            recordingFile?.delete()
+            recording = null
+        }
     }
     val startDictation = rememberSpeechInput { spoken ->
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
