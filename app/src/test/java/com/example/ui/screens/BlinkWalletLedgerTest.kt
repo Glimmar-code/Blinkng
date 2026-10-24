@@ -7,8 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+// Robolectric cannot load the newest Android preview SDK configured by CI.
+// JSON ledger tests need only a stable supported Android runtime.
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class BlinkWalletLedgerTest {
     @Test
     fun walletHistoryNeverInventsMissingTransactionIds() {
