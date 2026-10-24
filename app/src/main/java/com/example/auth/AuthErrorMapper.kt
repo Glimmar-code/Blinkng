@@ -9,7 +9,11 @@ object AuthErrorMapper {
         return when {
             "invalid login credentials" in lower ||
                 "invalid email or password" in lower ||
-                "invalid email/username or password" in lower -> "The email/username or password is incorrect."
+                "invalid email/username or password" in lower ||
+                "invalid credentials" in lower ||
+                "incorrect password" in lower || "wrong password" in lower ||
+                "user not found" in lower || "username was not found" in lower ->
+                "The email/username or password is incorrect."
             "email not confirmed" in lower || "email_not_confirmed" in lower ->
                 "Confirm your email address before signing in."
             "too many requests" in lower || "rate limit" in lower || "over_request_rate_limit" in lower ->
