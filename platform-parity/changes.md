@@ -1,3 +1,10 @@
+## 2026-10-24 — Production Windows Kotlin compiler OOM follow-up (candidate)
+
+- **Root cause from actual main CI:** Windows `desktopApp` is an independent Gradle root (`gradle -p desktopApp`), lacking a local `gradle.properties`; the massive generated `MessagesScreen$lambda$93` failed JVM bytecode transformation with `OOMErrorException`. The previous green Testlab build compiled a different (shorter) messaging screen; it did not validate this production file.
+- **Windows scope:** Extract inbox rendering to `DesktopInboxPanel` to reduce the Kotlin/Compose method body. Preserve the existing message data, callback wiring, receipts, tabs and controls. Give desktop's independent Gradle root a 4 GiB heap with one worker and in-process Kotlin compilation so the runner does not exhaust its default compiler memory.
+- **Android:** No Android UI/backend changes. The intro repairs from main SHA `0554aa5578fda4129d4871f3b242f84a8efa754b` are already merged; the signed APK publisher must verify this SHA separately.
+- **Promotion gate:** Compile full Windows desktop, run desktop tests and package EXE/MSI, plus Android parity/safety checks. Do not treat a build-process retry as proof of a code fix. The Testlab messaging baseline differs significantly from main, so port only isolated safety settings to Testlab if needed; do not overwrite its messaging implementation with the production copy.
+
 ## 2026-10-24 — Startup intro optical alignment and startup responsiveness (Testlab candidate)
 
 - **Android + Windows:** Both platforms use `BlinkBeyondLinkIntro` from shared code; no platform-specific clone, auth/session routing change or database modification.
