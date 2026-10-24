@@ -82,7 +82,8 @@ class SearchDiscoveryViewModel : ViewModel() {
         }
     }
 
-    fun setQuery(value: String) {
+    /** Landing UI can avoid saving every intermediate debounce keystroke. */
+    fun setQuery(value: String, persistHistory: Boolean = true) {
         val normalized = value.take(200)
         _state.value = _state.value.copy(
             query = normalized,
@@ -92,8 +93,15 @@ class SearchDiscoveryViewModel : ViewModel() {
         debounceJob?.cancel()
         debounceJob = viewModelScope.launch {
             delay(280)
-            loadFirst(persistHistory = normalized.trim().isNotBlank())
+            loadFirst(persistHistory = persistHistory && normalized.trim().isNotBlank())
         }
+    }
+
+    /** Save a submitted query once, without cluttering history with partial typing. */
+    fun commitQuery() {
+        if (_state.value.query.isBlank() || !_state.value.backendAvailable) return
+        debounceJob?.cancel()
+        loadFirst(persistHistory = true)
     }
 
     fun selectType(type: DiscoveryResultType?) {
