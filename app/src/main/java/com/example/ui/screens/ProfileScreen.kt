@@ -72,25 +72,18 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.SupabaseService
-import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.ProfileConnectionsSheet
 import com.example.ui.components.ProfileContentSearchBar
-import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.ProfileNotificationPreferenceDialog
 import com.example.ui.components.ProfileOwnerInsightsCard
 import com.example.ui.components.ProfileReportDialog
 import com.example.ui.components.PostCard
 import com.example.ui.components.shimmerBackground
 import com.example.ui.components.VerifiedMark
-import com.example.ui.components.BlinkVipMarkForUsername
-import com.example.ui.components.BlinkPremiumAvatarFrame
-import com.example.ui.components.BlinkPremiumProfileSurface
-import com.example.ui.components.rememberBlinkPublicPremiumIdentity
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
-import com.example.util.TimeFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -215,13 +208,6 @@ fun ProfileScreen(
         }
     }
 
-    // Entrance choreography — content reveals itself once, on first composition.
-    var contentVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(40)
-        contentVisible = true
-    }
-
     val tabs = remember(isMe) {
         if (isMe) {
             listOf("Posts", "Reels", "Market", "Skills", "About", "You")
@@ -251,12 +237,6 @@ fun ProfileScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val scrollState = rememberLazyListState()
-
-    val presenceVisible = canViewProfileField(
-        scope = profile.presenceVisibility,
-        isOwner = isMe,
-        isFollowing = isFollowing
-    ) && (profile.onlineNow || profile.lastSeenAt.isNotBlank())
 
     fun openConnectionList(kind: ProfileConnectionKind) {
         if (profile.id.isBlank()) return
@@ -298,24 +278,6 @@ fun ProfileScreen(
     }
 
     val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
-    val premiumIdentity by rememberBlinkPublicPremiumIdentity(
-        username = profile.username,
-        knownVip = profile.isBlinkVip,
-    )
-
-    val headerCollapsed by remember {
-        derivedStateOf { scrollState.firstVisibleItemIndex > 0 }
-    }
-
-    // Parallax offset derived straight from scroll position of the very first item.
-    val parallaxOffset by remember {
-        derivedStateOf {
-            if (scrollState.firstVisibleItemIndex == 0) {
-                (scrollState.firstVisibleItemScrollOffset * 0.5f)
-            } else 400f
-        }
-    }
-
     // Update the FAB only when scroll direction meaningfully changes. Avoid mutating
     // Compose state from inside derivedStateOf, which can invalidate every scroll frame.
     var fabVisible by remember { mutableStateOf(true) }
@@ -338,16 +300,6 @@ fun ProfileScreen(
             previousOffset = offset
         }
     }
-
-    val animatedFollowScale by animateFloatAsState(
-        targetValue = if (isFollowing) 0.98f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "followScale"
-    )
-
-    // Keep the premium avatar glow static so the whole profile header does not
-    // invalidate on every animation frame while the user scrolls.
-    val glowAlpha = 0.24f
 
     val refreshRotation by animateFloatAsState(
         targetValue = if (isProfileRefreshing) 360f else 0f,
