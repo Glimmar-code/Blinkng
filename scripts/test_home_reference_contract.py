@@ -119,6 +119,19 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
         self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', DESKTOP)
 
+    def test_foreground_feed_refresh_is_scoped_and_preserves_existing_posts(self):
+        policy = (ROOT / "shared/src/main/kotlin/com/blinkng/shared/BlinkRefreshPolicy.kt").read_text()
+        vm = (ROOT / "app/src/main/java/com/example/viewmodel/BlinkViewModel.kt").read_text()
+        self.assertIn('SOCIAL_FEED_REFRESH_INTERVAL_MS: Long = 60_000L', policy)
+        self.assertIn('minOf(maxAgeMillis, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)', vm)
+        self.assertIn('visibleRefreshAt["$ownerKey:$refreshedScope"]', vm)
+        self.assertIn('fun refreshFollowingIfStale()', vm)
+        self.assertIn('followingPosts = reconcileRefreshedFeed(current.followingPosts, fresh)', vm)
+        self.assertIn('if (fresh.isNotEmpty())', vm)
+        self.assertIn('viewModel.refreshIfStale()', MAIN)
+        self.assertIn('onFollowingVisible = { viewModel.refreshFollowingIfStale() }', MAIN)
+        self.assertIn('if (feedLane == 1 && currentSubTab == 0 && isMainPageActive)', HOME)
+
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
         self.assertEqual(nav.count('FeedBottomItem('), 5)
