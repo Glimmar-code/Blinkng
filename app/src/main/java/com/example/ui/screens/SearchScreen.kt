@@ -45,6 +45,7 @@ fun SearchScreen(
             onProfileClick = onProfileClick,
             onPostClick = onPostClick,
             onOpenAdvanced = { showAdvanced = true },
+            onBackToHome = onBackToHome,
             isDark = isDark,
         )
     } else {
