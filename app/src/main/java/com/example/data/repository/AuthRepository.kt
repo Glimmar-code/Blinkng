@@ -62,8 +62,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         try {
             val isEmail = cleanInput.contains("@") && !cleanInput.startsWith("@")
             val result = if (isEmail) {
-                val direct = supabaseService.authenticateUser(cleanInput, password)
-                if (direct.isSuccess) direct else authenticateWithUsername(cleanInput, password)
+                // Never mask Supabase's invalid-email credentials error with the
+                // secondary username Edge Function; it is only for username logins.
+                supabaseService.authenticateUser(cleanInput, password)
             } else {
                 authenticateWithUsername(cleanInput, password)
             }
@@ -91,7 +92,13 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     val serverMessage = runCatching { JSONObject(raw).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
-                    return@withContext Result.failure(Exception(serverMessage ?: "Invalid email/username or password."))
+                    val safeMessage = when (response.code) {
+                        400, 401 -> "Invalid email/username or password."
+                        429 -> "Too many requests."
+                        in 500..599 -> "Authentication service temporarily unavailable."
+                        else -> serverMessage ?: "Unable to sign in."
+                    }
+                    return@withContext Result.failure(Exception(safeMessage))
                 }
 
                 val auth = JSONObject(raw)
