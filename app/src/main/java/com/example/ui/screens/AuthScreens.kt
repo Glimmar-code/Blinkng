@@ -61,9 +61,16 @@ import kotlinx.coroutines.launch
 fun SplashScreen(
     onTimeout: () -> Unit
 ) {
-    // The approved Beyond Link sequence runs once on a cold launch.
-    // Keep auth/session initialization independent from the intro.
-    com.blinkng.shared.brand.BlinkBeyondLinkIntro(onFinished = onTimeout)
+    // Session initialization/navigation can proceed behind the full-screen intro.
+    // The independent MainActivity overlay is the visible animation, including
+    // for returning users whose cached auth reaches MAIN before this composes.
+    LaunchedEffect(Unit) {
+        delay(120)
+        onTimeout()
+    }
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+    )
 }
 
 // ================================================================
