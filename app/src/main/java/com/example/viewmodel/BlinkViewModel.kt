@@ -35,6 +35,7 @@ import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkDeliveryReceipt
@@ -198,6 +199,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val messageOutboxMutex = Mutex()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private data class PendingAttachment(
+        val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long
+    )
+    private val pendingAttachments =
+        java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
     private var chatUiForeground = false
     private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -3023,51 +3029,87 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun sendVideoMessage(partnerUsername: String, uri: Uri) {
-        val cleanPartner = partnerUsername.trim().removePrefix("@")
-        if (cleanPartner.isBlank()) return
-        val tempId = "temp_video_${UUID.randomUUID()}"
-        val uid = supabaseService.getCurrentUserId() ?: "local_user"
-        val existingConversationId = _uiState.value.conversations
-            .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
-            ?.id
-            ?.takeUnless { it.startsWith("local_") }
-        appendMessageToState(
-            cleanPartner,
-            ChatMessage(
-                id = tempId,
-                conversationId = existingConversationId,
-                senderId = uid,
-                receiverUsername = cleanPartner,
-                text = "Video",
-                rawTimestamp = java.time.Instant.now().toString(),
-                timestamp = "Sending...",
-                isFromMe = true,
-                isRead = false,
-                status = MessageStatus.SENDING
-            )
-        )
+    fun sendVideoMessage(partnerUsername: String, uri: Uri) =
+        sendAttachmentMessage(partnerUsername, uri, BlinkChatAttachmentKind.VIDEO)
+
+    fun sendAttachmentMessage(
+        partnerUsername: String,
+        uri: Uri,
+        kind: BlinkChatAttachmentKind,
+        durationMs: Long = 0L
+    ) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        if (partner.isBlank()) return
+        val tempId = "temp_attachment_${UUID.randomUUID()}"
+        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs)
+        val currentConversation = _uiState.value.conversations
+            .firstOrNull { it.partnerUsername.equals(partner, true) }
+            ?.id?.takeUnless { it.startsWith("local_") }
+        appendMessageToState(partner, ChatMessage(
+            id = tempId,
+            conversationId = currentConversation,
+            senderId = supabaseService.getCurrentUserId().orEmpty(),
+            receiverUsername = partner,
+            text = if (kind == BlinkChatAttachmentKind.DOCUMENT) "Document" else kind.title,
+            isFromMe = true,
+            timestamp = "Sending...",
+            rawTimestamp = java.time.Instant.now().toString(),
+            isRead = false,
+            isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+            status = MessageStatus.SENDING
+        ))
+        dispatchAttachment(partner, tempId)
+    }
+
+    private fun dispatchAttachment(partner: String, tempId: String) {
+        val pending = pendingAttachments[tempId] ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold(
-                onSuccess = { serverMsg ->
-                    withContext(Dispatchers.Main) {
-                        replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+            if (!activeOutboxIds.add(tempId)) return@launch
+            try {
+                MessageMediaService.sendAttachment(
+                    appContext, partner, pending.uri, pending.kind, pending.durationMs
+                ).fold(
+                    onSuccess = { message ->
+                        pendingAttachments.remove(tempId)
+                        // Recorded notes are app-owned temporary cache files.
+                        if (pending.kind == BlinkChatAttachmentKind.VOICE &&
+                            pending.uri.scheme == "file") {
+                            runCatching {
+                                java.io.File(pending.uri.path.orEmpty()).takeIf {
+                                    it.parentFile == appContext.cacheDir &&
+                                        it.name.startsWith("blink-voice-")
+                                }?.delete()
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            replaceMessageInState(partner, tempId, message.copy(status = MessageStatus.SENT))
+                        }
+                        persistConversationsNow()
+                        withContext(Dispatchers.Main) { fetchSupabaseData() }
+                    },
+                    onFailure = { error ->
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                            showToast(error.message ?: "Attachment could not be sent. Tap to retry.")
+                        }
                     }
-                    // Confirmed media messages receive the same durable Room ordering as text.
-                    persistConversationsNow()
-                    withContext(Dispatchers.Main) { fetchSupabaseData() }
-                },
-                onFailure = {
-                    withContext(Dispatchers.Main) {
-                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast("Failed to send video. Tap the message to retry.")
-                    }
-                }
-            )
+                )
+            } finally {
+                activeOutboxIds.remove(tempId)
+            }
         }
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (failedMessage.id.startsWith("temp_attachment_")) {
+            if (pendingAttachments.containsKey(failedMessage.id)) {
+                updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
+                dispatchAttachment(partnerUsername.trim().removePrefix("@"), failedMessage.id)
+            } else {
+                showToast("Attachment is no longer available. Choose the file again.")
+            }
+            return
+        }
         if (failedMessage.text.isBlank()) return
         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
         persistConversations()
