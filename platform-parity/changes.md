@@ -1,3 +1,13 @@
+## 2026-10-24 — BLINK Refer & Grow (Testlab-only candidate)
+
+- **Shared contract:** `BlinkReferralPolicy` defines referral signup display, search matching priority, exact-usernames-first ordering, invitation URL and non-guaranteed discovery copy for both Android and Windows.
+- **Android:** Optional referrer search at signup with 260ms debounce, 10 paged real public profiles, exact selection and optional skip; the selected UUID is passed through ViewModel/Repository/Auth metadata. Search has a persistent invitation card, authenticated real dashboard, share action and discoverable suggested students with real Follow RPC.
+- **Windows:** Equivalent optional referrer autocomplete, signup metadata, Search promotion, progress dashboard and copy-to-clipboard invitation; native desktop conventions, same Supabase RPC contracts.
+- **Web:** Public `/invite/@username`-style route is `/invite/username`; it lands in the real web signup form, resolves the selected existing referrer, offers 10-name autocomplete and passes the same signup metadata through the Auth API. Existing `404.html` SPA rewrite is reused, not replaced.
+- **Backend:** New SQL migration (not deployed) with a one-referrer-per-account table, confirmed-only credit, auth-signup-trigger processing, RLS-protected own stats, public minimal-fields signup autocomplete, capped 30-day discovery recommendations and a single notification through existing in-app/push pipeline. **No Coins or guaranteed followers awarded.**
+- **Security:** Referrer metadata is only a suggestion, not permission; self-referrals, nonexistent/unonboarded referrers, retroactive credit and duplicate credit are rejected server-side. Public lookup never returns email/contact/birthday. Search relevance and referral reward decay require real integration verification.
+- **Release hold:** GitHub CI + backend migration/schema tests and Android/Windows signup UI tests must pass on the final commit; verify staging before any production Supabase migration and then Testlab before `main`. No paid Supabase staging or production changes authorized automatically.
+
 ## 2026-10-24 — PARITY-EXCEPTION: android-cold-start-brand-route
 
 - PR #515 repairs an Android Activity/ViewModel timing bug: restored sessions may leave the SPLASH destination before its Composable renders, skipping the approved shared intro. Android now overlays the already-shared intro on the root Activity for one cold launch and prevents intro-time tap-through.
