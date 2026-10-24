@@ -613,7 +613,7 @@ class MainActivity : ComponentActivity() {
             // Market, Connect or Messages, but must not interrupt other overlays.
             // Loading feed posts must never block an available app update:
             // people with an offline/failed feed still need access to Update Center.
-            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
+            val idleAppForUpdate = !showStartupIntro && uiState.destination == AppDestination.MAIN &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
                 !uiState.isCreatePostOpen &&
