@@ -137,3 +137,19 @@ for file in ("project.godot", "scenes/main.tscn", "scripts/world.gd"):
     assert (root / "game3d" / file).is_file(), f"Missing native game file: {file}"
 
 print("PASS: BLINK LIFE is Play-on-demand, isolated, and absent from base APK.")
+
+# BLINK LIFE secure WSS regression guard (preserve Play-on-demand dynamic split).
+godot_social = (root / "game3d/scripts/social_world.gd").read_text()
+ticket_issuer = (root / "supabase/functions/blink-life-session/index.ts").read_text()
+compose = (root / "game3d/compose.server.yml").read_text()
+assert 'transport: "wss"' in ticket_issuer
+assert 'transport != "wss"' in launcher
+assert '"--blink-transport=wss"' in native_activity
+assert 'WebSocketMultiplayerPeer.new()' in godot_social
+assert 'TLSOptions.client()' in godot_social
+assert 'TLSOptions.server(key, certificate)' in godot_social
+assert "client_unsafe()" not in godot_social.replace(
+    "# Never use TLSOptions.client_unsafe() with signed BLINK tickets.", ""
+)
+assert "24567:24567/tcp" in compose and "24567:24567/udp" not in compose
+print("PASS: encrypted BLINK LIFE network tickets, isolated split and WSS server.")
