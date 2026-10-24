@@ -7,6 +7,7 @@ on:
     paths:
       - 'web/**'
       - 'scripts/verify_cloudflare_seo_preview.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
       - '.github/workflows/cloudflare-seo-preview.yml'
 
 permissions:
