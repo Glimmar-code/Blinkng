@@ -44,6 +44,7 @@ import com.blinkng.shared.live.BlinkLiveCampaign
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
+import com.example.data.supabase.BlinkReferralClient
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -603,6 +604,9 @@ class MainActivity : ComponentActivity() {
                         avatarUrl = uiState.myProfile.avatarUrl
                     )
                     BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    // New member explicitly authored this confirmed referral; dispatch its push
+                    // with their JWT (the recipient does not need the app open).
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
                     viewModel.refreshProfileRewards()
                     if (
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
