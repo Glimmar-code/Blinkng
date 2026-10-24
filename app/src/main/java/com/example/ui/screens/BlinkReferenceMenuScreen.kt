@@ -66,6 +66,7 @@ fun BlinkReferenceMenuScreen(
     onCallSettings: () -> Unit,
     onSwitchAccount: () -> Unit,
     onOpenAdmin: () -> Unit,
+    onMessages: () -> Unit,
     onEditProfile: () -> Unit,
     onFindFriends: () -> Unit,
     onPostItem: () -> Unit,
@@ -340,6 +341,7 @@ fun BlinkReferenceMenuScreen(
                     }
                     DetailCard("More BLINK tools", "Your existing campus and marketplace tools are still available here.", surface, border, foreground, muted)
                     val campusTools = listOf(
+                        "Messages & inbox" to onMessages,
                         "Edit profile" to onEditProfile,
                         "Find Friends" to onFindFriends,
                         "List an item" to onPostItem,
