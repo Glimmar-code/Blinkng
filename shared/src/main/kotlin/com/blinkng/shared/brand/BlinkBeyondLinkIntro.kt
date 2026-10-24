@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -56,10 +57,11 @@ fun BlinkBeyondLinkIntro(
     }
 
     val time = timeline.value * BLINK_INTRO_DURATION_MS
-    val dotsExit = fraction(time, 850, 1_650)
-    val lettersExit = fraction(time, 1_600, 2_650)
-    val firstFade = 1f - fraction(time, 2_500, 3_030)
-    val blinkReveal = fraction(time, 2_640, 3_160)
+    // Timings measured against frames of the approved 6.4 s landscape preview.
+    val appear = fraction(time, 230, 560)
+    val dotsExit = fraction(time, 1_230, 2_070)
+    val firstFade = 1f - fraction(time, 3_000, 3_570)
+    val blinkReveal = fraction(time, 2_870, 3_550)
 
     BoxWithConstraints(
         modifier = modifier
@@ -70,11 +72,14 @@ fun BlinkBeyondLinkIntro(
     ) {
         // Scale within the available width; no fixed screen resolution assumed.
         val scale = (maxWidth.value / 390f).coerceIn(0.72f, 1.55f)
-        val textSize = (33f * scale).sp
+        // A logo behaves like artwork: accessibility font settings must not
+        // double the word width and clip it on a compact phone.
+        val fontCompensation = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val textSize = (33f * scale / fontCompensation).sp
         val initialHeight = (59f * scale).dp
 
         Row(
-            modifier = Modifier.alpha(firstFade),
+            modifier = Modifier.alpha(appear * firstFade),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -96,23 +101,30 @@ fun BlinkBeyondLinkIntro(
                 )
             }
             Text("b", fontSize = textSize, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-            Box(
-                modifier = Modifier
-                    .width((112f * scale * (1f - lettersExit)).dp)
-                    .height(initialHeight)
-                    .clipToBounds(),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    text = "eyond",
-                    fontSize = textSize,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
+            // In the reference, e/y/o vanish first, briefly leaving "bnd link",
+            // then n/d disappear as "blink" resolves. Collapse each glyph, not
+            // one whole "eyond" strip, so intermediate frames remain legible.
+            val exitTimes = listOf(1_950 to 2_240, 2_080 to 2_340,
+                2_190 to 2_450, 2_460 to 2_920, 2_640 to 3_160)
+            "eyond".forEachIndexed { index, character ->
+                val (from, to) = exitTimes[index]
+                val disappearance = fraction(time, from, to)
+                Box(
                     modifier = Modifier
-                        .offset(x = (-61f * scale * lettersExit).dp)
-                        .alpha(1f - lettersExit * 0.65f),
-                )
+                        .width((20f * scale * (1f - disappearance)).dp)
+                        .height(initialHeight)
+                        .clipToBounds(),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        text = character.toString(),
+                        fontSize = textSize,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = Modifier.alpha(1f - disappearance),
+                    )
+                }
             }
             Text(" link", fontSize = textSize, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
         }
@@ -123,14 +135,14 @@ fun BlinkBeyondLinkIntro(
         ) {
             IntroBLogo(
                 scale = scale,
-                blueAlpha = fraction(time, 2_840, 3_180),
+                blueAlpha = fraction(time, 3_260, 3_630),
             )
             Text(
                 text = "link",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = (54f * scale).sp,
-                letterSpacing = (-1.6f * scale).sp,
+                fontSize = (54f * scale / fontCompensation).sp,
+                letterSpacing = (-1.6f * scale / fontCompensation).sp,
                 maxLines = 1,
                 modifier = Modifier.offset(x = (16f * scale * (1f - blinkReveal)).dp),
             )
