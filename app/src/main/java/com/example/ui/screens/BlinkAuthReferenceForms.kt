@@ -45,7 +45,7 @@ import com.example.R
 import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthLaunchGate
 import com.example.auth.RememberedLoginStore
-import com.example.data.models.NigerianUniversities
+import com.example.data.models.BlinkUniversitySearch
 
 /**
  * Real phone layouts from the supplied BLINK login/sign-up references.
@@ -439,38 +439,99 @@ fun BlinkReferenceSignInScreen(
 }
 
 @Composable
-private fun CampusDialog(selected: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    var search by remember { mutableStateOf("") }
-    val results = remember(search) {
-        NigerianUniversities.all.filter { it.contains(search.trim(), ignoreCase = true) }
+internal fun UniversityCampusPickerDialog(
+    selected: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var search by rememberSaveable { mutableStateOf("") }
+    var selectedState by rememberSaveable { mutableStateOf(BlinkUniversitySearch.ALL_STATES) }
+    var statesMenuOpen by remember { mutableStateOf(false) }
+    val results = remember(search, selectedState) {
+        BlinkUniversitySearch.search(search, selectedState)
     }
+    val groups = remember(results) { results.groupBy { it.state } }
     AlertDialog(
+        modifier = Modifier.testTag("university_picker"),
         onDismissRequest = onDismiss,
         title = { Text("Choose your university", color = Ink, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(
-                    value = search, onValueChange = { search = it },
-                    singleLine = true, label = { Text("Search universities") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Ink, unfocusedTextColor = Ink)
+                    value = search,
+                    onValueChange = { search = it.take(80) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    placeholder = { Text("University name or acronym, e.g. FUTA") },
+                    modifier = Modifier.fillMaxWidth().testTag("university_search"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Ink, unfocusedTextColor = Ink
+                    )
                 )
                 Spacer(Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                    items(results) { university ->
-                        Text(
-                            university, color = Ink,
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { onSelect(university) }
-                                .padding(vertical = 11.dp, horizontal = 5.dp),
-                            fontWeight = if (selected == university) FontWeight.Bold else FontWeight.Normal
-                        )
-                        HorizontalDivider(color = Line)
+                Box {
+                    OutlinedButton(
+                        onClick = { statesMenuOpen = true },
+                        modifier = Modifier.fillMaxWidth().testTag("university_state_filter")
+                    ) {
+                        Text(selectedState, maxLines = 1, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ExpandMore, contentDescription = "Choose state")
+                    }
+                    DropdownMenu(
+                        expanded = statesMenuOpen,
+                        onDismissRequest = { statesMenuOpen = false }
+                    ) {
+                        BlinkUniversitySearch.states.forEach { state ->
+                            DropdownMenuItem(
+                                text = { Text(state) },
+                                onClick = {
+                                    selectedState = state
+                                    statesMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (results.isEmpty()) {
+                    Text("No university found. Try another name or select All states.",
+                        color = Hint, modifier = Modifier.padding(vertical = 18.dp))
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        groups.forEach { (state, universities) ->
+                            item(key = "heading:$state") {
+                                Text(
+                                    "$state · ${universities.size}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Hint,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(top = 9.dp, bottom = 5.dp)
+                                )
+                            }
+                            items(universities, key = { it.name }) { entry ->
+                                Text(
+                                    entry.name,
+                                    color = Ink,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable { onSelect(entry.name) }
+                                        .padding(vertical = 11.dp, horizontal = 5.dp),
+                                    fontWeight = if (selected == entry.name)
+                                        FontWeight.Bold else FontWeight.Normal
+                                )
+                                HorizontalDivider(color = Line)
+                            }
+                        }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Ink) } },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Ink) }
+        },
         containerColor = Color.White
     )
 }
@@ -651,7 +712,7 @@ fun BlinkReferenceCreateAccountScreen(
         )
     }
     if (pickingUniversity) {
-        CampusDialog(
+        UniversityCampusPickerDialog(
             university, { pickingUniversity = false },
             { university = it; pickingUniversity = false; error = null }
         )
