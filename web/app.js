@@ -11,6 +11,7 @@
   const MODALS = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
   const SESSION_KEY = 'blink_web_session_v3';
+  const INVITE_REFERRER_KEY = 'blink_web_invited_by_v1';
   const DRAFT_KEY = 'blink_web_post_draft_v2';
   const VISITOR_KEY = 'blink_web_visitor_v2';
   const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
@@ -286,10 +287,12 @@
     } else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
     if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount();
   }
-  async function signup(fullName,username,email,password){
+  async function signup(fullName,username,email,password,referrerId=''){
     if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/\d/.test(password)||!/[\W_]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
     const cleanUser=username.trim().toLowerCase().replace(/^@/,''); if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(cleanUser))throw new Error('Use 2–30 lowercase letters, numbers, dots, dashes or underscores.');
-    const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:{username:cleanUser,full_name:fullName.trim(),name:fullName.trim()}}});
+    const metadata={username:cleanUser,full_name:fullName.trim(),name:fullName.trim()};
+    if(/^[0-9a-fA-F-]{36}$/.test(String(referrerId)))metadata.blink_referrer_id=referrerId;
+    const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:metadata}});
     if(data?.access_token){saveSession(data);await loadMyProfile();} return data;
   }
   function googleLogin(){
@@ -312,8 +315,81 @@
     setTitle('Sign in'); ROOT.innerHTML=`<div class="auth-wrap"><div class="card auth-card"><div class="brand" style="padding:0 0 8px"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</div><h1>Welcome back</h1><p class="muted">Use the same account you use in the Android app.</p><div class="auth-tabs"><button class="btn primary" data-auth-tab="login">Sign in</button><button class="btn" data-auth-tab="signup">Create account</button></div><div id="auth-panel"></div><p class="auth-note">Your browser receives a normal user session. Blink's service-role credentials are never exposed to the web.</p><button class="btn ghost" style="width:100%;margin-top:8px" data-nav="/">Browse without signing in</button></div></div>`;
     const panel=document.getElementById('auth-panel');
     const showLogin=()=>{panel.innerHTML=`${state.authError?`<div class="error" style="margin-bottom:10px">${esc(state.authError)}</div>`:''}<form id="login-form" class="form-stack"><input class="field" name="identifier" placeholder="Email or @username" required autocomplete="username"><input class="field" name="password" type="password" placeholder="Password" required autocomplete="current-password"><button class="btn primary">Sign in</button><button class="btn" type="button" id="google-auth">Continue with Google</button><button class="btn ghost" type="button" id="forgot">Forgot password?</button><div id="auth-msg"></div></form>`; document.getElementById('login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');msg.innerHTML='<span class="muted">Signing in…</span>';try{await login(f.get('identifier'),f.get('password'));toast('Signed in');navigate('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}}; document.getElementById('google-auth').onclick=e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Opening Google…';googleLogin();}; document.getElementById('forgot').onclick=()=>{modal('Reset password',`<form id="reset-form" class="form-stack"><input class="field" type="email" name="email" placeholder="Email address" required><button class="btn primary">Send reset email</button><div id="reset-msg"></div></form>`);document.getElementById('reset-form').onsubmit=async e=>{e.preventDefault();const email=new FormData(e.currentTarget).get('email');try{await requestReset(email);document.getElementById('reset-msg').innerHTML='<div class="success">Check your inbox for the Blink password reset link.</div>';}catch(err){document.getElementById('reset-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};};
-    const showSignup=()=>{panel.innerHTML=`<form id="signup-form" class="form-stack"><input class="field" name="name" placeholder="Full name" required><input class="field" name="username" placeholder="Username" required><input class="field" type="email" name="email" placeholder="Email" required><input class="field" type="password" name="password" placeholder="Strong password" required><button class="btn primary">Create Blink account</button><div id="auth-msg"></div></form>`;document.getElementById('signup-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');try{const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'));if(data?.access_token){toast('Account created');navigate('/feed');}else msg.innerHTML='<div class="success">Account created. Check your email if Blink requires verification.</div>';}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};
-    document.querySelector('[data-auth-tab="login"]').onclick=showLogin;document.querySelector('[data-auth-tab="signup"]').onclick=showSignup;document.querySelector('[data-nav="/"]').onclick=()=>navigate('/');showLogin();
+    const showSignup=()=>{
+      panel.innerHTML = '<form id="signup-form" class="form-stack">' +
+        '<input class="field" name="name" placeholder="Full name" required>' +
+        '<input class="field" name="username" placeholder="Username" required>' +
+        '<input class="field" type="email" name="email" placeholder="Email" required>' +
+        '<input class="field" type="password" name="password" placeholder="Strong password" required>' +
+        '<label class="muted small" for="referrer-search">Referred by (optional)</label>' +
+        '<input class="field" id="referrer-search" name="referrer" placeholder="Search name or @username" autocomplete="off">' +
+        '<div id="referrer-results" class="form-stack" aria-live="polite"></div>' +
+        '<button class="btn primary">Create Blink account</button>' +
+        '<div id="auth-msg" aria-live="polite"></div></form>';
+      let selectedReferrerId = '';
+      let offset = 0;
+      let seq = 0;
+      let debounce = null;
+      const field = document.getElementById('referrer-search');
+      const results = document.getElementById('referrer-results');
+      const invited = storageGet(INVITE_REFERRER_KEY, '');
+      const lookup = async (append=false) => {
+        const query = String(field.value||'').trim().replace(/^@/,'').slice(0,40);
+        if(!query){results.replaceChildren();return;}
+        const thisSearch = ++seq;
+        if(!append){offset=0;results.replaceChildren();}
+        try {
+          const rows=await anonRpc('blink_referrer_suggestions',
+            {p_query:query,p_limit:10,p_offset:offset});
+          if(thisSearch !== seq)return;
+          if(!append)results.replaceChildren();
+          if(!rows?.length && !append){results.textContent='No matching users found.';return;}
+          for(const person of rows){
+            const button=document.createElement('button');
+            button.type='button';
+            button.className='btn';
+            button.textContent=(person.full_name || person.username)+' (@'+person.username+')';
+            button.onclick=()=>{
+              selectedReferrerId=String(person.id||'');
+              field.value='@'+person.username;
+              results.textContent='Selected: @'+person.username;
+            };
+            results.appendChild(button);
+          }
+          if(invited && !selectedReferrerId && query.toLowerCase()===invited.toLowerCase()){
+            const exact=rows.find(person=>person.username?.toLowerCase()===invited.toLowerCase());
+            if(exact){selectedReferrerId=String(exact.id);field.value='@'+exact.username;results.textContent='Referred by @'+exact.username;}
+          }
+          if(rows.length===10 && offset<500){
+            const more=document.createElement('button');
+            more.type='button';more.className='btn ghost';more.textContent='See more people';
+            more.onclick=()=>{more.remove();offset+=10;lookup(true);};
+            results.appendChild(more);
+          }
+        } catch {
+          if(thisSearch===seq)results.textContent='Referrer search is unavailable. This field is optional.';
+        }
+      };
+      field.addEventListener('input',()=>{
+        selectedReferrerId='';
+        storageRemove(INVITE_REFERRER_KEY);
+        clearTimeout(debounce);
+        debounce=setTimeout(()=>lookup(),260);
+      });
+      if(invited){field.value='@'+invited;lookup();}
+      document.getElementById('signup-form').onsubmit=async e=>{
+        e.preventDefault();
+        const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');
+        msg.textContent='Creating account…';
+        try{
+          const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'),selectedReferrerId);
+          storageRemove(INVITE_REFERRER_KEY);
+          if(data?.access_token){toast('Account created');navigate('/feed');}
+          else msg.textContent='Account created. Check your email if Blink requires verification.';
+        }catch(err){msg.textContent=err.message||'Sign up failed.';}
+      };
+    };
+    document.querySelector('[data-auth-tab="login"]').onclick=showLogin;document.querySelector('[data-auth-tab="signup"]').onclick=showSignup;document.querySelector('[data-nav="/"]').onclick=()=>navigate('/');if(storageGet(INVITE_REFERRER_KEY))showSignup();else showLogin();
   }
 
   async function uploadPublicFile(bucket,file,prefix='web'){
@@ -953,6 +1029,11 @@
     state.searchRequestId++;
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
+    const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);
+    if(invited){
+      storageSet(INVITE_REFERRER_KEY,invited[1].toLowerCase());
+      return navigate('/login',true);
+    }
     if(path==='/login')return renderLogin();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
     const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
