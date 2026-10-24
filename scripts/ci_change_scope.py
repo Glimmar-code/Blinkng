@@ -17,6 +17,11 @@ BUILD_INPUTS = {
 ANDROID_ROOTS = ("app/", "shared/", "blinkLifeFeature/", "game3d/", "gradle/")
 WINDOWS_ROOTS = ("desktopApp/", "shared/", "game3d/", "gradle/")
 BACKEND_ROOTS = ("supabase/",)
+SEARCH_SCREEN_FILES = {
+    "app/src/main/java/com/example/ui/screens/SearchScreen.kt",
+    "app/src/main/java/com/example/ui/screens/BlinkReferenceSearchScreen.kt",
+    "app/src/test/java/com/example/ui/screens/BlinkSearchReferenceScreenshotTest.kt",
+}
 ANDROID_FILES = BUILD_INPUTS | {
     ".github/workflows/android-build-check.yml",
     ".github/workflows/domain-integration-check.yml",
@@ -80,12 +85,13 @@ def matches(path: str, roots: tuple[str, ...], files: set[str]) -> bool:
 def main() -> None:
     paths = changed_files()
     if paths is None or "scripts/ci_change_scope.py" in paths:
-        scope = {"android": True, "windows": True, "backend": True}
+        scope = {"android": True, "windows": True, "backend": True, "search_visual": True}
     else:
         scope = {
             "android": any(matches(p, ANDROID_ROOTS, ANDROID_FILES) for p in paths),
             "windows": any(matches(p, WINDOWS_ROOTS, WINDOWS_FILES) for p in paths),
             "backend": any(matches(p, BACKEND_ROOTS, BACKEND_FILES) for p in paths),
+            "search_visual": any(p in SEARCH_SCREEN_FILES for p in paths),
         }
     for name, enabled in scope.items():
         print(f"{name}={str(enabled).lower()}")
