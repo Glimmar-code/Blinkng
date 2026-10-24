@@ -1527,6 +1527,11 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
+                        // HorizontalPager keeps its neighbours composed. Only the settled,
+                        // foreground destination may own an active Feed/Reels player.
+                        isMainPageActive = selectedPage == page &&
+                            pagerState.currentPage == page &&
+                            !pagerState.isScrollInProgress && mainPageSwipeEnabled,
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
