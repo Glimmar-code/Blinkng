@@ -34,8 +34,11 @@ object InstantChatNotification {
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
     private const val GROUP_KEY_MESSAGES = "blink_group_messages"
 
+    private fun isValidAccountId(userId: String): Boolean =
+        userId.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))
+
     private fun scopedMessageGroup(userId: String): String =
-        if (BlinkNotificationQuickActionPolicy.isId(userId))
+        if (isValidAccountId(userId))
             "$GROUP_KEY_MESSAGES:$userId"
         else GROUP_KEY_MESSAGES
 
@@ -43,7 +46,7 @@ object InstantChatNotification {
     // NotificationIdentity IDs. Only append a silent group summary when two or
     // more independent conversations are already visible in Android's shade.
     private fun updateGroupSummary(context: Context, userId: String, groupKey: String) {
-        if (!BlinkNotificationQuickActionPolicy.isId(userId)) return
+        if (!isValidAccountId(userId)) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         val children = runCatching {
