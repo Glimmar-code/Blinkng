@@ -250,19 +250,41 @@ class WebRtcCallClient(
     }
 
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
-        speakerEnabled = enabled
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val targetType = if (enabled) {
-                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                val devices = audioManager.availableCommunicationDevices
+                val target = if (enabled) {
+                    devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                 } else {
-                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    // Never displace connected headsets/Bluetooth merely to
+                    // satisfy a speaker-off toggle; preserve their audio.
+                    val priorities = listOf(
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_HEARING_AID,
+                        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    )
+                    priorities.firstNotNullOfOrNull { type ->
+                        devices.firstOrNull { it.type == type }
+                    }
                 }
-                val target = audioManager.availableCommunicationDevices.firstOrNull { it.type == targetType }
-                if (target != null) audioManager.setCommunicationDevice(target)
+                if (target != null) {
+                    if (!audioManager.setCommunicationDevice(target)) {
+                        Log.w(TAG, "Android rejected communication audio output change")
+                    }
+                } else {
+                    Log.w(TAG, "Requested communication audio output not available")
+                }
+                speakerEnabled = audioManager.communicationDevice?.type ==
+                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
             } else {
                 @Suppress("DEPRECATION")
-                run { audioManager.isSpeakerphoneOn = enabled }
+                audioManager.isSpeakerphoneOn = enabled
+                @Suppress("DEPRECATION")
+                speakerEnabled = audioManager.isSpeakerphoneOn
             }
         } catch (error: Exception) {
             Log.w(TAG, "Audio route update failed", error)
@@ -343,12 +365,16 @@ class WebRtcCallClient(
     }
 
     private fun initializeFactoryOnce() {
-        if (factoryInitialized.compareAndSet(false, true)) {
+        if (factoryInitialized.get()) return
+        synchronized(factoryInitialized) {
+            if (factoryInitialized.get()) return
+            // JNI is not ready until native initialization returns successfully.
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(appContext)
                     .setEnableInternalTracer(false)
                     .createInitializationOptions()
             )
+            factoryInitialized.set(true)
         }
     }
 
