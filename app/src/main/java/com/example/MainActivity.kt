@@ -2056,6 +2056,10 @@ fun MainAppContent(
                     viewModel.openMenu(false)
                     context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
                 },
+                onMessages = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
                 onEditProfile = {
                     viewModel.openMenu(false)
                     viewModel.openEditProfile(true)
