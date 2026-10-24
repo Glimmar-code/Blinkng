@@ -50,7 +50,7 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                 Text("Menu", fontSize = 34.sp, fontWeight = FontWeight.Black)
                 Surface(shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, border)) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text(profile?.fullName?.ifBlank { profile.username } ?: "BLINK account",
+                        Text(profile?.fullName.orEmpty().ifBlank { profile?.username.orEmpty() }.ifBlank { "BLINK account" },
                             fontSize = 19.sp, fontWeight = FontWeight.Bold)
                         Text(profile?.university.orEmpty().ifBlank { "@${profile?.username.orEmpty()}" },
                             color = muted)
