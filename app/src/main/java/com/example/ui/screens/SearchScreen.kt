@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 
@@ -30,6 +34,20 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    if (!showAdvanced) {
+        BlinkReferenceSearchScreen(
+            profiles = profiles,
+            posts = posts,
+            serverProfiles = serverProfiles,
+            serverPosts = serverPosts,
+            currentUsername = currentUsername,
+            onProfileClick = onProfileClick,
+            onPostClick = onPostClick,
+            onOpenAdvanced = { showAdvanced = true },
+            isDark = isDark,
+        )
+    } else {
     UnifiedPremiumSearchHost(
         profiles = profiles,
         posts = posts,
@@ -46,7 +64,8 @@ fun SearchScreen(
         onSharePost = onSharePost,
         onOptionsClick = onOptionsClick,
         onDeletePost = onDeletePost,
-        onBackToHome = onBackToHome,
+        onBackToHome = { showAdvanced = false },
         isDark = isDark,
     )
+    }
 }
