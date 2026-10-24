@@ -52,7 +52,7 @@ organization = next(item for item in graph if item.get("@type") == "Organization
 check(organization.get("sameAs") == [WHATSAPP], "official WhatsApp social link in Organization schema")
 check(index.count(WHATSAPP) == 2, "homepage links WhatsApp in schema and crawlable navigation")
 check(WHATSAPP in read("app.js"), "interactive landing includes WhatsApp channel link")
-for page in ("about/index.html", "download/index.html", "features/index.html", "faq/index.html", "privacy/index.html"):
+for page in ("about/index.html", "download/index.html", "features/index.html", "faq/index.html", "privacy/index.html", "students/index.html", "marketplace/index.html", "safety/index.html"):
     check(WHATSAPP in read(page), f"WhatsApp channel link present in {page}")
     check('target="_blank" rel="noopener noreferrer"' in read(page), f"safe external-link attributes in {page}")
 privacy = read("privacy/index.html")
@@ -61,8 +61,9 @@ check(f'<meta property="og:url" content="{SITE}/privacy/"' in privacy, "privacy 
 check(f"{SITE}/blink-logo-v2.png" in privacy, "privacy image")
 sitemap = ET.fromstring(read("sitemap.xml"))
 locs = [x.text for x in sitemap.iter() if x.tag.endswith("loc")]
-check(locs == [SITE + "/", SITE + "/about/", SITE + "/features/", SITE + "/download/", SITE + "/faq/", SITE + "/privacy/"], "sitemap lists only public canonical pages")
-for slug in ("features", "download", "faq"):
+check(locs == [SITE + "/" + path for path in ("", "about/", "features/", "download/", "faq/", "privacy/", "students/", "marketplace/", "safety/")], "sitemap lists only approved public canonical pages")
+check(len(locs) == len(set(locs)), "sitemap has no duplicate URLs")
+for slug in ("features", "download", "faq", "students", "marketplace", "safety"):
     page = read(f"{slug}/index.html")
     check(f'<link rel="canonical" href="{SITE}/{slug}/">' in page, f"{slug} canonical URL")
     check(f'<meta property="og:url" content="{SITE}/{slug}/">' in page, f"{slug} sharing URL")
@@ -77,6 +78,8 @@ download_schema = next((item for item in download_json_objects if item.get("@typ
 check(download_schema.get("name") == "BLINK", "app structured data brand name")
 check(download_schema.get("operatingSystem") == "Android", "app structured data platform")
 check(download_schema.get("downloadUrl") == "https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk", "app structured data uses official APK")
+check(download_schema.get("offers", {}).get("price") == "0", "free Android download is described accurately")
+check(download_schema.get("offers", {}).get("priceCurrency") == "NGN", "free download offer specifies Nigerian currency")
 check("Github is not" not in read("download/index.html"), "no false Google Play claims")
 check(read("faq/index.html").count("<details ") >= 7, "FAQ contains substantial readable answers")
 check('href="./features/"' in index and 'href="./download/"' in index and 'href="./faq/"' in index, "homepage contains crawlable discovery links")
