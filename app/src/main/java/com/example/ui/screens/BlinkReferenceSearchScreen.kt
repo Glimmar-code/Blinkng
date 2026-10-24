@@ -249,6 +249,7 @@ internal fun BlinkReferenceSearchScreen(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
                                 rememberQuery(query)
+                                search.setQuery(query, persistHistory = false)
                                 search.commitQuery()
                                 keyboard?.hide()
                             }),
@@ -444,16 +445,18 @@ internal fun BlinkReferenceSearchScreen(
                 Text("Search filters", fontSize = 21.sp, fontWeight = FontWeight.Black, color = fg)
                 Text("Find exactly what matters across your campus.", color = muted, fontSize = 12.sp)
                 HorizontalDivider(color = line)
-                Text("Sort by", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf(DiscoverySort.RELEVANT, DiscoverySort.RECENT, DiscoverySort.TRENDING), key = { it.name }) { mode ->
-                        Surface(
-                            onClick = { search.setSort(mode) },
-                            shape = RoundedCornerShape(30.dp),
-                            color = if (discovery.sort == mode) accent else subtle,
-                        ) {
-                            Text(mode.label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                                color = if (discovery.sort == mode) accentText else fg, fontSize = 12.sp)
+                if (discovery.backendAvailable) {
+                    Text("Sort by", color = fg, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf(DiscoverySort.RELEVANT, DiscoverySort.RECENT, DiscoverySort.TRENDING), key = { it.name }) { mode ->
+                            Surface(
+                                onClick = { search.setSort(mode) },
+                                shape = RoundedCornerShape(30.dp),
+                                color = if (discovery.sort == mode) accent else subtle,
+                            ) {
+                                Text(mode.label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                    color = if (discovery.sort == mode) accentText else fg, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
