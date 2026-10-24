@@ -199,8 +199,12 @@ class ChatRepository(
                             else -> MessageStatus.SENT
                         },
                         isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        voiceAudioUrl = mediaUrl.takeIf { mediaType.equals("voice", true) || mediaType.equals("audio", true) },
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        attachedDocumentUrl = mediaUrl.takeIf { mediaType.equals("document", true) },
+                        attachedDocumentName = o.optString("content").removePrefix("Document: ")
+                            .takeIf { mediaType.equals("document", true) },
                         replyToMessageId = o.optString("reply_to_message_id")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) },
                         editedAt = o.optString("edited_at")
@@ -211,7 +215,8 @@ class ChatRepository(
             }
         }
         val visibleMessages = filterClearedMessages(conversationId, baseMessages)
-        enrichMessageActions(visibleMessages)
+        val enrichedMessages = enrichMessageActions(visibleMessages)
+        com.example.data.supabase.MessageMediaService.hydrateMediaPage(enrichedMessages, conversationId)
     }
 
     /**
