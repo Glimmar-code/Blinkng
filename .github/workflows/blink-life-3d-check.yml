@@ -66,6 +66,24 @@ jobs:
             exit 1
           fi
 
+      - name: Test versioned solo save recovery and failure isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/solo_progress_smoke.gd 2>&1 | tee /tmp/blink-solo-progress.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-solo-progress.log; then
+            exit 1
+          fi
+
+      - name: Test fictional resident routines and safe footpath routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/npc_smoke.gd 2>&1 | tee /tmp/blink-npc-tests.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-npc-tests.log; then
+            exit 1
+          fi
+
       - name: Test HMAC join tickets, replay protection and server-backed houses
         shell: bash
         run: |

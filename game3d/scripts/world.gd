@@ -8,6 +8,23 @@ const Details = preload("res://scripts/neighborhood_details.gd")
 const Preferences = preload("res://scripts/player_preferences.gd")
 
 const DayCycle = preload("res://scripts/day_cycle.gd")
+const WeatherCycle = preload("res://scripts/weather_cycle.gd")
+const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
+const NpcWorld = preload("res://scripts/npc_world.gd")
+const PublicSpaces = preload("res://scripts/public_spaces.gd")
+const SoloProgress = preload("res://scripts/solo_progress.gd")
+const SoloHome = preload("res://scripts/solo_home.gd")
+const STUDY_CARDS = [
+    {"question": "Which number completes 7 + 5?",
+     "choices": ["10", "12", "14"], "answer": 1,
+     "note": "Seven and five make twelve."},
+    {"question": "What is the next number: 2, 4, 6, ...?",
+     "choices": ["7", "8", "10"], "answer": 1,
+     "note": "The pattern increases by two."},
+    {"question": "Which sentence uses the correct plural?",
+     "choices": ["Two books", "Two book", "Two bookses"], "answer": 0,
+     "note": "The regular plural is books."}
+]
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -24,6 +41,26 @@ var orbit_angle: float = 40.0
 var game_cash: int = 500
 var completed_jobs: int = 0
 var owns_plant: bool = false
+var home_wall_style: int = 0
+var home_floor_style: int = 0
+var home_plant_spot: int = 0
+var home_plant_custom: bool = false
+var home_plant_x: int = SoloHome.PLANT_DEFAULT_X
+var home_plant_z: int = SoloHome.PLANT_DEFAULT_Z
+var home_plant_rotation: int = 0
+var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
+var home_layout_slots: Dictionary = {}
+var home_light_mode: int = 0
+var home_ceiling_style: int = 0
+var home_tv_mode: int = 0
+var study_card: int = 0
+var study_answered: bool = false
+var study_correct: int = 0
+var home_resting: bool = false
+var home_meal_choice: int = -1
+var decor_undo: Array[Dictionary] = []
+var decor_redo: Array[Dictionary] = []
+var progress_store: RefCounted = SoloProgress.new()
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
 var social: Node3D
@@ -34,6 +71,16 @@ var app_focused: bool = true
 var last_safe_position := Vector3(0, 0.15, 0)
 var camera_distance: float = 13.0
 var day_cycle := DayCycle.new()
+var weather := WeatherCycle.new()
+var weather_visuals: Node3D
+var weather_label: Label
+var residents: Node3D
+var public_spaces: Node3D
+var seated_at: String = ""
+var seated_meshes: Array[Dictionary] = []
+var solo_room: Node3D
+var home_inside: bool = false
+var home_return_position := Vector3.ZERO
 var sunlight: DirectionalLight3D
 var sky_settings: Environment
 var clock_label: Label
@@ -46,18 +93,45 @@ var previous_fps_limit: int = 0
 func _ready() -> void:
     previous_fps_limit = Engine.max_fps
     preferences.read_settings()
+    var recovered: Dictionary = progress_store.call("load_state")
+    game_cash = int(recovered["cash"])
+    completed_jobs = int(recovered["jobs"])
+    owns_plant = bool(recovered["plant"])
+    home_wall_style = int(recovered["wall_style"])
+    home_floor_style = int(recovered["floor_style"])
+    home_plant_spot = int(recovered["plant_spot"])
+    home_plant_custom = bool(recovered["plant_custom"])
+    home_plant_x = int(recovered["plant_x"])
+    home_plant_z = int(recovered["plant_z"])
+    home_plant_rotation = int(recovered["plant_rotation"])
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        home_furniture[key] = int(recovered[key])
+    home_layout_slots = recovered["layout_slots"].duplicate(true)
+    home_light_mode = int(recovered["light_mode"])
+    home_ceiling_style = int(recovered["ceiling_style"])
+    home_tv_mode = int(recovered["tv_mode"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
+    weather.mode = preferences.weather_mode
     _create_lights()
     _create_city()
+    weather_visuals = WeatherVisuals.new()
+    add_child(weather_visuals)
     var details := Details.new()
     add_child(details)
     details.configure(self)
     neighborhood = details
+    public_spaces = PublicSpaces.new()
+    add_child(public_spaces)
+    public_spaces.call("configure", self)
+    residents = NpcWorld.new()
+    add_child(residents)
     _create_player()
     _create_camera()
     _create_hud()
+    if not str(progress_store.get("warning")).is_empty():
+        hud_status.text = str(progress_store.get("warning"))
     _apply_graphics()
     # Instantiate network UI only inside the already-launched Godot game.
     # Connections are opt-in: no socket opens until HOST LAN / JOIN LAN.
@@ -71,7 +145,14 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     if app_focused:
         day_cycle.advance(delta)
+        weather.advance(delta)
     _update_daylight()
+    if weather_visuals != null and player != null:
+        weather_visuals.call("update_weather", player.global_position, weather.condition(), delta if app_focused else 0.0)
+    if weather_label != null:
+        weather_label.text = "Fictional local weather: " + WeatherCycle.label_for(weather.condition())
+    if residents != null and player != null and app_focused:
+        residents.call("update_residents", player.global_position, float(day_cycle.sample()["hour"]), weather.condition(), preferences.battery_saver, delta)
     if player == null or follow_camera == null:
         return
 
@@ -86,8 +167,15 @@ func _process(delta: float) -> void:
     follow_camera.look_at(player.global_position + Vector3.UP * 1.25)
 
     hud_cash.text = "Game Cash: %d GC   |   Jobs: %d" % [game_cash, completed_jobs]
+    var nearby_public: Dictionary = _nearest_public_spot()
     var nearby: Dictionary = _nearest_place()
-    if nearby.is_empty():
+    if home_inside:
+        hud_location.text = "Your solo room • INTERACT to decorate • F to leave"
+    elif not seated_at.is_empty():
+        hud_location.text = "Seated at %s • INTERACT or F to stand" % seated_at
+    elif not nearby_public.is_empty():
+        hud_location.text = "%s • INTERACT" % str(nearby_public["name"])
+    elif nearby.is_empty():
         hud_location.text = "Explore the 3D city — approach a marked building"
     else:
         hud_location.text = "%s • %s • INTERACT" % [nearby["name"], nearby["address"]]
@@ -146,7 +234,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _movement_blocked() -> bool:
-    if not app_focused:
+    if not app_focused or not seated_at.is_empty():
         return true
     if hud_modal != null and hud_modal.visible:
         return true
@@ -160,7 +248,14 @@ func _movement_blocked() -> bool:
 
 func _recover_if_needed() -> void:
     var position: Vector3 = player.global_position
-    if not position.is_finite() or position.y < -3.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
+    if home_inside:
+        if not position.is_finite() or position.y < 27.0 or position.y > 40.0 or absf(position.x) > 5.0 or absf(position.z) > 5.0:
+            player.global_position = solo_room.call("spawn_position")
+            player.velocity = Vector3.ZERO
+            _stop_touch_axis()
+            hud_status.text = "Returned to your safe starter room."
+        return
+    if not position.is_finite() or position.y < -3.0 or position.y > 12.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
         player.global_position = last_safe_position + Vector3.UP * 0.1
         player.velocity = Vector3.ZERO
         _stop_touch_axis()
@@ -178,6 +273,12 @@ func _notification(what: int) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
     if event is InputEventKey and event.pressed and not event.echo:
         if event.keycode == KEY_ESCAPE:
+            if home_inside and not hud_modal.visible and not controls_panel.visible:
+                _exit_solo_home()
+                return
+            if not seated_at.is_empty():
+                _leave_seat()
+                return
             if controls_panel != null and controls_panel.visible:
                 controls_panel.hide()
             elif hud_modal != null and hud_modal.visible:
@@ -187,6 +288,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
             else:
                 get_tree().quit()
             _stop_touch_axis()
+            return
+        if not seated_at.is_empty() and event.keycode == KEY_F:
+            _leave_seat()
+            return
+        if home_inside and event.keycode == KEY_F:
+            _exit_solo_home()
             return
         if _movement_blocked():
             return
@@ -372,6 +479,12 @@ func _create_hud() -> void:
     hud_status.text = "TESTLAB: all money is fictional. Walk using WASD/arrows or touch controls."
     hud_status.add_theme_font_size_override("font_size", 14)
     hud.add_child(hud_status)
+
+    weather_label = Label.new()
+    weather_label.name = "WeatherStatus"
+    weather_label.position = Vector2(18, 108)
+    weather_label.add_theme_font_size_override("font_size", 14)
+    hud.add_child(weather_label)
 
     # Always offer a visible exit: Android's Godot instance runs in a
     # separate process, so quitting here returns the player to BLINK.
@@ -564,6 +677,19 @@ func _create_controls_panel(hud: Control) -> void:
         preferences.day_minutes = value
         duration_label.text = "Day length: %d minutes" % int(value)
         _save_preferences())
+    var weather_heading := Label.new()
+    weather_heading.text = "Local weather preview (visual only, no penalties)"
+    rows.add_child(weather_heading)
+    var weather_choice := OptionButton.new()
+    weather_choice.name = "WeatherMode"
+    for caption in ["Automatic cycle", "Clear", "Light rain", "Tropical rain"]:
+        weather_choice.add_item(caption)
+    weather_choice.select(WeatherCycle.MODES.find(preferences.weather_mode))
+    rows.add_child(weather_choice)
+    weather_choice.item_selected.connect(_set_weather_mode)
+    var save_help := Label.new()
+    save_help.text = "Solo jobs and desk plant save locally after confirmation.\nThey never become BLINK Coins or shared online rewards."
+    rows.add_child(save_help)
     var graphics := Label.new()
     graphics.text = "Graphics (saved on this device)"
     rows.add_child(graphics)
@@ -593,6 +719,14 @@ func _create_controls_panel(hud: Control) -> void:
     close.pressed.connect(func(): controls_panel.hide())
 
 
+func _set_weather_mode(index: int) -> void:
+    if index < 0 or index >= WeatherCycle.MODES.size():
+        return
+    weather.mode = WeatherCycle.MODES[index]
+    preferences.weather_mode = weather.mode
+    _save_preferences()
+
+
 func _apply_graphics() -> void:
     Engine.max_fps = 30 if preferences.battery_saver else 60
     if sunlight != null:
@@ -611,7 +745,7 @@ func _orbit(degrees: float) -> void:
 func _nearest_place() -> Dictionary:
     # Use the closest frontage, not array order or a point inside the building.
     # Vertical separation prevents selecting a city business from another level.
-    if player == null or absf(player.global_position.y) > 3.0:
+    if home_inside or player == null or absf(player.global_position.y) > 3.0:
         return {}
     var nearest: Dictionary = {}
     var best_distance: float = 2.8
@@ -625,12 +759,103 @@ func _nearest_place() -> Dictionary:
     return nearest
 
 
+func _nearest_public_spot() -> Dictionary:
+    if home_inside or player == null or public_spaces == null:
+        return {}
+    return PublicSpaces.nearest_spot(player.global_position)
+
+
+func _interact_public_spot(spot: Dictionary) -> void:
+    match str(spot["type"]):
+        "bench":
+            if social != null and bool(social.get("is_online")):
+                hud_status.text = "Public seating is currently available in offline preview only."
+                return
+            _sit_on_bench(str(spot["name"]))
+        "bin":
+            hud_status.text = "You found a public waste bin. Help keep the city clean."
+        "stall":
+            hud_status.text = "%s • %s (Preview only; no purchases.)" % [spot["name"], spot["description"]]
+        "board":
+            _open_community_board()
+
+
+func _sit_on_bench(bench_name: String) -> void:
+    if player == null or not seated_at.is_empty():
+        return
+    _stop_touch_axis()
+    seated_at = bench_name
+    seated_meshes.clear()
+    for part in player.get_children():
+        if part is MeshInstance3D:
+            var visual: MeshInstance3D = part
+            seated_meshes.append({"node": visual, "transform": visual.transform})
+            visual.position.y -= 0.25
+            if visual.position.y < 0.30:
+                visual.rotation.x = deg_to_rad(-60.0)
+                visual.position.z -= 0.15
+    player.velocity = Vector3.ZERO
+    hud_status.text = "Relaxing on %s. INTERACT or F to stand." % bench_name
+
+
+func _leave_seat() -> void:
+    if seated_at.is_empty():
+        return
+    for saved in seated_meshes:
+        var visual: MeshInstance3D = saved["node"]
+        if is_instance_valid(visual):
+            visual.transform = saved["transform"]
+    seated_meshes.clear()
+    seated_at = ""
+    if player != null:
+        player.velocity = Vector3.ZERO
+    hud_status.text = "Back on your feet."
+
+
+func _open_community_board() -> void:
+    _stop_touch_axis()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Community opportunities (fictional Game Cash)"
+    rows.add_child(heading)
+    for opportunity in ["Café • cashier task: 120 GC", "Tech hub • tech support: 180 GC", "Delivery depot • dispatch: 150 GC"]:
+        var item := Label.new()
+        item.text = opportunity
+        rows.add_child(item)
+    var directions := Label.new()
+    directions.text = "Walk to a listed building to take a job. No automatic payouts."
+    directions.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(directions)
+    var close := _new_button("Close board")
+    rows.add_child(close)
+    close.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
 func _interact() -> void:
+    if home_inside:
+        if not _movement_blocked():
+            _show_home_decor()
+        return
+    if not seated_at.is_empty():
+        _leave_seat()
+        return
     if _movement_blocked():
+        return
+    var public_spot: Dictionary = _nearest_public_spot()
+    if not public_spot.is_empty():
+        _interact_public_spot(public_spot)
         return
     var place: Dictionary = _nearest_place()
     if place.is_empty():
-        hud_status.text = "Move closer to a building before interacting."
+        var greeting: String = ""
+        if residents != null:
+            greeting = str(residents.call("nearby_greeting", player.global_position))
+        hud_status.text = greeting if not greeting.is_empty() else "Move closer to a building or NPC before interacting."
         return
 
     match str(place["name"]):
@@ -650,11 +875,606 @@ func _interact() -> void:
         "Hostel":
             hud_status.text = "Your room has a desk plant." if owns_plant else "Your room is empty. Visit the market."
         "Homes":
-            if social != null:
+            if social != null and bool(social.get("is_online")):
                 social.call("open_social")
-            hud_status.text = "Social homes: visiting requires the owner's approval."
+                hud_status.text = "Social homes: visiting requires the owner's approval."
+            else:
+                _show_home_choice()
         _:
             hud_status.text = "Campus unlocked. More missions will follow."
+
+
+
+func _show_home_choice() -> void:
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var choices := VBoxContainer.new()
+    hud_modal.add_child(choices)
+    var title := Label.new()
+    title.text = "Homes • Private solo demo or approved multiplayer"
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    choices.add_child(title)
+    var solo := _new_button("Enter free starter room (offline)")
+    choices.add_child(solo)
+    solo.pressed.connect(_enter_solo_home)
+    var online := _new_button("Open multiplayer homes")
+    choices.add_child(online)
+    online.pressed.connect(func():
+        _close_quiz()
+        if social != null:
+            social.call("open_social"))
+    var leave := _new_button("Stay in city")
+    choices.add_child(leave)
+    leave.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
+func _refresh_home_camera() -> void:
+    if follow_camera == null or player == null:
+        return
+    var radians: float = deg_to_rad(orbit_angle)
+    follow_camera.global_position = player.global_position + Vector3(
+        sin(radians) * camera_distance, camera_distance * 0.846, cos(radians) * camera_distance
+    )
+    follow_camera.look_at(player.global_position + Vector3.UP * 1.25)
+
+
+func _enter_solo_home() -> void:
+    if player == null or home_inside:
+        return
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Shared rooms use server-approved entry; solo mode is unavailable."
+        _close_quiz()
+        return
+    if str(_nearest_place().get("id", "")) != "homes":
+        hud_status.text = "Approach the Homes entrance to open your solo room."
+        _close_quiz()
+        return
+    _close_quiz()
+    _stop_touch_axis()
+    home_return_position = player.global_position
+    if solo_room == null:
+        solo_room = SoloHome.new()
+        add_child(solo_room)
+        solo_room.call("configure")
+    solo_room.call("update_owned_decor", owns_plant)
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style,
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
+        home_plant_rotation, home_furniture)
+    solo_room.call("apply_light_mode", home_light_mode)
+    solo_room.call("apply_ceiling_style", home_ceiling_style)
+    solo_room.call("apply_tv_mode", home_tv_mode)
+    study_card = 0
+    study_answered = false
+    study_correct = 0
+    home_resting = false
+    home_meal_choice = -1
+    solo_room.call("set_resting", false)
+    decor_undo.clear()
+    decor_redo.clear()
+    home_inside = true
+    player.global_position = solo_room.call("spawn_position")
+    player.velocity = Vector3.ZERO
+    last_safe_position = player.global_position
+    _refresh_home_camera()
+    hud_status.text = "Welcome home. Your desk plant appears here after a solo purchase."
+
+
+func _exit_solo_home() -> void:
+    if not home_inside:
+        return
+    _close_quiz()
+    _stop_touch_axis()
+    home_resting = false
+    home_meal_choice = -1
+    home_inside = false
+    player.global_position = home_return_position
+    player.velocity = Vector3.ZERO
+    last_safe_position = player.global_position
+    if solo_room != null:
+        solo_room.queue_free()
+        solo_room = null
+    _refresh_home_camera()
+    hud_status.text = "Returned to the city. Your solo progress stays saved."
+
+
+
+func _home_save_snapshot() -> Dictionary:
+    return {"version": 1, "cash": game_cash, "jobs": completed_jobs, "plant": owns_plant,
+        "wall_style": home_wall_style, "floor_style": home_floor_style,
+        "plant_spot": home_plant_spot, "plant_custom": home_plant_custom,
+        "plant_x": home_plant_x, "plant_z": home_plant_z,
+        "plant_rotation": home_plant_rotation,
+        "chair_x": int(home_furniture["chair_x"]),
+        "chair_z": int(home_furniture["chair_z"]),
+        "chair_rotation": int(home_furniture["chair_rotation"]),
+        "table_x": int(home_furniture["table_x"]),
+        "table_z": int(home_furniture["table_z"]),
+        "table_rotation": int(home_furniture["table_rotation"]),
+        "bed_layout": int(home_furniture["bed_layout"]),
+        "wardrobe_layout": int(home_furniture["wardrobe_layout"]),
+        "layout_slots": home_layout_slots.duplicate(true), "light_mode": home_light_mode,
+        "ceiling_style": home_ceiling_style, "tv_mode": home_tv_mode}
+
+
+func _show_home_decor() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(508, 278)
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    hud_modal.add_child(scroll)
+    var rows := VBoxContainer.new()
+    scroll.add_child(rows)
+    rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    var heading := Label.new()
+    heading.text = "Free solo-room decoration • saved locally"
+    rows.add_child(heading)
+    var study := _new_button("Study desk • free quick practice")
+    rows.add_child(study)
+    study.pressed.connect(_show_study_panel)
+    var everyday := _new_button("Everyday home • bed rest & meals")
+    rows.add_child(everyday)
+    everyday.pressed.connect(_show_home_life_panel)
+    var lighting := _new_button("Lighting: " + ["Warm", "Bright", "Dim"][home_light_mode])
+    rows.add_child(lighting)
+    lighting.pressed.connect(_cycle_home_light)
+    var ceiling := _new_button("Ceiling accents: " + ["Ivory", "Blue-grey", "Sand"][home_ceiling_style])
+    rows.add_child(ceiling)
+    ceiling.pressed.connect(_cycle_home_ceiling)
+    var home_screen := _new_button("Room screen: " + ["Off", "Nature still", "Campus notice"][home_tv_mode])
+    rows.add_child(home_screen)
+    home_screen.pressed.connect(_cycle_home_tv)
+    var wall := _new_button("Wall palette %d/3" % (home_wall_style + 1))
+    rows.add_child(wall)
+    wall.pressed.connect(_cycle_home_decoration.bind("wall_style"))
+    var floor := _new_button("Floor colour %d/3" % (home_floor_style + 1))
+    rows.add_child(floor)
+    floor.pressed.connect(_cycle_home_decoration.bind("floor_style"))
+    var spot := _new_button("Plant preset %d/3" % (home_plant_spot + 1))
+    spot.disabled = not owns_plant
+    rows.add_child(spot)
+    spot.pressed.connect(_cycle_home_decoration.bind("plant_spot"))
+    var caption := Label.new()
+    caption.text = "Plant floor grid: (%d, %d) • rotation: %d°" % [
+        home_plant_x, home_plant_z, home_plant_rotation * 90]
+    rows.add_child(caption)
+    var move_plant := _new_button("Start floor-grid placement" if not home_plant_custom else "Use floor-grid placement")
+    move_plant.disabled = not owns_plant
+    rows.add_child(move_plant)
+    move_plant.pressed.connect(_home_move_plant.bind(0, 0))
+    for choices in [
+        [["← Move", -1, 0], ["Move →", 1, 0]],
+        [["↑ Move", 0, -1], ["Move ↓", 0, 1]]
+    ]:
+        var row := HBoxContainer.new()
+        rows.add_child(row)
+        for choice in choices:
+            var button := _new_button(str(choice[0]), 200)
+            button.disabled = not owns_plant
+            row.add_child(button)
+            button.pressed.connect(_home_move_plant.bind(int(choice[1]), int(choice[2])))
+    var rotate := _new_button("Rotate plant 90°")
+    rotate.disabled = not owns_plant
+    rows.add_child(rotate)
+    rotate.pressed.connect(_home_rotate_plant)
+    for kind in ["chair", "table"]:
+        var title := Label.new()
+        title.text = "%s grid (%d, %d) • angle %d°" % [
+            kind.capitalize(), int(home_furniture[kind + "_x"]),
+            int(home_furniture[kind + "_z"]), int(home_furniture[kind + "_rotation"]) * 90]
+        rows.add_child(title)
+        var actions := HBoxContainer.new()
+        rows.add_child(actions)
+        for choice in [["←", -1, 0], ["→", 1, 0], ["↑", 0, -1], ["↓", 0, 1]]:
+            var arrow := _new_button(kind.capitalize() + " " + str(choice[0]), 108)
+            actions.add_child(arrow)
+            arrow.pressed.connect(_home_move_furniture.bind(kind, int(choice[1]), int(choice[2])))
+        var turn := _new_button("Rotate %s 90°" % kind)
+        rows.add_child(turn)
+        turn.pressed.connect(_home_rotate_furniture.bind(kind))
+    var home_layout_title := Label.new()
+    home_layout_title.text = "Bed and wardrobe • curated safe placements"
+    rows.add_child(home_layout_title)
+    for fixture in ["bed", "wardrobe"]:
+        var fixture_button := _new_button("%s position %d/3" % [
+            fixture.capitalize(), int(home_furniture[fixture + "_layout"]) + 1])
+        fixture_button.pressed.connect(_cycle_home_fixture.bind(fixture))
+        rows.add_child(fixture_button)
+    var plans_label := Label.new()
+    plans_label.text = "Room layouts (sets bed, wardrobe, chair and table)"
+    rows.add_child(plans_label)
+    for index in range(SoloHome.ROOM_PLANS.size()):
+        var preset: Dictionary = SoloHome.ROOM_PLANS[index]
+        var plan := _new_button(str(preset["name"]))
+        rows.add_child(plan)
+        plan.pressed.connect(_apply_room_plan.bind(index))
+    var custom_heading := Label.new()
+    custom_heading.text = "My saved layouts (2 local slots)"
+    rows.add_child(custom_heading)
+    for index in range(1, 3):
+        var slot_key: String = "slot_%d" % index
+        var actions := HBoxContainer.new()
+        rows.add_child(actions)
+        var save := _new_button("Save layout %d" % index, 210)
+        save.pressed.connect(_save_home_layout_slot.bind(slot_key))
+        actions.add_child(save)
+        var load := _new_button("Apply layout %d" % index, 210)
+        load.disabled = not home_layout_slots.has(slot_key)
+        load.pressed.connect(_load_home_layout_slot.bind(slot_key))
+        actions.add_child(load)
+    var history_row := HBoxContainer.new()
+    rows.add_child(history_row)
+    var undo := _new_button("Undo", 210)
+    undo.disabled = decor_undo.is_empty()
+    undo.pressed.connect(_undo_home_decor)
+    history_row.add_child(undo)
+    var redo := _new_button("Redo", 210)
+    redo.disabled = decor_redo.is_empty()
+    redo.pressed.connect(_redo_home_decor)
+    history_row.add_child(redo)
+    var note := Label.new()
+    note.text = "Free starter furniture: chair + table + owned plant.\nOccupied grid cells and your doorway stay clear."
+    rows.add_child(note)
+    var close := _new_button("Done • F to leave room")
+    rows.add_child(close)
+    close.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
+func _apply_home_decor(candidate: Dictionary) -> bool:
+    if not home_inside or solo_room == null or (social != null and bool(social.get("is_online"))):
+        return false
+    if SoloProgress.valid_state(candidate).is_empty():
+        return false
+    # The decor editor may only change layout fields; undo cannot rewind
+    # currency, job count or ownership even if future activities are added.
+    if int(candidate["cash"]) != game_cash or int(candidate["jobs"]) != completed_jobs or bool(candidate["plant"]) != owns_plant:
+        return false
+    if not bool(progress_store.call("save_state", candidate)):
+        hud_status.text = "Decoration not saved: " + str(progress_store.get("warning"))
+        return false
+    # No visual or currency changes happen before a successful disk commit.
+    home_wall_style = int(candidate["wall_style"])
+    home_floor_style = int(candidate["floor_style"])
+    home_plant_spot = int(candidate["plant_spot"])
+    home_plant_custom = bool(candidate["plant_custom"])
+    home_plant_x = int(candidate["plant_x"])
+    home_plant_z = int(candidate["plant_z"])
+    home_plant_rotation = int(candidate["plant_rotation"])
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        home_furniture[key] = int(candidate[key])
+    home_layout_slots = candidate["layout_slots"].duplicate(true)
+    home_light_mode = int(candidate["light_mode"])
+    home_ceiling_style = int(candidate["ceiling_style"])
+    home_tv_mode = int(candidate["tv_mode"])
+    solo_room.call("apply_light_mode", home_light_mode)
+    solo_room.call("apply_ceiling_style", home_ceiling_style)
+    solo_room.call("apply_tv_mode", home_tv_mode)
+    solo_room.call("apply_decoration", home_wall_style, home_floor_style,
+        home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
+        home_plant_rotation, home_furniture)
+    hud_status.text = "Free solo room changes saved."
+    return true
+
+
+func _commit_home_decor(candidate: Dictionary) -> void:
+    var previous: Dictionary = _home_save_snapshot()
+    if previous == candidate:
+        return
+    if not _apply_home_decor(candidate):
+        hud_status.text = "Decoration cannot overlap furniture or block the doorway."
+        return
+    decor_undo.append(previous)
+    if decor_undo.size() > SoloHome.HISTORY_LIMIT:
+        decor_undo.pop_front()
+    decor_redo.clear()
+    _show_home_decor()
+
+
+func _cycle_home_decoration(field: String) -> void:
+    if field not in ["wall_style", "floor_style", "plant_spot"]:
+        return
+    if field == "plant_spot" and not owns_plant:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[field] = (int(candidate[field]) + 1) % 3
+    if field == "plant_spot":
+        candidate["plant_custom"] = false
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_ceiling() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["ceiling_style"] = (home_ceiling_style + 1) % 3
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_tv() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["tv_mode"] = (home_tv_mode + 1) % 3
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_light() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["light_mode"] = (home_light_mode + 1) % 3
+    _commit_home_decor(candidate)
+
+
+
+## Optional educational mini-activity, entirely local and reward-free.
+func _show_study_panel() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Study desk • practice %d/%d" % [study_card + 1, STUDY_CARDS.size()]
+    rows.add_child(heading)
+    var card: Dictionary = STUDY_CARDS[study_card]
+    var prompt := Label.new()
+    prompt.text = str(card["question"])
+    prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(prompt)
+    for option in range(card["choices"].size()):
+        var answer := _new_button(str(card["choices"][option]))
+        answer.disabled = study_answered
+        rows.add_child(answer)
+        answer.pressed.connect(_submit_study_answer.bind(option))
+    if study_answered:
+        var note := Label.new()
+        note.text = str(card["note"])
+        note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        rows.add_child(note)
+        var next := _new_button("Next question")
+        rows.add_child(next)
+        next.pressed.connect(_next_study_card)
+    var count := Label.new()
+    count.text = "Correct this visit: %d" % study_correct
+    rows.add_child(count)
+    var close := _new_button("Back to room controls")
+    rows.add_child(close)
+    close.pressed.connect(_show_home_decor)
+    hud_modal.show()
+
+
+func _submit_study_answer(choice: int) -> bool:
+    if not home_inside or study_answered:
+        return false
+    var card: Dictionary = STUDY_CARDS[study_card]
+    if choice < 0 or choice >= card["choices"].size():
+        return false
+    study_answered = true
+    var correct: bool = choice == int(card["answer"])
+    if correct:
+        study_correct += 1
+    hud_status.text = "Correct practice answer!" if correct else "Try the next one."
+    _show_study_panel()
+    return correct
+
+
+func _next_study_card() -> void:
+    if not home_inside or not study_answered:
+        return
+    study_card = (study_card + 1) % STUDY_CARDS.size()
+    study_answered = false
+    _show_study_panel()
+
+
+## Small optional everyday-life interactions for the PRIVATE room only.
+## These are cosmetic session actions, with no game money, hunger meters
+## or account/server writes. Returning to the city clears this preview.
+func _show_home_life_panel() -> void:
+    if not home_inside or hud_modal == null:
+        return
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var rows := VBoxContainer.new()
+    hud_modal.add_child(rows)
+    var heading := Label.new()
+    heading.text = "Free home activities • optional & offline"
+    rows.add_child(heading)
+    var rest := _new_button("Get up from bed" if home_resting else "Relax on bed")
+    rows.add_child(rest)
+    rest.pressed.connect(_home_toggle_rest)
+    var note := Label.new()
+    note.text = "Resting is cosmetic. It never blocks play or requires a timer."
+    note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    rows.add_child(note)
+    var heading_meal := Label.new()
+    heading_meal.text = "Kitchenette • choose a fictional meal"
+    rows.add_child(heading_meal)
+    for option in ["Jollof bowl", "Beans plate", "Fruit snack"]:
+        var meal := _new_button(option)
+        rows.add_child(meal)
+        meal.pressed.connect(_home_prepare_meal.bind(
+            ["Jollof bowl", "Beans plate", "Fruit snack"].find(option)))
+    var meal_feedback := Label.new()
+    meal_feedback.text = "Meal shown: " + (
+        ["Jollof bowl", "Beans plate", "Fruit snack"][home_meal_choice]
+        if home_meal_choice >= 0 else "None")
+    rows.add_child(meal_feedback)
+    var done := _new_button("Back to room controls")
+    rows.add_child(done)
+    done.pressed.connect(_show_home_decor)
+    hud_modal.show()
+
+
+func _home_toggle_rest() -> bool:
+    if not home_inside or solo_room == null:
+        return false
+    if social != null and bool(social.get("is_online")):
+        return false
+    home_resting = not home_resting
+    solo_room.call("set_resting", home_resting)
+    hud_status.text = "Relaxing at home." if home_resting else "You can keep exploring."
+    _show_home_life_panel()
+    return home_resting
+
+
+func _home_prepare_meal(selection: int) -> bool:
+    if not home_inside or solo_room == null:
+        return false
+    if social != null and bool(social.get("is_online")):
+        return false
+    if selection < 0 or selection > 2:
+        return false
+    if not bool(solo_room.call("show_meal", selection)):
+        return false
+    home_meal_choice = selection
+    hud_status.text = "Fictional meal preview ready. No cash or supplies required."
+    _show_home_life_panel()
+    return true
+
+
+func _home_move_plant(delta_x: int, delta_z: int) -> void:
+    if not owns_plant or not home_inside:
+        return
+    if absi(delta_x) + absi(delta_z) > 1:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var x: int = home_plant_x + delta_x
+    var z: int = home_plant_z + delta_z
+    if not SoloHome.floor_cell_allowed(x, z):
+        hud_status.text = "That plant position is blocked by a wall or furniture."
+        return
+    candidate["plant_custom"] = true
+    candidate["plant_x"] = x
+    candidate["plant_z"] = z
+    _commit_home_decor(candidate)
+
+
+func _home_rotate_plant() -> void:
+    if not owns_plant or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["plant_rotation"] = (home_plant_rotation + 1) % 4
+    _commit_home_decor(candidate)
+
+
+func _home_move_furniture(kind: String, dx: int, dz: int) -> void:
+    if kind not in ["chair", "table"] or not home_inside:
+        return
+    if absi(dx) + absi(dz) != 1:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[kind + "_x"] = int(candidate[kind + "_x"]) + dx
+    candidate[kind + "_z"] = int(candidate[kind + "_z"]) + dz
+    _commit_home_decor(candidate)
+
+
+func _home_rotate_furniture(kind: String) -> void:
+    if kind not in ["chair", "table"] or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate[kind + "_rotation"] = (int(candidate[kind + "_rotation"]) + 1) % 4
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_fixture(kind: String) -> void:
+    if kind not in ["bed", "wardrobe"] or not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var key: String = kind + "_layout"
+    var options: Array = SoloHome.BED_PLACEMENTS if kind == "bed" else SoloHome.WARDROBE_PLACEMENTS
+    candidate[key] = (int(candidate[key]) + 1) % options.size()
+    _commit_home_decor(candidate)
+
+
+func _apply_room_plan(index: int) -> void:
+    if not home_inside or index < 0 or index >= SoloHome.ROOM_PLANS.size():
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var plan: Dictionary = SoloHome.ROOM_PLANS[index]
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        candidate[key] = int(plan.get(key, SoloHome.FURNITURE_DEFAULTS[key]))
+    # Plants are put back in the existing display preset to keep room plans
+    # safe without requiring the user to own any paid cosmetics.
+    candidate["plant_custom"] = false
+    candidate["plant_spot"] = 0
+    _commit_home_decor(candidate)
+
+
+func _save_home_layout_slot(slot: String) -> void:
+    if not home_inside or not SoloProgress.SLOT_NAMES.has(slot):
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var bookmark: Dictionary = {}
+    for key in SoloProgress.DECOR_KEYS:
+        bookmark[key] = candidate[key]
+    var slots: Dictionary = candidate["layout_slots"].duplicate(true)
+    slots[slot] = bookmark
+    candidate["layout_slots"] = slots
+    # Saving a bookmark does not change the scene and does not consume
+    # undo history; money and item ownership are left untouched.
+    if _apply_home_decor(candidate):
+        hud_status.text = "Your private decoration bookmark was saved."
+        _show_home_decor()
+
+
+func _load_home_layout_slot(slot: String) -> void:
+    if not home_inside or not SoloProgress.SLOT_NAMES.has(slot):
+        return
+    if not home_layout_slots.has(slot):
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    var layout: Dictionary = home_layout_slots[slot]
+    for key in SoloProgress.DECOR_KEYS:
+        candidate[key] = layout[key]
+    # Loading a layout only affects cosmetics. The current wallet and
+    # ownership never come from a bookmarked object.
+    _commit_home_decor(candidate)
+
+
+func _undo_home_decor() -> void:
+    if not home_inside or decor_undo.is_empty():
+        return
+    var previous: Dictionary = decor_undo.pop_back()
+    var current: Dictionary = _home_save_snapshot()
+    previous["layout_slots"] = home_layout_slots.duplicate(true)
+    if not _apply_home_decor(previous):
+        decor_undo.append(previous)
+        return
+    decor_redo.append(current)
+    _show_home_decor()
+
+
+func _redo_home_decor() -> void:
+    if not home_inside or decor_redo.is_empty():
+        return
+    var next: Dictionary = decor_redo.pop_back()
+    var current: Dictionary = _home_save_snapshot()
+    next["layout_slots"] = home_layout_slots.duplicate(true)
+    if not _apply_home_decor(next):
+        decor_redo.append(next)
+        return
+    decor_undo.append(current)
+    if decor_undo.size() > SoloHome.HISTORY_LIMIT:
+        decor_undo.pop_front()
+    _show_home_decor()
 
 
 func _preview_plant_purchase() -> void:
@@ -687,9 +1507,20 @@ func _confirm_plant_purchase() -> void:
         hud_status.text = "Purchase unavailable. Return to the market and check your balance."
         _close_quiz()
         return
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Solo market purchases are disabled during a shared session."
+        _close_quiz()
+        return
+    var after_purchase: Dictionary = _home_save_snapshot()
+    after_purchase["cash"] = game_cash - 250
+    after_purchase["plant"] = true
+    if not bool(progress_store.call("save_state", after_purchase)):
+        hud_status.text = "Purchase not completed: " + str(progress_store.get("warning"))
+        _close_quiz()
+        return
     game_cash -= 250
     owns_plant = true
-    hud_status.text = "Purchased a desk plant for 250 fictional GC."
+    hud_status.text = "Saved: purchased a desk plant for 250 fictional GC."
     _close_quiz()
 
 
@@ -732,10 +1563,20 @@ func _submit_quiz(choice_id: int) -> void:
         hud_status.text = "Not quite — try another answer."
         return
 
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Solo rewards are disabled in shared sessions; no online currency is awarded."
+        _close_quiz()
+        return
     var payout: int = int(active_quiz["payout"])
+    var after_job: Dictionary = _home_save_snapshot()
+    after_job["cash"] = game_cash + payout
+    after_job["jobs"] = completed_jobs + 1
+    if not bool(progress_store.call("save_state", after_job)):
+        hud_status.text = "Job reward not saved: " + str(progress_store.get("warning"))
+        return
     game_cash += payout
     completed_jobs += 1
-    hud_status.text = "Job complete! Earned %d fictional Game Cash." % payout
+    hud_status.text = "Saved: earned %d fictional Game Cash." % payout
     _close_quiz()
 
 

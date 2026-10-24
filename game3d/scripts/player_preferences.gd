@@ -9,6 +9,7 @@ var day_cycle_enabled: bool = true
 var day_minutes: float = 20.0
 var battery_saver: bool = false
 var shadows_enabled: bool = true
+var weather_mode: String = "auto"
 
 
 func read_settings(path: String = PATH) -> void:
@@ -27,6 +28,8 @@ func read_settings(path: String = PATH) -> void:
     battery_saver = battery if battery is bool else false
     var shadows: Variant = config.get_value("graphics", "shadows_enabled", true)
     shadows_enabled = shadows if shadows is bool else true
+    var raw_weather: Variant = config.get_value("weather", "mode", "auto")
+    weather_mode = _valid_weather(raw_weather)
 
 
 func write_settings(path: String = PATH) -> Error:
@@ -38,7 +41,14 @@ func write_settings(path: String = PATH) -> Error:
     config.set_value("controls", "day_minutes", _bounded(day_minutes, 10.0, 60.0, 20.0))
     config.set_value("graphics", "battery_saver", battery_saver)
     config.set_value("graphics", "shadows_enabled", shadows_enabled)
+    config.set_value("weather", "mode", _valid_weather(weather_mode))
     return config.save(path)
+
+
+static func _valid_weather(value: Variant) -> String:
+    if value is String and value in ["auto", "clear", "light", "heavy"]:
+        return value
+    return "auto"
 
 
 static func _bounded(value: Variant, minimum: float, maximum: float, fallback: float) -> float:

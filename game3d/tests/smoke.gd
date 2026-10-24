@@ -3,6 +3,8 @@ extends SceneTree
 # Headless regression checks for BLINK LIFE's native Godot 3D scene.
 # This is a runtime smoke test, not a substitute for actual Android hardware testing.
 
+const SoloProgress = preload("res://scripts/solo_progress.gd")
+const TEST_SAVE: String = "user://blink_life_scene_smoke_save.json"
 var failed: bool = false
 
 
@@ -24,6 +26,14 @@ func _run() -> void:
     if world == null:
         quit(1)
         return
+    var demo_progress := SoloProgress.new()
+    demo_progress.save_path = TEST_SAVE
+    demo_progress.backup_path = TEST_SAVE + ".bak"
+    demo_progress.temp_path = TEST_SAVE + ".tmp"
+    for file in [demo_progress.save_path, demo_progress.backup_path, demo_progress.temp_path]:
+        if FileAccess.file_exists(file):
+            DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+    world.set("progress_store", demo_progress)
     root.add_child(world)
     await process_frame
     await physics_frame
@@ -56,6 +66,72 @@ func _run() -> void:
         _assert_true(world.call("_nearest_place").is_empty(), "The road intersection is not a building interaction")
         player.global_position = Vector3(-18, 8, -3.25)
         _assert_true(world.call("_nearest_place").is_empty(), "Interaction should not reach between floors")
+        player.global_position = Vector3.ZERO
+
+    var weather_fx: Node3D = world.get_node_or_null("WeatherVisuals") as Node3D
+    _assert_true(weather_fx != null, "Local weather scene must be present")
+    if weather_fx != null:
+        var rain_node: MultiMeshInstance3D = weather_fx.get_node_or_null("Rain") as MultiMeshInstance3D
+        _assert_true(rain_node != null, "Weather renderer must batch drops")
+        if rain_node != null:
+            var local_weather: RefCounted = world.get("weather")
+            local_weather.set("mode", "heavy")
+            world.call("_process", 0.10)
+            _assert_true(rain_node.visible and rain_node.multimesh.visible_instance_count == 80, "Tropical weather shows capped rainfall")
+            local_weather.set("mode", "clear")
+            world.call("_process", 0.10)
+            _assert_true(not rain_node.visible and rain_node.multimesh.visible_instance_count == 0, "Clear weather hides rainfall immediately")
+            local_weather.set("mode", "auto")
+
+    var npc_world: Node3D = world.get_node_or_null("Residents") as Node3D
+    _assert_true(npc_world != null, "Local fictional residents must be present")
+    if npc_world != null:
+        _assert_true(npc_world.get_child_count() == 8, "Scene contains eight original NPC actors")
+        var npc_ada: Node3D = npc_world.get_node_or_null("NPC_ada") as Node3D
+        _assert_true(npc_ada != null, "The first recurring resident has a stable NPC ID")
+        if npc_ada != null:
+            var npc_nameplate: Label3D = npc_ada.get_node_or_null("NPCName") as Label3D
+            _assert_true(npc_nameplate != null and npc_nameplate.text.begins_with("NPC"), "NPC labels must be distinguishable from real players")
+            npc_world.call("update_residents", npc_ada.global_position, 8.0, "light", false, 0.25)
+            var umbrella: Node3D = npc_ada.get_node_or_null("RainUmbrella") as Node3D
+            _assert_true(umbrella != null and umbrella.visible, "A walking NPC carries an umbrella in light rain")
+            _assert_true(not str(npc_world.call("nearby_greeting", npc_ada.global_position)).is_empty(), "Resident conversations remain text-accessible")
+            npc_world.call("update_residents", npc_ada.global_position, 8.0, "clear", true, 0.25)
+            _assert_true(umbrella != null and not umbrella.visible, "NPC umbrellas retract in clear weather")
+            var visible_count: int = 0
+            for actor in npc_world.get_children():
+                if actor.visible:
+                    visible_count += 1
+            _assert_true(visible_count <= 4, "Battery-saving mode caps visible residents at four")
+
+    var spaces: Node3D = world.get_node_or_null("PublicSpaces") as Node3D
+    _assert_true(spaces != null, "Public amenities should exist as 3D geometry")
+    var PublicSpaceData: Script = load("res://scripts/public_spaces.gd")
+    if player != null and PublicSpaceData != null:
+        var public_locations: Array[Dictionary] = PublicSpaceData.public_spots()
+        var bench: Dictionary = public_locations[0]
+        player.global_position = bench["position"] + Vector3.UP * 0.15
+        var first_body: MeshInstance3D = player.get_child(1) as MeshInstance3D
+        var before_pose: Transform3D = first_body.transform
+        world.call("_interact")
+        _assert_true(not str(world.get("seated_at")).is_empty(), "The park bench should be usable in offline preview")
+        _assert_true(bool(world.call("_movement_blocked")), "Sitting must block movement until standing")
+        _assert_true(not first_body.transform.is_equal_approx(before_pose), "Sitting must visibly change the character pose")
+        world.call("_interact")
+        _assert_true(str(world.get("seated_at")).is_empty(), "Interact again must stand up")
+        _assert_true(first_body.transform.is_equal_approx(before_pose), "Standing must restore the original avatar pose")
+
+        var board: Dictionary = public_locations[public_locations.size() - 1]
+        player.global_position = board["position"] + Vector3.UP * 0.15
+        var before_board_cash: int = int(world.get("game_cash"))
+        world.call("_interact")
+        _assert_true(world.get("hud_modal").visible, "Community opportunities must open a readable panel")
+        _assert_true(int(world.get("game_cash")) == before_board_cash, "Viewing opportunities cannot create currency")
+        world.call("_close_quiz")
+        player.global_position = public_locations[6]["position"] + Vector3.UP * 0.15
+        world.call("_interact")
+        _assert_true(int(world.get("game_cash")) == before_board_cash, "Browsing stalls cannot charge or mint currency")
+        _assert_true(str(world.get("hud_status").text).contains("Fruit Stall"), "The selected stall should show its own identity")
         player.global_position = Vector3.ZERO
 
     var initial_cash: int = int(world.get("game_cash"))
@@ -102,6 +178,257 @@ func _run() -> void:
         _assert_true(int(world.get("game_cash")) == 370, "Market purchase should cost 250 fictional GC")
         world.call("_interact")
         _assert_true(int(world.get("game_cash")) == 370, "Purchasing a second time must not charge again")
+
+
+    # The free starter room is a playable, opt-in SOLO interior, never a
+    # replacement for the host-authorized property visiting system.
+    if player != null:
+        var layout_home: Script = load("res://scripts/neighborhood_layout.gd")
+        var home_place: Dictionary = {}
+        for destination in world.get("places"):
+            if str(destination["id"]) == "homes":
+                home_place = destination
+        _assert_true(not home_place.is_empty(), "Homes destination must exist")
+        if not home_place.is_empty():
+            var outside_home: Vector3 = layout_home.entrance_for(home_place) + Vector3.UP * 0.15
+            player.global_position = outside_home
+            world.call("_interact")
+            _assert_true(bool(world.get("hud_modal").visible), "Homes offers a choice between solo and multiplayer")
+            _assert_true(not bool(world.get("home_inside")), "A menu must not teleport without consent")
+            world.call("_enter_solo_home")
+            _assert_true(bool(world.get("home_inside")), "Solo starter room opens when player chooses it")
+            var room: Node3D = world.get("solo_room")
+            _assert_true(room != null and room.get_node_or_null("Floor") != null, "Starter home has a physical floor")
+            _assert_true(room != null and room.get_node_or_null("North wall") != null, "Starter home has real walls")
+            _assert_true(player.global_position.y > 28.0, "Solo room places player in a distinct reachable interior")
+            _assert_true(bool(room.get_node("DeskPlant").visible), "Purchased plant decor appears in the starter room")
+            _assert_true(world.call("_nearest_place").is_empty(), "Cannot trigger outside businesses from a room")
+            _assert_true(world.call("_nearest_public_spot").is_empty(), "Cannot trigger city props from a room")
+            _assert_true(player.velocity == Vector3.ZERO, "Entering a home resets movement")
+            player.global_position = Vector3(30, 0, 0)
+            world.call("_recover_if_needed")
+            _assert_true(bool(world.get("home_inside")) and player.global_position.y > 28.0, "Indoor fall/out-of-bounds recovers indoors")
+            var wall_visual: MeshInstance3D = room.get("wall_visuals")[0]
+            var floor_visual: MeshInstance3D = room.get("floor_visual")
+            var initial_wall: Color = (wall_visual.material_override as StandardMaterial3D).albedo_color
+            var initial_floor: Color = (floor_visual.material_override as StandardMaterial3D).albedo_color
+            var plant_start: Vector3 = room.get_node("DeskPlant").position
+            world.call("_interact")
+            _assert_true(bool(world.get("hud_modal").visible), "Interact indoors opens decoration controls")
+            _assert_true(bool(world.get("home_inside")), "Decoration controls cannot accidentally exit room")
+            world.call("_close_quiz")
+            world.call("_cycle_home_decoration", "wall_style")
+            world.call("_cycle_home_decoration", "floor_style")
+            world.call("_cycle_home_decoration", "plant_spot")
+            _assert_true(int(world.get("home_wall_style")) == 1, "Free wall palette cycle should apply")
+            _assert_true(int(world.get("home_floor_style")) == 1, "Free floor palette cycle should apply")
+            _assert_true(int(world.get("home_plant_spot")) == 1, "Owned plant has a safe alternate location")
+            _assert_true((wall_visual.material_override as StandardMaterial3D).albedo_color != initial_wall, "Walls visibly change palette")
+            _assert_true((floor_visual.material_override as StandardMaterial3D).albedo_color != initial_floor, "Floor visibly changes palette")
+            _assert_true(room.get_node("DeskPlant").position != plant_start, "Plant can be repositioned without moving player")
+            var decor_checkpoint: Dictionary = demo_progress.load_state()
+            _assert_true(int(decor_checkpoint["wall_style"]) == 1 and int(decor_checkpoint["floor_style"]) == 1, "Wall and floor choices survive disk reload")
+            _assert_true(int(decor_checkpoint["plant_spot"]) == 1, "Plant placement survives disk reload")
+            _assert_true(int(decor_checkpoint["cash"]) == 370, "No currency charged for free home decoration")
+
+            var preset_position: Vector3 = room.get_node("DeskPlant").position
+            world.call("_home_move_plant", 0, 0)
+            _assert_true(bool(world.get("home_plant_custom")), "Explicit floor-grid mode becomes active")
+            _assert_true(int(world.get("home_plant_z")) == 3, "The starting floor grid is safe and deterministic")
+            var new_floor_position: Vector3 = room.get_node("DeskPlant").position
+            _assert_true(new_floor_position != preset_position, "Floor-grid mode visibly relocates the plant")
+            world.call("_home_move_plant", -1, 0)
+            _assert_true(int(world.get("home_plant_x")) == -1, "Grid moves one metre left into a safe cell")
+            var moved_position: Vector3 = room.get_node("DeskPlant").position
+            world.call("_home_move_plant", 0, 1)
+            _assert_true(room.get_node("DeskPlant").position == moved_position, "An out-of-bounds grid move is rejected without jumping")
+            var unsafe_layout: Dictionary = world.call("_home_save_snapshot")
+            unsafe_layout["plant_x"] = -3
+            unsafe_layout["plant_z"] = -3
+            _assert_true(not bool(world.call("_apply_home_decor", unsafe_layout)), "Furniture-overlap layout is rejected before saving")
+            _assert_true(room.get_node("DeskPlant").position == moved_position, "Rejected overlap cannot repaint or move furniture")
+            var forged_balance: Dictionary = world.call("_home_save_snapshot")
+            forged_balance["cash"] = 999999
+            _assert_true(not bool(world.call("_apply_home_decor", forged_balance)), "Decor changes cannot alter the offline wallet")
+            _assert_true(int(demo_progress.load_state()["cash"]) == 370, "Rejected forged decor wallet remains unchanged on disk")
+            world.call("_home_rotate_plant")
+            _assert_true(int(world.get("home_plant_rotation")) == 1, "Plant orientation cycles in ninety-degree steps")
+            _assert_true(is_equal_approx(room.get_node("DeskPlant").rotation.y, PI / 2.0), "Plant visibly rotates on scene")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_plant_rotation")) == 0, "Undo restores previous rotation")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_plant_x")) == 0, "Second undo restores previous position")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_plant_x")) == -1, "Redo reapplies one safe placement change")
+            _assert_true(int(demo_progress.load_state()["plant_x"]) == -1, "Redo persists to local disk")
+            world.call("_home_rotate_plant")
+            _assert_true((world.get("decor_redo") as Array).is_empty(), "New edits clear stale redo history")
+            var furniture_room: Node3D = world.get("solo_room")
+            var chair_visual: Node3D = furniture_room.get_node("MovableChair")
+            var table_visual: Node3D = furniture_room.get_node("MovableTable")
+            _assert_true(chair_visual != null and table_visual != null, "Starter room has a movable chair and table")
+            var chair_initial: Vector3 = chair_visual.position
+            var table_initial: Vector3 = table_visual.position
+            world.call("_home_move_furniture", "chair", -1, 0)
+            _assert_true(chair_visual.position.x == chair_initial.x - 1, "A chair moves one safe floor-grid cell left")
+            world.call("_home_rotate_furniture", "chair")
+            _assert_true(is_equal_approx(chair_visual.rotation.y, PI / 2.0), "Chair rotates visibly by 90 degrees")
+            world.call("_home_move_furniture", "table", -1, 0)
+            _assert_true(table_visual.position == table_initial, "Table cannot block entry/spawn area")
+            world.call("_home_move_furniture", "table", 1, 0)
+            _assert_true(table_visual.position.x == table_initial.x + 1, "Table moves to a valid floor cell")
+            world.call("_home_rotate_furniture", "table")
+            _assert_true(is_equal_approx(table_visual.rotation.y, PI / 2.0), "Table rotates without leaving room")
+            var blocking_layout: Dictionary = world.call("_home_save_snapshot")
+            blocking_layout["table_x"] = int(blocking_layout["chair_x"])
+            blocking_layout["table_z"] = int(blocking_layout["chair_z"])
+            _assert_true(not bool(world.call("_apply_home_decor", blocking_layout)), "Decor editor rejects furniture-on-furniture overlap")
+            _assert_true(table_visual.position.x == table_initial.x + 1, "Rejected furniture overlap leaves the scene unchanged")
+            world.call("_undo_home_decor")
+            _assert_true(is_zero_approx(table_visual.rotation.y), "Undo restores table orientation")
+            world.call("_redo_home_decor")
+            _assert_true(is_equal_approx(table_visual.rotation.y, PI / 2.0), "Redo reapplies table orientation")
+            var furniture_save: Dictionary = demo_progress.load_state()
+            _assert_true(int(furniture_save["chair_x"]) == 1 and int(furniture_save["table_x"]) == 3,
+                "Free chair/table coordinates survive saved-state roundtrip")
+            _assert_true(int(furniture_save["chair_rotation"]) == 1 and int(furniture_save["table_rotation"]) == 1,
+                "Both furniture rotations survive saved-state roundtrip")
+            _assert_true(int(world.get("game_cash")) == 370, "Undo/redo/rotation cannot create or charge currency")
+            world.call("_cycle_home_decoration", "invalid")
+            _assert_true(int(world.get("home_wall_style")) == 1, "Unknown decoration requests do nothing")
+            world.call("_close_quiz")
+            world.call("_exit_solo_home")
+            _assert_true(not bool(world.get("home_inside")), "Explicit Exit safely leaves solo room")
+            _assert_true(player.global_position.distance_to(outside_home) < 0.01, "Solo room returns to original home entrance")
+            world.call("_enter_solo_home")
+            var reopened_room: Node3D = world.get("solo_room")
+            _assert_true(bool(world.get("home_inside")), "Players can reopen the free room")
+            _assert_true(reopened_room.get_node("DeskPlant").position != plant_start, "Re-entering keeps saved plant placement")
+            _assert_true(reopened_room.get_node("MovableChair").position.x == 1.0, "Re-entering restores chair location")
+            _assert_true(reopened_room.get_node("MovableTable").position.x == 3.0, "Re-entering restores side table location")
+            var reopened_floor: MeshInstance3D = reopened_room.get("floor_visual")
+            _assert_true((reopened_floor.material_override as StandardMaterial3D).albedo_color != initial_floor, "Re-entering restores saved floor palette")
+            var bed_preview: Node3D = reopened_room.get_node("MovableBed")
+            var wardrobe_preview: Node3D = reopened_room.get_node("MovableWardrobe")
+            var wardrobe_start: Vector3 = wardrobe_preview.position
+            world.call("_cycle_home_fixture", "bed")
+            _assert_true(is_equal_approx(bed_preview.rotation.y, PI / 2.0), "Bed layout changes its orientation")
+            world.call("_cycle_home_fixture", "wardrobe")
+            _assert_true(wardrobe_preview.position != wardrobe_start, "Wardrobe changes to a second safe position")
+            world.call("_apply_room_plan", 2)
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Room plan applies bed layout")
+            _assert_true(int(world.get("home_furniture")["wardrobe_layout"]) == 2, "Room plan applies wardrobe layout")
+            var plan_saved: Dictionary = demo_progress.load_state()
+            _assert_true(int(plan_saved["bed_layout"]) == 2, "Room plan persists through the solo save")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 1, "Undo returns to previous arrangement")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Redo restores the selected arrangement")
+            world.call("_save_home_layout_slot", "slot_1")
+            _assert_true(bool(world.get("home_layout_slots").has("slot_1")), "Private layout slot one saves the current room")
+            _assert_true(bool(demo_progress.load_state()["layout_slots"].has("slot_1")), "Saved layouts survive fresh file reads")
+            world.call("_apply_room_plan", 0)
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 0, "Switching room plans works after saving a bookmark")
+            world.call("_save_home_layout_slot", "slot_2")
+            _assert_true(bool(world.get("home_layout_slots").has("slot_2")), "Second private layout slot can be saved separately")
+            world.call("_load_home_layout_slot", "slot_1")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Applying saved layout restores its bed arrangement")
+            _assert_true(int(world.get("home_furniture")["wardrobe_layout"]) == 2, "Applying saved layout restores wardrobe arrangement")
+            _assert_true(int(world.get("game_cash")) == 370, "Layout bookmarks cannot change solo money")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 0, "Undo restores before bookmarked layout")
+            _assert_true(bool(world.get("home_layout_slots").has("slot_2")), "Undo never removes separately saved bookmarks")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Redo reapplies saved room layout")
+            var interior_light: OmniLight3D = reopened_room.get_node("InteriorLight")
+            var warm_energy: float = interior_light.light_energy
+            world.call("_cycle_home_light")
+            _assert_true(int(world.get("home_light_mode")) == 1, "Indoor light cycles to bright")
+            _assert_true(interior_light.light_energy > warm_energy, "Bright mode increases room light")
+            var saved_light: Dictionary = demo_progress.load_state()
+            _assert_true(int(saved_light["light_mode"]) == 1, "Indoor light preference is saved locally")
+            _assert_true(not bool(reopened_room.call("apply_light_mode", 3)), "Invalid light mode is ignored")
+            _assert_true(interior_light.light_energy > warm_energy, "Rejected light mode cannot change lighting")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_light_mode")) == 0, "Undo restores lighting preference")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_light_mode")) == 1, "Redo reapplies lighting preference")
+            var ceiling_mesh: MeshInstance3D = reopened_room.get("ceiling_visuals")[0]
+            var original_ceiling: Color = (ceiling_mesh.material_override as StandardMaterial3D).albedo_color
+            var screen_caption: Label3D = reopened_room.get_node("TVCaption")
+            _assert_true(screen_caption.text == "OFF", "Room starts with fictional TV screen off")
+            world.call("_cycle_home_ceiling")
+            _assert_true(int(world.get("home_ceiling_style")) == 1, "Ceiling trim cycles palette")
+            _assert_true((ceiling_mesh.material_override as StandardMaterial3D).albedo_color != original_ceiling,
+                "Ceiling accent visibly changes in 3D")
+            world.call("_cycle_home_tv")
+            _assert_true(int(world.get("home_tv_mode")) == 1 and screen_caption.text == "NATURE",
+                "Room screen shows optional offline nature channel")
+            var saved_interior: Dictionary = demo_progress.load_state()
+            _assert_true(int(saved_interior["ceiling_style"]) == 1 and int(saved_interior["tv_mode"]) == 1,
+                "Ceiling and room screen both persist after disk reload")
+            _assert_true(not bool(reopened_room.call("apply_ceiling_style", 4)),
+                "Unknown ceiling materials cannot change the room")
+            _assert_true(not bool(reopened_room.call("apply_tv_mode", -1)),
+                "Unknown entertainment channels cannot change the room")
+            _assert_true(screen_caption.text == "NATURE", "Invalid screen mode leaves content untouched")
+            world.call("_undo_home_decor")
+            _assert_true(int(world.get("home_tv_mode")) == 0 and screen_caption.text == "OFF",
+                "Undo restores switched-off fictional screen")
+            world.call("_redo_home_decor")
+            _assert_true(int(world.get("home_tv_mode")) == 1 and screen_caption.text == "NATURE",
+                "Redo reapplies the offline screen channel")
+            _assert_true(int(world.get("game_cash")) == 370 and int(world.get("completed_jobs")) == 1,
+                "Appearance and entertainment controls cannot affect earnings")
+            var cash_before_study: int = int(world.get("game_cash"))
+            var jobs_before_study: int = int(world.get("completed_jobs"))
+            world.call("_show_study_panel")
+            _assert_true(bool(world.get("hud_modal").visible), "Home study opens a readable modal")
+            _assert_true(not bool(world.call("_submit_study_answer", 6)), "Invalid study answers are rejected")
+            _assert_true(bool(world.call("_submit_study_answer", 1)), "Correct first practice answer is recognized")
+            _assert_true(not bool(world.call("_submit_study_answer", 1)), "Practice cannot count one card twice")
+            _assert_true(int(world.get("study_correct")) == 1, "Study session counts one correct response")
+            world.call("_next_study_card")
+            _assert_true(int(world.get("study_card")) == 1 and not bool(world.get("study_answered")), "Study advances to a new card")
+            _assert_true(not bool(world.call("_submit_study_answer", 0)), "Wrong answer is safe and gives feedback")
+            _assert_true(int(world.get("study_correct")) == 1, "Wrong answers do not gain score")
+            _assert_true(int(world.get("game_cash")) == cash_before_study, "Studying cannot produce or charge Game Cash")
+            _assert_true(int(world.get("completed_jobs")) == jobs_before_study, "Study practice is not a paid job")
+            _assert_true(not bool(world.get_node("SocialWorld").get("is_online")), "Study practice cannot connect multiplayer")
+            var cash_before_home_activity: int = int(world.get("game_cash"))
+            var jobs_before_home_activity: int = int(world.get("completed_jobs"))
+            var preview_meal: MeshInstance3D = reopened_room.get_node("MealPreview")
+            var meal_label: Label3D = reopened_room.get_node("KitchenMealStatus")
+            var bed_label: Label3D = reopened_room.get_node("MovableBed/BedRestStatus")
+            _assert_true(not preview_meal.visible, "Kitchen meal is optional and initially hidden")
+            world.call("_show_home_life_panel")
+            _assert_true(bool(world.get("hud_modal").visible), "Home activities open on the indoor touch menu")
+            _assert_true(bool(world.call("_home_toggle_rest")), "Player can start free optional bed rest")
+            _assert_true(bool(world.get("home_resting")) and bed_label.text.contains("RESTING"),
+                "Resting changes the displayed bed status")
+            _assert_true(not bool(world.call("_home_toggle_rest")), "Player can immediately end rest")
+            _assert_true(not bool(world.get("home_resting")) and bed_label.text == "REST AVAILABLE",
+                "Stopping bed rest restores the room visual")
+            _assert_true(not bool(world.call("_home_prepare_meal", -1)),
+                "Invalid kitchen choices never affect the room")
+            _assert_true(not preview_meal.visible, "Invalid kitchen action does not create food")
+            _assert_true(bool(world.call("_home_prepare_meal", 0)), "Player can choose free fictional jollof bowl")
+            _assert_true(preview_meal.visible and meal_label.text == "JOLLOF BOWL",
+                "3D kitchenette displays the selected meal without loading media")
+            _assert_true(bool(world.call("_home_prepare_meal", 2)) and meal_label.text == "FRUIT SNACK",
+                "Player may change meal choices without waiting or payment")
+            _assert_true(int(world.get("game_cash")) == cash_before_home_activity,
+                "Resting and meals cannot mint or charge game currency")
+            _assert_true(int(world.get("completed_jobs")) == jobs_before_home_activity,
+                "Optional home activities do not count as jobs")
+            _assert_true(not bool(world.get_node("SocialWorld").get("is_online")),
+                "Private home activities cannot enter multiplayer")
+            world.call("_show_home_decor")
+            world.call("_load_home_layout_slot", "slot_3")
+            _assert_true(int(world.get("home_furniture")["bed_layout"]) == 2, "Unknown bookmark names do nothing")
+            world.call("_exit_solo_home")
+            _assert_true(int(world.get("game_cash")) == 370 and bool(world.get("owns_plant")), "Entering homes cannot change saved money or decoration")
+            _assert_true(not bool(world.get_node("SocialWorld").get("is_online")), "Solo room must never connect to multiplayer")
 
     # Controls must never move an avatar while UI input owns the interaction.
     world.call("_set_touch_axis", Vector2.RIGHT)
@@ -202,6 +529,13 @@ func _run() -> void:
         social.call("_disconnect")
         _assert_true(not bool(social.get("is_online")), "Disconnect must return to offline mode")
 
+    var saved_demo: Dictionary = demo_progress.load_state()
+    _assert_true(int(saved_demo["cash"]) == 370, "Solo job and purchase balance must persist on disk")
+    _assert_true(int(saved_demo["jobs"]) == 1, "Completed solo job count must persist on disk")
+    _assert_true(bool(saved_demo["plant"]), "Purchased desk plant must persist between launches")
+    for file in [demo_progress.save_path, demo_progress.backup_path, demo_progress.temp_path]:
+        if FileAccess.file_exists(file):
+            DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
     # Give the 3D meshes and physics resources time to leave the scene tree
     # before stopping the headless runtime.
     world.queue_free()

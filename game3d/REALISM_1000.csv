@@ -19,9 +19,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 18,Visible building numbers,World,implemented_in_source,scripts/neighborhood_details.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Seven unique visible game addresses; verify legibility on both clients.
 19,Believable drainage channels,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 20,Bridges connecting important districts,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-21,Markets with individual stalls,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+21,Markets with individual stalls,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,"Three separate named market stalls can be approached and inspected. Purchases, vendors and indoor markets remain incomplete; packaged-device verification outstanding."
 22,Shopping centers with interiors,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-23,Parks with usable furniture,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+23,Parks with usable furniture,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Small pocket park includes decorative vegetation and an interactive offline bench. Expanded park activities and physical-device checks pending.
 24,Beaches with interactive areas,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 25,Sports grounds with activities,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 26,Libraries with quiet spaces,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -38,11 +38,11 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 37,Alleys offering alternate routes,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 38,Local landmarks for navigation,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Campus marker geometry; landmark art and navigation playtest pending.
 39,District-specific ambient sounds,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-40,Public noticeboards with opportunities,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+40,Public noticeboards with opportunities,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Community noticeboard lists actual three existing fictional-GC tasks and locations without payouts; physical-device checks pending.
 41,Shops with opening hours,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 42,Streetlights placed logically,World,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/neighborhood_details.gd,tests/controls_smoke.gd;tests/smoke.gd,"Eight positioned lamps fade with local daylight; at most two nearby shadow-free lights, with emissive-only bulbs in saver mode. Physical Android/Windows acceptance outstanding."
-43,Benches near busy destinations,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-44,Waste bins in public spaces,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+43,Benches near busy destinations,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Three visually distinct public benches have offline sit and stand controls. Expanded animations and real-device acceptance pending.
+44,Waste bins in public spaces,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Three nonblocking public waste bins are visible and inspectable. Waste-collection systems and real-device acceptance pending.
 45,Realistic pavement variations,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Footpaths and crossing materials; pavement variation and wear art pending.
 46,Appropriate vegetation by location,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 47,Neighborhood maintenance differences,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -56,9 +56,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 55,Soft twilight transitions,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Continuous twilight brightness and color around the horizon. Android/Windows packaged-device verification outstanding.
 56,Visible moon phases,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 57,Stars under clear skies,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-58,Moving cloud formations,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-59,Light rain showers,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-60,Heavy tropical rainfall,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+58,Moving cloud formations,Time and weather,implemented_in_source,scripts/weather_visuals.gd;scripts/weather_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Two low-poly cloud groups drift locally; verify physical Android and Windows rendering.
+59,Light rain showers,Time and weather,implemented_in_source,scripts/weather_cycle.gd;scripts/weather_visuals.gd;scripts/world.gd,tests/controls_smoke.gd;tests/smoke.gd,Optional light rain uses 24 batched drops; indoor occlusion and wet-road effects pending physical device checks.
+60,Heavy tropical rainfall,Time and weather,implemented_in_source,scripts/weather_cycle.gd;scripts/weather_visuals.gd;scripts/world.gd,tests/controls_smoke.gd;tests/smoke.gd,Optional tropical rain uses 80 batched drops; storm audio and lightning pending physical device checks.
 61,Distant thunder before storms,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 62,Lightning with adjustable intensity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 63,Wet roads after rain,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -78,17 +78,17 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 77,Sensible vehicle traction changes,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 78,Headlights becoming useful at night,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 79,Shops illuminating after sunset,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-80,Different nighttime street populations,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-81,Morning commuter activity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+80,Different nighttime street populations,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents return to home areas at night; nighttime public-population density and behavior still need real-device review.
+81,Morning commuter activity,Time and weather,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Local residents walk to fictional workplaces during the morning scene hours; phone usability pending.
 82,Lunchtime business activity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-83,Evening leisure crowds,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+83,Evening leisure crowds,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents visit local leisure destinations in the evening; real event crowds and scene variety pending.
 84,Weekend activity patterns,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 85,School-day campus schedules,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 86,Holiday decorations in districts,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 87,Festivals changing local scenery,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 88,Maintenance crews after storms,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 89,Optional weather-sensitive clothing bonuses,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-90,Comfortable weather accessibility settings,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+90,Comfortable weather accessibility settings,Time and weather,partial,scripts/player_preferences.gd;scripts/world.gd;scripts/weather_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved clear/light/heavy/auto weather choice offers rain-off setting; accessibility review and controls polish pending.
 91,No unavoidable weather damage,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 92,Shared weather within multiplayer sessions,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 93,Indoor weather sound filtering,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -96,7 +96,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 95,Shadows moving with sunlight,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Directional sun rotation follows the local visual clock. Android/Windows packaged-device verification outstanding.
 96,Temperature represented without excessive chores,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 97,Clear shelter indicators,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-98,Weather-aware NPC dialogue,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+98,Weather-aware NPC dialogue,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Local residents have basic text greetings for clear and rainy weather; dynamic dialogues remain to develop.
 99,Photo opportunities during rare weather,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 100,Consistent clocks across game systems,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 101,Broad skin-tone selection,Characters,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -164,8 +164,8 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 163,Feet staying above surfaces,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 164,Realistic turning animations,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 165,Separate upper-body interactions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-166,Natural seated poses,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-167,Sit-to-stand transitions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+166,Natural seated poses,Movement,partial,scripts/public_spaces.gd;scripts/world.gd,tests/smoke.gd,Character bends low-poly leg geometry when sitting on public benches; natural animation blending and multiplayer authority remain outstanding.
+167,Sit-to-stand transitions,Movement,partial,scripts/public_spaces.gd;scripts/world.gd,tests/smoke.gd,Offline bench can be entered and exited with Interact/F; smooth interpolated sit-to-stand animations remain outstanding.
 168,Leaning against suitable surfaces,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 169,Crouching where useful,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 170,Reaching toward selected objects,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -225,9 +225,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 224,Indoor decorative plants,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 225,Grocery delivery alternatives,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 226,Functional household appliances,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-227,Beds with rest interactions,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+227,Beds with rest interactions,Everyday life,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,"Private starter bed has an optional immediate Rest/Stand action that visibly updates its 3D label. Cosmetic only: no avatar pose, fatigue simulation, forced timer or online property support."
 228,Sofas supporting social activities,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-229,Televisions showing fictional programs,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+229,Televisions showing fictional programs,Everyday life,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Offline wall screen supports three static fictional visual modes including Off, Nature and Campus Board. Animated programs, sound, streaming and real-device UX are not implemented."
 230,Radios with licensed music,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 231,Alarm clocks for game appointments,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 232,Personal calendars inside phones,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -249,7 +249,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 248,Quick recovery after failed activities,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 249,Clear explanations of needs,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 250,Settings to simplify life simulation,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-251,Affordable starter apartments,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+251,Affordable starter apartments,Homes,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,"One free offline starter room can be entered; broader affordable housing, rent and ownership choices remain pending."
 252,Rentable single rooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 253,Shared housing options,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 254,Purchasable family homes,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -262,23 +262,23 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 261,Clear rental renewal terms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 262,Grace periods for missed rent,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 263,No surprise property deletion,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-264,Instanced interiors for performance,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-265,Persistent furniture placement,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-266,Wall color customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-267,Floor material customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-268,Ceiling and lighting customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+264,Instanced interiors for performance,Homes,implemented_in_source,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,The separate playable solo room instantiates only on explicit entry and is freed after leaving; checks ensure no room at startup and collision floor/exit. Packaged-device review remains.
+265,Persistent furniture placement,Homes,partial,scripts/solo_home.gd;scripts/solo_progress.gd;scripts/world.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Starter-room plant, chair, side table plus curated bed and wardrobe arrangements restore from local solo saves. Complete online property inventory/placement remains pending."
+266,Wall color customization,Homes,implemented_in_source,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,Three reversible free wall-color presets are applied to the four room walls and persisted with backward-compatible local solo saves. Android/Windows device appearance checks pending.
+267,Floor material customization,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Three saved low-poly floor colour presets exist in the offline starter room; distinct textures, physical materials and public homes remain outstanding."
+268,Ceiling and lighting customization,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,Offline home has three saved lighting brightness/colour moods plus three visible perimeter ceiling trim palettes and undo/redo. Ceiling remains open in the centre for an overhead camera; whole-ceiling replacement and online homes are not supported.
 269,Resizable furniture placement grids,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-270,Free-placement decoration mode,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-271,Furniture rotation controls,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-272,Undo and redo decoration,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-273,Collision-aware furniture placement,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-274,Room layout templates,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-275,Saveable decoration presets,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+270,Free-placement decoration mode,Homes,partial,scripts/solo_home.gd;scripts/solo_progress.gd;scripts/world.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Plant, chair and table support integer grid placement; bed and wardrobe support curated arrangements. Arbitrary draggable beds, appliances and online housing remain pending."
+271,Furniture rotation controls,Homes,partial,scripts/solo_home.gd;scripts/solo_progress.gd;scripts/world.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,Plant/chair/table support 90-degree orientations; bed and wardrobe use curated positions including rotated layouts. General furniture rotation and multiplayer validation remain pending.
+272,Undo and redo decoration,Homes,implemented_in_source,scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,All enabled offline starter-room decor choices support bounded 20-entry undo/redo; each reverted or restored layout commits to disk before applying. History is session-only.
+273,Collision-aware furniture placement,Homes,partial,scripts/solo_home.gd;scripts/solo_progress.gd;scripts/world.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Static room boundaries, bed/desk, furniture-furniture footprints and entry clearance validated for curated and grid layouts before local saving. Runtime physics/general public homes remain incomplete."
+274,Room layout templates,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Three built-in starter room arrangements for bed, wardrobe, chair and table with local saving and undo/redo; two separate user-saveable bookmarks are now supported. Large room catalogs and shared online property layout templates remain pending."
+275,Saveable decoration presets,Homes,implemented_in_source,scripts/solo_progress.gd;scripts/world.gd;scripts/solo_home.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Two player-saveable and re-applicable private starter-room decoration bookmarks persist locally with complete validated layouts; wallet and ownership are excluded. Real-device verification and server-backed home presets remain outstanding.
 276,Accessible door-width checks,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-277,Functional kitchens,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+277,Functional kitchens,Homes,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,"A wall-mounted kitchenette shows a selectable fictional Jollof bowl, Beans plate or Fruit snack on a lightweight 3D meal preview. No ingredient storage, cooking skills, recipe logic or hunger mechanics."
 278,Functional bathrooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-279,Personal study rooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-280,Home entertainment spaces,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+279,Personal study rooms,Homes,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,"The private solo starter room includes a visible study desk and a three-question accessible practice activity, with answer feedback and no monetary rewards. Full study-room construction and progress curriculum remain pending."
+280,Home entertainment spaces,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Free fictional wall display with Off, Nature and Campus Board static screens, local save and undo/redo. No streaming, social sharing, audio, channels, public home access or real-device verification."
 281,Gardens and courtyards,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 282,Balconies with usable seating,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 283,Garages storing owned vehicles,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -298,7 +298,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 297,Protection against decoration griefing,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 298,Restoration of accidentally removed layouts,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 299,Property upgrades with visible construction,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-300,Homes preserved during player absences,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+300,Homes preserved during player absences,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,A solo cosmetic purchase survives room re-entry and app restart locally; online owned houses and long-term server recovery still pending.
 301,Distinct compact car handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 302,Distinct SUV handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 303,Distinct van handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -399,16 +399,16 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 398,Water service repair activities,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 399,City service request boards,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 400,Visible improvements after community projects,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-401,NPC daily schedules,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-402,NPC home locations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-403,NPC workplace locations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+401,NPC daily schedules,NPCs,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Eight fictional residents follow local clock schedules for home work and leisure; physical Android/Windows validation pending.
+402,NPC home locations,NPCs,implemented_in_source,scripts/npc_routines.gd;scripts/neighborhood_layout.gd,tests/npc_smoke.gd,Each fictional resident has a stable home district frontage; interior occupancy/persistence still pending.
+403,NPC workplace locations,NPCs,implemented_in_source,scripts/npc_routines.gd;scripts/neighborhood_layout.gd,tests/npc_smoke.gd,Residents have defined fictional workplaces and move along connected paths; jobs and commerce interactions pending.
 404,Different weekend routines,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 405,Age-appropriate background characters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 406,Distinct personality profiles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-407,Diverse clothing combinations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-408,Weather-appropriate NPC outfits,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+407,Diverse clothing combinations,NPCs,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Original varied shirt colors exist; layered clothing and wardrobe combinations pending.
+408,Weather-appropriate NPC outfits,NPCs,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents carry umbrellas while moving in rain; full weather-specific wardrobes pending.
 409,Conversations between NPCs,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-410,NPC greetings reflecting familiarity,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+410,NPC greetings reflecting familiarity,NPCs,partial,scripts/npc_world.gd,tests/smoke.gd,Residents offer short proximity greetings; familiarity and relationship memory pending.
 411,Memory of completed player favors,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 412,Recognition of repeat customers,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 413,Believable shopkeeper interactions,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -419,7 +419,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 418,Families visiting public parks,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 419,Joggers using park paths,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 420,NPCs carrying relevant objects,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-421,NPCs avoiding obstacles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+421,NPCs avoiding obstacles,NPCs,partial,scripts/npc_routines.gd,tests/npc_smoke.gd,Pedestrian waypoint routing avoids static building rectangles; dynamic obstacle and crowd avoidance pending.
 422,NPCs respecting personal space,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 423,Queues at busy counters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 424,Reactions to nearby celebrations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -428,7 +428,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 427,Moving aside for vehicles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 428,Entering buildings at destinations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 429,Sitting when seats are available,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-430,Umbrella use during rain,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+430,Umbrella use during rain,NPCs,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents show an umbrella while moving during local rainfall; animation and visual-device checks pending.
 431,Contextual neighborhood gossip,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 432,Rumors clearly presented as fictional,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 433,Branching conversation choices,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -440,15 +440,15 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 439,NPC friendship progression,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 440,NPC mentorship opportunities,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 441,NPC business partnerships,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-442,Recurring community characters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+442,Recurring community characters,NPCs,partial,scripts/npc_routines.gd;scripts/npc_world.gd,tests/npc_smoke.gd;tests/smoke.gd,Eight stable fictional local character IDs and names; conversation memory and online synchronization pending.
 443,Conflicts resolvable through conversation,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 444,Reputation changes tied to actions,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 445,Opportunities to repair relationships,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 446,No irreversible accidental hostility,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 447,Predictable merchant service availability,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-448,Lightweight distant NPC simulation,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-449,Population scaling by device capability,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-450,Diverse NPCs without cultural stereotypes,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+448,Lightweight distant NPC simulation,NPCs,partial,scripts/npc_world.gd,tests/smoke.gd,Mesh-only NPCs update at a capped rate and hide at distance; LOD and crowd profiling pending.
+449,Population scaling by device capability,NPCs,partial,scripts/npc_world.gd;scripts/world.gd,tests/npc_smoke.gd;tests/smoke.gd,Battery saver reduces visible population from eight to four; automatic device capability adaptation pending.
+450,Diverse NPCs without cultural stereotypes,NPCs,partial,scripts/npc_routines.gd;scripts/npc_world.gd,tests/npc_smoke.gd;tests/smoke.gd,Small original cast has varied looks and neutral jobs; wider authentic casting and cultural review pending.
 451,Reliable online multiplayer sessions,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 452,Friend discovery through BLINK accounts,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 453,Private invitation-only sessions,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -498,7 +498,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 497,Reconnection without inventory loss,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 498,Visible network quality indicators,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 499,Fair handling of disconnected players,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-500,Clear distinction between NPCs and players,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+500,Clear distinction between NPCs and players,Social multiplayer,implemented_in_source,scripts/npc_world.gd,tests/smoke.gd,Local residents show NPC nameplates and are not counted as actual BLINK multiplayer users; device labeling review pending.
 501,Delivery rider jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 502,Courier van jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 503,Taxi driver jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -872,7 +872,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 871,Clear installed-content management,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 872,Delete optional districts individually,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 873,Preserve account progress after removal,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-874,Separate cache and permanent content,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+874,Separate cache and permanent content,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Standalone user:// solo demo save does not share session cache or server-owned state; production account cache/content segregation remains unfinished.
 875,Offline tutorial access,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 876,Offline practice activities,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 877,Clear labels for online-only features,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -888,12 +888,12 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 887,Server capacity limits with queues,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 888,Clear queue status,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 889,Automatic server health monitoring,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-890,Crash recovery with progress preservation,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-891,Frequent safe progress checkpoints,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-892,Versioned player save formats,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+890,Crash recovery with progress preservation,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,"Confirmed solo jobs and purchases survive restart and valid backup recovers corrupt primary; scene crashes, player movement and multiplayer are not fully recoverable."
+891,Frequent safe progress checkpoints,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,"Solo local balance and plant commit on successful jobs/purchases, not arbitrary world position or server-backed tasks. Real device validation pending."
+892,Versioned player save formats,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Strict version 1 offline solo progress with rejection of unknown future format; account/server save formats and migration framework still pending.
 893,Tested save-data migrations,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 894,Backups for persistent world data,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-895,Safe rollback after faulty updates,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+895,Safe rollback after faulty updates,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Backup can recover corrupt local solo save without wiping future formats; end-to-end game update and server rollback still pending.
 896,Performance budgets for each district,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 897,Long-session memory stability checks,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 898,Testing on affordable Android devices,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
