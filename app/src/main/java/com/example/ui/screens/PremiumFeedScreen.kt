@@ -322,6 +322,7 @@ fun PremiumFeedScreen(
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onFollowingVisible: () -> Unit = {},
     onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
@@ -352,6 +353,7 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onOpenFeedPost: (FeedPost) -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    isBottomNavigationVisible: Boolean = true,
     onBottomBarTravelChange: (Float) -> Unit = {},
     isMainPageActive: Boolean = true,
     hasUnreadNotifications: Boolean = false,
@@ -371,6 +373,13 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    // An explicit Following visit fetches only that lane. The ViewModel's
+    // per-account cooldown handles repeat composition or quick tab changes.
+    LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
+        if (feedLane == 1 && currentSubTab == 0 && isMainPageActive) {
+            onFollowingVisible()
+        }
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
@@ -485,6 +494,7 @@ fun PremiumFeedScreen(
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            isBottomNavigationVisible = isBottomNavigationVisible,
             onOpenFeedPost = onOpenFeedPost,
             onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
@@ -666,6 +676,7 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    isBottomNavigationVisible: Boolean,
     onOpenFeedPost: (FeedPost) -> Unit,
     onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
@@ -726,6 +737,20 @@ private fun PremiumHomeFeed(
     // Bottom navigation includes the system gesture bar inset.
     val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val reduceMotion = rememberBlinkReduceMotion()
+    // The bottom bar lives in MainActivity's overlay. Reserving its 64dp
+    // while hidden creates an invisible viewport gap on narrow phones.
+    val bottomRailClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedBottomRailClearance"
+    )
+    // Keep the create action above visible navigation; when navigation
+    // scrolls away it can move down without leaving a dead strip.
+    val createFabClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 144.dp + bottomNavigationInset else 24.dp + bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedCreateFabClearance"
+    )
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
@@ -1505,7 +1530,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 64.dp + bottomNavigationInset)
+                    .padding(bottom = bottomRailClearance)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1989,7 +2014,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = createFabClearance),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(

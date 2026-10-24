@@ -1043,6 +1043,13 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // Switching back to Home without leaving Android's Activity still counts as
+    // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
+        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+            viewModel.refreshIfStale()
+        }
+    }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
@@ -1583,6 +1590,7 @@ fun MainAppContent(
                         followingErrorMessage = uiState.followingFeedErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
+                        onFollowingVisible = { viewModel.refreshFollowingIfStale() },
                         onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
                         onRetry = { viewModel.refreshFeedLane() },
                         onViewedPost = { viewModel.recordPostView(it) },
@@ -1627,6 +1635,7 @@ fun MainAppContent(
                         onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
+                        isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         },
@@ -1645,7 +1654,7 @@ fun MainAppContent(
                         serverPosts = uiState.discoverPosts,
                         marketItems = uiState.marketItems,
                         onMarketItemClick = { viewModel.openProductDetail(it) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         isSearching = uiState.isDiscoverSearching,
@@ -1785,7 +1794,7 @@ fun MainAppContent(
                         },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
                         isLoading = uiState.isConversationsLoading,
@@ -2162,7 +2171,6 @@ fun MainAppContent(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FeedBottomBar(
-                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 },
                 currentTab = uiState.selectedTab,
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {
@@ -2239,6 +2247,7 @@ fun MainAppContent(
                     viewModel.openMenu(true)
                 },
                 isMenuOpen = uiState.isMenuOpen,
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 || it.isMarkedUnread },
                 modifier = Modifier
             )
         }
@@ -3047,8 +3056,7 @@ fun MainAppContent(
                 },
                 onGames = {
                     viewModel.openMenu(false)
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(3)
+                    feedUtilitySheet = "items"
                 },
                 onOpenUpdateWebsite = onOpenWebsiteUpdate,
                 onOpenHelpWebsite = {

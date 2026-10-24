@@ -15,6 +15,7 @@ POST = (ROOT / "app/src/main/java/com/example/ui/components/PostCard.kt").read_t
 NAV = (ROOT / "app/src/main/java/com/example/ui/components/FloatingBottomBar.kt").read_text()
 ITEMS = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkItemsScreen.kt").read_text()
 MAIN = (ROOT / "app/src/main/java/com/example/MainActivity.kt").read_text()
+DESKTOP = (ROOT / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt").read_text()
 
 
 def method_body(code: str, start: str, end: str) -> str:
@@ -71,27 +72,85 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('authorUniversity: String', POST)
         self.assertIn('Icons.Default.MoreVert', POST)
         self.assertIn('onDoubleTapLike = if (xFeedStyle) onLike else null', POST)
-        a = POST.index('// Five-action reference rail;')
-        b = POST.index('if (displayImages.isEmpty())', a)
+        a = POST.index('// Like remains visible for every post,')
+        b = POST.index('} else {', a)
         footer = POST[a:b]
-        order = ('Icons.Default.Visibility', 'Icons.Default.Repeat',
-                 'Icons.Default.ChatBubbleOutline', 'Icons.Default.Bookmark',
-                 'Icons.Default.Share')
+        order = ('Icons.Default.FavoriteBorder',
+                 'Icons.Default.ChatBubbleOutline', 'Icons.Default.Repeat',
+                 'Icons.Default.BookmarkBorder', 'Icons.Default.Share')
         starts = [footer.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
+        self.assertNotIn('Icons.Default.Visibility', footer)
+        self.assertIn('value = if (post.hideLikes) null else formatNumber(post.likes)', footer)
+        self.assertIn('text = "${formatNumber(displayedViewsCount)} views"', footer)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', POST)
+        self.assertIn('authorUniversity.trim().ifBlank', POST)
+        self.assertIn('onOpenPost?.invoke()', POST)
+
+    def test_phone_header_avoids_unnecessary_second_rail(self):
+        header = method_body(CHROME, "fun FeedTopBar(", "private fun FeedBrandBlock(")
+        # Short widths use compact icons and a compact wordmark, not a
+        # mandatory second header row just because width is below 390dp.
+        self.assertIn('val needsTwoRows = maxWidth < 316.dp', header)
+        self.assertIn('if (needsTwoRows)', header)
+        self.assertIn('compact = compactToolbar,', header)
+
+    def test_hidden_bottom_navigation_releases_feed_space(self):
+        # MainActivity's scroll visibility must actually reach the feed's
+        # viewport and FAB. Hiding the overlay alone leaves a phantom gap.
+        self.assertIn('isBottomNavigationVisible = isBottomBarVisibleByScroll', MAIN)
+        self.assertIn('isBottomNavigationVisible: Boolean = true', HOME)
+        self.assertIn('bottom = bottomRailClearance', HOME)
+        self.assertIn('bottom = createFabClearance', HOME)
+        self.assertIn('if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset', HOME)
+        self.assertNotIn('.padding(bottom = 64.dp + bottomNavigationInset)', HOME)
+        self.assertNotIn('.padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset)', HOME)
+
+    def test_windows_feed_follows_social_action_and_views_hierarchy(self):
+        start = DESKTOP.index("internal fun DesktopFeedPostCard(")
+        footer = DESKTOP.index("// Five social actions first;", start)
+        end = DESKTOP.index("} else {\n                val primaryMetrics", footer)
+        contents = DESKTOP[footer:end]
+        order = ('IconButton(onClick = onLike)', 'IconButton(onClick = onComments)',
+                 'IconButton(onClick = onRepost)', 'IconButton(onClick = onBookmark)',
+                 'TextButton(onClick = onCopyLink)')
+        starts = [contents.index(icon) for icon in order]
+        self.assertEqual(starts, sorted(starts))
+        self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', DESKTOP)
+
+    def test_foreground_feed_refresh_is_scoped_and_preserves_existing_posts(self):
+        policy = (ROOT / "shared/src/main/kotlin/com/blinkng/shared/BlinkRefreshPolicy.kt").read_text()
+        vm = (ROOT / "app/src/main/java/com/example/viewmodel/BlinkViewModel.kt").read_text()
+        self.assertIn('SOCIAL_FEED_REFRESH_INTERVAL_MS: Long = 60_000L', policy)
+        self.assertIn('minOf(maxAgeMillis, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)', vm)
+        self.assertIn('visibleRefreshAt["$ownerKey:$refreshedScope"]', vm)
+        self.assertIn('fun refreshFollowingIfStale()', vm)
+        self.assertIn('else reconcileRefreshedFeed(current.followingPosts, fresh)', vm)
+        self.assertIn('followingRefreshRevision = if (fresh.isEmpty()', vm)
+        self.assertIn('if (fresh.isEmpty()) emptyList()', vm)
+        self.assertIn('viewModel.refreshIfStale()', MAIN)
+        self.assertIn('onFollowingVisible = { viewModel.refreshFollowingIfStale() }', MAIN)
+        self.assertIn('if (feedLane == 1 && currentSubTab == 0 && isMainPageActive)', HOME)
 
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
         self.assertEqual(nav.count('FeedBottomItem('), 5)
-        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MENU'):
+        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MESSAGE'):
             self.assertIn(f'FeedBottomDestination.{tag}', nav)
         self.assertIn('hasUnreadMessages', NAV)
-        self.assertIn('FeedBottomDestination.MENU -> onMenuClick()', NAV)
-        # The five-slot Menu redesign moves Messages to an actual Menu route.
+        self.assertIn('FeedBottomDestination.MESSAGE -> onMessageClick()', NAV)
+        # The fifth slot is Message, and Menu stays a separately accessible header route.
         menu = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkReferenceMenuScreen.kt").read_text()
         self.assertIn('onMessages: () -> Unit', menu)
         self.assertIn('"Messages & inbox" to onMessages', menu)
         self.assertIn('onMessages = {', MAIN)
+        self.assertIn('onMessageClick = onMessages,', menu)
+        self.assertIn('hasUnreadMessages = uiState.conversations.any', MAIN)
+        search = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceSearchScreen.kt').read_text()
+        inbox = (ROOT / 'app/src/main/java/com/example/ui/screens/BlinkReferenceInbox.kt').read_text()
+        self.assertIn('Icons.Rounded.GridView, "Open Items"', search)
+        self.assertIn('Icons.Outlined.GridView, contentDescription = "Open Items"', inbox)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)

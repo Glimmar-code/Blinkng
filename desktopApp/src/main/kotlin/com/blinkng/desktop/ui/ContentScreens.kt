@@ -3731,7 +3731,7 @@ internal fun DesktopFeedPostCard(
     Surface(
         shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
         tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
-        color = if (xFeedStyle) Color.Black else MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(
@@ -3744,7 +3744,11 @@ internal fun DesktopFeedPostCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                     Spacer(Modifier.width(7.dp))
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f)
+                            .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             post.authorName,
                             fontWeight = FontWeight.Bold,
@@ -3820,7 +3824,7 @@ internal fun DesktopFeedPostCard(
                     modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
                         .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                     fontSize = 15.sp,
-                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                    maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7,
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { result ->
                         if (!expandedText && result.hasVisualOverflow) textCanExpand = true
@@ -3906,14 +3910,13 @@ internal fun DesktopFeedPostCard(
             }
 
             if (xFeedStyle) {
-                // Identical metric priority to Android: views, likes, reposts,
-                // comments, saved, then sharing.
+                // Five social actions first; views remain a subtle read-only
+                // metric beneath them, matching Android's feed hierarchy.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(BlinkPostFormat.count(post.viewCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onLike) {
                             Icon(
@@ -3925,6 +3928,12 @@ internal fun DesktopFeedPostCard(
                         Text(BlinkPostFormat.count(post.likeCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onComments) {
+                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                        }
+                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onRepost) {
                             Icon(
                                 Icons.Rounded.Repeat,
@@ -3934,12 +3943,6 @@ internal fun DesktopFeedPostCard(
                         }
                         Text(BlinkPostFormat.count(post.repostCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onComments) {
-                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
-                        }
-                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                     IconButton(onClick = onBookmark) {
                         Icon(
                             if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
@@ -3948,6 +3951,14 @@ internal fun DesktopFeedPostCard(
                     }
                     TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
+                Text(
+                    text = "${BlinkPostFormat.count(post.viewCount)} views",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                    modifier = Modifier.padding(start = 58.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() }
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
                 val primaryMetrics = buildList {
