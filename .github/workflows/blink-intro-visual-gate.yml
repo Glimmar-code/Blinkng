@@ -1,0 +1,75 @@
+name: BLINK Intro Visual Gate
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'app/src/main/**'
+      - 'app/src/test/java/com/example/BlinkBeyondLinkIntroTest.kt'
+      - 'shared/src/main/kotlin/com/blinkng/shared/brand/**'
+      - '.github/workflows/blink-intro-visual-gate.yml'
+  push:
+    branches: [Testlab]
+    paths:
+      - 'app/src/main/**'
+      - 'app/src/test/java/com/example/BlinkBeyondLinkIntroTest.kt'
+      - 'shared/src/main/kotlin/com/blinkng/shared/brand/**'
+      - '.github/workflows/blink-intro-visual-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  intro-visuals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Record real Compose launch frames and test completion
+        run: gradle :app:testDebugUnitTest --tests com.example.BlinkBeyondLinkIntroTest -Proborazzi.test.record=true --stacktrace --no-daemon
+      - name: Verify all viewport captures exist and differ
+        run: |
+          set -euo pipefail
+          cd app/src/test/screenshots
+          for size in 320 412 600; do
+            test -s "intro-${size}dp.png"
+          done
+          if cmp -s intro-320dp.png intro-600dp.png; then
+            echo "::error::Narrow and tablet intro snapshots are identical; verify viewport qualifiers."
+            exit 1
+          fi
+      - name: Fail on synthetic accessibility overlays or missing BLINK art
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          for image_path in sorted(Path("app/src/test/screenshots").glob("intro-*.png")):
+              im = Image.open(image_path).convert("RGB")
+              sample = list(im.getdata())[::4]
+              dark = sum(1 for r, g, b in sample if max(r, g, b) < 35)
+              white = sum(1 for r, g, b in sample if min(r, g, b) > 220)
+              blue = sum(1 for r, g, b in sample if b > 145 and b > r * 1.6 and b > g * 1.2)
+              yellow = sum(1 for r, g, b in sample if r > 140 and g > 120 and b < 85)
+              assert dark > len(sample) * 0.6, f"{image_path}: black background missing"
+              assert white > 30, f"{image_path}: white BLINK wordmark missing"
+              assert blue > 3, f"{image_path}: brand-blue b dot missing"
+              assert yellow < len(sample) * 0.003, f"{image_path}: legacy accessibility overlay, not real pixels"
+              print(image_path, im.size, "black", dark, "white", white, "blue", blue)
+          PY
+
+      - name: Upload BLINK intro actual-render evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-intro-viewport-screenshots-${{ github.sha }}
+          path: app/src/test/screenshots/intro-*.png
+          if-no-files-found: error
+          retention-days: 14

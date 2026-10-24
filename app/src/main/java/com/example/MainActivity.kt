@@ -36,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -556,6 +557,8 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            // Covers auth/session restoration too: returning users must see the intro.
+            var showStartupIntro by remember { mutableStateOf(true) }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
@@ -610,7 +613,7 @@ class MainActivity : ComponentActivity() {
             // Market, Connect or Messages, but must not interrupt other overlays.
             // Loading feed posts must never block an available app update:
             // people with an offline/failed feed still need access to Update Center.
-            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
+            val idleAppForUpdate = !showStartupIntro && uiState.destination == AppDestination.MAIN &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
                 !uiState.isCreatePostOpen &&
@@ -697,8 +700,11 @@ class MainActivity : ComponentActivity() {
                 val routeManagesTopInset =
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
+                Box(modifier = Modifier.fillMaxSize()) {
                 Scaffold(
                     contentWindowInsets = when {
+                        // The intro paints behind both system bars on every device size.
+                        uiState.destination == AppDestination.SPLASH -> WindowInsets(0, 0, 0, 0)
                         // The new profile owns both status and gesture-bar safe
                         // areas; don't reserve another inset in the host scaffold.
                         uiState.destination == AppDestination.MAIN &&
@@ -726,11 +732,7 @@ class MainActivity : ComponentActivity() {
                         )
                         else -> ScaffoldDefaults.contentWindowInsets
                     },
-                    containerColor = if (homeManagesSystemInsets) {
-                        MaterialTheme.colorScheme.background
-                    } else {
-                        MaterialTheme.colorScheme.background
-                    },
+                    containerColor = if (uiState.destination == AppDestination.SPLASH) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
@@ -980,9 +982,26 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (showBugReportSheet && uiState.destination == AppDestination.MAIN) {
+                if (showBugReportSheet && !showStartupIntro && uiState.destination == AppDestination.MAIN) {
                     BlinkBugReportSheet(onDismiss = { showBugReportSheet = false })
                 }
+                // Always overlay the entire Activity for one cold launch, regardless of
+                // how quickly a cached session transitions from SPLASH to MAIN.
+                if (showStartupIntro) {
+                    com.blinkng.shared.brand.BlinkBeyondLinkIntro(
+                        onFinished = { showStartupIntro = false },
+                        modifier = Modifier.fillMaxSize()
+                            .zIndex(1000f)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                    )
+                }
+                } // Fullscreen startup overlay host
             }
         }
 
