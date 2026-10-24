@@ -88,11 +88,11 @@ fun FeedBottomBar(
     modifier: Modifier = Modifier
 ) {
     val selectedDestination = when {
+        isMenuOpen -> FeedBottomDestination.MENU
         currentTab == MainTab.HOME && feedSubTab == 1 -> FeedBottomDestination.REELS
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
-        isMenuOpen -> FeedBottomDestination.MENU
         else -> null
     }
 
