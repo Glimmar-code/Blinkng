@@ -678,7 +678,8 @@ class MainActivity : ComponentActivity() {
             BlinkTheme(darkTheme = uiState.isDarkMode) {
                 // Keep system icons readable when the selected app theme differs from Android's.
                 SideEffect {
-                    val whiteAuthScreen = uiState.destination == AppDestination.SIGN_IN ||
+                    val whiteAuthScreen = uiState.destination == AppDestination.ONBOARDING ||
+                        uiState.destination == AppDestination.SIGN_IN ||
                         uiState.destination == AppDestination.SIGN_UP
                     WindowCompat.getInsetsController(window, window.decorView).apply {
                         isAppearanceLightStatusBars = whiteAuthScreen || !uiState.isDarkMode
@@ -702,8 +703,13 @@ class MainActivity : ComponentActivity() {
                         // areas; don't reserve another inset in the host scaffold.
                         uiState.destination == AppDestination.MAIN &&
                             uiState.viewingProfile != null -> WindowInsets(0, 0, 0, 0)
-                        // Reference authentication images intentionally extend under the system
-                        // bars; auth composables keep logo/forms inside safe areas.
+                        // The approved welcome handles the top status inset itself; reserve
+                        // only gesture-navigation and horizontal safe areas in the scaffold.
+                        uiState.destination == AppDestination.ONBOARDING ->
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                            )
+                        // Sign-in and sign-up forms handle their own system-bar insets.
                         uiState.destination == AppDestination.SIGN_IN ||
                             uiState.destination == AppDestination.SIGN_UP ->
                             WindowInsets(0, 0, 0, 0)
@@ -758,10 +764,12 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.ONBOARDING -> {
-                                    BlinkWelcomeScreen(
-                                        onCreateAccount = { viewModel.setDestination(AppDestination.SIGN_UP) },
-                                        onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) },
-                                        onGoogle = { email -> viewModel.loginWithGoogle(email) }
+                                    // Reach the approved campus-photo welcome instead of
+                                    // the legacy dark landing. Keep existing auth callbacks.
+                                    OnboardingScreen(
+                                        onSignInClick = { viewModel.setDestination(AppDestination.SIGN_IN) },
+                                        onSignUpClick = { viewModel.setDestination(AppDestination.SIGN_UP) },
+                                        onGoogleSignIn = { email -> viewModel.loginWithGoogle(email) }
                                     )
                                 }
 
