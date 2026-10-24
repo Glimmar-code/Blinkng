@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
+import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -103,6 +104,7 @@ private const val DESKTOP_SEARCH_SEPARATOR = "\u001F"
 @Composable
 fun PremiumSearchScreen(state: DesktopAppState) {
     var collection by remember { mutableStateOf(DesktopSearchCollection.SEARCH) }
+    var showReferralDashboard by remember { mutableStateOf(false) }
     var discoveryPosts by remember { mutableStateOf(emptyList<DesktopFeedPost>()) }
     var marketItems by remember { mutableStateOf(emptyList<DesktopMarketItem>()) }
     var connectListings by remember { mutableStateOf(emptyList<DesktopConnectListing>()) }
@@ -115,6 +117,8 @@ fun PremiumSearchScreen(state: DesktopAppState) {
         connectListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
         discoveryLoading = false
     }
+
+    if (showReferralDashboard) DesktopReferGrowDialog(state) { showReferralDashboard = false }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -149,6 +153,25 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             }
         }
 
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            onClick = { showReferralDashboard = true },
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(BlinkReferralPolicy.PROMO_TITLE, fontWeight = FontWeight.Bold)
+                    Text(BlinkReferralPolicy.PROMO_MESSAGE,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+                Text("Invite friends ›", color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(DesktopSearchCollection.entries, key = { it.name }) { item ->
