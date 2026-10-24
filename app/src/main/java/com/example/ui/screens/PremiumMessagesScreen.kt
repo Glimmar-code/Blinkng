@@ -2102,14 +2102,52 @@ private fun MessageContent(
             }
             if (message.isVoiceNote) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                        .clickable(enabled = !message.voiceAudioUrl.isNullOrBlank()) {
+                            message.voiceAudioUrl?.let { url ->
+                                openExternalUri(context, Uri.parse(url), "Play voice note")
+                            }
+                        }.testTag("chat_voice_playback"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.width(104.dp).height(3.dp).clip(CircleShape).background(contentColor.copy(alpha = .55f)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+                    Icon(
+                        if (message.voiceAudioUrl.isNullOrBlank()) Icons.Default.Mic else Icons.Default.PlayCircle,
+                        contentDescription = if (message.voiceAudioUrl.isNullOrBlank()) "Voice note unavailable" else "Play voice note",
+                        tint = contentColor, modifier = Modifier.size(25.dp)
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        if (message.voiceAudioUrl.isNullOrBlank()) "Voice note unavailable"
+                        else "Play voice note",
+                        color = contentColor, fontSize = 12.sp
+                    )
+                    if (message.voiceDuration.isNotBlank()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(message.voiceDuration, color = contentColor, fontSize = 10.sp)
+                    }
+                }
+            }
+            if (message.attachedDocumentUrl != null || message.attachedDocumentName != null) {
+                val documentUrl = message.attachedDocumentUrl
+                Surface(
+                    color = contentColor.copy(alpha = .10f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(6.dp).clickable(enabled = !documentUrl.isNullOrBlank()) {
+                        documentUrl?.let {
+                            openExternalUri(context, Uri.parse(it), "Open document")
+                        }
+                    }.testTag("chat_document_attachment")
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Description, contentDescription = "Document", tint = contentColor)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            message.attachedDocumentName ?: "Document",
+                            color = contentColor,
+                            fontSize = 12.sp, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             val storyReply = BlinkStoryPresentation.parseReply(message.text)
@@ -2142,7 +2180,8 @@ private fun MessageContent(
             }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
-                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
+                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true)) ||
+                    message.attachedDocumentName != null
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
                     storyReply?.text ?: message.text,
