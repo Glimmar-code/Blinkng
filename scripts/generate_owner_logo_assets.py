@@ -49,7 +49,7 @@ for density,pixel in {"mdpi":108,"hdpi":162,"xhdpi":216,"xxhdpi":324,"xxxhdpi":4
 mask=Image.new("L",(512,512),0)
 raw=image.load();o=mask.load()
 for y in range(108,405):
-    for x in range(155,378):
+    for x in range(130,378):
         r,g,b=raw[x,y]
         if min(r,g,b)>=200 or (b>r*1.25 and b>g*1.10 and r<190):
             o[x,y]=255
@@ -139,10 +139,11 @@ manifest["icons"]=[{"src":"pwa-192.png","sizes":"192x192","type":"image/png","pu
                    {"src":"maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]
 manifestfile.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
 replace("web/sw.js","blink-web-v10-logo-display-fix","blink-web-v12-owner-approved-logo")
-replace("web/sw.js","  './blink-logo-v2.png',",
-        "  './blink-logo-v2.png',\n  './favicon.ico',\n  './favicon-32.png',"
-        "\n  './apple-touch-icon.png',\n  './pwa-192.png',\n  './pwa-512.png',"
-        "\n  './maskable-512.png',\n  './og-blink.png',")
+if "  './favicon.ico'," not in (ROOT/"web/sw.js").read_text():
+    replace("web/sw.js","  './blink-logo-v2.png',",
+            "  './blink-logo-v2.png',\n  './favicon.ico',\n  './favicon-32.png',"
+            "\n  './apple-touch-icon.png',\n  './pwa-192.png',\n  './pwa-512.png',"
+            "\n  './maskable-512.png',\n  './og-blink.png',")
 # iOS release helper must verify generated branded icon (see sha below).
 expected_ios="9a051cdde15465c117250fa67347535ba862ff5257d81f64219a0b86cc332785"
 icon=ROOT/"ios/BLINKiOS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
