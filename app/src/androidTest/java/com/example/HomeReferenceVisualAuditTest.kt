@@ -209,7 +209,7 @@ class HomeReferenceVisualAuditTest {
         rule.waitForIdle()
         val fab = rule.onNodeWithTag("create_post_fab").fetchSemanticsNode().boundsInRoot
         val share = rule.onNodeWithContentDescription("Share post").fetchSemanticsNode().boundsInRoot
-        val menu = rule.onNodeWithContentDescription("Menu").fetchSemanticsNode().boundsInRoot
+        val menu = rule.onNodeWithTag("feed_nav_menu").fetchSemanticsNode().boundsInRoot
         fun noOverlap(left: androidx.compose.ui.geometry.Rect, right: androidx.compose.ui.geometry.Rect): Boolean =
             left.right <= right.left || left.left >= right.right ||
                 left.bottom <= right.top || left.top >= right.bottom
