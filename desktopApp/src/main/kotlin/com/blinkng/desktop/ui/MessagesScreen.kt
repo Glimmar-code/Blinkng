@@ -815,6 +815,19 @@ fun MessagesScreen(state: DesktopAppState) {
                             scope.launch {
                                 var staged = 0
                                 try {
+                                    if (selectedPictureViewOnce && photos.size == 1) {
+                                        val privateMessage = state.client.sendViewOnceImage(
+                                            conversationId, photos[0], captions[0].orEmpty(), imageIds[0]
+                                        )
+                                        if (selected?.id == conversationId) {
+                                            messages = messages + privateMessage
+                                        }
+                                        selectedPictureViewOnce = false
+                                        selectedPictures = emptyList()
+                                        selectedPictureIds = emptyList()
+                                        selectedAlbumId = null
+                                        selectedAlbumPositions = emptyList()
+                                    } else {
                                     withContext(Dispatchers.IO) {
                                         photos.forEachIndexed { index, file ->
                                             DesktopChatImageOutbox.enqueue(
@@ -835,9 +848,10 @@ fun MessagesScreen(state: DesktopAppState) {
                                     selectedAlbumPositions = emptyList()
                                     queuedPhotoCount += staged
                                     attemptQueuedPhotoUploads()
+                                    }
                                 } catch (ex: Exception) {
-                                    error = "Queued $staged of ${photos.size} pictures. " +
-                                        (ex.message ?: "Could not prepare remaining photos.")
+                                    error = ex.message ?: "Picture could not be sent."
+                                    // A view-once failure never falls back to a regular upload.
                                     selectedPictures = photos.drop(staged)
                                     selectedPictureIds = imageIds.drop(staged)
                                     selectedAlbumPositions = batchPositions.drop(staged)
@@ -955,8 +969,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             )
         }
-        expandedPicture?.let { imageUrl ->
-            privatePicture?.let { privateImage ->
+        privatePicture?.let { privateImage ->
                 DisposableEffect(privateImage) {
                     onDispose { privateImage.close() }
                 }
@@ -979,6 +992,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
 
+        expandedPicture?.let { imageUrl ->
             Dialog(onDismissRequest = { expandedPicture = null },
                 properties = DialogProperties(usePlatformDefaultWidth = false)) {
                 Box(modifier = Modifier.fillMaxSize().clickable { expandedPicture = null },
