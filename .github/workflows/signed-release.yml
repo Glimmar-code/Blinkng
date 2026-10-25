@@ -12,6 +12,28 @@ on:
       - main
     tags:
       - 'v*'
+    # Only package a new signed Android app when Android/shared/build inputs change.
+    # Web/Supabase/desktop/docs-only edits can ship without another APK.
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'blinkLifeFeature/**'
+      - 'game3d/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'scripts/sync_android_launcher_assets.py'
+      - '.github/scripts/restore_google_services.sh'
+      - '.github/scripts/build_full_website_apk.sh'
+      - '.github/workflows/signed-release.yml'
+      # Publication-security updates must be exercised through a fresh signed build.
+      - '.github/scripts/publish_verified_apk.py'
+      - '.github/scripts/install_release_smoke_apk.sh'
 
 permissions:
   contents: read
@@ -23,7 +45,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -169,6 +191,7 @@ jobs:
             exit 1
           fi
           echo "PREVIOUS_PUBLISHED_VERSION_CODE=$previous_code" >> "$GITHUB_ENV"
+          echo "PREVIOUS_PUBLISHED_TAG=$previous_tag" >> "$GITHUB_ENV"
           echo "Production signing continuity confirmed against $previous_tag."
 
       - name: Resolve monotonically increasing version
@@ -317,6 +340,48 @@ jobs:
           jarsigner -verify "$AAB" >/dev/null
 
           echo "APK package/version/signature and AAB signature verified."
+
+      # This is the *actual production-signed* candidate, not a disposable debug
+      # build. User devices are not required to install experimental releases.
+      - name: Fetch previous published APK for non-destructive upgrade check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PREVIOUS_PUBLISHED_TAG:-}" ]; then
+            echo "First production release: no previous APK for upgrade check."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/blink-previous-apk"
+          gh release download "$PREVIOUS_PUBLISHED_TAG" \
+            --pattern 'Blink-latest.apk' \
+            --dir "$RUNNER_TEMP/blink-previous-apk" \
+            --clobber
+          previous="$RUNNER_TEMP/blink-previous-apk/Blink-latest.apk"
+          test -s "$previous"
+          echo "PREVIOUS_PRODUCTION_APK=$previous" >> "$GITHUB_ENV"
+
+      - name: Enable KVM for production-signed Android 15 upgrade test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install, upgrade, and launch actual signed APK on Android 15
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        env:
+          EXPECTED_VERSION_CODE: ${{ steps.version.outputs.code }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash .github/scripts/install_release_smoke_apk.sh
 
       - name: Write release metadata
         shell: bash

@@ -36,6 +36,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -93,11 +98,6 @@ import com.example.items.BlinkStepRepository
 import com.example.items.BlinkStepNotificationService
 import com.example.items.BlinkWeatherRepository
 import com.example.items.BlinkWeatherSnapshot
-import com.example.ui.theme.FeedBackground
-import com.example.ui.theme.FeedBorder
-import com.example.ui.theme.FeedElevatedSurface
-import com.example.ui.theme.FeedTextPrimary
-import com.example.ui.theme.FeedTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -113,6 +113,17 @@ fun BlinkItemsScreen(
     currentUserId: String,
     currentUsername: String,
     onClose: () -> Unit,
+    onOpenGame: () -> Unit = {},
+    onOpenBoost: () -> Unit = {},
+    onOpenDrops: () -> Unit = {},
+    onOpenStore: () -> Unit = {},
+    isAdmin: Boolean = false,
+    onOpenAdmin: () -> Unit = {},
+    websiteUpdateAvailable: Boolean = false,
+    websiteUpdateChecked: Boolean = false,
+    websiteUpdateVersion: String? = null,
+    onCheckForWebsiteUpdate: () -> Unit = {},
+    onOpenWebsiteUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var page by remember { mutableStateOf(BlinkItemsPage.HOME) }
@@ -120,7 +131,7 @@ fun BlinkItemsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(FeedBackground)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("blink_items_screen")
     ) {
         BlinkItemsHeader(
@@ -139,7 +150,18 @@ fun BlinkItemsScreen(
             BlinkItemsPage.HOME -> BlinkItemsHome(
                 onSteps = { page = BlinkItemsPage.STEPS },
                 onWeather = { page = BlinkItemsPage.WEATHER },
-                onLocation = { page = BlinkItemsPage.LOCATION }
+                onLocation = { page = BlinkItemsPage.LOCATION },
+                onGame = onOpenGame,
+                onBoost = onOpenBoost,
+                onDrops = onOpenDrops,
+                onStore = onOpenStore,
+                isAdmin = isAdmin,
+                onAdmin = onOpenAdmin,
+                websiteUpdateAvailable = websiteUpdateAvailable,
+                websiteUpdateChecked = websiteUpdateChecked,
+                websiteUpdateVersion = websiteUpdateVersion,
+                onCheckForWebsiteUpdate = onCheckForWebsiteUpdate,
+                onOpenWebsiteUpdate = onOpenWebsiteUpdate
             )
             BlinkItemsPage.STEPS -> BlinkStepsItem()
             BlinkItemsPage.WEATHER -> BlinkWeatherItem()
@@ -168,7 +190,7 @@ private fun BlinkItemsHeader(
     ) {
         if (canGoBack) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = FeedTextPrimary)
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
             }
         } else {
             Spacer(Modifier.width(48.dp))
@@ -183,21 +205,32 @@ private fun BlinkItemsHeader(
             },
             label = "itemsHeaderTitle"
         ) { activeTitle ->
-            Text(activeTitle, color = FeedTextPrimary,
+            Text(activeTitle, color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         }
         IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Close Items", tint = FeedTextPrimary)
+            Icon(Icons.Default.Close, contentDescription = "Close Items", tint = MaterialTheme.colorScheme.onSurface)
         }
     }
-    HorizontalDivider(color = FeedBorder.copy(alpha = 0.8f))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
 }
 
 @Composable
 private fun BlinkItemsHome(
     onSteps: () -> Unit,
     onWeather: () -> Unit,
-    onLocation: () -> Unit
+    onLocation: () -> Unit,
+    onGame: () -> Unit,
+    onBoost: () -> Unit,
+    onDrops: () -> Unit,
+    onStore: () -> Unit,
+    isAdmin: Boolean,
+    onAdmin: () -> Unit,
+    websiteUpdateAvailable: Boolean,
+    websiteUpdateChecked: Boolean,
+    websiteUpdateVersion: String?,
+    onCheckForWebsiteUpdate: () -> Unit,
+    onOpenWebsiteUpdate: () -> Unit
 ) {
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
@@ -302,11 +335,106 @@ private fun BlinkItemsHome(
             }
         }
 
+        // Home's gamepad toolbar icon opens Items. Games and Home utilities
+        // are accessible here without adding visual clutter back to the feed.
+        item {
+            BlinkItemsGroupLabel("PLAY & GROW")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.SportsEsports,
+                    title = "Game",
+                    subtitle = "Play BLINK games",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onGame,
+                    modifier = Modifier.weight(1f)
+                )
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Campaign,
+                    title = "Boost",
+                    subtitle = "Grow your posts",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onBoost,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.CardGiftcard,
+                    title = "Drops",
+                    subtitle = "Explore BLINK Drops",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onDrops,
+                    modifier = Modifier.weight(1f)
+                )
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Storefront,
+                    title = "Store",
+                    subtitle = "BLINK Store",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onStore,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item {
+            BlinkItemsGroupLabel("APP & UPDATES")
+            BlinkCompactItemTile(
+                icon = Icons.Default.Refresh,
+                title = "Update Center",
+                subtitle = when {
+                    !websiteUpdateChecked -> "Checking for updates…"
+                    websiteUpdateAvailable -> "Update available — tap to update" +
+                        (websiteUpdateVersion?.let { " • v$it" } ?: "")
+                    else -> "No update now, check again later"
+                },
+                enabled = true,
+                showSwitch = false,
+                onToggle = {},
+                onClick = {
+                    if (websiteUpdateAvailable) onOpenWebsiteUpdate()
+                    else onCheckForWebsiteUpdate()
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (isAdmin) {
+            item {
+                BlinkItemsGroupLabel("MANAGE")
+                BlinkCompactItemTile(
+                    icon = Icons.Default.Security,
+                    title = "Admin Dashboard",
+                    subtitle = "Manage BLINK",
+                    enabled = true,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onAdmin,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
         item {
             Text(
                 text = "Items request access only when you turn a feature on. Live Location is private, temporary, and shared only with people you choose.",
                 style = MaterialTheme.typography.bodySmall,
-                color = FeedTextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
         }
@@ -319,7 +447,7 @@ private fun BlinkItemsGroupLabel(label: String) {
         text = "⌄  $label",
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        color = FeedTextSecondary,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, bottom = 7.dp)
     )
 }
@@ -336,11 +464,11 @@ private fun BlinkCompactItemTile(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (enabled) FeedTextPrimary.copy(alpha = 0.42f) else FeedBorder
+            if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f) else MaterialTheme.colorScheme.outlineVariant
         ),
         modifier = modifier
             .heightIn(min = 132.dp)
@@ -358,7 +486,7 @@ private fun BlinkCompactItemTile(
                     modifier = Modifier
                         .size(38.dp)
                         .background(
-                            if (enabled) FeedTextPrimary.copy(alpha = 0.16f) else FeedBackground,
+                            if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background,
                             RoundedCornerShape(12.dp)
                         ),
                     contentAlignment = Alignment.Center
@@ -366,7 +494,7 @@ private fun BlinkCompactItemTile(
                     Icon(
                         icon,
                         contentDescription = null,
-                        tint = FeedTextPrimary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(21.dp)
                     )
                 }
@@ -381,7 +509,7 @@ private fun BlinkCompactItemTile(
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = FeedTextSecondary,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -389,7 +517,7 @@ private fun BlinkCompactItemTile(
             Spacer(Modifier.height(2.dp))
             Text(
                 text = title,
-                color = FeedTextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
@@ -397,7 +525,7 @@ private fun BlinkCompactItemTile(
             )
             Text(
                 text = subtitle,
-                color = FeedTextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -417,11 +545,11 @@ private fun BlinkItemTile(
     onClick: () -> Unit
 ) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (enabled) FeedTextPrimary.copy(alpha = 0.42f) else FeedBorder
+            if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f) else MaterialTheme.colorScheme.outlineVariant
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -435,24 +563,24 @@ private fun BlinkItemTile(
                 modifier = Modifier
                     .size(44.dp)
                     .background(
-                        if (enabled) FeedTextPrimary.copy(alpha = 0.16f) else FeedBackground,
+                        if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background,
                         RoundedCornerShape(13.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = FeedTextPrimary)
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
-                    color = FeedTextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
                     subtitle,
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -464,7 +592,7 @@ private fun BlinkItemTile(
                     onCheckedChange = onToggle
                 )
             } else {
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = FeedTextSecondary)
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -589,9 +717,9 @@ private fun BlinkStepsItem() {
     ) {
         item {
             Surface(
-                color = FeedElevatedSurface,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(22.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -600,28 +728,28 @@ private fun BlinkStepsItem() {
                     Icon(
                         Icons.Default.DirectionsWalk,
                         contentDescription = null,
-                        tint = FeedTextPrimary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "%,d".format(steps),
-                        color = FeedTextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold
                     )
-                    Text("steps today", color = FeedTextSecondary)
+                    Text("steps today", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
                         progress = { (steps.toFloat() / dailyGoal).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
-                        color = FeedTextPrimary,
-                        trackColor = FeedBorder
+                        color = MaterialTheme.colorScheme.onSurface,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "Goal: %,d".format(dailyGoal),
-                        color = FeedTextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
                     TextButton(onClick = {
@@ -631,7 +759,7 @@ private fun BlinkStepsItem() {
                     Text(
                         "Counts are estimates from your phone sensor and may start from zero when first enabled.",
                         style = MaterialTheme.typography.labelSmall,
-                        color = FeedTextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -812,9 +940,9 @@ private fun BlinkWeatherItem() {
     ) {
         item {
             Surface(
-                color = FeedElevatedSurface,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(22.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
                     if (loading && snapshot == null) {
@@ -826,9 +954,9 @@ private fun BlinkWeatherItem() {
                             text = snapshot?.let { "${it.temperatureC.roundToInt()}°C" } ?: "--°C",
                             style = MaterialTheme.typography.displaySmall,
                             fontWeight = FontWeight.Bold,
-                            color = FeedTextPrimary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(snapshot?.condition ?: "Turn on Weather to load conditions", color = FeedTextSecondary)
+                        Text(snapshot?.condition ?: "Turn on Weather to load conditions", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     snapshot?.let {
                         Spacer(Modifier.height(8.dp))
@@ -842,26 +970,26 @@ private fun BlinkWeatherItem() {
                                 ageMinutes < 1_440L -> "Updated ${ageMinutes / 60L}h ago • cached"
                                 else -> "Forecast may be outdated • refresh recommended"
                             },
-                            color = FeedTextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
                             "Feels like ${it.feelsLikeC.roundToInt()}°C • Humidity ${it.humidityPercent}% • Wind ${it.windKph.roundToInt()} km/h",
                             style = MaterialTheme.typography.bodySmall,
-                            color = FeedTextSecondary
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             "Rain chance ${it.precipitationProbabilityPercent}%",
                             style = MaterialTheme.typography.bodySmall,
-                            color = FeedTextSecondary
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (it.provider.isNotBlank()) {
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Weather source: ${it.provider}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = FeedTextSecondary
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -917,28 +1045,28 @@ private fun BlinkWeatherItem() {
             item {
                 Text(
                     "ACTIVE WEATHER ALERTS",
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.labelMedium
                 )
             }
             items(alerts, key = { it.id }) { alert ->
                 Surface(
-                    color = FeedElevatedSurface,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, FeedTextPrimary.copy(alpha = 0.35f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
                 ) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
                             alert.title,
-                            color = FeedTextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         if (alert.description.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 alert.description,
-                                color = FeedTextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 6,
                                 overflow = TextOverflow.Ellipsis
@@ -947,7 +1075,7 @@ private fun BlinkWeatherItem() {
                         Spacer(Modifier.height(6.dp))
                         Text(
                             "${if (alert.isOfficial) "Official source" else "Source"}: ${alert.source}",
-                            color = FeedTextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -1102,27 +1230,27 @@ private fun BlinkLiveLocationItem(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(
-            color = FeedElevatedSurface,
+            color = MaterialTheme.colorScheme.surfaceContainer,
             shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedTextPrimary)
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(
                         "Private Live Location",
-                        color = FeedTextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         if (sharedLocations.isEmpty()) "No one is sharing a location with you right now."
                         else "${sharedLocations.size} active location ${if (sharedLocations.size == 1) "share" else "shares"} listed below.",
-                        color = FeedTextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -1137,24 +1265,24 @@ private fun BlinkLiveLocationItem(
             currentSession?.let { session ->
                 item {
                     Surface(
-                        color = FeedTextPrimary.copy(alpha = 0.12f),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(16.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, FeedTextPrimary.copy(alpha = 0.4f))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
                     ) {
                         Column(Modifier.fillMaxWidth().padding(14.dp)) {
                             Text(
                                 "Sharing Live Location",
-                                color = FeedTextPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
                                 "Visible only to ${session.recipientCount} selected ${if (session.recipientCount == 1) "person" else "people"}.",
-                                color = FeedTextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
                                 "Ends ${formatExpiry(session.expiresAt)}",
-                                color = FeedTextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Spacer(Modifier.height(8.dp))
@@ -1194,7 +1322,7 @@ private fun BlinkLiveLocationItem(
                 item {
                     Text(
                         "SHARING WITH YOU",
-                        color = FeedTextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -1207,7 +1335,7 @@ private fun BlinkLiveLocationItem(
             item {
                 Text(
                     "SHARE WITH PEOPLE YOU FOLLOW",
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1248,7 +1376,7 @@ private fun BlinkLiveLocationItem(
             item {
                 Text(
                     "Sharing duration",
-                    color = FeedTextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
                 )
                 Row(
@@ -1292,7 +1420,7 @@ private fun BlinkLiveLocationItem(
             item {
                 Text(
                     "Your precise location is never placed on Feed, Profile, Search, or a public map. The current coordinate is deleted when sharing stops, and sessions expire automatically.",
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1309,9 +1437,9 @@ private fun BlinkRecipientRow(
     onChecked: (Boolean) -> Unit
 ) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onChecked(!checked) }
@@ -1325,19 +1453,19 @@ private fun BlinkRecipientRow(
                 contentDescription = null,
                 modifier = Modifier
                     .size(42.dp)
-                    .background(FeedBackground, CircleShape)
+                    .background(MaterialTheme.colorScheme.background, CircleShape)
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     profile.fullName.ifBlank { profile.username },
-                    color = FeedTextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1
                 )
                 Text(
                     "@${profile.username.removePrefix("@")}",
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1349,25 +1477,25 @@ private fun BlinkRecipientRow(
 @Composable
 private fun BlinkSharedLocationRow(shared: BlinkSharedLocation) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedTextPrimary)
+            Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     shared.fullName.ifBlank { shared.username },
-                    color = FeedTextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     "Updated ${formatUpdated(shared.updatedAt)} • Accuracy ${shared.accuracyMeters.coerceAtLeast(0f).roundToInt()}m",
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1383,19 +1511,19 @@ private fun BlinkSettingSwitch(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(16.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(title, color = FeedTextPrimary, fontWeight = FontWeight.Medium)
+                Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
                 Text(
                     subtitle,
-                    color = FeedTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1408,21 +1536,21 @@ private fun BlinkSettingSwitch(
 @Composable
 private fun BlinkItemsMessage(value: String) {
     Surface(
-        color = FeedElevatedSurface,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.Notifications,
                 contentDescription = null,
-                tint = FeedTextSecondary,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 value,
-                color = FeedTextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall
             )
         }

@@ -26,6 +26,7 @@ class PrimaryBottomBarNavigationTest {
                     onMarketClick = { tapped += "market" },
                     onConnectClick = { tapped += "connect" },
                     onMessageClick = { tapped += "message" },
+                    onMenuClick = { tapped += "menu" },
                     isDark = true
                 )
             }

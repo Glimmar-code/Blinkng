@@ -120,6 +120,14 @@ verify_jwt = false
 [functions.paystack-payment-email]
 verify_jwt = false
 
-# Owner-only read-only BLINK Paystack finance dashboard.
+# Authenticated users may request delivery/refund; owner-only financial actions are checked server-side.
+[functions.paystack-market-ops]
+verify_jwt = true
+
+# Private view-once media requires a valid user JWT and service-side one-use claim.
+[functions.blink-view-once-image]
+verify_jwt = true
+
+# Read-only Paystack finance dashboard: JWT required and owner capability verified server-side.
 [functions.paystack-finance]
 verify_jwt = true

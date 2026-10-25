@@ -2,6 +2,8 @@ package com.example.notification
 
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationManager
+import android.os.Build
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -32,6 +34,66 @@ object InstantChatNotification {
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
     private const val GROUP_KEY_MESSAGES = "blink_group_messages"
 
+    private fun isValidAccountId(userId: String): Boolean =
+        userId.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))
+
+    private fun scopedMessageGroup(userId: String): String =
+        if (isValidAccountId(userId))
+            "$GROUP_KEY_MESSAGES:$userId"
+        else GROUP_KEY_MESSAGES
+
+    // Keep existing account-scoped, in-memory NotificationMessageHistory and stable
+    // NotificationIdentity IDs. Only append a silent group summary when two or
+    // more independent conversations are already visible in Android's shade.
+    private fun updateGroupSummary(context: Context, userId: String, groupKey: String) {
+        if (!isValidAccountId(userId)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val children = runCatching {
+            manager.activeNotifications.filter {
+                it.notification.group == groupKey &&
+                    it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+            }
+        }.getOrDefault(emptyList())
+        val summaryId = positiveHash("blink-dm-group:$userId")
+        if (children.size < 2) {
+            NotificationManagerCompat.from(context).cancel(summaryId)
+            return
+        }
+        val style = NotificationCompat.InboxStyle()
+        children.mapNotNull {
+            it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)
+                ?.toString()?.trim()?.takeIf(String::isNotBlank)
+        }.distinct().take(5).forEach { style.addLine(it) }
+        style.setSummaryText("${children.size} conversations")
+
+        val inboxIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            data = Uri.parse("blink://notification/inbox/${Uri.encode(userId)}")
+            putExtra(BlinkNotificationHelper.EXTRA_ACTION, BlinkNotificationHelper.ACTION_OPEN_MESSAGES)
+        }
+        val openInbox = PendingIntent.getActivity(
+            context, summaryId, inboxIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        postNotification(
+            context, summaryId,
+            NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+                .setContentTitle("BLINK Messages (${children.size})")
+                .setContentText("${children.size} conversations")
+                .setStyle(style)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setGroup(groupKey)
+                .setGroupSummary(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .setContentIntent(openInbox)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .build()
+        )
+    }
+
     fun show(
         context: Context,
         senderUsername: String,
@@ -53,6 +115,7 @@ object InstantChatNotification {
             .build()
         val me = Person.Builder().setName("You").setKey("blink_self").build()
         val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        val groupKey = scopedMessageGroup(accountId)
         val previews = NotificationMessageHistory.append(
             userId = accountId,
             conversationKey = stableConversationKey,
@@ -98,12 +161,13 @@ object InstantChatNotification {
             .setWhen(System.currentTimeMillis())
             .setContentIntent(contentIntent)
             .addAction(replyAction)
-            .setGroup(GROUP_KEY_MESSAGES)
+            .setGroup(groupKey)
             .setGroupSummary(false)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
 
         postNotification(context, notificationId, notification)
+        updateGroupSummary(context, accountId, groupKey)
     }
 
     fun showReplyQueued(

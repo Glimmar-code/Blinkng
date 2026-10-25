@@ -21,6 +21,7 @@ on:
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
+      - '.github/scripts/install_release_smoke_apk.sh'
       - 'scripts/build_blink_life_web_pack.sh'
       - 'scripts/setup_godot_43_web.sh'
       - 'game3d/**'
@@ -43,10 +44,15 @@ on:
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
+      - '.github/scripts/install_release_smoke_apk.sh'
       - 'scripts/build_blink_life_web_pack.sh'
       - 'scripts/setup_godot_43_web.sh'
       - 'game3d/**'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -59,6 +65,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify user-approved in-app APK updater safeguards
+        run: python3 scripts/test_inapp_apk_update.py
 
       - name: Verify Google Maps SDK is removed
         run: python3 scripts/test_no_google_maps_sdk.py

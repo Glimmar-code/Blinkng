@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Public
@@ -63,7 +64,6 @@ import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,6 +96,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -153,6 +155,7 @@ fun PostCard(
     authorName: String = post.author,
     authorUsername: String = post.authorUsername.ifBlank { post.author },
     authorAvatar: String = post.authorAvatar,
+    authorUniversity: String = "",
     authorVerificationBadge: VerificationBadge = when {
         post.verificationBadge != VerificationBadge.NONE -> post.verificationBadge
         post.isVerified -> VerificationBadge.BLUE
@@ -165,7 +168,8 @@ fun PostCard(
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
-    onGiftCoinsAuthor: (String) -> Unit = {},
+    onGiftCoinsAuthor: (String, Int) -> Unit = { _, _ -> },
+    coinGiftingEnabled: Boolean = false,
     onChallengeAuthor: (String) -> Unit = {},
     onMentorRequestAuthor: (String) -> Unit = {},
     onFriendRequestAuthor: (String) -> Unit = {},
@@ -176,6 +180,7 @@ fun PostCard(
     trackExposure: Boolean = true,
     xFeedStyle: Boolean = false,
     isFeedScrolling: Boolean = false,
+    onOpenPost: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -231,14 +236,14 @@ fun PostCard(
             .then(exposureModifier)
             .fillMaxWidth()
             .padding(
-                horizontal = if (xFeedStyle) 0.dp else 12.dp,
-                vertical = if (xFeedStyle) 0.dp else 6.dp
+                horizontal = 12.dp,
+                vertical = 7.dp
             ),
-        shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 16.dp),
+        shape = RoundedCornerShape(if (xFeedStyle) 18.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = BorderStroke(if (xFeedStyle) 0.5.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.72f else 0.52f))
+        shadowElevation = if (xFeedStyle) 2.dp else 0.dp,
+        border = BorderStroke(if (xFeedStyle) 0.7.dp else 1.dp, dividerColor.copy(alpha = if (xFeedStyle) 0.27f else 0.52f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -286,122 +291,107 @@ fun PostCard(
                 }
             }
 
-            // Full-width compact X-like identity strip: no store crown or VIP chrome.
+            // Exact Home reference hierarchy: avatar | name and badge | metadata | follow | options.
             if (xFeedStyle) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .padding(start = 10.dp, top = 8.dp, end = 4.dp, bottom = 7.dp),
+                        .padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp)
+                        // Header whitespace opens the full post; child controls
+                        // (avatar, name, Follow and options) retain their actions.
+                        .clickable(enabled = onOpenPost != null, role = Role.Button) {
+                            onOpenPost?.invoke()
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val compactAvatar = if (hasActiveStory) {
-                        Modifier.size(40.dp)
-                            .background(primaryText, CircleShape)
-                            .padding(2.dp)
-                            .background(surfaceColor, CircleShape)
-                            .padding(2.dp)
-                    } else Modifier.size(40.dp)
-                    Box(modifier = Modifier.size(43.dp)) {
+                    Box(Modifier.size(52.dp)) {
                         AsyncImage(
                             model = authorAvatar,
                             error = painterResource(R.drawable.ic_default_profile),
                             fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = "$resolvedAuthorName profile picture",
                             contentScale = ContentScale.Crop,
-                            modifier = compactAvatar.align(Alignment.TopStart).clip(CircleShape)
+                            modifier = Modifier.size(51.dp).clip(CircleShape)
                                 .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                         )
                         if (authorOnline == true) {
                             Box(
-                                modifier = Modifier.size(12.dp).align(Alignment.BottomEnd)
+                                Modifier.size(10.dp).align(Alignment.BottomEnd)
                                     .background(Color(BlinkDesignTokens.Semantic.Success), CircleShape)
                                     .border(2.dp, surfaceColor, CircleShape)
                             )
                         }
                     }
-                    Spacer(Modifier.width(6.dp))
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = resolvedAuthorName,
-                            color = primaryText,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                                .clickable { onProfileClick(profileTarget) }
-                        )
-                        if (authorVerificationBadge != VerificationBadge.NONE) {
-                            Spacer(Modifier.width(3.dp))
-                            Icon(
-                                imageVector = Icons.Default.Verified,
-                                contentDescription = "Verified account",
-                                tint = primaryText,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                        if (resolvedAuthorUsername.isNotBlank()) {
-                            Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "@$resolvedAuthorUsername",
-                                color = secondaryText,
-                                fontSize = 12.sp,
-                                maxLines = 1,
+                                resolvedAuthorName, color = primaryText, fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
                                     .clickable { onProfileClick(profileTarget) }
                             )
+                            if (authorVerificationBadge != VerificationBadge.NONE) {
+                                Spacer(Modifier.width(3.dp))
+                                Icon(
+                                    Icons.Default.Verified, contentDescription = "Verified",
+                                    tint = if (authorVerificationBadge == VerificationBadge.GOLD) BlinkGold else FeedBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
-                        if (post.timeAgo.isNotBlank()) {
-                            Text(
-                                text = " · ${BlinkPostFormat.age(post.timeAgo)}",
-                                color = secondaryText,
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                    if (!isAuthor && authorProfileId.isNotBlank()) {
-                        Spacer(Modifier.width(4.dp))
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = surfaceColor,
-                            border = BorderStroke(1.dp, dividerColor),
-                            modifier = Modifier
-                                .clickable(enabled = !isFollowMutationPending, role = Role.Button) {
-                                    if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
-                                    else onFollowAuthor(authorProfileId)
-                                }
+                        Row(
+                            modifier = Modifier.clickable(enabled = onOpenPost != null, role = Role.Button) {
+                                onOpenPost?.invoke()
+                            },
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier.heightIn(min = 40.dp)
-                                    .padding(horizontal = 7.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Text(
+                                authorUniversity.trim().ifBlank { "@$resolvedAuthorUsername" },
+                                color = secondaryText, fontSize = 11.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (post.timeAgo.isNotBlank()) {
                                 Text(
-                                    text = if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
-                                    color = primaryText,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
+                                    " · ${BlinkPostFormat.age(post.timeAgo)}",
+                                    color = secondaryText, fontSize = 11.sp, maxLines = 1
                                 )
                             }
                         }
                     }
-                    IconButton(onClick = onOptionsClick, modifier = Modifier.size(35.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = "Post options",
-                            tint = primaryText,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    if (!isAuthor && authorProfileId.isNotBlank()) {
+                        Spacer(Modifier.width(5.dp))
+                        Surface(
+                            shape = RoundedCornerShape(9.dp),
+                            color = if (isFollowingAuthor) MaterialTheme.colorScheme.surfaceVariant
+                                else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.clickable(enabled = !isFollowMutationPending, role = Role.Button) {
+                                if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
+                                else onFollowAuthor(authorProfileId)
+                            }
+                        ) {
+                            Box(
+                                modifier = Modifier.heightIn(min = 36.dp).padding(horizontal = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    if (isFollowMutationPending) "..." else if (isFollowingAuthor) "Following" else "Follow",
+                                    color = if (isFollowingAuthor) primaryText else MaterialTheme.colorScheme.surface,
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = onOptionsClick, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Post options",
+                            tint = primaryText, modifier = Modifier.size(22.dp))
                     }
                 }
                 if (post.audience.isNotBlank() && !post.audience.equals("Everyone", ignoreCase = true)) {
                     Text(
-                        text = "Audience: ${post.audience}",
-                        color = secondaryText,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 59.dp, bottom = 4.dp)
+                        "Audience: ${post.audience}", color = secondaryText, fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 14.dp, bottom = 4.dp)
                     )
                 }
             } else {
@@ -542,43 +532,35 @@ fun PostCard(
 
                     // Compact, always-visible follow control on X-style Home cards.
                     // The old gate hid following entirely on the main feed.
-                    if (xFeedStyle && !isAuthor && authorProfileId.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            border = BorderStroke(1.dp, socialBlue.copy(alpha = 0.6f)),
-                            color = socialBlue.copy(alpha = 0.12f),
-                            modifier = Modifier
-                                .padding(top = 5.dp)
-                                .clickable(enabled = !isFollowMutationPending) {
-                                    if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
-                                    else onFollowAuthor(authorProfileId)
-                                }
-                        ) {
+                    // One relationship control across Home, Reels and Profile.
+                    // Keep the pending state visible and disable all mutation
+                    // buttons while the follow/unfollow request is in flight.
+                    if (!isAuthor && authorProfileId.isNotBlank()) {
+                        Spacer(Modifier.size(6.dp))
+                        if (isFollowMutationPending) {
                             Text(
-                                text = if (isFollowMutationPending) "Updating…" else if (isFollowingAuthor) "Following" else "+ Follow",
-                                color = socialBlue,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                "Updating…",
+                                color = secondaryText,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        } else {
+                            ProfileFollowInteractButton(
+                                isFollowing = isFollowingAuthor,
+                                onFollow = { onFollowAuthor(authorProfileId) },
+                                onUnfollow = { onUnfollowAuthor(authorProfileId) },
+                                onMessage = onMessageAuthor,
+                                onGiftCoins = { amount -> onGiftCoinsAuthor(authorProfileId, amount) },
+                                onGameChallenge = { onChallengeAuthor(authorProfileId) },
+                                onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
+                                onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
+                                onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
+                                onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
+                                onViewProfile = { onProfileClick(profileTarget) },
+                                onOpenConnectHub = onConnectHubAuthor,
+                                darkSurface = isDark,
+                                giftingEnabled = coinGiftingEnabled
                             )
                         }
-                    }
-                    if (!xFeedStyle && !isAuthor && authorProfileId.isNotBlank()) {
-                        Spacer(Modifier.size(6.dp))
-                        ProfileFollowInteractButton(
-                            isFollowing = isFollowingAuthor,
-                            onFollow = { onFollowAuthor(authorProfileId) },
-                            onUnfollow = { onUnfollowAuthor(authorProfileId) },
-                            onMessage = onMessageAuthor,
-                            onGiftCoins = { onGiftCoinsAuthor(authorProfileId) },
-                            onGameChallenge = { onChallengeAuthor(authorProfileId) },
-                            onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
-                            onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
-                            onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
-                            onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
-                            onViewProfile = { onProfileClick(profileTarget) },
-                            onOpenConnectHub = onConnectHubAuthor
-                        )
                     }
                 }
 
@@ -629,7 +611,7 @@ fun PostCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = if (xFeedStyle) 74.dp else 0.dp, end = if (xFeedStyle) 12.dp else 0.dp)
+                            .padding(start = if (xFeedStyle) 14.dp else 0.dp, end = if (xFeedStyle) 14.dp else 0.dp)
                             .clip(RoundedCornerShape(if (xFeedStyle) 14.dp else 0.dp))
                             .heightIn(min = textCardMinHeight)
                             .background(textStyle.brush())
@@ -639,12 +621,13 @@ fun PostCard(
                         SelectionContainer {
                             Text(
                                 text = post.text,
+                                modifier = Modifier.clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                                 color = textStyle.textColor,
                                 fontSize = textSize,
                                 lineHeight = textSize * 1.18f,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
+                                maxLines = if (expandedText) Int.MAX_VALUE else 4,
                                 overflow = TextOverflow.Ellipsis,
                                 onTextLayout = { result ->
                                     if (!expandedText) {
@@ -659,9 +642,13 @@ fun PostCard(
                         Text(
                             text = post.text,
                             color = primaryText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = if (xFeedStyle) 74.dp else 14.dp, end = 14.dp, bottom = 10.dp),
-                            maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                            style = if (xFeedStyle) MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp
+                            ) else MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp)
+                                .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
+                            maxLines = if (expandedText) Int.MAX_VALUE else 4,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
                                 if (!expandedText) {
@@ -678,7 +665,7 @@ fun PostCard(
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .padding(start = if (xFeedStyle) 74.dp else 14.dp, top = 6.dp, bottom = 8.dp)
+                            .padding(start = 14.dp, top = 6.dp, bottom = 8.dp)
                             .heightIn(min = 40.dp)
                             .clickable(role = Role.Button) { expandedText = !expandedText }
                     )
@@ -688,7 +675,7 @@ fun PostCard(
             post.poll?.let { poll ->
                 PremiumPollCard(
                     poll = poll,
-                    modifier = Modifier.padding(start = if (xFeedStyle) 60.dp else 0.dp)
+                    modifier = Modifier.padding(start = if (xFeedStyle) 14.dp else 0.dp)
                 ) { optionId ->
                     onVotePoll(post.id, optionId)
                 }
@@ -699,8 +686,8 @@ fun PostCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            start = if (xFeedStyle) 74.dp else 0.dp,
-                            end = if (xFeedStyle) 12.dp else 0.dp,
+                            start = if (xFeedStyle) 14.dp else 0.dp,
+                            end = if (xFeedStyle) 14.dp else 0.dp,
                             bottom = if (xFeedStyle) 6.dp else 0.dp
                         )
                 ) {
@@ -710,6 +697,7 @@ fun PostCard(
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
                             cropToFrame = false,
                             deferAspectChanges = isFeedScrolling,
+                            onDoubleTapLike = if (xFeedStyle) onLike else null,
                             onClick = {
                                 imagePage = 0
                                 showImageFullscreen = true
@@ -734,6 +722,7 @@ fun PostCard(
                                     modifier = Modifier.fillParentMaxWidth(),
                                     cropToFrame = false,
                                     deferAspectChanges = isFeedScrolling,
+                                    onDoubleTapLike = if (xFeedStyle) onLike else null,
                                     onClick = {
                                         imagePage = index
                                         showImageFullscreen = true
@@ -765,81 +754,54 @@ fun PostCard(
             }
 
             if (xFeedStyle) {
-                // Stable, compact priority: views -> likes -> reposts -> comments
-                // -> save -> share. Counter updates never re-order the row.
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    // Redmi-class phones have six actions competing for a narrow
-                    // metric rail. Always prioritize visible views and likes; show
-                    // extra counts only where each touch target has enough width.
-                    val showCoreCounts = maxWidth >= 300.dp
-                    val showSecondaryCounts = maxWidth >= 330.dp
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 4.dp, end = 4.dp, bottom = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        ReadOnlyMetricAction(
-                            icon = Icons.Default.Visibility,
-                            value = if (showCoreCounts) formatNumber(displayedViewsCount) else "",
-                            description = "${displayedViewsCount} views"
-                        )
-                        PremiumPostAction(
-                            icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            value = if (showCoreCounts && !post.hideLikes && post.likes > 0) formatNumber(post.likes) else null,
-                            tint = likedTint,
-                            description = if (post.isLiked) "Unlike post · ${post.likes} likes" else "Like post · ${post.likes} likes",
-                            iconScale = likeScale.value,
-                            onClick = {
-                                scope.launch {
-                                    likeScale.snapTo(1f)
-                                    likeScale.animateTo(1.10f, tween(90))
-                                    likeScale.animateTo(1f, spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = Spring.StiffnessMedium
-                                    ))
-                                }
-                                onLike()
-                            }
-                        )
-                        // Keep the six-icon rail stable even on the author's own
-                        // posts. Reposting oneself remains disabled by policy.
-                        PremiumPostAction(
-                            icon = Icons.Default.Repeat,
-                            value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
-                            tint = if (isAuthor) secondaryText.copy(alpha = 0.6f) else repostTint,
-                            description = if (isAuthor) "${post.repostsCount} reposts · Reposting your own post unavailable"
-                                else if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts"
-                                else "Repost · ${post.repostsCount} reposts",
-                            enabled = !isAuthor && onRepost != null,
-                            onClick = { onRepost?.invoke() }
-                        )
-                        PremiumPostAction(
-                            icon = Icons.Default.ChatBubbleOutline,
-                            value = if (showSecondaryCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
-                            tint = secondaryText,
-                            description = if (post.allowComments) "${post.commentsCount} comments" else "Comments disabled",
-                            enabled = post.allowComments,
-                            onClick = onComment
-                        )
-                        PremiumPostAction(
-                            icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            value = null,
-                            tint = savedTint,
-                            description = if (post.isBookmarked) "Remove saved post" else "Save post",
-                            onClick = onBookmark
-                        )
-                        PremiumPostAction(
-                            icon = Icons.Default.Share,
-                            value = null,
-                            tint = secondaryText,
-                            description = "Share post",
-                            onClick = onShare
-                        )
-                    }
+                // Like remains visible for every post, including posts with images.
+                // Views are read-only metadata below the action row (no eye icon).
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    PremiumPostAction(
+                        icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        value = if (post.hideLikes) null else formatNumber(post.likes),
+                        tint = likedTint,
+                        description = if (post.isLiked) "Unlike post" else "Like post",
+                        onClick = onLike
+                    )
+                    PremiumPostAction(
+                        icon = Icons.Default.ChatBubbleOutline,
+                        value = formatNumber(post.commentsCount), tint = primaryText,
+                        description = "Comments", enabled = post.allowComments,
+                        onClick = onComment
+                    )
+                    PremiumPostAction(
+                        icon = Icons.Default.Repeat,
+                        value = formatNumber(post.repostsCount), tint = if (post.isRepostedByMe) repostTint else primaryText,
+                        description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                        enabled = !isAuthor && onRepost != null,
+                        onClick = { onRepost?.invoke() }
+                    )
+                    PremiumPostAction(
+                        icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        // Render the backend aggregate when known, never a placeholder.
+                        value = post.savesCount?.let(::formatNumber), tint = if (post.isBookmarked) savedTint else primaryText,
+                        description = if (post.isBookmarked) "Remove saved post" else "Save post",
+                        onClick = onBookmark
+                    )
+                    PremiumPostAction(
+                        icon = Icons.Default.Share, value = null,
+                        tint = primaryText, description = "Share post", onClick = onShare
+                    )
                 }
-                // Floating reference cards have no full-width bottom separator.
+                Text(
+                    text = "${formatNumber(displayedViewsCount)} views",
+                    color = secondaryText.copy(alpha = 0.82f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 15.dp, bottom = 9.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() }
+                )
             } else {
                 Row(
                     modifier = Modifier
@@ -1040,7 +1002,8 @@ private fun PremiumPollCard(
 private fun RowScope.ReadOnlyMetricAction(
     icon: ImageVector,
     value: String,
-    description: String
+    description: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
     Box(
         modifier = Modifier
@@ -1053,13 +1016,13 @@ private fun RowScope.ReadOnlyMetricAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = tint,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(4.dp))
             Text(
                 text = value,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = tint,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1
             )
@@ -1142,6 +1105,7 @@ private fun NaturalAspectPostImage(
     modifier: Modifier = Modifier,
     cropToFrame: Boolean = false,
     deferAspectChanges: Boolean = false,
+    onDoubleTapLike: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1179,7 +1143,20 @@ private fun NaturalAspectPostImage(
             .aspectRatio(imageAspectRatio.coerceIn(0.50f, 1.91f))
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f))
-            .clickable(enabled = !loadFailed, onClick = onClick),
+            .then(
+                if (onDoubleTapLike == null) Modifier.clickable(enabled = !loadFailed, onClick = onClick)
+                else Modifier.pointerInput(imageUrl, loadFailed, onDoubleTapLike) {
+                    detectTapGestures(
+                        onTap = { if (!loadFailed) onClick() },
+                        onDoubleTap = { if (!loadFailed) onDoubleTapLike() }
+                    )
+                }.semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Like post") { onDoubleTapLike(); true },
+                        CustomAccessibilityAction("Open image") { onClick(); true }
+                    )
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(

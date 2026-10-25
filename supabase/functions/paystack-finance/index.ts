@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     if (reportError) throw new Error("FINANCE_AGGREGATE_NOT_AVAILABLE");
     const {data:items,error:itemsError}=await svc
       .from("blink_paystack_payments")
-      .select("reference,purchase_kind,item_code,amount_ngn,status,created_at")
+      .select("purchase_kind,amount_ngn,status,created_at")
       .gte("created_at",start.toISOString())
       .order("created_at",{ascending:false}).limit(50);
     if(itemsError) throw new Error("FINANCE_LEDGER_NOT_AVAILABLE");

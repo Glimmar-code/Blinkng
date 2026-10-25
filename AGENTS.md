@@ -42,8 +42,8 @@ Whenever an AI agent or developer is asked to add, fix, remove, redesign, or cha
 5. wire the Windows surface;
 6. preserve the same route IDs, permission rules, data semantics, and server behavior;
 7. update `platform-parity/changes.md`;
-8. run Android quality checks;
-9. run Windows desktop build checks;
+8. run Android unit/build checks for Android/shared/build inputs;
+9. enforce Windows feature parity for Android-facing changes, and run full desktop packaging for relevant desktop/shared/build inputs;
 10. only consider the work finished when both supported clients are accounted for.
 
 ## Backend rule
@@ -93,6 +93,21 @@ Use production-compatible test data without copying unnecessary sensitive user d
 
 This Supabase preview/staging-first policy and the Testlab-first policy are the defaults for future Blinkng development unless the repository owner explicitly instructs otherwise.
 
+## Relevance-based CI: test only what a patch affects
+
+Before adding tests or running a workflow, inspect the complete PR diff.
+For small web/docs changes, run relevant web checks rather than Android/Windows
+installer builds or unrelated payment/database integration. Affected auth,
+payments, security, migrations, realtime calling, app package, and release
+changes still require their matching safety and functional tests. Maintain
+required GitHub status contexts with successful no-op reports for unrelated
+components, not absent checks that block merges. Preserve Android/Windows
+user-facing feature parity, run all suites if changed-file detection fails,
+and do not add cosmetic/duplicate tests merely to produce more green checks.
+Report exactly which checks executed and which were not applicable.
+A new signed APK must undergo full release checks; web-only changes do not
+need to publish another APK.
+
 ## BLINK mandatory auto-fix → verify → Testlab → main → update app
 
 User command (repeat for each BLINK repair/release request):
@@ -106,6 +121,7 @@ User command (repeat for each BLINK repair/release request):
 5. **No paid staging without approval.** The owner declined Supabase's fee for a hosted testing branch. Do not incur fees or activate paid resources automatically. If no safe free staging option can validate a required change, hold the production merge and explain the blocker.
 6. Keep API keys, Supabase service-role tokens, mail credentials and personal data out of GitHub, apps and logs. Do not activate/replace signup-confirmation email settings without separate explicit instruction.
 7. If and only if every applicable gate passes, merge to Testlab and then promote Testlab to main through standard review/branch rules. Confirm both merge SHAs, don't force/bypass checks.
+   **Production release approval is separate:** the repository owner must post the exact comment `BLINK APPROVE <current-PR-head-SHA>` on the production PR; a new commit invalidates approval. No `auto-promote` label alone authorizes release. See `docs/blink-phase1-release-approval.md`. `main` must be protected using GitHub Rulesets/branch settings (not just workflow code).
 8. After the main merge, inspect `Signed Android release` and `Publish latest APK` workflows, verify the signed downloadable APK exists, and report its actual release URL. A main commit does not silently install an APK on users' phones. Report Windows output and manual app-store steps separately.
 9. When blocked, leave main and production backend unchanged, state exact failing or unavailable checks, and supply a safe next action. The instruction is a release policy, NOT an unattended agent or an ability for GitHub Actions alone to autonomously rewrite broken code.
 

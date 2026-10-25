@@ -26,32 +26,67 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect backend-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
+      - name: Explain intentionally skipped backend work
+        if: steps.scope.outputs.backend != 'true'
+        run: echo "No backend/schema/auth/payment changes; Supabase tests are not applicable."
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.backend == 'true'
         with:
           python-version: '3.12'
 
       - name: Validate Supabase changes statically
+        if: steps.scope.outputs.backend == 'true'
         env:
           BASE_SHA: ${{ github.event.before }}
         run: python3 scripts/check_supabase_safety.py
 
       - name: Install PostgreSQL SQL parser
+        if: steps.scope.outputs.backend == 'true'
         run: python3 -m pip install --disable-pip-version-check --no-cache-dir 'pglast==7.21'
 
       - name: Validate migration SQL syntax
+        if: steps.scope.outputs.backend == 'true'
         run: python3 scripts/check_supabase_sql_syntax.py
 
+
+      - name: Regression-test Data API permissions gate
+        if: steps.scope.outputs.backend == 'true'
+        run: python3 -m unittest discover -s scripts -p 'test_supabase_data_api_grants.py' -v
+
+      - name: Require new public tables to declare Data API access
+        if: steps.scope.outputs.backend == 'true'
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: python3 scripts/check_supabase_data_api_grants.py
+
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.backend == 'true'
         with:
           node-version: '22'
 
       - name: Install isolated PostgreSQL regression runtime
+        if: steps.scope.outputs.backend == 'true'
         run: npm ci --prefix supabase/tests --no-audit --no-fund
 
       - name: Check Testlab migrations and account boundaries
+        if: steps.scope.outputs.backend == 'true'
         run: npm test --prefix supabase/tests
 
+      - name: Verify combined referral and private-media contracts
+        if: steps.scope.outputs.backend == 'true'
+        run: |
+          node supabase/tests/run-referral-integration.mjs
+          node supabase/tests/run-chat-media-integration.mjs
+
       - name: Detect complete local schema baseline
+        if: steps.scope.outputs.backend == 'true'
         id: baseline
         shell: bash
         run: |
@@ -67,13 +102,13 @@ jobs:
           fi
 
       - name: Install pinned Supabase CLI
-        if: steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && steps.baseline.outputs.available == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: 2.117.0
 
       - name: Start disposable local Supabase
-        if: steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -82,7 +117,7 @@ jobs:
           supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
 
       - name: Rebuild database from migrations
-        if: steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -90,14 +125,14 @@ jobs:
           supabase db reset --local
 
       - name: Lint rebuilt local database
-        if: steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
           supabase db lint --local --fail-on error
 
       - name: Verify local Auth API health
-        if: steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -107,11 +142,12 @@ jobs:
           echo 'Disposable local Supabase is healthy; no production backend was used.'
 
       - name: Stop and erase disposable Supabase
-        if: always() && steps.baseline.outputs.available == 'true'
+        if: steps.scope.outputs.backend == 'true' && always() && steps.baseline.outputs.available == 'true'
         shell: bash
         run: supabase stop --no-backup || true
 
       - name: Confirm staging-first policy
+        if: steps.scope.outputs.backend == 'true'
         shell: bash
         run: |
           echo 'Supabase production changes must be promoted only after Testlab verification.'

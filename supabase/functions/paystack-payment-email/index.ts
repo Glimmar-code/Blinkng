@@ -65,12 +65,12 @@ Deno.serve(async req=>{
           `Amount: NGN ${Math.round(amount).toLocaleString("en-NG")}`:"";
         const reference=row.reference? `Reference: ${escaped(row.reference)}`:"";
         const simpleText=[message.title,message.message,
-          amountLine,reference,"BLINK Support: blinksupport.ng@gmail.com"].filter(Boolean).join("\n\n");
+          amountLine,reference,"BLINK Support: support@blink.com.ng"].filter(Boolean).join("\n\n");
         const body=`<!doctype html><html lang="en"><body style="margin:0;padding:26px;background:#000;color:#fff;font-family:Arial,sans-serif">
           <div style="max-width:580px;margin:auto;padding:24px;border:1px solid #444;border-radius:18px">
           <b>BLINK</b><h1>${escaped(message.title)}</h1><p>${escaped(message.message)}</p>
           <p>${escaped(amountLine)}</p><p>${reference}</p>
-          <p style="color:#aaa;font-size:12px">Never share passwords or bank PINs. For help contact blinksupport.ng@gmail.com.</p></div>
+          <p style="color:#aaa;font-size:12px">Never share passwords or bank PINs. For help contact support@blink.com.ng.</p></div>
           </body></html>`;
         const result=await fetch("https://api.brevo.com/v3/smtp/email",{
           method:"POST",headers:{"api-key":apiKey,"Content-Type":"application/json"},
