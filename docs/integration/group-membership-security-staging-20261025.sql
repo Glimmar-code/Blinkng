@@ -31,7 +31,7 @@ grant execute on function public.blink_conversation_is_group(uuid) to authentica
 create or replace function public.blink_can_self_join_creator_direct(
   p_conversation_id uuid
 ) returns boolean language sql stable security definer set search_path=''
-as $
+as $$
   select (select auth.uid()) is not null and exists (
     select 1 from public.conversations c
     where c.id=p_conversation_id
@@ -40,7 +40,7 @@ as $
       and (select count(*) from public.conversation_participants cp
            where cp.conversation_id=c.id) < 2
   );
-$;
+$$;
 revoke all on function public.blink_can_self_join_creator_direct(uuid)
   from public,anon;
 grant execute on function public.blink_can_self_join_creator_direct(uuid)
@@ -81,7 +81,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 drop trigger if exists blink_protect_conversation_membership_guard
   on public.conversation_participants;
 create trigger blink_protect_conversation_membership_guard
