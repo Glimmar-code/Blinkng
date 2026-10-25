@@ -213,3 +213,41 @@ begin
   if total<>2 then raise exception 'Deleting a referred account erased lifetime badge progress: %',total; end if;
 end $$;
 select 'BLINK Refer & Grow permanent achievements + fading visibility checks passed' as result;
+
+-- Privacy-aware leaderboard includes only public profiles and excludes blocked accounts.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+update public.profiles set is_verified=true, verification_badge='blue',
+  profile_views_this_week=7 where username='alpha';
+insert into public.follows(follower_id,following_id,created_at)
+values ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000001',now());
+set role authenticated;
+do $$
+declare
+  current_rank bigint;
+  weekly_views bigint;
+  weekly_followers bigint;
+  actions bigint;
+begin
+  select position into current_rank from public.blink_referral_leaderboard(7,10)
+   where username='alpha';
+  if current_rank<>1 then raise exception 'Unexpected weekly connector rank: %',current_rank; end if;
+  select profile_views_this_week,followers_gained_this_week,share_actions
+    into weekly_views,weekly_followers,actions from public.blink_referral_growth_stats();
+  if weekly_views<>7 or weekly_followers<>1 or actions<>0
+  then raise exception 'Growth must show observed stats only: %, %, %',weekly_views,weekly_followers,actions; end if;
+  if not public.blink_record_referral_share('copy')
+  then raise exception 'First legitimate share action should be recorded'; end if;
+  if public.blink_record_referral_share('copy')
+  then raise exception 'Repeated rapid share action should be throttled'; end if;
+  select share_actions into actions from public.blink_referral_growth_stats();
+  if actions<>1 then raise exception 'Share action counter did not reflect one event: %',actions; end if;
+  begin
+    insert into public.blink_referral_share_events(user_id,channel)
+    values ('00000000-0000-0000-0000-000000000001','share');
+    raise exception 'Client unexpectedly allowed to forge share events';
+  exception when insufficient_privilege then
+    null;
+  end;
+end $$;
+reset role;
+select 'BLINK referral leaderboard + observed analytics checks passed' as result;
