@@ -1911,6 +1911,63 @@ private fun PremiumChatDetail(
                         ) { Text(title, fontSize = 11.sp) }
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    androidx.compose.material3.TextButton(
+                        enabled = !imageEditBusy && selectedImageIndex > 0,
+                        onClick = {
+                            val index = selectedImageIndex
+                            val updated = selectedImageUris.toMutableList()
+                            val moved = updated.removeAt(index)
+                            updated.add(index - 1, moved)
+                            val captions = selectedImageCaptions.toMutableMap()
+                            val left = captions[index - 1]
+                            val right = captions[index]
+                            if (right == null) captions.remove(index - 1)
+                            else captions[index - 1] = right
+                            if (left == null) captions.remove(index)
+                            else captions[index] = left
+                            selectedImageUris = updated
+                            selectedImageCaptions = captions
+                            selectedImageIndex = index - 1
+                        }
+                    ) { Text("← Move", fontSize = 11.sp) }
+                    androidx.compose.material3.TextButton(
+                        enabled = !imageEditBusy && selectedImageIndex < selectedImageUris.lastIndex,
+                        onClick = {
+                            val index = selectedImageIndex
+                            val updated = selectedImageUris.toMutableList()
+                            val moved = updated.removeAt(index)
+                            updated.add(index + 1, moved)
+                            val captions = selectedImageCaptions.toMutableMap()
+                            val left = captions[index]
+                            val right = captions[index + 1]
+                            if (right == null) captions.remove(index)
+                            else captions[index] = right
+                            if (left == null) captions.remove(index + 1)
+                            else captions[index + 1] = left
+                            selectedImageUris = updated
+                            selectedImageCaptions = captions
+                            selectedImageIndex = index + 1
+                        }
+                    ) { Text("Move →", fontSize = 11.sp) }
+                    androidx.compose.material3.TextButton(
+                        enabled = !imageEditBusy,
+                        onClick = {
+                            val index = selectedImageIndex
+                            selectedImageUris = selectedImageUris.filterIndexed { i, _ -> i != index }
+                            selectedImageCaptions = selectedImageCaptions.mapNotNull { (i, caption) ->
+                                when {
+                                    i == index -> null
+                                    i > index -> (i - 1) to caption
+                                    else -> i to caption
+                                }
+                            }.toMap()
+                            selectedImageIndex = selectedImageIndex.coerceAtMost(
+                                selectedImageUris.lastIndex.coerceAtLeast(0)
+                            )
+                        }
+                    ) { Text("Remove", fontSize = 11.sp, color = palette.danger) }
+                }
                 if (imageEditBusy) Text("Preparing picture…", color = palette.textSecondary)
                 Spacer(Modifier.height(12.dp))
                 TextField(
