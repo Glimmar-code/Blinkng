@@ -116,6 +116,8 @@ import com.blinkng.shared.nextPulseValue
 import com.blinkng.shared.pulseTrend
 import com.blinkng.shared.rankPulseRange
 import com.blinkng.shared.BlinkPostFormat
+import com.blinkng.shared.BlinkMentionTokenPolicy
+import com.blinkng.shared.BlinkUserSuggestionPolicy
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -165,6 +167,28 @@ fun HomeScreen(
     var postDetailsId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    val mentionToken = remember(composer) { BlinkMentionTokenPolicy.active(composer) }
+    var mentionProfiles by remember(mentionToken?.query) {
+        mutableStateOf<List<DesktopProfile>>(emptyList())
+    }
+    var mentionVisible by remember(mentionToken?.query) { mutableIntStateOf(10) }
+    var mentionHasMore by remember(mentionToken?.query) { mutableStateOf(false) }
+    var mentionLoading by remember(mentionToken?.query) { mutableStateOf(false) }
+    LaunchedEffect(mentionToken?.query) {
+        val query = mentionToken?.query.orEmpty()
+        if (query.isBlank()) return@LaunchedEffect
+        delay(220)
+        mentionLoading = true
+        try {
+            val matches = state.client.searchMentionProfiles(query)
+            mentionProfiles = matches.distinctBy { it.id }
+            mentionHasMore = matches.size >= 60
+        } catch (_: Exception) {
+            mentionProfiles = emptyList()
+            mentionHasMore = false
+        } finally { mentionLoading = false }
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -296,6 +320,61 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    val rankedMentions = if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.rank(
+                        mentionProfiles, mentionToken.query,
+                        username = { it.username }, displayName = { it.fullName }
+                    )
+                    if (rankedMentions.isNotEmpty()) {
+                        Text("Mention a BLINK student", style = MaterialTheme.typography.labelMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(rankedMentions.take(mentionVisible), key = { "mention_" + it.id }) { person ->
+                                AssistChip(
+                                    onClick = {
+                                        val active = BlinkMentionTokenPolicy.active(composer)
+                                        if (active != null) composer = BlinkMentionTokenPolicy.replace(
+                                            composer, active, person.username
+                                        )
+                                    },
+                                    label = {
+                                        Column {
+                                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
+                                            Text("@" + person.username, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                )
+                            }
+                            if (rankedMentions.size > mentionVisible || mentionHasMore) {
+                                item(key = "more_mentions") {
+                                    TextButton(
+                                        enabled = !mentionLoading,
+                                        onClick = {
+                                            if (rankedMentions.size > mentionVisible) {
+                                                mentionVisible += 10
+                                            } else {
+                                                val last = mentionProfiles.lastOrNull()
+                                                if (last != null && mentionToken != null) {
+                                                    scope.launch {
+                                                        mentionLoading = true
+                                                        try {
+                                                            val more = state.client.searchMentionProfiles(
+                                                                mentionToken.query, 60,
+                                                                last.username, last.id
+                                                            )
+                                                            mentionProfiles = (mentionProfiles + more).distinctBy { it.id }
+                                                            mentionHasMore = more.size >= 60
+                                                            mentionVisible += 10
+                                                        } catch (_: Exception) {
+                                                            mentionHasMore = false
+                                                        } finally { mentionLoading = false }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) { Text("See more") }
+                                }
+                            }
+                        }
+                    }
                     Text("✨ Make your post stand out", style = MaterialTheme.typography.titleSmall)
                     Text(BlinkPostGrowthTips.suggestion(
                         hasImages = false, hasVideo = false, hasPoll = false),
