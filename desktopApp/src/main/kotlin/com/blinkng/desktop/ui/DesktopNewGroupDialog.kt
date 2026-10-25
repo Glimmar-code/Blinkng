@@ -176,6 +176,10 @@ fun DesktopNewGroupDialog(
                         singleLine = true,
                         label = { Text("Group name") }
                     )
+                    Text(
+                        "Invited students must accept before they become group members.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 if (loading || saving) CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 if (!error.isNullOrBlank()) Text(
