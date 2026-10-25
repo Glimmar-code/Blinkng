@@ -101,6 +101,13 @@ data class DesktopComment(
     val premiumStyleSource: String? = null,
 )
 
+data class DesktopGroupInvitation(
+    val conversationId: String,
+    val title: String,
+    val inviterUsername: String,
+    val invitedAt: String,
+)
+
 data class DesktopGroupMember(
     val id: String,
     val username: String,
