@@ -1,3 +1,21 @@
+## 2026-10-25 — Refer & Grow follow-up: four requested capabilities
+
+- **Birthday position and privacy:** Android, Windows and web registration now place Birthday immediately before the optional referrer picker. Android/Windows validate exact YYYY-MM-DD with a strict shared date policy; web uses a date field. Upon authenticated signup, birthday is saved only to `profile_private_details` (not public profile or referral metadata). If email confirmation withholds a session, web requests completion during private profile onboarding rather than persisting sensitive DOB in browser storage.
+- **Coin milestones:** A separate additive SQL migration provides configurable milestones (1/5/10/25/50/100), one-time wallet credit, audit ledger and owner-only earnings summaries. Draft amounts: 5/25/50/100/250/500 BLINK Coins. ALL default disabled, because no final owner economics approval or hosted fraud-validation is available. No production Coins granted or DB updated.
+- **Source attribution:** A server-controlled actor-authenticated RPC records one public profile open per viewer/profile/source/day, with self/private/blocked checks and hourly limits. Sources are Search and new-student recommendations; only aggregated seven-day counts are displayed to owners in Android, Windows and web. These are navigations, not fabricated total impressions. Android Search and new-member card profile taps and web Search taps record the source; Windows displays analytics but currently has no target-profile navigation from its Search person card.
+- **Username selection:** Pure shared username policy + tested trailing-mention replacement, reusable public username autocomplete component for @mentions, and a 30-person group/community selection surface. Android message composer uses the autocomplete. Actual invitations to conversations/communities are NOT sent: current social-app screens need separate secure invite/accept endpoints and group/community membership UI before they can consume the selection. Do not auto-add students.
+- **Safety/release:** PostgreSQL-16 disposable integration assertions cover Coin controls/idempotence, source attribution and anti-forgery. Real Supabase referral objects remain undeployed and no staging project exists. Current PR is a draft on `main`, and complete Android+Windows latest-SHA CI, authenticated hosting tests and per-SHA owner approval are still required. The consolidated patch must not be published prematurely.
+
+## 2026-10-25 — BLINK Refer & Grow scoped main integration (PR #540, draft)
+
+- **Shared:** `BlinkReferralPolicy` controls lifetime badge thresholds, 30-day referral boost decay and canonical invitations. `BlinkMenuDestination.REFER_GROW` is identical for Android and Windows. The server owns all credit, ranking and notification records.
+- **Android:** Registration includes optional referrer autocomplete; signed-in Search has a referral promo with real count, relevance-first ranked public profile search and new-student suggestions. Refer & Grow is accessible from Profile and Menu. Share and Copy invitation actions have server-throttled metrics. Verified accounts and universities appear in selection. HTTPS invite links from blink.com.ng/www are validated and pre-select the referrer on signup without changing an already signed-in account.
+- **Windows:** Equivalent registration selection, search promotion/ranking, My Referrals dashboard, Menu route, profile suggestions, verification labels, and invite-copy/share-action tracking. Desktop cannot claim Android App Link verification: browser handles invite URLs.
+- **Web:** Public /invite/username signup preselection, auto-suggest, Search promotion and confirmed-referral counter, real growth and leaderboard details, link sharing actions.
+- **Backend (not deployed):** Versioned SQL referral confirmations, no self-referral or duplicate credits, RLS, eligibility/privacy filters, at most 3 featured profiles, 30-day fading visibility, verified public suggestion fields, relevance-first user Search, weekly privacy-filtered connector board and real growth/share counts.
+- **Known limitations / mandatory hold:** Live Supabase has NO new referral objects and no staging branch. Offline push timing, hosted email-confirmation trigger behavior, app-link verification and actual runtime E2E have not been demonstrated. No Coins are minted by referrals; reward values and anti-abuse/payment controls require separate approval. Source-level Search/new-user attribution and reuse in mentions, group/community invitations are not wired, and Android birthday remains in the later profile-onboarding stage. Public release still requires a verified backend gate and exact-SHA owner approval under AGENTS.md; PR #540 is draft, not production.
+- **Scope safety:** Main's newer auth, Paystack, notification and website implementations were preserved. This is one consolidated PR; no direct production migration, account change, or APK publication occurred in the candidate branch.
+
 ## 2026-10-24 — Production Windows Kotlin compiler OOM follow-up (candidate)
 
 - **Root cause from actual main CI:** Windows `desktopApp` is an independent Gradle root (`gradle -p desktopApp`), lacking a local `gradle.properties`; the massive generated `MessagesScreen$lambda$93` failed JVM bytecode transformation with `OOMErrorException`. The previous green Testlab build compiled a different (shorter) messaging screen; it did not validate this production file.
@@ -12,14 +30,22 @@
 - **Timing:** Remove the former 230–560ms forced blank fade, streamline from 6.4s to 3.2s with the same ordered collapse, continuous B and one enlarged wordmark.
 - **Evidence:** Robolectric screenshots of first, transition and final frames at 320, 412 and 600 dp must be checked against the requested baseline and optical balance; Android/Windows CI and cold-start real-device smoothness/navigation still must pass. Testlab first, main/published APK unchanged until verified.
 
-## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
-
 ## 2026-10-24 — Restore Android Message tab and Items header routing on current main
 
 - **Android navigation fix:** The reference phone bottom bar accidentally replaced the fifth **Message** destination with **Menu**. Restore the canonical Home → Reels → Market → Connect → Message order, selected state, unread indication, and working Message tap in the Menu overlay; preserve access to Menu via the top-right header.
 - **Android header consistency:** Search, Inbox and Menu headers were showing Game directly where the approved four-square **Items** destination belongs. Use the Items grid and route it to the Items hub, where Game remains available, without altering other Game shortcuts.
 - **PARITY-EXCEPTION: android-reference-phone-nav-restoration-20261024** — This is a correction to Android's compact five-icon edge-to-edge bottom navigation and phone-specific Items header controls. **Windows equivalent already exists**: `DesktopShell.kt` has a dedicated **Messages** drawer destination (before **Games**) and separate **Menu**, **Games**, and other utility destinations. Windows does not use a five-icon bottom bar or the Android Items sheet; it keeps its desktop-native navigation and existing functionality. No Windows feature is intentionally removed or deferred by this repair.
 - **Release validation:** Scoped to a main-based staging branch to avoid clobbering the heavily divergent Testlab branch; verify Android builds, Windows parity, Search/Inbox/Menu route behavior and screenshot parity before reconciliation and main release.
+
+
+
+## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
+
+## 2026-10-24 — Feed viewport fills space while phone nav is hidden
+
+- **Android:** `MainActivity` passes the Home bottom-rail scroll visibility into `PremiumFeedScreen`. When the overlaid 64dp navigation bar scrolls away, the feed no longer reserves its invisible footprint; preserve Android's system-navigation inset so posts and gesture targets remain accessible. Move the create FAB toward the safe-area bottom while the nav is hidden and restore it smoothly when the bar reappears, respecting reduced motion.
+- **PARITY-EXCEPTION: android-feed-scroll-away-bottom-rail-20261024** — This corrects Android's phone-only scroll-away overlay navigation and gesture insets. **Windows equivalent:** `DesktopShell.kt` already uses desktop navigation with no vertically overlaid 64dp Android bar, so it needs no viewport-space adjustment and retains existing route behavior.
+- **Validation:** Regression contract asserts state is passed to viewport and FAB, Android compile and runtime smoke, screenshot comparison while scrolling on small phones, with both system gesture and button navigation. No backend, chat or release changes.
 
 
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
