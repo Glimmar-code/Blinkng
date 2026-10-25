@@ -88,7 +88,7 @@ function renderComment(entry) {
 function isOurComment(comment) {
   return comment && typeof comment.body === 'string' &&
     comment.body.includes(MARKER) &&
-    (comment.user?.type === 'Bot' || /\[bot\]$/.test(comment.user?.login || ''));
+    (comment.user?.login || '').toLowerCase() === 'github-actions[bot]';
 }
 
 async function syncComment(github, entry) {
