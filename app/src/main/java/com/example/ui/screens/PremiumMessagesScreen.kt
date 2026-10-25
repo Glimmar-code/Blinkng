@@ -1950,7 +1950,11 @@ private fun PremiumChatDetail(
                 selectedMessage = null
             },
             onForward = {
-                forwardingMessage = message
+                if (message.imageViewOnce) {
+                    Toast.makeText(context, "View-once photos cannot be forwarded.", Toast.LENGTH_SHORT).show()
+                } else {
+                    forwardingMessage = message
+                }
                 selectedMessage = null
             },
             onEdit = {
