@@ -2609,10 +2609,13 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private var connectHubRefreshAccountId: String? = null
+
     fun refreshConnectHub() {
-        // Reserve the loading state before launching to coalesce rapid taps/onResume refreshes.
-        if (_uiState.value.isConnectHubLoading) return
+        // Allow a new account to refresh while an old account's obsolete request finishes.
         val accountId = _uiState.value.myProfile.id
+        if (connectHubRefreshAccountId == accountId) return
+        connectHubRefreshAccountId = accountId
         _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
         viewModelScope.launch {
             try {
@@ -2631,6 +2634,7 @@ private suspend fun restoreSupabaseSession() {
                     showToast("Couldn't refresh Connect. Please try again.")
                 }
             } finally {
+                if (connectHubRefreshAccountId == accountId) connectHubRefreshAccountId = null
                 if (_uiState.value.myProfile.id == accountId) {
                     _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
                 }
