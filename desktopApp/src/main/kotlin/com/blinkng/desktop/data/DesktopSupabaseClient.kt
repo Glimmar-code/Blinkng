@@ -1398,6 +1398,29 @@ class DesktopSupabaseClient(
             }
         }
 
+    /** User-scoped pending group invitations. The backend hides other invitees. */
+    suspend fun fetchGroupInvitations(): List<DesktopGroupInvitation> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_group_pending_invitations",
+                JSONObject().put("p_limit", 50))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopGroupInvitation(
+                        conversationId = row.optString("conversation_id"),
+                        title = row.optString("title").ifBlank { "Group chat" },
+                        inviterUsername = row.optString("inviter_username"),
+                        invitedAt = row.optString("invited_at")
+                    )
+                }
+            }.filter { it.conversationId.isNotBlank() }
+        }
+
+    suspend fun respondGroupInvitation(conversationId: String, accept: Boolean): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_respond_invitation",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_accept", accept)))
+
     suspend fun inviteGroupMember(conversationId: String, userId: String): Boolean =
         rpcBoolean(postObject("/rest/v1/rpc/blink_group_invite",
             JSONObject().put("p_conversation_id", conversationId)
