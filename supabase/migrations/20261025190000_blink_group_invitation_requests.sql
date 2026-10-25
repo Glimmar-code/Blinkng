@@ -55,8 +55,11 @@ begin
   -- Limit mass-invite abuse while preserving a normal student's ability to create groups.
   if (select count(*) from public.conversations c
       where c.created_by=owner_id and c.is_group=true
-        and c.created_at>now()-interval '24 hours')>=10
+        and c.created_at>now()-interval '24 hours')>=3
   then raise exception 'GROUP_CREATE_RATE_LIMIT'; end if;
+  if (select count(*) from public.blink_group_invitations i
+      where i.invited_by=owner_id and i.created_at>now()-interval '24 hours') + requested > 30
+  then raise exception 'GROUP_INVITE_DAILY_LIMIT'; end if;
   insert into public.conversations(is_group,created_by,title,last_message_at)
   values(true,owner_id,trim(p_title),now())
   returning id into new_group;
@@ -64,6 +67,13 @@ begin
   values(new_group,owner_id,true);
   insert into public.blink_group_invitations(group_id,invited_user_id,invited_by)
   select new_group,person,owner_id from (select distinct unnest(p_member_ids) as person) candidate;
+  -- Only notify actual invited users. Notifications are persisted even if push is off.
+  insert into public.notifications(user_id,actor_id,type,target_type,target_id,text,sub_text,is_read,metadata)
+  select i.invited_user_id,owner_id,'system','conversation',new_group,
+      'invited you to a group',
+      'Open Messages → Groups & invitations to accept or decline.',
+      false, pg_catalog.jsonb_build_object('kind','blink_group_invite','group_id',new_group)
+  from public.blink_group_invitations i where i.group_id=new_group;
   return new_group;
 end $$;
 revoke all on function public.blink_create_invite_only_group(text,uuid[]) from public,anon,authenticated;
