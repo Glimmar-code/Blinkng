@@ -1307,8 +1307,8 @@ fun MainAppContent(
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
-                        onSendAttachment = { partner, uri, kind, duration, caption, quality ->
-                            viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality)
+                        onSendAttachment = { partner, uri, kind, duration, caption, quality, album ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality, album)
                         },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
@@ -1782,8 +1782,8 @@ fun MainAppContent(
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
-                    onSendAttachment = { uri, kind, duration, caption, quality ->
-                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality)
+                    onSendAttachment = { uri, kind, duration, caption, quality, album ->
+                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality, album)
                     },
                     onCancelAttachment = { message ->
                         viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
