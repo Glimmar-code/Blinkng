@@ -2693,7 +2693,7 @@ private fun MessageContent(
                     // Server-confirmed messages use short-lived private signed URLs.
                     if (shouldLoad || message.imagePreviewUrl != null) {
                         AsyncImage(
-                            model = message.imagePreviewUrl ?: imageUrl,
+                            model = if (shouldLoad) imageUrl else message.imagePreviewUrl,
                             contentDescription = "Shared image. Tap to enlarge.",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
