@@ -271,16 +271,21 @@ object MessageMediaService {
                         target.toByteArray()
                     }
                 }
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(body, 0, body.size, bounds)
-                require(bounds.outWidth in 1..20000 && bounds.outHeight in 1..20000) {
-                    "Picture dimensions are not supported."
+                try {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(body, 0, body.size, bounds)
+                    require(bounds.outWidth in 1..20000 && bounds.outHeight in 1..20000) {
+                        "Picture dimensions are not supported."
+                    }
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+                    BitmapFactory.decodeByteArray(body, 0, body.size,
+                        BitmapFactory.Options().apply { inSampleSize = sample })
+                        ?: throw IllegalStateException("Cannot decode this picture.")
+                } finally {
+                    // View-once bytes must not remain in a reusable heap buffer.
+                    body.fill(0)
                 }
-                var sample = 1
-                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
-                BitmapFactory.decodeByteArray(body, 0, body.size,
-                    BitmapFactory.Options().apply { inSampleSize = sample })
-                    ?: throw IllegalStateException("Cannot decode this picture.")
             }
         }
 
