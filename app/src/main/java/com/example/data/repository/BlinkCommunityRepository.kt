@@ -26,6 +26,11 @@ data class BlinkCommunity(
     val rules: List<String> = emptyList()
 )
 
+data class BlinkCommunityMember(
+    val id: String, val username: String, val displayName: String,
+    val role: String, val status: String
+)
+
 /** No fake membership, count, owner, or cover data; all reads are RLS-backed. */
 class BlinkCommunityRepository {
     private val client = OkHttpClient.Builder()
@@ -124,6 +129,28 @@ class BlinkCommunityRepository {
     suspend fun invite(communityId: String, memberId: String): String =
         rpc("blink_community_invite",
             JSONObject().put("p_community_id", communityId).put("p_user_id", memberId))
+
+    suspend fun memberRoster(communityId: String): List<BlinkCommunityMember> {
+        val raw = request(
+            "rpc/blink_community_members_page",
+            "POST",
+            JSONObject().put("p_community_id", communityId).put("p_limit", 100)
+        )
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { person ->
+                BlinkCommunityMember(
+                    id = person.optString("user_id"),
+                    username = person.optString("username"),
+                    displayName = person.optString("full_name").ifBlank {
+                        person.optString("username")
+                    },
+                    role = person.optString("role"),
+                    status = person.optString("status")
+                )
+            }
+        }
+    }
 
     suspend fun moderate(communityId: String, memberId: String, action: String): Boolean {
         require(action in setOf("approve", "ban", "remove", "promote", "demote"))
