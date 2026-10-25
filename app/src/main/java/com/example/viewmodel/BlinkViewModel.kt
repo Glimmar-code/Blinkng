@@ -3046,6 +3046,51 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Forwards the image bytes, not its expiring signed URL or a misleading
+     * "Image" text. The receiver gets a newly protected, sender-owned media object. */
+    fun forwardPictureMessage(targetUsername: String, source: ChatMessage) {
+        val sourceConvo = source.conversationId
+        if (source.attachedImageUrl.isNullOrBlank() || sourceConvo.isNullOrBlank() ||
+            source.deletedForEveryone || source.id.startsWith("temp_")) {
+            showToast("This picture cannot be forwarded.")
+            return
+        }
+        val cleanTarget = targetUsername.trim().removePrefix("@")
+        if (cleanTarget.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            var resultFile: java.io.File? = null
+            try {
+                val temp = java.io.File.createTempFile("blink-forward-", ".staged", appContext.cacheDir)
+                resultFile = temp
+                val mime = java.io.FileOutputStream(temp).use { destination ->
+                    MessageMediaService.copyPrivateImage(source.id, sourceConvo, destination)
+                        .getOrThrow().second
+                }
+                val extension = BlinkChatAttachmentKind.IMAGE.extension(mime)
+                val renamed = java.io.File(
+                    appContext.cacheDir, "blink-forward-${UUID.randomUUID()}.$extension"
+                )
+                check(temp.renameTo(renamed)) { "Unable to prepare forwarded picture." }
+                resultFile = renamed
+                withContext(Dispatchers.Main) {
+                    sendAttachmentMessage(
+                        cleanTarget, Uri.fromFile(renamed),
+                        BlinkChatAttachmentKind.IMAGE,
+                        caption = source.text.takeUnless { it.equals("Image", true) }.orEmpty(),
+                        imageQuality = BlinkChatImageQuality.ORIGINAL
+                    )
+                }
+                // The file stays private until the background uploader has staged it.
+                resultFile = null
+            } catch (error: Exception) {
+                resultFile?.delete()
+                withContext(Dispatchers.Main) {
+                    showToast(error.message ?: "Could not forward picture.")
+                }
+            }
+        }
+    }
+
     fun sendVideoMessage(partnerUsername: String, uri: Uri) =
         sendAttachmentMessage(partnerUsername, uri, BlinkChatAttachmentKind.VIDEO)
 
