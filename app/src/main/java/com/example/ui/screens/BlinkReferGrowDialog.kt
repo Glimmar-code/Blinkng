@@ -30,6 +30,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
     var growth by remember { mutableStateOf<BlinkReferralGrowthStats?>(null) }
     var coins by remember { mutableStateOf<BlinkReferralCoinStatus?>(null) }
     var sources by remember { mutableStateOf<BlinkReferralSourceStats?>(null) }
+    var linkStats by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralLinkStats?>(null) }
     var leaders by remember { mutableStateOf<List<BlinkReferralLeaderboardEntry>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(username) {
