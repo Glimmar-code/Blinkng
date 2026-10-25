@@ -355,6 +355,8 @@ export async function stagedMarketCommunityContractTests() {
       insert into public.conversation_participants(conversation_id,user_id,is_admin)
       values ('${managed}','${owner}',true),
              ('${managed}','${other}',false);
+      insert into public.messages(id,conversation_id,sender_id,content)
+        values ('ffffffff-ffff-4fff-8fff-ffffffffffff','${managed}','${owner}','Active group alert');
     `);
     await db.exec('set role authenticated');
     await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
@@ -369,6 +371,13 @@ export async function stagedMarketCommunityContractTests() {
     const groupRoster = await db.query(`
       select user_id,is_admin from public.blink_group_members('${managed}')`);
     assert.equal(groupRoster.rows.length, 2, 'Active group user can view unique roster rows');
+    const activeUnread = await db.query(`
+      select message_id from public.get_my_unread_message_notifications(20)`);
+    assert.equal(activeUnread.rows.length,1,'Active group member retains unread access');
+    const activeAck = await db.query(`
+      select public.ack_message_delivered(
+        'ffffffff-ffff-4fff-8fff-ffffffffffff') as ok`);
+    assert.equal(activeAck.rows[0].ok,true,'Active group recipient retains delivery acknowledgement');
     await rejects(() => db.exec(`
       select * from public.blink_group_members('${group}')`),
       'NOT_AN_ACTIVE_GROUP_MEMBER');
