@@ -532,6 +532,7 @@ private fun DesktopSearchCore(
                         ) }
                         items(referralRecommendations, key = { "referral:" + it.id }) { person ->
                             Surface(
+                                modifier = Modifier.trackDesktopReferralImpression(state, person.id, "recommendations"),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
                             ) {
@@ -640,6 +641,7 @@ private fun DesktopSearchCore(
                         item { DesktopSearchSection("People", "${people.size + promotedPeople.size} relevant results") }
                         items(promotedPeople, key = { "ranked-${it.id}" }) { person ->
                             Surface(
+                                modifier = Modifier.trackDesktopReferralImpression(state, person.id, "search"),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
                             ) {
@@ -669,7 +671,11 @@ private fun DesktopSearchCore(
                                 }
                             }
                         }
-                        items(people, key = { "person-${it.id}" }) { profile -> DesktopPremiumPerson(profile) }
+                        items(people, key = { "person-${it.id}" }) { profile ->
+                            Box(Modifier.trackDesktopReferralImpression(state, profile.id, "search")) {
+                                DesktopPremiumPerson(profile)
+                            }
+                        }
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.HASHTAGS) && hashtags.isNotEmpty()) {
                         item { DesktopSearchSection("Hashtags", "${hashtags.size} matches") }
