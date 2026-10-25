@@ -119,6 +119,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    var showGroupInvitations by remember(myUserId) { mutableStateOf(false) }
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
     var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
     // Drafts must never cross conversations or accounts, including after switching chats.
@@ -290,6 +291,7 @@ fun MessagesScreen(state: DesktopAppState) {
             onInboxChange = { inbox = it },
             onRefresh = { scope.launch { loadConversations() } },
             onNewGroup = { showNewGroup = true },
+            onGroupInvitations = { showGroupInvitations = true },
         )
         return@AnimatedContent
     }
@@ -866,6 +868,13 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    if (showGroupInvitations) {
+        DesktopGroupInvitationsDialog(
+            state = state,
+            onDismiss = { showGroupInvitations = false },
+            onMembershipChanged = { scope.launch { loadConversations() } }
+        )
+    }
     if (showNewGroup) {
         DesktopNewGroupDialog(
             state = state,
@@ -1020,6 +1029,7 @@ private fun DesktopInboxPanel(
     onInboxChange: (BlinkMessageInbox) -> Unit,
     onRefresh: () -> Unit,
     onNewGroup: () -> Unit,
+    onGroupInvitations: () -> Unit,
 ) {
     val filtered = remember(conversations, query, inbox) {
         conversations.filter {
@@ -1045,6 +1055,7 @@ private fun DesktopInboxPanel(
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                TextButton(onClick = onGroupInvitations) { Text("Invites") }
                 TextButton(onClick = onNewGroup) { Text("New Group") }
                 IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
                     Icon(Icons.Rounded.Search, contentDescription = "Search messages")
