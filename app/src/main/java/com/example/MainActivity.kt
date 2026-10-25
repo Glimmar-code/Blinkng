@@ -263,6 +263,18 @@ class MainActivity : ComponentActivity() {
         handleNotificationIntent(intent)
         val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)
         if (invitedUsername != null) {
+            // Count actual link openings, not shares, without storing personal identifiers.
+            // This anonymous metric cannot earn Coins or referral visibility.
+            val clickPrefs = getSharedPreferences("blink_referral_visitor", MODE_PRIVATE)
+            val stored = clickPrefs.getString("visitor_uuid", null)
+            val visitor = stored?.takeIf {
+                runCatching { java.util.UUID.fromString(it) }.isSuccess
+            } ?: java.util.UUID.randomUUID().toString().also {
+                clickPrefs.edit().putString("visitor_uuid", it).apply()
+            }
+            lifecycleScope.launch {
+                runCatching { BlinkReferralClient.recordInviteLinkOpen(invitedUsername, visitor) }
+            }
             // Invitation selection remains optional. Never redirect an existing logged-in account.
             if (viewModel.uiState.value.destination != AppDestination.MAIN) {
                 getSharedPreferences("blink_referral_invite", MODE_PRIVATE).edit()
