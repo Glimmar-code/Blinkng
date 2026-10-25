@@ -861,6 +861,79 @@ class DesktopSupabaseClient(
     }
 
     /** Lightweight privacy-filtered, paginated username search for inline mentions. */
+    private fun parseCommunity(row: JSONObject): DesktopCommunity {
+        val rules = row.optJSONArray("rules") ?: JSONArray()
+        return DesktopCommunity(
+            id = row.optString("id"),
+            ownerId = row.optString("owner_id"),
+            name = row.optString("name"),
+            description = row.optString("description"),
+            university = row.optString("university"),
+            category = row.optString("category"),
+            visibility = row.optString("visibility"),
+            coverUrl = row.optNullableString("cover_url"),
+            rules = (0 until rules.length()).mapNotNull { rules.optString(it).takeIf(String::isNotBlank) },
+        )
+    }
+
+    suspend fun fetchCommunities(limit: Int = 50): List<DesktopCommunity> = withContext(Dispatchers.IO) {
+        val rows = getArray(
+            "/rest/v1/blink_communities?" +
+                "select=id,owner_id,name,description,university,category,visibility,cover_url,rules" +
+                "&order=created_at.desc&limit=" + limit.coerceIn(1, 100)
+        )
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let(::parseCommunity)
+        }
+    }
+
+    suspend fun createCommunity(
+        name: String,
+        description: String,
+        university: String,
+        category: String,
+        visibility: com.blinkng.shared.BlinkCommunityPolicy.Visibility,
+        rules: List<String>,
+        coverUrl: String? = null,
+    ): DesktopCommunity = withContext(Dispatchers.IO) {
+        val ownerId = requireSession().userId
+        val body = JSONObject()
+            .put("owner_id", ownerId)
+            .put("name", com.blinkng.shared.BlinkCommunityPolicy.validatedName(name))
+            .put("description", com.blinkng.shared.BlinkCommunityPolicy.validatedDescription(description))
+            .put("university", com.blinkng.shared.BlinkCommunityPolicy.validatedField(university,"University"))
+            .put("category", com.blinkng.shared.BlinkCommunityPolicy.validatedField(category,"Category",80))
+            .put("visibility", visibility.wire)
+            .put("rules", JSONArray(com.blinkng.shared.BlinkCommunityPolicy.validatedRules(rules)))
+        if (!coverUrl.isNullOrBlank()) body.put("cover_url", coverUrl)
+        val rows = postArray("/rest/v1/blink_communities?select=*", body, prefer = "return=representation")
+        parseCommunity(rows.optJSONObject(0)
+            ?: error("Community creation was not confirmed by Supabase."))
+    }
+
+    private suspend fun communityRpc(name: String, args: JSONObject): String = withContext(Dispatchers.IO) {
+        (postObject("/rest/v1/rpc/" + name, args) as? JSONObject)
+            ?.optString("value").orEmpty().removeSurrounding("\"")
+    }
+
+    suspend fun joinCommunity(id: String): String =
+        communityRpc("blink_community_join", JSONObject().put("p_community_id", id))
+
+    suspend fun inviteToCommunity(id: String, userId: String): String =
+        communityRpc("blink_community_invite",
+            JSONObject().put("p_community_id", id).put("p_user_id", userId))
+
+    suspend fun leaveCommunity(id: String): Boolean =
+        communityRpc("blink_community_leave",
+            JSONObject().put("p_community_id", id)).equals("true", ignoreCase = true)
+
+    suspend fun moderateCommunity(id: String, userId: String, action: String): Boolean {
+        require(action in setOf("approve","ban","remove","promote","demote"))
+        return communityRpc("blink_community_moderate",
+            JSONObject().put("p_community_id", id)
+                .put("p_target", userId).put("p_action", action)).equals("true", ignoreCase = true)
+    }
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
