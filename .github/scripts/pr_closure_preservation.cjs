@@ -9,12 +9,11 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
   if (!pr || pr.merged || pr.state !== 'closed') return;
 
   const headSha = pr.head.sha.toLowerCase();
-  const labels = new Set((pr.labels || []).map(label => label.name));
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner, repo, issue_number: pr.number, per_page: 100
   });
-  // Label + explicit CURRENT-HEAD approval by the repository owner are both
-  // required. A PR description or an AI/bot comment is never authorization.
+  // For intentional disposal or supersession, require an explicit CURRENT-HEAD
+  // owner comment. A PR title/description/label is never authorization.
   const ownerStatements = comments
     .filter(comment => comment.user && comment.user.login.toLowerCase() === owner.toLowerCase())
     .map(comment => (comment.body || '').trim());
@@ -22,8 +21,7 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
   let preserved = false;
   let reason = 'No verified disposition for the exact source PR revision.';
 
-  if (labels.has('blink-intentional-abandon') &&
-      ownerSaid('BLINK ABANDON #' + pr.number + ' HEAD ' + headSha)) {
+  if (ownerSaid('BLINK ABANDON #' + pr.number + ' HEAD ' + headSha)) {
     preserved = true;
     reason = 'Repository owner explicitly approved intentional abandonment.';
   }
@@ -72,8 +70,25 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
       : { pass: true, reason: 'All source changed-file blobs match the verified commit.' };
   }
 
-  if (!preserved && labels.has('blink-preserved-on-target') &&
-      ownerSaid('BLINK PRESERVED ON BASE #' + pr.number + ' HEAD ' + headSha)) {
+  // Auto-recognize an already-integrated PR even without owner annotation.
+  // Exact matching content is necessary here, but may be too strict for
+  // semantic supersession; in that case use an owner-attested replacement.
+  if (!preserved) {
+    try {
+      const current = (await github.rest.repos.getBranch({
+        owner, repo, branch: pr.base.ref
+      })).data.commit.sha;
+      const integrated = await verifyExactSnapshot(current);
+      if (integrated.pass) {
+        preserved = true;
+        reason = 'Original changed files already match the target branch.';
+      }
+    } catch (error) {
+      reason = 'Target-branch comparison unavailable: ' + error.message;
+    }
+  }
+
+  if (!preserved && ownerSaid('BLINK PRESERVED ON BASE #' + pr.number + ' HEAD ' + headSha)) {
     const baseBranch = pr.base.ref;
     const baseRef = (await github.rest.repos.getBranch({ owner, repo, branch: baseBranch })).data.commit.sha;
     const result = await verifyExactSnapshot(baseRef);
@@ -81,7 +96,7 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
     reason = 'Compare source with current ' + baseBranch + ': ' + result.reason;
   }
 
-  if (!preserved && labels.has('blink-superseded-verified')) {
+  if (!preserved) {
     const signature = new RegExp('^BLINK SUPERSEDED BY #(\\d+) HEAD ' + headSha + '$', 'i');
     for (const statement of ownerStatements.slice().reverse()) {
       const match = statement.match(signature);
@@ -128,12 +143,11 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
       'Reason: ' + reason + '\n\n' +
       'A newer/similar PR does not prove this work was carried over. Fix failed ' +
       'checks on the existing branch where possible. To close as superseded, ' +
-      'merge the replacement first, apply `blink-superseded-verified`, and have ' +
+      'merge the replacement first, and have ' +
       'the repository owner comment exactly:\n' +
       '`BLINK SUPERSEDED BY #<merged-PR-number> HEAD ' + headSha + '`\n\n' +
       'The guard compares every changed file against the merged commit. ' +
-      'For work already on the target branch, use `blink-preserved-on-target` ' +
-      'plus owner comment `BLINK PRESERVED ON BASE #' + pr.number + ' HEAD ' + headSha + '`. ' +
+      'For work already on the target branch, use owner comment `BLINK PRESERVED ON BASE #' + pr.number + ' HEAD ' + headSha + '`. ' +
       'To intentionally drop unfinished work, use `blink-intentional-abandon` ' +
       'plus owner comment `BLINK ABANDON #' + pr.number + ' HEAD ' + headSha + '`. ' +
       'See `.github/PR_PRESERVATION_POLICY.md`.'
