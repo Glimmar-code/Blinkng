@@ -28,6 +28,36 @@ BEGIN
 END;
 $$;
 
+-- A legacy broad Storage SELECT policy must NOT disclose one-time media.
+INSERT INTO storage.objects(id,bucket_id,name) VALUES
+('00000000-0000-4000-8000-000000000101','message-view-once','private-test.jpg'),
+('00000000-0000-4000-8000-000000000102','message-media','normal-test.jpg');
+
+SET ROLE authenticated;
+DO $
+DECLARE public_count integer;
+DECLARE private_count integer;
+BEGIN
+    SELECT count(*) INTO public_count FROM storage.objects
+    WHERE bucket_id='message-media';
+    SELECT count(*) INTO private_count FROM storage.objects
+    WHERE bucket_id='message-view-once';
+    IF public_count <> 1 OR private_count <> 0 THEN
+        RAISE EXCEPTION 'Private one-time Storage RLS was bypassed';
+    END IF;
+    IF has_schema_privilege('authenticated','blink_chat_internal','USAGE') THEN
+        RAISE EXCEPTION 'Internal view-once schema leaked';
+    END IF;
+    BEGIN
+        INSERT INTO storage.objects(id,bucket_id,name) VALUES
+        ('00000000-0000-4000-8000-000000000103','message-view-once','forbidden.jpg');
+        RAISE EXCEPTION 'Authenticated user uploaded directly to one-time bucket';
+    EXCEPTION WHEN insufficient_privilege THEN
+        NULL;
+    END;
+END $;
+RESET ROLE;
+
 INSERT INTO public.conversation_participants(conversation_id,user_id)
 VALUES
 ('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001'),
