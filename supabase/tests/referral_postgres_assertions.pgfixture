@@ -476,6 +476,8 @@ do $$
 begin
   if exists(select 1 from public.blink_my_group_invitations(10))
   then raise exception 'Third-party invitations leaked'; end if;
+  if exists(select 1 from public.conversation_participants)
+  then raise exception 'Uninvited users can read group memberships'; end if;
 end $$;
 reset role;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
