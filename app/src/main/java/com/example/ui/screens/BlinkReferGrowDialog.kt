@@ -6,6 +6,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralStats
@@ -14,6 +16,8 @@ import com.example.data.supabase.BlinkReferralClient
 @Composable
 internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf<BlinkReferralStats?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(username) {
@@ -55,6 +59,16 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                 },
             ) { Text("Invite friends") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = {
+                    val url = runCatching { BlinkReferralPolicy.inviteUrl(username) }.getOrNull()
+                        ?: return@TextButton
+                    clipboard.setText(AnnotatedString(url))
+                    copied = true
+                }) { Text(if (copied) "Copied!" else "Copy link") }
+                TextButton(onClick = onDismiss) { Text("Close") }
+            }
+        },
     )
 }

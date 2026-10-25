@@ -73,8 +73,14 @@ internal fun DesktopReferrerPicker(
                 ) {
                     Icon(Icons.Rounded.Person, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(BlinkReferralPolicy.selectionLabel(member),
-                        modifier = Modifier.weight(1f), maxLines = 1)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(BlinkReferralPolicy.selectionLabel(member), maxLines = 1)
+                            if (member.isVerified) Icon(Icons.Rounded.Verified,
+                                contentDescription = "Verified account", modifier = Modifier.size(15.dp))
+                        }
+                        member.university?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                    }
                     Text("Select")
                 }
             }

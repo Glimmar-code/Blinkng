@@ -114,7 +114,16 @@ internal fun BlinkReferrerPicker(
                         Column(Modifier.weight(1f)) {
                             Text(person.fullName.ifBlank { person.username },
                                 style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                            Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
+                                if (person.isVerified) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(androidx.compose.material.icons.Icons.Rounded.Verified,
+                                        contentDescription = "Verified account",
+                                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                                }
+                            }
+                            person.university?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
                         }
                         Text("Select", fontSize = 11.sp)
                     }

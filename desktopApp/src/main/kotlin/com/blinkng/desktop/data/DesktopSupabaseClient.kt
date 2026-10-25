@@ -185,6 +185,8 @@ class DesktopSupabaseClient(
                     fullName = x.optString("full_name"),
                     avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
                     university = x.optString("university").takeIf(String::isNotBlank),
+                    isVerified = x.optBoolean("is_verified"),
+                    verificationBadge = x.optString("verification_badge").takeIf(String::isNotBlank),
                 )
             }
         }
@@ -218,6 +220,8 @@ class DesktopSupabaseClient(
                 fullName = person.optString("full_name"),
                 avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
                 university = person.optString("university").takeIf(String::isNotBlank),
+                isVerified = person.optBoolean("is_verified"),
+                verificationBadge = person.optString("verification_badge").takeIf(String::isNotBlank),
             )
         }
     }
