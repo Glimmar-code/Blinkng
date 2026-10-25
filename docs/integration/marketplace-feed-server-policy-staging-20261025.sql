@@ -26,6 +26,13 @@ declare
       and new.is_sponsored is true
       and length(btrim(coalesce(new.ad_label,''))) > 0;
 begin
+  -- Sponsored flags are server-owned. A regular authenticated client MUST NOT
+  -- be able to claim feed-ad status simply by choosing a benign category.
+  if new.is_sponsored is true and current_user not in ('postgres', 'service_role') then
+    raise exception 'BLINK_AD_REQUIRES_SERVER_APPROVAL'
+      using errcode = '42501',
+            hint = 'Paid feed promotion must be created by BLINK payment-verified server logic.';
+  end if;
   if v_category in ('marketplace', 'market', 'for sale', 'selling') and not v_server_ad then
     raise exception 'BLINK_MARKET_LISTING_ONLY'
       using errcode = '23514',
@@ -49,6 +56,10 @@ commit;
 -- 2. authenticated INSERT category='Marketplace' is rejected, even when
 --    is_sponsored=true and ad_label is set by a malicious client.
 -- 3. authenticated UPDATE of an ordinary post to category='Market' is rejected.
+-- 3a. authenticated INSERT with category='Campus Life', is_sponsored=true
+--     must ALSO be rejected; never trust a client-supplied sponsored flag.
+-- 3b. authenticated UPDATE of is_sponsored=true or ad_label on an existing
+--     post must be rejected unless performed by the verified server role.
 -- 4. authenticated ordinary social posts (including discussions of an item)
 --    remain accepted; never classify text with unreliable banned keywords.
 -- 5. Trusted approved service_role sponsored placement with clear label is
