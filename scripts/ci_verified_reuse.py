@@ -2,9 +2,10 @@
 """Fail-closed BLINK CI work reuse.
 
 A required GitHub check always runs for the NEW SHA. Expensive suites may be
-skipped only if the same scope has already passed on an immediate predecessor
-PR head (or the tested PR parent of a main merge) AND its build inputs are
-byte-for-byte identical to the current checked-out integration tree.
+skipped only if that scope already passed on an ancestor of the current PR
+(or a PR parent of a main merge) AND build inputs are byte-for-byte identical
+to the current checked-out integration tree. History search is bounded and
+stops on any intervening change to relevant inputs or a newer failed check.
 
 Source evidence is a successful GitHub Actions job whose individual costly
 steps actually completed successfully. A successful check that had itself
@@ -207,38 +208,45 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
     if not token or os.getenv("GITHUB_REPOSITORY") != REPO:
         return False, "Repository or read-only API credentials unavailable"
     try:
-        # event_source deliberately uses local Git ancestry; never accept
-        # user-supplied SHA/branch as a previously-tested revision.
+        # Start at an exact local Git predecessor, then walk back over at
+        # most 24 first-parent commits to locate the LAST actual full suite.
+        # A prior run that itself used evidence is not used as fresh evidence.
         tested_sha, pr_number = event_source(event, payload, head, git)
         if not SHA_RE.fullmatch(tested_sha) or tested_sha == head:
             return False, "Invalid predecessor"
-        changed = git("diff", "--name-only", "--no-renames", tested_sha, head).splitlines()
-        affected = [p for p in changed if relevant(p, scope)]
-        if affected:
-            return False, "Changed build/test inputs: " + ", ".join(affected[:5])
-        checks = fetch("/commits/" + tested_sha + "/check-runs?per_page=100", token)
-        results = checks.get("check_runs", [])
-        if int(checks.get("total_count", len(results))) > len(results):
-            return False, "Incomplete prior check-run history; run full suite"
-        candidates = [
-            c for c in results
-            if c.get("name") == JOB_NAME[scope]
-            and c.get("head_sha") == tested_sha
-            and c.get("app", {}).get("slug") == "github-actions"
-            and (pr_number is None and bool(c.get("pull_requests"))
-                 or pr_number is not None and any(
-                    p.get("number") == pr_number for p in c.get("pull_requests", [])))
-        ]
-        if not candidates:
-            return False, "No prior linked required check on predecessor"
-        newest = max(candidates, key=lambda c: int(c.get("id", 0)))
-        if newest.get("status") != "completed" or newest.get("conclusion") != "success":
-            return False, "Previous required check is pending/failed"
-        prior_job = fetch("/actions/jobs/" + str(newest["id"]), token)
-        if not validate_evidence(checks.get("check_runs", []), prior_job,
-                                 tested_sha, scope, pr_number):
-            return False, "Earlier run did not actually execute and pass every expensive step"
-        return True, "Verified prior full " + scope + " suite on " + tested_sha[:12] + "; identical input files"
+        history = git("rev-list", "--first-parent", "--max-count=24", tested_sha).splitlines()
+        if not history or history[0] != tested_sha:
+            return False, "Cannot establish safe ancestor chain"
+        for candidate in history:
+            if not SHA_RE.fullmatch(candidate):
+                return False, "Unexpected ancestor SHA"
+            changed = git("diff", "--name-only", "--no-renames", candidate, head).splitlines()
+            affected = [p for p in changed if relevant(p, scope)]
+            if affected:
+                return False, "Changed build/test inputs: " + ", ".join(affected[:5])
+            checks = fetch("/commits/" + candidate + "/check-runs?per_page=100", token)
+            results = checks.get("check_runs", [])
+            if int(checks.get("total_count", len(results))) > len(results):
+                return False, "Incomplete prior check-run history; run full suite"
+            linked = [
+                c for c in results
+                if c.get("name") == JOB_NAME[scope]
+                and c.get("head_sha") == candidate
+                and c.get("app", {}).get("slug") == "github-actions"
+                and (pr_number is None and bool(c.get("pull_requests"))
+                     or pr_number is not None and any(
+                         p.get("number") == pr_number for p in c.get("pull_requests", [])))
+            ]
+            if not linked:
+                continue
+            newest = max(linked, key=lambda c: int(c.get("id", 0)))
+            if newest.get("status") != "completed" or newest.get("conclusion") != "success":
+                return False, "Newer required check pending/failed on " + candidate[:12]
+            prior_job = fetch("/actions/jobs/" + str(newest["id"]), token)
+            if validate_evidence(results, prior_job, candidate, scope, pr_number):
+                return True, ("Verified prior full " + scope + " suite on " +
+                              candidate[:12] + "; identical inputs across ancestor chain")
+        return False, "No complete previously successful " + scope + " suite in bounded ancestor history"
     except (ValueError, KeyError, IndexError, OSError, subprocess.SubprocessError,
             HTTPError, URLError, TimeoutError, TypeError) as exc:
         return False, "Cannot verify previous evidence (" + type(exc).__name__ + "); run full suite"
