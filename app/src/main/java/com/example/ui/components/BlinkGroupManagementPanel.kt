@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +43,7 @@ fun BlinkGroupManagementPanel(
     var openGroup by remember(ownerId) { mutableStateOf<BlinkGroupSummary?>(null) }
     var members by remember(openGroup?.id) { mutableStateOf<List<BlinkGroupMember>>(emptyList()) }
     var showInvite by remember(openGroup?.id) { mutableStateOf(false) }
+    var transferTarget by remember(openGroup?.id) { mutableStateOf<BlinkGroupMember?>(null) }
     var busy by remember(ownerId) { mutableStateOf(false) }
     var error by remember(ownerId) { mutableStateOf<String?>(null) }
     var info by remember(ownerId) { mutableStateOf<String?>(null) }
@@ -113,6 +115,11 @@ fun BlinkGroupManagementPanel(
                                     Text("@" + member.username +
                                         if (member.isAdmin) " · Admin" else "",
                                         style = MaterialTheme.typography.bodySmall)
+                                    if (group.ownerId == ownerId && member.id != ownerId) {
+                                        TextButton(enabled = !busy, onClick = {
+                                            transferTarget = member
+                                        }) { Text("Transfer ownership") }
+                                    }
                                 }
                                 if (group.ownerId == ownerId && member.id != ownerId) {
                                     TextButton(enabled = !busy, onClick = {
@@ -171,6 +178,41 @@ fun BlinkGroupManagementPanel(
                 }
             }
         }
+    }
+    val ownerTransferGroup = openGroup
+    val successor = transferTarget
+    if (successor != null && ownerTransferGroup != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) transferTarget = null },
+            title = { Text("Transfer group ownership?") },
+            text = { Text("Make @" + successor.username +
+                " the group owner? You will remain an admin, but only the new owner can transfer ownership again.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true
+                        try {
+                            check(repo.transferGroupOwnership(ownerTransferGroup.id, successor.id)) {
+                                "Ownership transfer was not confirmed by the server."
+                            }
+                            groups = repo.fetchMyGroups()
+                            openGroup = groups.firstOrNull { it.id == ownerTransferGroup.id }
+                            members = repo.fetchGroupMembers(ownerTransferGroup.id)
+                            info = "Group ownership transferred to @" + successor.username
+                            error = null
+                            transferTarget = null
+                        } catch (cause: Exception) {
+                            error = cause.message ?: "Ownership transfer failed."
+                        } finally { busy = false }
+                    }
+                }) { Text("Transfer") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { transferTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
     val inviteGroup = openGroup
     if (showInvite && inviteGroup != null) {
