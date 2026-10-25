@@ -220,3 +220,21 @@ test('latest check result wins and optional failures also block promotion', () =
   assert.equal(policy.checkGate([check('validate','completed','failure',1),check('validate','completed','success',2)],required,300,main,head), null);
   assert.match(policy.checkGate([check('validate'),check('web-parity','completed','failure',2)],required,300,main,head), /web-parity/);
 });
+
+test('isolated Testlab batches may use exact-head GitHub Actions dispatch checks', () => {
+  const checks = [
+    {...check('validate'), head_sha: head, pull_requests: []},
+    {...check('guard'), head_sha: head, pull_requests: []},
+  ];
+  assert.match(policy.checkGate(checks, ['validate', 'guard'], 300, main, head), /validate/);
+  assert.equal(policy.checkGate(checks, ['validate', 'guard'], 300, main, head,
+    {allowDispatchForBatch: true}), null);
+  assert.match(policy.checkGate([
+    {...checks[0], head_sha: 'c'.repeat(40)}, checks[1]
+  ], ['validate', 'guard'], 300, main, head,
+    {allowDispatchForBatch: true}), /validate/);
+  assert.match(policy.checkGate([
+    {...checks[0], conclusion: 'failure'}, checks[1]
+  ], ['validate', 'guard'], 300, main, head,
+    {allowDispatchForBatch: true}), /validate/);
+});
