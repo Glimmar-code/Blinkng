@@ -126,6 +126,8 @@ class TestEndToEndDecision(unittest.TestCase):
         def git(*args):
             if args == ("rev-parse", PR_HEAD + "^1"):
                 return OLD
+            if args == ("rev-list", "--first-parent", "--max-count=24", OLD):
+                return OLD
             if args[:4] == ("diff", "--name-only", "--no-renames", OLD):
                 self.assertEqual(args[-1], CHECKOUT)
                 return "\n".join(paths)
@@ -139,7 +141,7 @@ class TestEndToEndDecision(unittest.TestCase):
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
                                   "read-token", fetch=fetch, git=git)
         self.assertTrue(ok, reason)
-        self.assertIn("identical input files", reason)
+        self.assertIn("identical inputs", reason)
         self.assertEqual(len(paths_seen), 2)
 
     @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
@@ -208,8 +210,10 @@ class TestEndToEndDecision(unittest.TestCase):
     def test_main_merge_with_verified_pr_parent_can_reuse(self):
         fetch, _, _, _ = self.setup_case()
         def git(*args):
-            if args[0] == "rev-list":
+            if args[:2] == ("rev-list", "--parents"):
                 return CHECKOUT + " " + MAIN + " " + OLD
+            if args[:2] == ("rev-list", "--first-parent"):
+                return OLD
             if args[0] == "diff":
                 return "docs/new-note.md"
             raise AssertionError(args)
@@ -217,6 +221,78 @@ class TestEndToEndDecision(unittest.TestCase):
             "android", "push", {"ref": "refs/heads/main"}, CHECKOUT,
             "read-token", fetch=fetch, git=git)
         self.assertTrue(ok, reason)
+
+
+    @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
+    def test_many_unrelated_main_merges_reuse_original_full_pass(self):
+        fetch, base_git, responses, _ = self.setup_case()
+        older = "9" * 40
+        recent = checks(id=22)
+        responses["/commits/" + OLD + "/check-runs?per_page=100"] = {
+            "total_count": 1, "check_runs": recent,
+        }
+        # A completed check which skipped costly steps is NOT full evidence.
+        responses["/actions/jobs/22"] = {
+            **job(id=22),
+            "steps": [{"name": "Check reuse status", "status": "completed",
+                       "conclusion": "success"}]
+        }
+        responses["/commits/" + older + "/check-runs?per_page=100"] = {
+            "total_count": 1,
+            "check_runs": checks(id=31, sha=older),
+        }
+        responses["/actions/jobs/31"] = job(id=31, sha=older)
+
+        def git(*args):
+            if args == ("rev-list", "--first-parent", "--max-count=24", OLD):
+                return OLD + "\n" + older
+            if args[:3] == ("diff", "--name-only", "--no-renames"):
+                return "docs/unrelated.md"
+            return base_git(*args)
+
+        ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
+                                  "read-token", fetch=fetch, git=git)
+        self.assertTrue(ok, reason)
+        self.assertIn(older[:12], reason)
+
+    @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
+    def test_newer_failed_check_blocks_older_full_pass(self):
+        fetch, base_git, responses, seen = self.setup_case()
+        older = "9" * 40
+        responses["/commits/" + OLD + "/check-runs?per_page=100"] = {
+            "total_count": 1, "check_runs": checks(status="failure")
+        }
+        responses["/commits/" + older + "/check-runs?per_page=100"] = {
+            "total_count": 1, "check_runs": checks(sha=older),
+        }
+
+        def git(*args):
+            if args == ("rev-list", "--first-parent", "--max-count=24", OLD):
+                return OLD + "\n" + older
+            return base_git(*args)
+
+        ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
+                                  "read-token", fetch=fetch, git=git)
+        self.assertFalse(ok, reason)
+        self.assertNotIn("/commits/" + older + "/check-runs?per_page=100", seen)
+
+    @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
+    def test_relevant_changes_between_original_pass_and_now_block_reuse(self):
+        fetch, base_git, responses, _ = self.setup_case()
+        older = "9" * 40
+        responses["/commits/" + OLD + "/check-runs?per_page=100"] = {
+            "total_count": 0, "check_runs": []
+        }
+        def git(*args):
+            if args == ("rev-list", "--first-parent", "--max-count=24", OLD):
+                return OLD + "\n" + older
+            if args[:4] == ("diff", "--name-only", "--no-renames", older):
+                return "shared/src/commonMain/kotlin/Contract.kt"
+            return base_git(*args)
+        ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
+                                  "read-token", fetch=fetch, git=git)
+        self.assertFalse(ok, reason)
+        self.assertIn("Changed build/test inputs", reason)
 
     @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
     def test_squash_or_untrusted_main_push_runs_full_tests(self):
