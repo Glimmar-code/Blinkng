@@ -47,19 +47,19 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
     var busy by remember(ownerId) { mutableStateOf(false) }
     var error by remember(ownerId) { mutableStateOf<String?>(null) }
     var message by remember(ownerId) { mutableStateOf<String?>(null) }
-    var showCreate by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var university by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("Academic") }
-    var rules by remember { mutableStateOf("") }
-    var coverUrl by remember { mutableStateOf("") }
-    var isPrivate by remember { mutableStateOf(false) }
-    var inviteTo by remember { mutableStateOf<DesktopCommunity?>(null) }
-    var manageCommunityId by remember { mutableStateOf<String?>(null) }
-    var memberRoster by remember { mutableStateOf<List<DesktopProfileMembership>>(emptyList()) }
-    var inviteQuery by remember { mutableStateOf("") }
-    var inviteResults by remember(inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var showCreate by remember(ownerId) { mutableStateOf(false) }
+    var name by remember(ownerId) { mutableStateOf("") }
+    var description by remember(ownerId) { mutableStateOf("") }
+    var university by remember(ownerId) { mutableStateOf("") }
+    var category by remember(ownerId) { mutableStateOf("Academic") }
+    var rules by remember(ownerId) { mutableStateOf("") }
+    var coverUrl by remember(ownerId) { mutableStateOf("") }
+    var isPrivate by remember(ownerId) { mutableStateOf(false) }
+    var inviteTo by remember(ownerId) { mutableStateOf<DesktopCommunity?>(null) }
+    var manageCommunityId by remember(ownerId) { mutableStateOf<String?>(null) }
+    var memberRoster by remember(ownerId) { mutableStateOf<List<DesktopProfileMembership>>(emptyList()) }
+    var inviteQuery by remember(ownerId) { mutableStateOf("") }
+    var inviteResults by remember(ownerId, inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
 
     suspend fun reload() {
         busy = true
