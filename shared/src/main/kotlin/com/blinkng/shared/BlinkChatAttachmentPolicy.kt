@@ -64,6 +64,15 @@ enum class BlinkChatAttachmentKind(
     }
 }
 
+/** Pure, reusable percentage mapping for Android and Windows media upload indicators. */
+object BlinkChatUploadProgress {
+    fun percent(bytesSent: Long, totalBytes: Long): Int {
+        if (totalBytes <= 0L) return 0
+        return ((bytesSent.coerceIn(0L, totalBytes).toDouble() /
+            totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+    }
+}
+
 fun safeChatFilename(raw: String): String {
     val basename = raw.substringAfterLast('/').substringAfterLast('\\')
     return basename.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
