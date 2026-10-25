@@ -103,7 +103,38 @@ fun MessagesScreen(state: DesktopAppState) {
     var pictureProgress by remember { mutableStateOf(0) }
     var expandedPicture by remember { mutableStateOf<String?>(null) }
     var showMediaGallery by remember { mutableStateOf(false) }
+    var fullGallery by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
+    var fullGalleryOffset by remember { mutableStateOf(0) }
+    var fullGalleryMore by remember { mutableStateOf(true) }
+    var fullGalleryBusy by remember { mutableStateOf(false) }
+    var expandedGalleryIndex by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
+    fun loadMoreChatPictures() {
+        val id = selected?.id ?: return
+        if (fullGalleryBusy || !fullGalleryMore) return
+        fullGalleryBusy = true
+        scope.launch {
+            runCatching { state.client.fetchChatImagePage(id, fullGalleryOffset) }
+                .onSuccess { batch ->
+                    if (selected?.id == id) {
+                        fullGallery = (fullGallery + batch).distinctBy { it.id }
+                        fullGalleryOffset += batch.size
+                        fullGalleryMore = batch.size >= 36
+                    }
+                }
+                .onFailure { error = it.message ?: "Cannot load chat photos." }
+            fullGalleryBusy = false
+        }
+    }
+    LaunchedEffect(showMediaGallery, selected?.id) {
+        if (showMediaGallery) {
+            fullGallery = emptyList()
+            fullGalleryOffset = 0
+            fullGalleryMore = true
+            loadMoreChatPictures()
+        }
+    }
+
     val myUserId = state.session?.userId.orEmpty()
 
     suspend fun loadConversations() {
@@ -695,18 +726,20 @@ fun MessagesScreen(state: DesktopAppState) {
                 onDismissRequest = { showMediaGallery = false },
                 title = { Text("Shared pictures") },
                 text = {
-                    val photos = messages.filter {
-                        it.messageType == "image" && !it.mediaUrl.isNullOrBlank()
+                    if (fullGallery.isEmpty() && !fullGalleryBusy) {
+                        Text("No pictures found or media could not be loaded.")
                     }
-                    if (photos.isEmpty()) Text("No pictures in the loaded chat history.")
-                    else LazyColumn(modifier = Modifier.heightIn(max = 390.dp)) {
-                        items(photos) { photo ->
+                    LazyColumn(modifier = Modifier.heightIn(max = 390.dp)) {
+                        items(fullGallery) { photo ->
                             AsyncImage(
                                 model = photo.mediaUrl,
                                 contentDescription = "Open shared photo",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.width(230.dp).height(120.dp)
                                     .clickable {
+                                        expandedGalleryIndex = fullGallery.indexOfFirst {
+                                            it.id == photo.id
+                                        }.coerceAtLeast(0)
                                         scope.launch {
                                             expandedPicture = state.client.freshChatImageUrl(
                                                 photo.id, photo.conversationId
@@ -714,6 +747,15 @@ fun MessagesScreen(state: DesktopAppState) {
                                         }
                                     }
                             )
+                        }
+                        if (fullGalleryMore || fullGalleryBusy) {
+                            item {
+                                TextButton(enabled = !fullGalleryBusy, onClick = {
+                                    loadMoreChatPictures()
+                                }) {
+                                    Text(if (fullGalleryBusy) "Loading…" else "Older pictures")
+                                }
+                            }
                         }
                     }
                 },
@@ -733,6 +775,32 @@ fun MessagesScreen(state: DesktopAppState) {
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
                     )
+                    expandedGalleryIndex?.let { index ->
+                        Row(
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            TextButton(enabled = index > 0, onClick = {
+                                val previous = fullGallery[index - 1]
+                                expandedGalleryIndex = index - 1
+                                scope.launch {
+                                    expandedPicture = state.client.freshChatImageUrl(
+                                        previous.id, previous.conversationId
+                                    ) ?: previous.mediaUrl
+                                }
+                            }) { Text("← Previous") }
+                            Text("${index + 1} / ${fullGallery.size}")
+                            TextButton(enabled = index < fullGallery.lastIndex, onClick = {
+                                val next = fullGallery[index + 1]
+                                expandedGalleryIndex = index + 1
+                                scope.launch {
+                                    expandedPicture = state.client.freshChatImageUrl(
+                                        next.id, next.conversationId
+                                    ) ?: next.mediaUrl
+                                }
+                            }) { Text("Next →") }
+                        }
+                    }
                     TextButton(
                         onClick = { expandedPicture = null },
                         modifier = Modifier.align(Alignment.TopEnd)
