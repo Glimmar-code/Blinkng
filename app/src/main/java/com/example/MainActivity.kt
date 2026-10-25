@@ -1043,6 +1043,13 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // Switching back to Home without leaving Android's Activity still counts as
+    // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
+        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+            viewModel.refreshIfStale()
+        }
+    }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
@@ -1583,6 +1590,7 @@ fun MainAppContent(
                         followingErrorMessage = uiState.followingFeedErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
+                        onFollowingVisible = { viewModel.refreshFollowingIfStale() },
                         onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
                         onRetry = { viewModel.refreshFeedLane() },
                         onViewedPost = { viewModel.recordPostView(it) },
