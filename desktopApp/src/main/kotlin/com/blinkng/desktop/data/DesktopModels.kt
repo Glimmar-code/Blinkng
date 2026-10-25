@@ -103,6 +103,7 @@ data class DesktopMessage(
     val imageAlbumPosition: Int = 0,
     val imageAlbumSize: Int = 1,
     val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false,
 )
 
 data class DesktopNotification(
