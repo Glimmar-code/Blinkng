@@ -7,7 +7,7 @@ import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.safeChatFilename
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.asRequestBody
+import okio.BufferedSink
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -20,7 +20,26 @@ internal class BoundedMessageAttachment(
     val size: Long,
     val extension: String,
 ) : AutoCloseable {
-    fun requestBody(): RequestBody = file.asRequestBody(mime.toMediaType())
+    /** Streams bounded chunks while reporting actual bytes written to OkHttp. */
+    fun requestBody(onProgress: (Long, Long) -> Unit = { _, _ -> }): RequestBody =
+        object : RequestBody() {
+            override fun contentType() = mime.toMediaType()
+            override fun contentLength(): Long = size
+            override fun writeTo(sink: BufferedSink) {
+                FileInputStream(file).use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    var sent = 0L
+                    onProgress(0L, size)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        sink.write(buffer, 0, n)
+                        sent += n
+                        onProgress(sent, size)
+                    }
+                }
+            }
+        }
     override fun close() { file.delete() }
 
     companion object {
