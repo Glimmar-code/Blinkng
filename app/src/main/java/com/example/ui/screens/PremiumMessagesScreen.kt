@@ -177,6 +177,8 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
+import com.example.data.models.UserProfile
+import com.example.ui.components.BlinkUserPickerSheet
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -249,6 +251,7 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
+    onSearchUsers: suspend (String, Int, String?, String?) -> List<UserProfile> = { _, _, _, _ -> emptyList() },
     onMyProfileClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
@@ -267,6 +270,7 @@ fun PremiumMessagesScreen(
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
     var showPrivacySheet by rememberSaveable { mutableStateOf(false) }
+    var showUserPicker by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
     val liveActiveConversation = activePartner?.let { partner ->
@@ -335,7 +339,7 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
-                            onComposeMessage = onComposeMessage,
+                            onComposeMessage = { showUserPicker = true },
                             onMyProfileClick = onMyProfileClick,
                             onGameClick = onGameClick,
                             onNotificationsClick = onOpenActivity,
@@ -422,6 +426,17 @@ fun PremiumMessagesScreen(
                 onDismiss = { showPrivacySheet = false }
             )
         }
+    }
+    if (showUserPicker) {
+        BlinkUserPickerSheet(
+            title = "New Message",
+            onDismiss = { showUserPicker = false },
+            searchProfiles = onSearchUsers,
+            onSelectUser = { user ->
+                showUserPicker = false
+                onOpenConversation(user.username)
+            }
+        )
     }
 }
 
