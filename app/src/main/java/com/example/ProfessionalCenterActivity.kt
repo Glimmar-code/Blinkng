@@ -347,7 +347,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                                     ids
                                 ).getOrThrow()
                             }.onSuccess {
-                                Toast.makeText(context, "Group created. Refresh Messages to see it.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Group created. Members receive invitations to accept before joining.", Toast.LENGTH_SHORT).show()
                             }.onFailure {
                                 Toast.makeText(context, it.message ?: "Couldn't create group", Toast.LENGTH_LONG).show()
                             }
