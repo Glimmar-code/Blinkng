@@ -128,3 +128,9 @@ User command (repeat for each BLINK repair/release request):
 **Email-specific hold:** PR #299 was merged to Testlab, but actual Brevo delivery, hosted Supabase migration/Edge Functions, email preference/unsubscribe flows and end-to-end tests have not passed. Social email sending stays disabled by default. Do not promote the email feature to production main solely on green static checks. See `docs/essential-email-brevo-testlab.md`.
 
 Full reusable command: `.github/BLINK_AUTO_FIX_RELEASE_COMMAND.md`.
+
+## Mandatory PR preservation: never lose unmerged work
+
+A failed PR, or one superseded by another similar PR, must stay open by default. Repair failing checks by adding commits to the same PR/branch wherever practical; rerun relevant tests on the latest SHA. When consolidating, compare every original PR's full diff and functionality against the replacement and target branch. **Do not close an unmerged PR solely because a newer PR has the same goal, title or changed files.** Merge and verify the replacement first, or explicitly document that the owner chose to abandon the unique changes.
+
+This is protected by the trusted GitHub Actions post-close guard `.github/workflows/pr-preserve-unmerged.yml`: unmerged PRs closed without exact-SHA owner evidence and file-blob preservation verification are automatically reopened (subject to GitHub Actions permissions). See `.github/PR_PRESERVATION_POLICY.md` for the three authorized closure cases and required audit. Never falsely describe an unmerged closed PR as merged. Do not delete its working branch before reconciliation.
