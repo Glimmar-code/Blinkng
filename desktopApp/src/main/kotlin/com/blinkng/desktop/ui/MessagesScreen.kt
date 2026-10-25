@@ -130,12 +130,12 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember { mutableStateOf<SkiaImage?>(null) }
-    val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var photoBusy by remember { mutableStateOf(false) }
     var outboxPending by remember { mutableStateOf(0) }
     var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
     var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
     // Drafts must never cross conversations or accounts, including after switching chats.
