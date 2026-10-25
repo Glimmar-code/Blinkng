@@ -1373,6 +1373,12 @@ class DesktopSupabaseClient(
      * do not encourage blind retrying of an already committed message.
      */
     /** Backend-authorized group creation; shared member validation with Android. */
+    suspend fun groupOwner(conversationId: String): String? = withContext(Dispatchers.IO) {
+        val rows = getArray("/rest/v1/conversations?select=created_by" +
+            "&id=eq." + conversationId + "&is_group=eq.true&limit=1")
+        rows.optJSONObject(0)?.optString("created_by")?.takeIf(String::isNotBlank)
+    }
+
     suspend fun groupMembers(conversationId: String): List<DesktopGroupMember> =
         withContext(Dispatchers.IO) {
             val response = postObject("/rest/v1/rpc/blink_group_members",
