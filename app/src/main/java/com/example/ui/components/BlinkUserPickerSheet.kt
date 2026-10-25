@@ -65,9 +65,8 @@ fun BlinkUserPickerSheet(
     }
 
     val ranked = remember(users, query) {
-        BlinkUserSuggestionPolicy.page(
+        BlinkUserSuggestionPolicy.rank(
             users, query,
-            pageSize = 100,
             username = { it.username },
             displayName = { it.fullName }
         )
