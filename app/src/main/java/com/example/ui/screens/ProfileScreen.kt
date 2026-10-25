@@ -72,18 +72,25 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.SupabaseService
+import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.ProfileConnectionsSheet
 import com.example.ui.components.ProfileContentSearchBar
+import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.ProfileNotificationPreferenceDialog
 import com.example.ui.components.ProfileOwnerInsightsCard
 import com.example.ui.components.ProfileReportDialog
 import com.example.ui.components.PostCard
 import com.example.ui.components.shimmerBackground
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
+import com.example.ui.components.BlinkPremiumAvatarFrame
+import com.example.ui.components.BlinkPremiumProfileSurface
+import com.example.ui.components.rememberBlinkPublicPremiumIdentity
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
+import com.example.util.TimeFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -152,9 +159,10 @@ fun ProfileScreen(
     currentUserId: String = "",
     selectedMainTabRoute: String = "home",
     onNavigateMainTab: (String) -> Unit = {},
-    onTopAction: (String) -> Unit = {}
+    onTopAction: (String) -> Unit = {},
+    initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id) { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 6)) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
@@ -175,6 +183,7 @@ fun ProfileScreen(
     }
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
+    var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
@@ -208,6 +217,13 @@ fun ProfileScreen(
         }
     }
 
+    // Entrance choreography — content reveals itself once, on first composition.
+    var contentVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(40)
+        contentVisible = true
+    }
+
     val tabs = remember(isMe) {
         if (isMe) {
             listOf("Posts", "Reels", "Market", "Skills", "About", "You")
@@ -226,6 +242,10 @@ fun ProfileScreen(
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val borderColor = if (isDark) DarkBorder else LightBorder
 
+    if (showReferGrow && isMe) {
+        BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
+    }
+
     if (showProgressHub && isMe) {
         ProgressHubSheet(
             profile = profile,
@@ -237,6 +257,12 @@ fun ProfileScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val scrollState = rememberLazyListState()
+
+    val presenceVisible = canViewProfileField(
+        scope = profile.presenceVisibility,
+        isOwner = isMe,
+        isFollowing = isFollowing
+    ) && (profile.onlineNow || profile.lastSeenAt.isNotBlank())
 
     fun openConnectionList(kind: ProfileConnectionKind) {
         if (profile.id.isBlank()) return
@@ -278,6 +304,24 @@ fun ProfileScreen(
     }
 
     val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
+    val premiumIdentity by rememberBlinkPublicPremiumIdentity(
+        username = profile.username,
+        knownVip = profile.isBlinkVip,
+    )
+
+    val headerCollapsed by remember {
+        derivedStateOf { scrollState.firstVisibleItemIndex > 0 }
+    }
+
+    // Parallax offset derived straight from scroll position of the very first item.
+    val parallaxOffset by remember {
+        derivedStateOf {
+            if (scrollState.firstVisibleItemIndex == 0) {
+                (scrollState.firstVisibleItemScrollOffset * 0.5f)
+            } else 400f
+        }
+    }
+
     // Update the FAB only when scroll direction meaningfully changes. Avoid mutating
     // Compose state from inside derivedStateOf, which can invalidate every scroll frame.
     var fabVisible by remember { mutableStateOf(true) }
@@ -300,6 +344,16 @@ fun ProfileScreen(
             previousOffset = offset
         }
     }
+
+    val animatedFollowScale by animateFloatAsState(
+        targetValue = if (isFollowing) 0.98f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "followScale"
+    )
+
+    // Keep the premium avatar glow static so the whole profile header does not
+    // invalidate on every animation frame while the user scrolls.
+    val glowAlpha = 0.24f
 
     val refreshRotation by animateFloatAsState(
         targetValue = if (isProfileRefreshing) 360f else 0f,
@@ -457,7 +511,20 @@ fun ProfileScreen(
                     )
                 }
 
+
                 if (isMe) {
+                    // The old expanded profile carried this entry point. Keep it
+                    // available without bringing back the duplicate cover/identity.
+                    item(key = "refer_grow_entry") {
+                        OutlinedButton(
+                            onClick = { showReferGrow = true },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Refer & Grow · My Referrals")
+                        }
+                    }
                     item(key = "progress_hub_entry") {
                         ProgressHubEntryCard(
                             profile = profile,
