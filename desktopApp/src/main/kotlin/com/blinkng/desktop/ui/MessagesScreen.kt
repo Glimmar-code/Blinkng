@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,6 +23,8 @@ import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 import java.io.File
 import java.io.FileOutputStream
+import org.jetbrains.skia.Image as SkiaImage
+import org.jetbrains.skiko.toComposeImageBitmap
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +62,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,6 +112,9 @@ fun MessagesScreen(state: DesktopAppState) {
     var pictureCaptions by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var pictureCaptionIndex by remember { mutableStateOf(0) }
     var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
+    var selectedPictureViewOnce by remember { mutableStateOf(false) }
+    var privatePicture by remember { mutableStateOf<SkiaImage?>(null) }
+    var consumedPrivatePictures by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pictureUploading by remember { mutableStateOf(false) }
     var pictureProgress by remember { mutableStateOf(0) }
     var queuedPhotoCount by remember { mutableStateOf(0) }
@@ -554,6 +561,25 @@ fun MessagesScreen(state: DesktopAppState) {
                                         }
                                         Text("${albumPhotos.size} pictures", fontSize = 11.sp)
                                     }
+                                } else if (message.imageViewOnce) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(if (mine) "🔒 View-once picture sent" else
+                                            if (message.id in consumedPrivatePictures)
+                                                "View-once picture opened" else "🔒 View-once picture")
+                                        if (!mine && message.id !in consumedPrivatePictures) {
+                                            TextButton(onClick = {
+                                                consumedPrivatePictures = consumedPrivatePictures + message.id
+                                                scope.launch {
+                                                    runCatching {
+                                                        val bytes = state.client.openViewOnceImage(message.id)
+                                                        try { SkiaImage.makeFromEncoded(bytes) }
+                                                        finally { bytes.fill(0) }
+                                                    }.onSuccess { privatePicture = it }
+                                                        .onFailure { error = it.message ?: "Private picture unavailable." }
+                                                }
+                                            }) { Text("Open once") }
+                                        }
+                                    }
                                 } else if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
                                     AsyncImage(
                                         model = message.imagePreviewUrl ?: message.mediaUrl,
@@ -765,6 +791,11 @@ fun MessagesScreen(state: DesktopAppState) {
                                 pictureQuality = BlinkChatImageQuality.ORIGINAL
                             }) { Text(if (pictureQuality == BlinkChatImageQuality.ORIGINAL) "✓ Original / HD" else "Original / HD") }
                         }
+                        if (selectedPictures.size == 1) {
+                            TextButton(onClick = {
+                                selectedPictureViewOnce = !selectedPictureViewOnce
+                            }) { Text(if (selectedPictureViewOnce) "✓ View once" else "View once") }
+                        }
                         if (pictureUploading) Text("Uploading $pictureProgress%")
                     }
                 },
@@ -925,6 +956,29 @@ fun MessagesScreen(state: DesktopAppState) {
             )
         }
         expandedPicture?.let { imageUrl ->
+            privatePicture?.let { privateImage ->
+                DisposableEffect(privateImage) {
+                    onDispose { privateImage.close() }
+                }
+                Dialog(
+                    onDismissRequest = { privatePicture = null },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Box(Modifier.fillMaxSize().background(Color.Black)) {
+                        ComposeImage(
+                            bitmap = privateImage.toComposeImageBitmap(),
+                            contentDescription = "One-time private picture",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                        TextButton(
+                            onClick = { privatePicture = null },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                        ) { Text("Close", color = Color.White) }
+                    }
+                }
+            }
+
             Dialog(onDismissRequest = { expandedPicture = null },
                 properties = DialogProperties(usePlatformDefaultWidth = false)) {
                 Box(modifier = Modifier.fillMaxSize().clickable { expandedPicture = null },
