@@ -72,7 +72,7 @@ internal fun DesktopReferrerPicker(
                     onClick = { onSelected(member); query = ""; results = emptyList() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Rounded.Person, contentDescription = null)
+                    DesktopReferralAvatar(member.avatarUrl)
                     Spacer(Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
