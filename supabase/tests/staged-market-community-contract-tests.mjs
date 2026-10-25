@@ -104,6 +104,13 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       select public.blink_community_join('33333333-3333-4333-8333-333333333333')`),
       'COMMUNITY_INVITE_REQUIRED');
+    const requested = await db.query(`
+      select public.blink_community_request_join(
+      '33333333-3333-4333-8333-333333333333') as status`);
+    assert.equal(requested.rows[0].status, 'pending');
+    await rejects(() => db.exec(`
+      select public.blink_community_join('33333333-3333-4333-8333-333333333333')`),
+      'COMMUNITY_INVITE_REQUIRED');
     await db.exec('reset role');
     await db.exec('set role authenticated');
     await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
