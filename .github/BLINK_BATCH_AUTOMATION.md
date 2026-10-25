@@ -9,13 +9,21 @@
 5. The controller verifies the **exact combined commit SHA**, checks the current `main` baseline, and will refresh the Testlab batch against newer `main` without asking you to press “Update branch”. Any such update invalidates old CI and release authorization. Failing/missing checks keep the batch out of production.
 6. For a green, current, compatible batch with every required independent staging/device acceptance, the controller adds exact-SHA verification and `auto-promote`. The already-existing trusted Testlab-to-main controller rechecks all conditions and merges **with full commit ancestry** so source PRs can be recognized as included. After merging it explicitly dispatches the signed Android or website workflow as applicable. The existing signed APK publication workflow only publishes an actual successful signed release.
 
+## Why GitHub still shows Update branch
+
+GitHub's **Update branch** button is based on the *original PR branch* being behind `main`. The automatic batch queue **does not rewrite the original PR branch**; it creates a fresh Testlab integration branch from the latest `main`, retests all combined changes, and promotes only verified work. The button may remain visible on a source PR even while the queue is functioning.
+
+The trusted queue now gives **actionable diagnostics for each examined PR**. The GitHub Actions run summary contains an overview table, and PRs with a relevant blocker receive one deduplicated **BLINK automatic integration status** bot comment containing the reason and next action. Status changes update that comment rather than creating repeated messages; green PRs without a prior notice are not spammed. An old hold comment is updated after the PR genuinely becomes ready. A status notice is *informational* and never counts as approval or replaces required checks.
+
+For example, PR #517 was technically open for review but its **description explicitly said it was draft and must not be merged**. That instruction blocks automatic production integration independently of green checks or GitHub's Update branch notice. Complete the documented acceptance criteria before removing that restriction.
+
 ## Safety rules and limits
 
 - Only **same-repository**, open, non-draft, **current-head CI green**, recently updated PRs targeting `main` can enter a batch automatically. No label or repeated **Update branch** clicks are necessary. Old, superseded, blocked, incomplete, failed, fork, and draft PRs are not automatically included.
 - Only one active batch is processed at a time. A merge conflict, failed CI, unverified hosted backend integration, or missing independent device evidence **blocks** that portion of release; no loop falsely reports success and no failing test is skipped.
 - PRs modifying `.github/workflows/`, `.github/actions/`, or `.github/scripts/` cannot enter an automatic batch; they need separate code review because workflow dispatch can execute code at the proposed branch ref.
 - For protected `main`, the normal GitHub merge rules still apply. This automation **cannot change repository rulesets**, purchase staging, or autonomously write correct source-code repairs for semantic merge conflicts or failing tests.
-- The initial queue was activated through PR #553. This **automatic discovery extension** is a separate protected CI-controller change and will only be live after its own latest-head checks and production merge succeed.
+- The initial Testlab batching queue was activated in PR #553, with automatic unlabeled discovery subsequently merged in PRs #554 and #556. The **PR status explanation extension** only becomes live after its own protected CI-controller PR passes and merges into `main`.
 - Source PRs should not be closed or deleted merely because they are batched. Reconcile any unique changes and verified commit ancestry after main integration.
 
 ## Costs and practical use
