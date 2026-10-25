@@ -116,6 +116,37 @@ end $$;
 revoke all on function public.blink_community_join(uuid) from public,anon;
 grant execute on function public.blink_community_join(uuid) to authenticated;
 
+-- Private join requests remain pending until an owner/moderator approves.
+-- A banned member cannot re-request membership, even if their previous row
+-- remains for audit and moderation.
+create or replace function public.blink_community_request_join(p_community_id uuid)
+returns text language plpgsql security definer set search_path = ''
+as $
+declare v_user uuid:=auth.uid(); v_visibility text; v_status text;
+begin
+  if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select visibility into v_visibility
+    from public.blink_communities where id=p_community_id;
+  if v_visibility is null then raise exception 'COMMUNITY_NOT_FOUND'; end if;
+  select status into v_status from public.blink_community_members
+    where community_id=p_community_id and user_id=v_user for update;
+  if v_status='banned' then raise exception 'COMMUNITY_MEMBERSHIP_BANNED'; end if;
+  if v_status='active' then return 'active'; end if;
+  if v_status='invited' then
+    return public.blink_community_join(p_community_id);
+  end if;
+  if v_visibility='public' then
+    return public.blink_community_join(p_community_id);
+  end if;
+  insert into public.blink_community_members(community_id,user_id,role,status)
+    values(p_community_id,v_user,'member','pending')
+  on conflict(community_id,user_id)
+    do update set status='pending';
+  return 'pending';
+end $;
+revoke all on function public.blink_community_request_join(uuid) from public,anon;
+grant execute on function public.blink_community_request_join(uuid) to authenticated;
+
 create or replace function public.blink_community_invite(p_community_id uuid,p_user_id uuid)
 returns text language plpgsql security definer set search_path = ''
 as $$
