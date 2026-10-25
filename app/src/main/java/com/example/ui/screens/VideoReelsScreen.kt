@@ -518,20 +518,22 @@ private fun ReelsContent(
     var expanded by rememberSaveable(resumeUserKey) { mutableStateOf(!initialReelId.isNullOrBlank()) }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
     val animationScope = rememberCoroutineScope()
+    val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
     LaunchedEffect(initialReelId) {
         if (!initialReelId.isNullOrBlank()) expanded = true
     }
     LaunchedEffect(expanded, isScreenActive) {
-        if (isScreenActive) onBottomBarVisibilityChange(!expanded)
+        if (isScreenActive) latestBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
             animationSpec = tween(300, easing = FastOutSlowInEasing)
         )
     }
     // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
-    DisposableEffect(expanded, isScreenActive, onBottomBarVisibilityChange) {
+    // An unstable callback instance must not cause a new dispose/recompose cycle.
+    DisposableEffect(expanded, isScreenActive) {
         onDispose {
-            if (expanded && isScreenActive) onBottomBarVisibilityChange(true)
+            if (expanded && isScreenActive) latestBottomBarVisibilityChange(true)
         }
     }
     BackHandler(enabled = expanded && !isInteractionOverlayOpen) { expanded = false }
