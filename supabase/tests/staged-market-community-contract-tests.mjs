@@ -13,6 +13,7 @@ export async function stagedMarketCommunityContractTests() {
   const db = new PGlite();
   try {
     await db.exec(`
+      create role anon;
       create role authenticated;
       create role service_role bypassrls;
       create schema auth;
