@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.MultipartBody
 import java.io.ByteArrayOutputStream
 import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatUploadProgress
 import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
@@ -236,18 +237,6 @@ object MessageMediaService {
         receiverUsername: String,
         uri: Uri
     ): Result<ChatMessage> = sendAttachment(context, receiverUsername, uri, BlinkChatAttachmentKind.VIDEO)
-
-
-    suspend fun sendVideoMessage(
-        context: Context,
-        receiverUsername: String,
-        uri: Uri
-    ): Result<ChatMessage> = sendAttachmentMessage(
-        context = context,
-        receiverUsername = receiverUsername,
-        uri = uri,
-        kind = "video"
-    )
 
     /**
      * Upload a verified private file without loading the entire source into RAM.
