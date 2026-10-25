@@ -170,10 +170,12 @@ execute function public.blink_notify_confirmed_referral_profile();
 create or replace function public.blink_referrer_suggestions(
   p_query text, p_limit integer default 10, p_offset integer default 0
 )
-returns table(id uuid, username text, full_name text, avatar_url text, university text)
+returns table(id uuid, username text, full_name text, avatar_url text, university text,
+              is_verified boolean, verification_badge text)
 language sql stable security definer set search_path = ''
 as $$
-  select p.id, p.username, p.full_name, p.avatar_url, p.university
+  select p.id, p.username, p.full_name, p.avatar_url, p.university,
+         coalesce(p.is_verified,false), coalesce(p.verification_badge,'')
     from public.profiles p
    where length(trim(coalesce(p_query,''))) between 1 and 40
      and p.onboarding_completed is true
@@ -269,7 +271,8 @@ grant execute on function public.blink_referral_dashboard() to authenticated;
 -- Discovery surface: at most 3 boosted recommendations in a 10-person set.
 -- Keep the user's campus relevant and exclude their own account and block relationships.
 create or replace function public.blink_referral_recommendations(p_limit integer default 10)
-returns table(id uuid, username text, full_name text, avatar_url text, university text, referral_featured boolean)
+returns table(id uuid, username text, full_name text, avatar_url text, university text,
+              referral_featured boolean, is_verified boolean, verification_badge text)
 language sql stable security definer set search_path = ''
 as $$
   with viewer as (
@@ -292,6 +295,8 @@ as $$
   ),
   candidates as (
     select p.id, p.username, p.full_name, p.avatar_url, p.university,
+           coalesce(p.is_verified,false) as is_verified,
+           coalesce(p.verification_badge,'') as verification_badge,
            coalesce(a.visibility_points,0) as visibility_points
     from public.profiles p cross join viewer v
     left join active a on a.referrer_user_id = p.id
@@ -320,7 +325,8 @@ as $$
     order by id
     limit greatest(1,least(coalesce(p_limit,10),10))
   )
-  select id, username, full_name, avatar_url, university, featured
+  select id, username, full_name, avatar_url, university, featured,
+         is_verified, verification_badge
   from (
     select boosted.*, 0 as priority from boosted
     union all

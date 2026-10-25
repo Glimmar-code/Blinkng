@@ -20,6 +20,8 @@ create table public.profiles(
   full_name text not null default '',
   university text not null default '',
   avatar_url text,
+  is_verified boolean not null default false,
+  verification_badge text,
   onboarding_completed boolean not null default false
 );
 create table public.user_settings(

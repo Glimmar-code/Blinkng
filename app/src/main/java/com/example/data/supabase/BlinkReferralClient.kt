@@ -59,6 +59,8 @@ object BlinkReferralClient {
                     fullName = item.optString("full_name"),
                     avatarUrl = item.optString("avatar_url").takeIf(String::isNotBlank),
                     university = item.optString("university").takeIf(String::isNotBlank),
+                isVerified = item.optBoolean("is_verified"),
+                verificationBadge = item.optString("verification_badge").takeIf(String::isNotBlank),
                 )
             }
         }
@@ -117,6 +119,8 @@ object BlinkReferralClient {
                 fullName = item.optString("full_name"),
                 avatarUrl = item.optString("avatar_url").takeIf(String::isNotBlank),
                 university = item.optString("university").takeIf(String::isNotBlank),
+                isVerified = item.optBoolean("is_verified"),
+                verificationBadge = item.optString("verification_badge").takeIf(String::isNotBlank),
             )
         }
     }
