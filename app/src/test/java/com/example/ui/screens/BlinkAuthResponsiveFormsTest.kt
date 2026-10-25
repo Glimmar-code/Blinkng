@@ -34,7 +34,7 @@ class BlinkAuthNarrowScreenTest {
     @Test fun signupKeepsEveryInputAndProviderReachable() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }
@@ -43,6 +43,7 @@ class BlinkAuthNarrowScreenTest {
         rule.onNodeWithTag("create_account_email").assertExists()
         rule.onNodeWithTag("create_account_university").assertExists()
         rule.onNodeWithTag("create_account_password").assertExists()
+        rule.onNodeWithTag("create_account_birthday").assertExists()
         rule.onNodeWithTag("create_account_submit").assertExists()
         rule.onNodeWithTag("create_account_google").assertExists()
         rule.onNodeWithTag("create_account_email_focus").assertExists()
@@ -55,7 +56,7 @@ class BlinkAuthNarrowScreenTest {
             val d = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(d.density, scale)) {
                 BlinkReferenceCreateAccountScreen(
-                    onBack = {}, onCreateAccount = { _, _, _ -> },
+                    onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
                     onGoogle = {}, onLogin = {}
                 )
             }
@@ -100,7 +101,7 @@ class BlinkAuthExpandedScreenTest {
     @Test fun tabletKeepsPosterSeparateFromInteractivePhone() {
         rule.setContent {
             BlinkReferenceCreateAccountScreen(
-                onBack = {}, onCreateAccount = { _, _, _ -> },
+                onBack = {}, onCreateAccount = { _, _, _, _, _ -> },
                 onGoogle = {}, onLogin = {}
             )
         }

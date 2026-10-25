@@ -36,6 +36,9 @@ jobs:
       - name: Test fail-closed Testlab auto-promotion policy
         run: node --test .github/scripts/testlab_auto_promotion.test.cjs
 
+      - name: Test bounded CI recovery and security policy
+        run: node --test .github/scripts/ci_auto_recovery.test.cjs
+
       - uses: actions/setup-java@v5
         if: steps.scope.outputs.android == 'true'
         with:

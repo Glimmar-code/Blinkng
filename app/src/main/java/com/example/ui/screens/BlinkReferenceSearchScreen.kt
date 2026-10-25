@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,8 +47,12 @@ import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.example.data.models.UserProfile
 import com.example.viewmodel.SearchDiscoveryViewModel
+import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.example.data.supabase.BlinkReferralClient
 import java.util.Locale
 
 /**
@@ -114,6 +119,24 @@ internal fun BlinkReferenceSearchScreen(
     }
     var selectedDetail by remember { mutableStateOf<DiscoveryResult?>(null) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
+    var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(accountKey, query) {
+        val clean = BlinkReferralPolicy.normalizedQuery(query)
+        if (clean.isBlank()) { searchedPeople = emptyList(); return@LaunchedEffect }
+        delay(260)
+        searchedPeople = runCatching {
+            BlinkReferralClient.searchPeopleWithReferralRelevance(clean)
+        }.getOrDefault(emptyList())
+    }
+    LaunchedEffect(accountKey) {
+        if (myProfile.id.isNotBlank()) {
+            referralRecommendations = runCatching { BlinkReferralClient.recommendations() }.getOrDefault(emptyList())
+            referralCount = runCatching { BlinkReferralClient.dashboard().total }.getOrNull()
+        }
+    }
 
     val bg = if (isDark) Color(0xFF0C0D10) else Color.White
     val fg = if (isDark) Color.White else Color(0xFF111111)
@@ -137,6 +160,12 @@ internal fun BlinkReferenceSearchScreen(
             val okay = FollowStateStore.setFollowing(profileId, next)
             busyFollowId = null
             if (!okay) Toast.makeText(context, "Follow request failed. Try again.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun openProfileFromDiscovery(id: String, username: String, source: String) {
+        onProfileClick(username)
+        followScope.launch {
+            runCatching { BlinkReferralClient.recordProfileOpen(id, source) }
         }
     }
     fun select(value: ReferenceCategory) {
@@ -195,6 +224,10 @@ internal fun BlinkReferenceSearchScreen(
     val liveCommunities = live.filter { it.type == DiscoveryResultType.COMMUNITY }
     val limit = if (category == ReferenceCategory.ALL) 2 else 20
 
+    if (showReferralDashboard) {
+        BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
+    }
+
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -214,7 +247,7 @@ internal fun BlinkReferenceSearchScreen(
                     fontWeight = FontWeight.Black, color = fg, maxLines = 1)
             }
             IconButton(onClick = onGameClick, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.SportsEsports, "Game", modifier = Modifier.size(23.dp), tint = fg)
+                Icon(Icons.Rounded.GridView, "Open Items", modifier = Modifier.size(23.dp), tint = fg)
             }
             Box(Modifier.size(40.dp)) {
                 IconButton(onClick = onNotificationsClick, modifier = Modifier.fillMaxSize()) {
@@ -306,6 +339,28 @@ internal fun BlinkReferenceSearchScreen(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            Surface(
+                onClick = { showReferralDashboard = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = subtle,
+                border = BorderStroke(1.dp, line),
+            ) {
+                Column(Modifier.padding(13.dp)) {
+                    Text(BlinkReferralPolicy.PROMO_TITLE,
+                        color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(BlinkReferralPolicy.PROMO_MESSAGE,
+                        color = muted, fontSize = 12.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Invite friends  ›", color = fg, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold)
+                    referralCount?.let {
+                        Text("$it confirmed referrals", color = muted, fontSize = 11.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             if (query.isBlank() && category == ReferenceCategory.ALL) {
                 val largeFont = LocalDensity.current.fontScale >= 1.6f
                 if (largeFont) {
@@ -348,6 +403,36 @@ internal fun BlinkReferenceSearchScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+                if (referralRecommendations.isNotEmpty()) {
+                    Text("Discover students on BLINK", color = fg, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text("Follow students you may know. Some earned extra discovery through referrals.",
+                        color = muted, fontSize = 11.sp)
+                    referralRecommendations.take(10).forEach { person ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .trackBlinkReferralImpression(person.id, "recommendations"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                Modifier.weight(1f).clickable { openProfileFromDiscovery(person.id, person.username, "recommendations") },
+                            ) {
+                                Text(person.fullName.ifBlank { person.username },
+                                    color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("@${person.username} · ${person.university.orEmpty()}",
+                                    color = muted, fontSize = 11.sp, maxLines = 1)
+                            }
+                            TextButton(
+                                onClick = { toggleFollow(person.id) },
+                                enabled = busyFollowId == null && person.id !in followingIds,
+                            ) {
+                                Text(if (person.id in followingIds) "Following" else "Follow")
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
             }
 
             if (discovery.backendAvailable && discovery.isLoading) {
@@ -361,7 +446,21 @@ internal fun BlinkReferenceSearchScreen(
 
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.PEOPLE) {
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
-                if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
+                if (searchedPeople.isNotEmpty()) searchedPeople.take(limit).forEach { person ->
+                    ReferencePersonRow(
+                        title = person.fullName.ifBlank { person.username },
+                        subtitle = listOfNotNull(person.university,
+                            if (person.visibilityPoints > 0) "Referral discovery" else null).joinToString(" · "),
+                        avatar = person.avatarUrl, verified = person.isVerified,
+                        online = false, fg = fg, muted = muted, line = line,
+                        followable = person.id.isNotBlank() && person.id != currentProfile?.id,
+                        following = person.id in followingIds,
+                        isBusy = busyFollowId == person.id,
+                        onFollow = { toggleFollow(person.id) },
+                        onClick = { openProfileFromDiscovery(person.id, person.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(person.id, "search"),
+                    )
+                } else if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
                     val profileId = result.id
                     val presentProfile = allProfiles.firstOrNull {
                         it.id == profileId || (result.username.isNotBlank() && it.username.equals(result.username, true))
@@ -373,7 +472,8 @@ internal fun BlinkReferenceSearchScreen(
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
-                        onClick = { if (result.username.isNotBlank()) onProfileClick(result.username) },
+                        onClick = { if (result.username.isNotBlank()) openProfileFromDiscovery(profileId, result.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(profileId, "search"),
                     )
                 } else localPeople.take(limit).forEach { profile ->
                     val profileId = profile.id
@@ -387,10 +487,12 @@ internal fun BlinkReferenceSearchScreen(
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
-                        onClick = { onProfileClick(profile.username) },
+                        onClick = { openProfileFromDiscovery(profileId, profile.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(profileId, "search"),
                     )
                 }
-                if (livePeople.isEmpty() && localPeople.isEmpty()) ReferenceNoResults("No people found", muted)
+                if (searchedPeople.isEmpty() && livePeople.isEmpty() && localPeople.isEmpty())
+                    ReferenceNoResults("No people found", muted)
                 Spacer(Modifier.height(12.dp))
             }
 
@@ -591,9 +693,10 @@ private fun ReferencePersonRow(
     fg: Color, muted: Color, line: Color,
     followable: Boolean, following: Boolean, isBusy: Boolean,
     onFollow: () -> Unit, onClick: () -> Unit,
+    impressionModifier: Modifier = Modifier,
 ) {
     val largeFont = LocalDensity.current.fontScale >= 1.6f
-    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp).then(impressionModifier)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49, online) }
             Spacer(Modifier.width(10.dp))

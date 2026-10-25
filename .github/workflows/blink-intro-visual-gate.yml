@@ -16,6 +16,10 @@ on:
       - 'shared/src/main/kotlin/com/blinkng/shared/brand/**'
       - '.github/workflows/blink-intro-visual-gate.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

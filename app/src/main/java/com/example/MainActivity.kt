@@ -36,7 +36,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -50,6 +49,7 @@ import com.example.auth.AccountSessionStore
 import com.example.data.supabase.AdminSupabaseService
 import com.example.data.supabase.BlinkLiveRemoteConfig
 import com.example.data.supabase.BlinkLiveCampaignService
+import com.example.data.supabase.BlinkReferralClient
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.blinkng.shared.live.BlinkLiveCampaign
 import com.example.data.supabase.BlinkPaystackCheckoutService
@@ -260,6 +260,29 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
+        val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)
+        if (invitedUsername != null) {
+            // Count actual link openings, not shares, without storing personal identifiers.
+            // This anonymous metric cannot earn Coins or referral visibility.
+            val clickPrefs = getSharedPreferences("blink_referral_visitor", MODE_PRIVATE)
+            val stored = clickPrefs.getString("visitor_uuid", null)
+            val visitor = stored?.takeIf {
+                runCatching { java.util.UUID.fromString(it) }.isSuccess
+            } ?: java.util.UUID.randomUUID().toString().also {
+                clickPrefs.edit().putString("visitor_uuid", it).apply()
+            }
+            lifecycleScope.launch {
+                runCatching { BlinkReferralClient.recordInviteLinkOpen(invitedUsername, visitor) }
+            }
+            // Invitation selection remains optional. Never redirect an existing logged-in account.
+            if (viewModel.uiState.value.destination != AppDestination.MAIN) {
+                getSharedPreferences("blink_referral_invite", MODE_PRIVATE).edit()
+                    .putString("username", invitedUsername).apply()
+                viewModel.setDestination(AppDestination.SIGN_UP)
+            }
+            intent?.data = null
+            return
+        }
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
@@ -585,6 +608,9 @@ class MainActivity : ComponentActivity() {
             var justCompletedOnboardingAccount by rememberSaveable {
                 mutableStateOf<String?>(null)
             }
+            var newStudentDiscoveryAccount by rememberSaveable {
+                mutableStateOf<String?>(null)
+            }
 
             // Foreground-only polling: FCM signals refresh immediately; the timer is a safe fallback.
             // Stopping the Activity suspends checks, resuming it checks straight away.
@@ -657,6 +683,9 @@ class MainActivity : ComponentActivity() {
             // Keying by destination + user id prevents repeated writes during recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
                 if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    // Safe actor-authorized dispatch: no service-role secrets in Android.
+                    // Backend may not yet expose the RPC; never block normal app startup.
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
                     AccountSessionStore.recordCurrentSession(
                         context = this@MainActivity,
                         userId = uiState.myProfile.id,
@@ -812,8 +841,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     BlinkReferenceCreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onCreateAccount = { name, email, password ->
-                                            viewModel.signUp(name, email, password)
+                                        onCreateAccount = { name, email, password, referrerId, birthday ->
+                                            viewModel.signUp(name, email, password, referrerId = referrerId, birthDate = birthday)
                                         },
                                         onGoogle = { email -> viewModel.loginWithGoogle(email) },
                                         onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) }
@@ -882,6 +911,7 @@ class MainActivity : ComponentActivity() {
                                             NewMemberPerksStore.markSeen(
                                                 this@MainActivity, uiState.myProfile.id
                                             )
+                                            newStudentDiscoveryAccount = uiState.myProfile.id
                                             justCompletedOnboardingAccount = null
                                         },
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
@@ -900,6 +930,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        if (uiState.destination == AppDestination.MAIN &&
+                            newStudentDiscoveryAccount != null &&
+                            newStudentDiscoveryAccount == uiState.myProfile.id
+                        ) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { newStudentDiscoveryAccount = null },
+                                onProfileClick = {
+                                    newStudentDiscoveryAccount = null
+                                    viewModel.openProfile(it)
+                                }
+                            )
+                        }
                         if (uiState.destination == AppDestination.MAIN) {
                             BlinkInAppNotificationHost(
                                 onOpen = ::handleInAppNotification,
@@ -1043,6 +1085,13 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // Switching back to Home without leaving Android's Activity still counts as
+    // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
+        if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+            viewModel.refreshIfStale()
+        }
+    }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
@@ -1396,6 +1445,7 @@ fun MainAppContent(
                 uiState.activeViewingStory != null ||
                 uiState.showSellerCongratulationsDialog ||
                 uiState.deepLinkedPost != null ||
+                uiState.navigationHistory.isNotEmpty() ||
                 (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
     ) {
         when {
@@ -1406,14 +1456,21 @@ fun MainAppContent(
             uiState.isBecomeSellerOpen -> viewModel.openBecomeSeller(false)
             uiState.isPostItemOpen -> viewModel.openPostItem(false)
             uiState.isActivityOpen -> viewModel.openActivity(false)
-            uiState.activeConversationPartner != null -> viewModel.closeConversation()
-            uiState.viewingProfile != null -> viewModel.closeProfile()
-            uiState.viewingProduct != null -> viewModel.closeProductDetail()
+            uiState.activeConversationPartner != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeConversation()
+            }
+            uiState.viewingProfile != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProfile()
+            }
+            uiState.viewingProduct != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProductDetail()
+            }
             uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
             uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
             uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.navigationHistory.isNotEmpty() -> viewModel.navigateBackInHistory()
             uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
                 isBottomBarVisibleByScroll = true
                 viewModel.setFeedSubTab(0)
@@ -1583,6 +1640,7 @@ fun MainAppContent(
                         followingErrorMessage = uiState.followingFeedErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
+                        onFollowingVisible = { viewModel.refreshFollowingIfStale() },
                         onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
                         onRetry = { viewModel.refreshFeedLane() },
                         onViewedPost = { viewModel.recordPostView(it) },
@@ -1646,7 +1704,7 @@ fun MainAppContent(
                         serverPosts = uiState.discoverPosts,
                         marketItems = uiState.marketItems,
                         onMarketItemClick = { viewModel.openProductDetail(it) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         onNotificationsClick = { viewModel.openActivity(true) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         isSearching = uiState.isDiscoverSearching,
@@ -1716,6 +1774,8 @@ fun MainAppContent(
                 }
 
                 MainTab.MESSAGES -> {
+                    var showMessageComposeOptions by rememberSaveable { mutableStateOf(false) }
+                    var showGroupInvitations by rememberSaveable { mutableStateOf(false) }
                     PremiumMessagesScreen(
                         conversations = uiState.conversations,
                         stories = uiState.stories,
@@ -1764,8 +1824,26 @@ fun MainAppContent(
                             viewModel.updateChatPresence(partner, state)
                         },
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onSendViewOncePicture = { partner, uri, caption, quality ->
+                            viewModel.sendViewOncePicture(partner, uri, caption, quality)
+                        },
+                        onSendPhotoAlbum = { partner, uris, quality ->
+                            val photos = uris.take(10)
+                            val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
+                            photos.forEachIndexed { index, uri ->
+                                viewModel.sendAttachmentMessage(
+                                    partner, uri, com.blinkng.shared.BlinkChatAttachmentKind.IMAGE,
+                                    imageQuality = quality,
+                                    album = if (albumId == null) com.blinkng.shared.BlinkChatPhotoAlbum.single()
+                                    else com.blinkng.shared.BlinkChatPhotoAlbum.of(albumId, index, photos.size)
+                                )
+                            }
+                        },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
+                        },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
                         },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
@@ -1785,8 +1863,12 @@ fun MainAppContent(
                             viewModel.updateChatPrivacySettings(settings)
                         },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
+                        onSearchUsers = { query, limit, afterUsername, afterId ->
+                            viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                        },
+                        onCreateGroup = { showGroupInvitations = true },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
-                        onGameClick = { feedUtilitySheet = "game" },
+                        onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
                         isLoading = uiState.isConversationsLoading,
@@ -1794,6 +1876,30 @@ fun MainAppContent(
                             viewModel.refreshVisibleInboxReceipt(id, timestamp)
                         }
                     )
+                    if (showMessageComposeOptions) {
+                        AlertDialog(
+                            onDismissRequest = { showMessageComposeOptions = false },
+                            title = { Text("New conversation") },
+                            text = { Text("Message a student or invite classmates to a group.") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    viewModel.setTab(MainTab.SEARCH)
+                                }) { Text("Message student") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    showGroupInvitations = true
+                                }) { Text("Groups & invitations") }
+                            }
+                        )
+                    }
+                    if (showGroupInvitations) {
+                        BlinkGroupInvitationsDialog(
+                            onDismiss = { showGroupInvitations = false }
+                        )
+                    }
                 }
             }
         }
@@ -2139,8 +2245,8 @@ fun MainAppContent(
             // A downward Home scroll hides the entire rail, including its shadow,
             // rather than moving it by a fixed 50 px on different screen sizes.
             visible = shouldShowBottomBar && (
-                uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0 ||
-                    isBottomBarVisibleByScroll
+                uiState.selectedTab != MainTab.HOME ||
+                    uiState.feedSubTab !in 0..1 || isBottomBarVisibleByScroll
             ),
             enter = androidx.compose.animation.slideInVertically(
                 initialOffsetY = { it },
@@ -2163,7 +2269,6 @@ fun MainAppContent(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FeedBottomBar(
-                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 },
                 currentTab = uiState.selectedTab,
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {
@@ -2240,6 +2345,7 @@ fun MainAppContent(
                     viewModel.openMenu(true)
                 },
                 isMenuOpen = uiState.isMenuOpen,
+                hasUnreadMessages = uiState.conversations.any { it.unreadCount > 0 || it.isMarkedUnread },
                 modifier = Modifier
             )
         }
@@ -2406,8 +2512,8 @@ fun MainAppContent(
                     onBack = { showSavedProfile = false; viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
-                        viewModel.closeProfile()
-                        viewModel.setTab(MainTab.MESSAGES)
+                        // Keep Profile on the LIFO route stack. A forced close and
+                        // preliminary Messages tab change discard the return path.
                         viewModel.openChatWithUser(partner, currentProfileToDisplay.fullName, currentProfileToDisplay.avatarUrl)
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
@@ -2438,7 +2544,7 @@ fun MainAppContent(
                         else -> "home"
                     },
                     onNavigateMainTab = { tab ->
-                        viewModel.closeProfile()
+                        // Primary navigation records the outgoing profile route.
                         when (tab) {
                             "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
                             "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
@@ -2448,7 +2554,7 @@ fun MainAppContent(
                         }
                     },
                     onTopAction = { action ->
-                        viewModel.closeProfile()
+                        // Preserve the profile route when heading to Search.
                         when (action) {
                             "search" -> viewModel.setTab(MainTab.SEARCH)
                             "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
@@ -2545,6 +2651,9 @@ fun MainAppContent(
                 mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
                     .filter { it.username.isNotBlank() }
                     .distinctBy { it.username.trim().removePrefix("@").lowercase() },
+                onSearchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                },
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openCommentsForPost(null) },
                 onSendComment = { text, parentCommentId ->
@@ -2916,7 +3025,10 @@ fun MainAppContent(
                     viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
-                isSubmitting = uiState.isCreatingPost
+                isSubmitting = uiState.isCreatingPost,
+                searchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                }
             )
         }
 
@@ -3048,8 +3160,7 @@ fun MainAppContent(
                 },
                 onGames = {
                     viewModel.openMenu(false)
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(3)
+                    feedUtilitySheet = "items"
                 },
                 onOpenUpdateWebsite = onOpenWebsiteUpdate,
                 onOpenHelpWebsite = {

@@ -17,3 +17,16 @@ internal fun reelSeekFraction(touchX: Float, widthPx: Int): Float {
     if (!touchX.isFinite() || widthPx <= 0) return 0f
     return (touchX / widthPx.toFloat()).coerceIn(0f, 1f)
 }
+
+/** Decide the gesture release without tying navigation to frame timing or hardware refresh rate. */
+internal fun shouldExpandReelPreview(
+    visibleFraction: Float,
+    upwardTravelPx: Float,
+    swipeThresholdPx: Float
+): Boolean =
+    (visibleFraction.isFinite() && visibleFraction >= 0.16f) ||
+        (upwardTravelPx.isFinite() && swipeThresholdPx > 0f && upwardTravelPx >= swipeThresholdPx)
+
+/** A small first-page overscroll returns to fullscreen; a deliberate pull collapses. */
+internal fun shouldKeepReelFullscreen(visibleFraction: Float): Boolean =
+    !visibleFraction.isFinite() || visibleFraction >= 0.84f

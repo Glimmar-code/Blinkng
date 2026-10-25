@@ -69,12 +69,26 @@ internal fun BlinkAuthReferenceLanding(
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         ) {
-            Image(
-                painter = painterResource(R.drawable.blink_auth_campus_hero),
-                contentDescription = "BLINK students together on campus",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().height(heroHeight),
-            )
+            // Reuse BLINK's already approved, larger 472px WebP source rather
+            // than upscaling the tiny 240px JPEG baked with raster lettering.
+            // Draw the exact wordmark separately so it remains sharp at any DPI.
+            Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
+                Image(
+                    painter = painterResource(R.drawable.blink_auth_reference_login_photo),
+                    contentDescription = "BLINK students together on campus",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Text(
+                    text = "B L I N K",
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 9.dp),
+                    color = Color.Black,
+                    fontSize = 24.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
 
             Column(
                 modifier = Modifier

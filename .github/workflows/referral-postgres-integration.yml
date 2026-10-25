@@ -1,0 +1,67 @@
+name: BLINK Referral PostgreSQL Integration
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/referral_postgres_*'
+      - '.github/workflows/referral-postgres-integration.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/referral_postgres_*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  referral-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: blink_referral_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_referral_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ci_only_password
+      PGDATABASE: blink_referral_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create disposable synthetic BLINK auth fixture
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_fixture.pgfixture
+      - name: Apply new referral migration to disposable Postgres only
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261024203000_blink_refer_and_grow.sql
+      - name: Apply optional milestone and source-attribution extension
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025114000_referral_coins_and_discovery_attribution.sql
+      - name: Apply opt-in independent delivery and link-attribution extension
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025153000_referral_delivery_and_link_telemetry.sql
+      - name: Apply invitation-only group membership migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025190000_blink_group_invitation_requests.sql
+      - name: Apply source-attributed viewability impression migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025201000_referral_viewability_impressions.sql
+      - name: Verify one-referrer credit, RLS, privacy, duplicate prevention and recommendations
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_assertions.pgfixture
+      - name: Confirm live Supabase is unchanged
+        run: echo 'All checks used only ephemeral test data in the disposable GitHub runner. No production Supabase changes.'

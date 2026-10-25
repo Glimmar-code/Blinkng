@@ -589,7 +589,7 @@ internal fun UniversityCampusPickerDialog(
 @Composable
 fun BlinkReferenceCreateAccountScreen(
     onBack: () -> Unit,
-    onCreateAccount: (String, String, String) -> Unit,
+    onCreateAccount: (String, String, String, String?, String) -> Unit,
     onGoogle: (String) -> Unit,
     onLogin: () -> Unit
 ) {
@@ -599,6 +599,18 @@ fun BlinkReferenceCreateAccountScreen(
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     var university by rememberSaveable { mutableStateOf("") }
+    var birthday by rememberSaveable { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
+    LaunchedEffect(context) {
+        val invite = context.getSharedPreferences("blink_referral_invite", android.content.Context.MODE_PRIVATE)
+            .getString("username", null).orEmpty()
+        if (invite.isNotBlank() && selectedReferrer == null) {
+            val matches = runCatching {
+                com.example.data.supabase.BlinkReferralClient.findReferrers(invite)
+            }.getOrDefault(emptyList())
+            selectedReferrer = matches.firstOrNull { it.username.equals(invite, ignoreCase = true) }
+        }
+    }
     var pickingUniversity by remember { mutableStateOf(false) }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
     var confirmTerms by remember { mutableStateOf(false) }
@@ -692,6 +704,17 @@ fun BlinkReferenceCreateAccountScreen(
             ReferenceInput(password, { password = it; error = null }, "Password",
                 Icons.Default.Lock, Modifier.testTag("create_account_password"), password = true,
                 visible = visible, onToggle = { visible = !visible })
+            Spacer(Modifier.height(10.dp))
+            ReferenceInput(
+                birthday, { birthday = it.filter { ch -> ch.isDigit() || ch == '-' }.take(10); error = null },
+                "Birthday (YYYY-MM-DD)", Icons.Default.Cake,
+                Modifier.testTag("create_account_birthday"),
+            )
+            Spacer(Modifier.height(10.dp))
+            BlinkReferrerPicker(
+                selected = selectedReferrer,
+                onSelected = { selectedReferrer = it }
+            )
             Spacer(Modifier.height(6.dp))
             SolidAuthButton("Create Account", enabled = true,
                 tag = "create_account_submit") {
@@ -699,6 +722,8 @@ fun BlinkReferenceCreateAccountScreen(
                     fullName.trim().length < 2 -> "Enter your full name."
                     !email.contains("@") -> "Enter a valid email address."
                     university.isBlank() -> "Select your university."
+                    !com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthday) ->
+                        "Enter a valid birthday (YYYY-MM-DD)."
                     !isStrongBlinkPassword(password) -> "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
                      else -> null
                 }
@@ -708,7 +733,7 @@ fun BlinkReferenceCreateAccountScreen(
                     // Save only this campus choice for the existing onboarding screen;
                     // passwords stay with the current Supabase sign-up callback.
                     SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password)
+                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id, birthday.trim())
                 }
             }
             OrSeparator()
@@ -752,7 +777,7 @@ fun BlinkReferenceCreateAccountScreen(
                     acceptedTerms = true
                     confirmTerms = false
                     SignupCampusPreference.set(context, university)
-                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password)
+                    onCreateAccount(fullName.trim(), email.trim().lowercase(), password, selectedReferrer?.id, birthday.trim())
                 }) { Text("Agree & Create Account", color = Ink) }
             },
             dismissButton = {

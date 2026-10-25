@@ -30,6 +30,7 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
     val profile = state.profile
     var detail by remember { mutableStateOf<String?>(null) }
     var confirmLogOut by remember { mutableStateOf(false) }
+    var showReferGrow by remember { mutableStateOf(false) }
     val border = MaterialTheme.colorScheme.outlineVariant
     val foreground = MaterialTheme.colorScheme.onSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -37,8 +38,9 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
         Color(0xFF7839F4), Color(0xFFF5A623), Color(0xFF00B779),
         Color(0xFFF43248), Color(0xFF1684EB), Color(0xFF00B779),
         Color(0xFFF5A623), Color(0xFF737373), Color(0xFF1684EB),
-        Color(0xFFF43248)
+        Color(0xFFF43248), Color(0xFF1684EB)
     )
+    if (showReferGrow) DesktopReferGrowDialog(state) { showReferGrow = false }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
@@ -64,9 +66,20 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                         }
                     }
                 }
+                if (state.adminCapability.allowed) {
+                    OutlinedButton(
+                        onClick = { onNavigate("admin") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Switch to Admin Profile")
+                    }
+                }
                 BlinkMenuDestination.entries.forEachIndexed { index, destination ->
                     val icon: ImageVector = when (destination) {
                         BlinkMenuDestination.PROFILE -> Icons.Rounded.Person
+                        BlinkMenuDestination.REFER_GROW -> Icons.Rounded.GroupAdd
                         BlinkMenuDestination.LEADERBOARD -> Icons.Rounded.EmojiEvents
                         BlinkMenuDestination.WALLET -> Icons.Rounded.AccountBalanceWallet
                         BlinkMenuDestination.NOTIFICATIONS -> Icons.Rounded.Notifications
@@ -81,6 +94,7 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                         modifier = Modifier.fillMaxWidth().clickable {
                             when (destination) {
                                 BlinkMenuDestination.PROFILE -> onNavigate("profile")
+                                BlinkMenuDestination.REFER_GROW -> showReferGrow = true
                                 BlinkMenuDestination.LEADERBOARD -> onNavigate("leaderboard")
                                 BlinkMenuDestination.WALLET -> onNavigate("wallet")
                                 BlinkMenuDestination.NOTIFICATIONS -> onNavigate("notifications")
@@ -97,9 +111,9 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                     ) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Surface(shape = CircleShape, color = colors[index].copy(alpha = .12f)) {
+                            Surface(shape = CircleShape, color = colors[index % colors.size].copy(alpha = .12f)) {
                                 Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                                    Icon(icon, null, tint = colors[index], modifier = Modifier.size(22.dp))
+                                    Icon(icon, null, tint = colors[index % colors.size], modifier = Modifier.size(22.dp))
                                 }
                             }
                             Spacer(Modifier.width(15.dp))
