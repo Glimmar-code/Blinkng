@@ -36,6 +36,7 @@ import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkDeliveryReceipt
@@ -201,7 +202,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private data class PendingAttachment(
         val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long,
-        val ownerId: String
+        val ownerId: String, val caption: String, val imageQuality: BlinkChatImageQuality
     )
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
@@ -3037,14 +3038,16 @@ private suspend fun restoreSupabaseSession() {
         partnerUsername: String,
         uri: Uri,
         kind: BlinkChatAttachmentKind,
-        durationMs: Long = 0L
+        durationMs: Long = 0L,
+        caption: String = "",
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
     ) {
         val partner = partnerUsername.trim().removePrefix("@")
         if (partner.isBlank()) return
         val tempId = "temp_attachment_${UUID.randomUUID()}"
         val senderId = supabaseService.getCurrentUserId().orEmpty()
         if (senderId.isBlank()) { showToast("Sign in before sharing a file."); return }
-        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId)
+        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId, caption.trim().take(1024), imageQuality)
         val currentConversation = _uiState.value.conversations
             .firstOrNull { it.partnerUsername.equals(partner, true) }
             ?.id?.takeUnless { it.startsWith("local_") }
@@ -3053,7 +3056,8 @@ private suspend fun restoreSupabaseSession() {
             conversationId = currentConversation,
             senderId = supabaseService.getCurrentUserId().orEmpty(),
             receiverUsername = partner,
-            text = if (kind == BlinkChatAttachmentKind.DOCUMENT) "Document" else kind.title,
+            text = if (kind == BlinkChatAttachmentKind.IMAGE && caption.isNotBlank()) caption.trim().take(1024)
+                else if (kind == BlinkChatAttachmentKind.DOCUMENT) "Document" else kind.title,
             isFromMe = true,
             timestamp = "Sending...",
             rawTimestamp = java.time.Instant.now().toString(),
@@ -3089,7 +3093,9 @@ private suspend fun restoreSupabaseSession() {
                                 }
                             }
                         }
-                    }
+                    },
+                    caption = pending.caption,
+                    imageQuality = pending.imageQuality
                 ).fold(
                     onSuccess = { message ->
                         pendingAttachments.remove(tempId)
