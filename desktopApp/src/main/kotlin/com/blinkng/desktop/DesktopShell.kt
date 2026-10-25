@@ -107,6 +107,7 @@ import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.DesktopNewStudentSuggestionsDialog
 import com.blinkng.desktop.ui.BlinkDesktopMenuScreen
 import com.blinkng.desktop.ui.BlinkDesktopWalletScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
@@ -324,6 +325,11 @@ fun runBlinkDesktopApplication() = application {
                             appState.profile?.onboardingCompleted == false ->
                                 BlinkDesktopOnboardingScreen(appState)
                             else -> Column(modifier = Modifier.fillMaxSize()) {
+                                if (appState.showNewStudentSuggestions) {
+                                    DesktopNewStudentSuggestionsDialog(appState) {
+                                        appState.showNewStudentSuggestions = false
+                                    }
+                                }
                                 incomingCall?.let { call ->
                                     IncomingCallBanner(
                                         call = call,

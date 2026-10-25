@@ -129,6 +129,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var deleteForEveryone by remember { mutableStateOf(false) }
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
+    var showGroupInvitations by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
@@ -384,6 +385,7 @@ fun MessagesScreen(state: DesktopAppState) {
             onShowAllChange = { inboxShowAll = it },
             onInboxChange = { inbox = it },
             onRefresh = { scope.launch { loadConversations() } },
+            onGroupInvitations = { showGroupInvitations = true },
         )
         return@AnimatedContent
     }
@@ -1143,6 +1145,13 @@ fun MessagesScreen(state: DesktopAppState) {
         )
     }
     }
+    if (showGroupInvitations) {
+        DesktopGroupInvitationsDialog(
+            state = state,
+            onDismiss = { showGroupInvitations = false },
+            onRefreshMessages = { scope.launch { loadConversations() } },
+        )
+    }
 }
 
 /**
@@ -1170,6 +1179,7 @@ private fun DesktopInboxPanel(
     onShowAllChange: (Boolean) -> Unit,
     onInboxChange: (BlinkMessageInbox) -> Unit,
     onRefresh: () -> Unit,
+    onGroupInvitations: () -> Unit,
 ) {
     val filtered = remember(conversations, query, inbox) {
         conversations.filter {
@@ -1221,6 +1231,7 @@ private fun DesktopInboxPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onGroupInvitations) { Text("Groups & invitations") }
             TextButton(onClick = {
                 onShowAllChange(!inboxShowAll)
                 onInboxChange(if (!inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY)

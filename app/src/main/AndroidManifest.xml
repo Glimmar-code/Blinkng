@@ -170,8 +170,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/@" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/invite/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+            </intent-filter>
+
+            <!-- Referral links work from both the canonical domain and www. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
             </intent-filter>
 
             <!-- Supabase password-recovery redirect. Add blink://reset-password

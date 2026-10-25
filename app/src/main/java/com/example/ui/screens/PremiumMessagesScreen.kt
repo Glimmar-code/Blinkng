@@ -1926,6 +1926,18 @@ private fun PremiumChatDetail(
                 EmojiRail(palette = palette, onEmoji = { text += it })
             }
 
+            // Shared @username completion is used by referral, mention and invite flows.
+            com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy.trailingMention(text)?.let { needle ->
+                BlinkUsernameSearchSuggestions(
+                    query = needle,
+                    onSelected = { person ->
+                        text = com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy
+                            .insertMention(text, person.username)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             MessageComposer(
                 value = text,
                 onValueChange = { text = it },

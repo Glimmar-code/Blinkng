@@ -2821,7 +2821,7 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, email: String, password: String) {
+    fun signUp(fullName: String, email: String, password: String, referrerId: String? = null, birthDate: String = "") {
         val temporaryUsername = "blink_" + UUID.randomUUID()
             .toString()
             .replace("-", "")
@@ -2832,11 +2832,13 @@ private suspend fun restoreSupabaseSession() {
             username = temporaryUsername,
             email = email,
             password = password,
-            faculty = ""
+            faculty = "",
+            referrerId = referrerId,
+            birthDate = birthDate
         )
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
+    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "", referrerId: String? = null, birthDate: String = "") {
         if (fullName.isBlank()) { showToast("Please enter your real name."); return }
         if (username.isBlank()) { showToast("Please choose a username."); return }
         if (password.isBlank()) { showToast("Please create a password before continuing."); return }
@@ -2853,14 +2855,20 @@ private suspend fun restoreSupabaseSession() {
         // Supabase Auth and BLINK profile initialization have both succeeded.
         viewModelScope.launch {
             try {
-                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())
+                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim(), referrerId)
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
+                    // Birth dates belong only in the account's private details, not auth metadata.
+                    val savedBirthday = birthDate.isBlank() ||
+                        runCatching { supabaseService.updatePrivateBirthDate(birthDate) }.getOrDefault(false)
+                    val completed = if (savedBirthday && birthDate.isNotBlank())
+                        profile.copy(birthDate = birthDate) else profile
                     _uiState.value = _uiState.value.copy(
-                        myProfile = profile,
-                        destination = authenticatedDestination(profile)
+                        myProfile = completed,
+                        destination = authenticatedDestination(completed)
                     )
-                    saveLocalProfile(profile)
+                    saveLocalProfile(completed)
+                    if (!savedBirthday) showToast("Birthday not saved yet. Confirm it in your profile.")
                     showToast(
                         if (profile.onboardingCompleted) "Welcome back, @${profile.username}."
                         else "Account created! Set up your BLINK profile."

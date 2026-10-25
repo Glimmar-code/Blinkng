@@ -20,6 +20,13 @@ import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkOnboardingPolicy
 import com.blinkng.shared.BlinkAuthFeedback
+import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
+import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,6 +56,12 @@ private class DesktopApiException(
     val responseBody: String,
     message: String,
 ) : IllegalStateException(message)
+
+data class DesktopPendingGroupInvite(
+    val groupId: String,
+    val groupTitle: String,
+    val inviterUsername: String,
+)
 
 class DesktopSupabaseClient(
     private val sessionStore: DesktopSessionStore = DesktopSessionStore(),
@@ -129,11 +142,22 @@ class DesktopSupabaseClient(
         return signUp(email, password, temporaryUsername, fullName)
     }
 
+    suspend fun signUpWithReferral(
+        email: String,
+        password: String,
+        fullName: String,
+        referrerId: String?,
+    ): DesktopSession {
+        val username = "blink_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        return signUp(email, password, username, fullName, referrerId)
+    }
+
     suspend fun signUp(
         email: String,
         password: String,
         username: String,
         fullName: String,
+        referrerId: String? = null,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
@@ -150,7 +174,11 @@ class DesktopSupabaseClient(
                 JSONObject()
                     .put("username", cleanUsername)
                     .put("full_name", fullName.trim().ifBlank { cleanUsername })
-                    .put("name", fullName.trim().ifBlank { cleanUsername }),
+                    .put("name", fullName.trim().ifBlank { cleanUsername })
+                    .apply {
+                        referrerId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                            ?.let { put("blink_referrer_id", it) }
+                    },
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
@@ -158,6 +186,240 @@ class DesktopSupabaseClient(
         }
         saveAuthResponse(response, cleanEmail)
     }
+
+    suspend fun findReferrers(query: String, offset: Int = 0): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val payload = JSONObject().put("p_query", clean).put("p_limit", 10)
+                .put("p_offset", offset.coerceIn(0, 500))
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/blink_referrer_suggestions")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $anonKey")
+                .header("Accept", "application/json")
+                .post(payload.toString().toRequestBody(jsonMedia))
+                .build()
+            val rows = JSONArray(execute(request))
+            (0 until rows.length()).map { i ->
+                val x = rows.getJSONObject(i)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"),
+                    username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                    isVerified = x.optBoolean("is_verified"),
+                    verificationBadge = x.optString("verification_badge").takeIf(String::isNotBlank),
+                )
+            }
+        }
+
+    suspend fun dispatchConfirmedReferralPushes() = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_my_referral_push_ids",
+            JSONObject(), "return=representation",
+        )
+        for (i in 0 until rows.length().coerceAtMost(3)) {
+            val notificationId = rows.getJSONObject(i).optString("notification_id")
+            if (notificationId.isBlank()) continue
+            execute(authenticatedRequest("/functions/v1/send-activity-notification")
+                .post(JSONObject().put("notification_id", notificationId).toString()
+                    .toRequestBody(jsonMedia))
+                .build())
+        }
+    }
+
+    suspend fun referralRecommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_referral_recommendations",
+            JSONObject().put("p_limit", 10),
+            "return=representation",
+        )
+        (0 until rows.length()).map { i ->
+            val person = rows.getJSONObject(i)
+            BlinkReferralSuggestion(
+                id = person.getString("id"),
+                username = person.getString("username"),
+                fullName = person.optString("full_name"),
+                avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
+                university = person.optString("university").takeIf(String::isNotBlank),
+                isVerified = person.optBoolean("is_verified"),
+                verificationBadge = person.optString("verification_badge").takeIf(String::isNotBlank),
+            )
+        }
+    }
+
+    suspend fun searchPeopleWithReferralRelevance(query: String): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val rows = postArray("/rest/v1/rpc/blink_referral_profile_search",
+                JSONObject().put("p_query",clean).put("p_limit",20), "return=representation")
+            (0 until rows.length()).map { index ->
+                val x = rows.getJSONObject(index)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"), username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                    isVerified = x.optBoolean("is_verified"),
+                    verificationBadge = x.optString("verification_badge").takeIf(String::isNotBlank),
+                    visibilityPoints = x.optInt("visibility_points"),
+                )
+            }
+        }
+
+    suspend fun referralCoinRewardStatus(): BlinkReferralCoinStatus = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_coin_status", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralCoinStatus()
+        BlinkReferralCoinStatus(
+            earnedCoins = row.optLong("earned_coins"),
+            nextMilestone = row.optInt("next_milestone").takeIf { !row.isNull("next_milestone") },
+            rewardEnabled = row.optBoolean("reward_enabled"),
+            nextRewardCoins = row.optInt("next_reward_coins"),
+        )
+    }
+
+    /** Invitees join only after accepting the server-owned invitation. */
+    suspend fun createGroupWithInvitations(title: String, ids: List<String>): String =
+        withContext(Dispatchers.IO) {
+            require(title.trim().length in 2..80) { "Choose a group name of 2–80 characters." }
+            require(ids.distinct().size in 2..30) { "Choose 2–30 different students." }
+            require(ids.all { runCatching { UUID.fromString(it) }.isSuccess }) {
+                "Invalid student selection."
+            }
+            val data = postObject("/rest/v1/rpc/blink_create_invite_only_group",
+                JSONObject().put("p_title", title.trim()).put("p_member_ids", JSONArray(ids.distinct())))
+            (data as? JSONObject)?.optString("value").orEmpty().removeSurrounding("\"")
+                .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                ?: throw IllegalStateException("The server did not confirm group creation.")
+        }
+
+    suspend fun pendingGroupInvitations(): List<DesktopPendingGroupInvite> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_my_group_invitations",
+                JSONObject().put("p_limit", 20), "return=representation")
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                row.optString("group_id").takeIf {
+                    runCatching { UUID.fromString(it) }.isSuccess
+                }?.let { group ->
+                    DesktopPendingGroupInvite(
+                        groupId = group,
+                        groupTitle = row.optString("group_title"),
+                        inviterUsername = row.optString("inviter_username"),
+                    )
+                }
+            }
+        }
+
+    suspend fun respondToGroupInvitation(groupId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (runCatching { UUID.fromString(groupId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_respond_to_group_invite",
+                JSONObject().put("p_group_id", groupId).put("p_accept", accept)))
+        }
+
+    suspend fun referralLinkStats(): com.blinkng.shared.discovery.BlinkReferralLinkStats =
+        withContext(Dispatchers.IO) {
+            val row = postArray("/rest/v1/rpc/blink_referral_link_stats",
+                JSONObject(), "return=representation").optJSONObject(0)
+                ?: return@withContext com.blinkng.shared.discovery.BlinkReferralLinkStats()
+            com.blinkng.shared.discovery.BlinkReferralLinkStats(
+                estimatedUniqueOpens30Days = row.optLong("unique_link_opens_30d"),
+                confirmedSignups30Days = row.optLong("confirmed_referrals_30d"),
+            )
+        }
+
+    suspend fun recordReferralImpression(profileId: String, source: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (source !in setOf("search", "recommendations") ||
+                runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_record_referral_impression",
+                JSONObject().put("p_profile", profileId).put("p_source", source)))
+        }
+
+    suspend fun referralImpressionStats(): com.blinkng.shared.discovery.BlinkReferralImpressionStats =
+        withContext(Dispatchers.IO) {
+            val row = postArray("/rest/v1/rpc/blink_referral_impression_stats", JSONObject(),
+                "return=representation").optJSONObject(0)
+                ?: return@withContext com.blinkng.shared.discovery.BlinkReferralImpressionStats()
+            com.blinkng.shared.discovery.BlinkReferralImpressionStats(
+                searchImpressions7d = row.optLong("search_impressions_7d"),
+                recommendationImpressions7d = row.optLong("recommendation_impressions_7d"),
+            )
+        }
+
+    suspend fun referralSourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_source_analytics", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
+        BlinkReferralSourceStats(
+            searchProfileOpens = row.optLong("search_profile_opens"),
+            recommendationProfileOpens = row.optLong("recommendation_profile_opens"),
+        )
+    }
+
+    suspend fun referralGrowthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_growth_stats",
+            JSONObject(), "return=representation").optJSONObject(0)
+            ?: return@withContext BlinkReferralGrowthStats()
+        BlinkReferralGrowthStats(
+            profileViewsThisWeek = row.optLong("profile_views_this_week"),
+            followersGainedThisWeek = row.optLong("followers_gained_this_week"),
+            shareActions = row.optLong("share_actions"),
+        )
+    }
+
+    suspend fun referralLeaderboard(): List<BlinkReferralLeaderboardEntry> = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_leaderboard",
+            JSONObject().put("p_days", 7).put("p_limit", 20), "return=representation")
+        (0 until rows.length()).map { i ->
+            val row = rows.getJSONObject(i)
+            BlinkReferralLeaderboardEntry(
+                position = row.optLong("rank_position"), id = row.getString("id"),
+                username = row.getString("username"), fullName = row.optString("full_name"),
+                avatarUrl = row.optString("avatar_url").takeIf(String::isNotBlank),
+                university = row.optString("university").takeIf(String::isNotBlank),
+                confirmedReferrals = row.optLong("successful_referrals"),
+            )
+        }
+    }
+
+    suspend fun recordReferralShare(channel: String): Boolean = withContext(Dispatchers.IO) {
+        if (channel !in setOf("copy", "share", "desktop", "web")) return@withContext false
+        val result = postObject("/rest/v1/rpc/blink_record_referral_share",
+            JSONObject().put("p_channel", channel))
+        (result as? JSONObject)?.optString("value")?.trim()?.equals("true", ignoreCase = true) == true
+    }
+
+    suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_dashboard", JSONObject(), "return=representation")
+        val row = rows.optJSONObject(0) ?: return@withContext BlinkReferralStats()
+        BlinkReferralStats(
+            total = row.optLong("total_referrals"),
+            activeLast30Days = row.optLong("active_referrals"),
+            visibilityPoints = row.optInt("visibility_points"),
+            visibilityLabel = row.optString("visibility_label", "Normal discovery"),
+            achievementTier = row.optString("achievement_tier", "New member"),
+            nextAchievementTarget = if (row.isNull("achievement_next_target"))
+                null else row.optInt("achievement_next_target", 1),
+        )
+    }
+
+    /**
+     * Follow a suggested student via the established desktop follow workflow.
+     * Use local UUID validation rather than an optional notification policy class.
+     */
+    suspend fun followBack(profileId: String) {
+        val id = profileId.trim()
+        require(id.matches(Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"))) {
+            "Invalid profile identifier."
+        }
+        require(id != requireSession().userId) { "You cannot follow yourself." }
+        setFollowing(id, true)
+    }
+
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
