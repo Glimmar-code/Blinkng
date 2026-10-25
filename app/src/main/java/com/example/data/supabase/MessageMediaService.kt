@@ -325,6 +325,54 @@ object MessageMediaService {
         }
     }
 
+    /**
+     * Server-paginated gallery for the entire accessible conversation history.
+     * The underlying messages SELECT is always subject to conversation RLS.
+     * No public bucket listing or unbounded local history load is required.
+     */
+    suspend fun fetchConversationPhotoPage(
+        conversationId: String, offset: Int = 0, limit: Int = 36
+    ): Result<List<ChatMessage>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val id = UUID.fromString(conversationId).toString()
+            require(offset in 0..100000) { "Invalid gallery page." }
+            val pageSize = limit.coerceIn(1, 48)
+            val url = "/rest/v1/messages?select=id,conversation_id,sender_id,content,media_url," +
+                "created_at,delivered_at,read_at,deleted_for_everyone" +
+                "&conversation_id=eq.$id&message_type=eq.image" +
+                "&deleted_for_everyone=eq.false&order=created_at.desc,id.desc" +
+                "&limit=$pageSize&offset=$offset"
+            val rows = client.newCall(builder(url).get().build()).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                check(response.isSuccessful) { error(raw, "Could not load shared pictures.") }
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            val prefix = "$PRIVATE_BUCKET:conversations/$id/users/"
+            buildList {
+                for (index in 0 until rows.length()) {
+                    val row = rows.optJSONObject(index) ?: continue
+                    val reference = row.optString("media_url")
+                    if (!reference.startsWith(prefix)) continue
+                    val url = signedUrl(reference.removePrefix("$PRIVATE_BUCKET:")) ?: continue
+                    add(ChatMessage(
+                        id = row.optString("id"),
+                        conversationId = id,
+                        senderId = row.optString("sender_id"),
+                        text = row.optString("content"),
+                        rawTimestamp = row.optString("created_at"),
+                        timestamp = row.optString("created_at").take(16).replace('T', ' '),
+                        status = when {
+                            row.optString("read_at").isNotBlank() -> MessageStatus.READ
+                            row.optString("delivered_at").isNotBlank() -> MessageStatus.DELIVERED
+                            else -> MessageStatus.SENT
+                        },
+                        attachedImageUrl = url
+                    ))
+                }
+            }
+        }
+    }
+
     /** Convert a page's private references to short-lived signed URLs only
      * after the server has returned messages in the current conversation. */
     suspend fun hydrateMediaPage(messages: List<ChatMessage>, conversationId: String):
