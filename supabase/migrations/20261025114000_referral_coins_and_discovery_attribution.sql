@@ -39,6 +39,14 @@ declare
   balance_after bigint;
 begin
   if new.confirmed_referrals <= old_count then return new; end if;
+  -- During deployment the velocity-review extension might not exist yet.
+  -- Once present, hold Coin minting for suspicious bursts pending human review.
+  if to_regclass('private.blink_referral_risk_reviews') is not null then
+    if exists (
+      select 1 from private.blink_referral_risk_reviews review
+       where review.referrer_user_id=new.user_id and review.resolved_at is null
+    ) then return new; end if;
+  end if;
   -- Advisory serializes concurrent awards; the unique primary key prevents retries.
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(new.user_id::text));
   for reward in
