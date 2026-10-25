@@ -56,7 +56,7 @@ as $$
       and cm.user_id = (select auth.uid())
       and cm.status in ('active','invited')
   )
-$;
+$$;
 revoke all on function public.blink_community_member_active(uuid) from public,anon;
 grant execute on function public.blink_community_member_active(uuid) to authenticated;
 
