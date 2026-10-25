@@ -126,7 +126,7 @@ grant execute on function public.blink_community_join(uuid) to authenticated;
 -- remains for audit and moderation.
 create or replace function public.blink_community_request_join(p_community_id uuid)
 returns text language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_user uuid:=auth.uid(); v_visibility text; v_status text;
 begin
   if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -148,7 +148,7 @@ begin
   on conflict(community_id,user_id)
     do update set status='pending';
   return 'pending';
-end $;
+end $$;
 revoke all on function public.blink_community_request_join(uuid) from public,anon;
 grant execute on function public.blink_community_request_join(uuid) to authenticated;
 
@@ -253,7 +253,7 @@ create or replace function public.blink_community_members_page(
   role text,status text,joined_at timestamptz
 )
 language plpgsql stable security definer set search_path=''
-as $
+as $$
 declare v_uid uuid:=auth.uid();v_owner uuid;v_can_moderate boolean;
 begin
   if v_uid is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -274,7 +274,7 @@ begin
     order by case cm.status when 'pending' then 0 when 'invited' then 1
       when 'active' then 2 else 3 end,cm.joined_at desc,cm.user_id
     limit greatest(1,least(coalesce(p_limit,50),100));
-end $;
+end $$;
 revoke all on function public.blink_community_members_page(uuid,integer)
   from public,anon;
 grant execute on function public.blink_community_members_page(uuid,integer)
