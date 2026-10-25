@@ -714,9 +714,12 @@ class DesktopSupabaseClient(
         List<DesktopMessage> = withContext(Dispatchers.IO) {
         val id = UUID.fromString(conversationId).toString()
         require(offset in 0..100000) { "Invalid gallery offset." }
+        val extra = if (supportsPhotoSchema())
+            ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
         val rows = getArray(
             "/rest/v1/messages?select=id,conversation_id,sender_id,content,media_url," +
-                "message_type,is_read,delivered_at,read_at,created_at&conversation_id=eq.$id" +
+                "message_type,is_read,delivered_at,read_at,created_at" + extra +
+                "&conversation_id=eq.$id" +
                 "&message_type=eq.image&deleted_for_everyone=eq.false" +
                 "&order=created_at.desc,id.desc&limit=36&offset=$offset"
         )
@@ -724,19 +727,31 @@ class DesktopSupabaseClient(
             rows.optJSONObject(i)?.let { row ->
                 val ref = row.optNullableString("media_url")
                 val url = ref?.let { signedChatImageUrl(it, id) }
-                if (url == null) null else parseMessage(row).copy(mediaUrl = url)
+                if (url == null) null else parseMessage(row).copy(
+                    mediaUrl = url,
+                    imagePreviewUrl = row.optNullableString("image_preview_url")
+                        ?.let { signedChatImageUrl(it, id) }
+                )
             }
         }
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        val extra = if (supportsPhotoSchema())
+            ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
         val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
+            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at" + extra +
+                "&order=created_at.asc&limit=300"
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
             .map { item ->
                 if (item.messageType == "image" && item.mediaUrl != null)
-                    item.copy(mediaUrl = signedChatImageUrl(item.mediaUrl, conversationId))
+                    item.copy(
+                        mediaUrl = signedChatImageUrl(item.mediaUrl, conversationId),
+                        imagePreviewUrl = item.imagePreviewUrl?.let {
+                            signedChatImageUrl(it, conversationId)
+                        }
+                    )
                 else item
             }
     }
