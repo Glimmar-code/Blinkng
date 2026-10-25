@@ -310,7 +310,16 @@ data class ChatMessage(
     val contactPhone: String? = null,
     val forwardedFromMessageId: String? = null,
     val isForwarded: Boolean = false,
-    val localAttachmentUri: String? = null
+    val localAttachmentUri: String? = null,
+    // Additional private picture metadata, additive to main's richer message model.
+    val uploadProgress: Int? = null,
+    val voiceAudioUrl: String? = null,
+    val attachedDocumentName: String? = null,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false
 )
 
 data class ChatConversation(
