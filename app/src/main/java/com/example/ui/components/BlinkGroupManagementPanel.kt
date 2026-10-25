@@ -126,9 +126,9 @@ fun BlinkGroupManagementPanel(
                                         scope.launch {
                                             busy = true
                                             try {
-                                                repo.moderateGroupMember(
+                                                check(repo.moderateGroupMember(
                                                     group.id, member.id, "remove"
-                                                )
+                                                )) { "Server did not confirm removal." }
                                                 info = "Member removed."
                                                 members = repo.fetchGroupMembers(group.id)
                                             } catch (cause: Exception) { error = cause.message }
@@ -139,10 +139,10 @@ fun BlinkGroupManagementPanel(
                                         scope.launch {
                                             busy = true
                                             try {
-                                                repo.moderateGroupMember(
+                                                check(repo.moderateGroupMember(
                                                     group.id, member.id,
                                                     if (member.isAdmin) "demote" else "promote"
-                                                )
+                                                )) { "Server did not confirm role change." }
                                                 info = "Member role updated."
                                                 members = repo.fetchGroupMembers(group.id)
                                             } catch (cause: Exception) { error = cause.message }
@@ -163,7 +163,9 @@ fun BlinkGroupManagementPanel(
                                     scope.launch {
                                         busy = true
                                         try {
-                                            repo.leaveGroup(group.id)
+                                            check(repo.leaveGroup(group.id)) {
+                                                "Server did not confirm leaving the group."
+                                            }
                                             openGroup = null
                                             groups = repo.fetchMyGroups()
                                             info = "Left group."
@@ -225,7 +227,9 @@ fun BlinkGroupManagementPanel(
                 scope.launch {
                     busy = true
                     try {
-                        repo.inviteGroupMember(inviteGroup.id, user.id)
+                        check(repo.inviteGroupMember(inviteGroup.id, user.id)) {
+                            "Server did not confirm the invitation."
+                        }
                         info = "Member invited."
                         members = repo.fetchGroupMembers(inviteGroup.id)
                     } catch (cause: Exception) {
