@@ -225,6 +225,28 @@ fun BlinkReferenceMenuScreen(
                     }
                 }
                 Spacer(Modifier.height(5.dp))
+                if (adminModeAvailable) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(surface)
+                            .border(1.dp, border, RoundedCornerShape(15.dp))
+                            .clickable(onClick = onOpenAdmin)
+                            .heightIn(min = 54.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("menu_switch_to_admin"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null,
+                            tint = MenuPurple, modifier = Modifier.size(25.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text("Switch to Admin Profile", color = foreground,
+                            modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Rounded.ChevronRight, contentDescription = "Open admin workspace",
+                            tint = foreground)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
                 BlinkMenuDestination.entries.forEach { item ->
                     val icon: ImageVector
                     val tint: Color
@@ -354,11 +376,6 @@ fun BlinkReferenceMenuScreen(
                     campusTools.forEach { (title, action) ->
                         OutlinedButton(onClick = action, modifier = Modifier.fillMaxWidth()) {
                             Text(title)
-                        }
-                    }
-                    if (adminModeAvailable) {
-                        OutlinedButton(onClick = onOpenAdmin, modifier = Modifier.fillMaxWidth()) {
-                            Text("Open BLINK Administration")
                         }
                     }
                 } else {
