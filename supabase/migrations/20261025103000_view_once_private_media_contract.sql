@@ -56,8 +56,7 @@ as $$
 begin
     if p_storage_path !~ (
          '^conversations/' || p_conversation_id::text || '/users/' ||
-         p_sender_id::text || '/' || p_message_id::text || '[.](jpg|png|webp|heic|heif)
-    ) then
+         p_sender_id::text || '/' || p_message_id::text || '[.](jpg|png|webp|heic|heif)    ) then
         raise exception 'Unexpected private picture path';
     end if;
     if not exists (
