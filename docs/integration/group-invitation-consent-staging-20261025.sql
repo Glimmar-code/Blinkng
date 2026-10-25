@@ -138,7 +138,11 @@ begin
       conversation_id,user_id,is_admin,joined_at,left_at
     ) values(p_conversation_id,v_actor,false,now(),null)
     on conflict(conversation_id,user_id) do update set
-      left_at=null,joined_at=now(),is_admin=false;
+      left_at=null,
+      joined_at=case when public.conversation_participants.left_at is null
+        then public.conversation_participants.joined_at else now() end,
+      is_admin=case when public.conversation_participants.left_at is null
+        then public.conversation_participants.is_admin else false end;
   end if;
 
   update public.blink_group_invitations
