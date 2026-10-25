@@ -39,19 +39,32 @@ const isBatch = p => p.base?.ref === 'main' &&
   /^Testlab-batch-[0-9]+$/.test(p.head?.ref || '') &&
   p.head?.repo?.full_name === OWNER + '/' + REPO;
 
-function isCandidate(pr, now = Date.now()) {
+// Structured, mutually exclusive decisions power both the safety gate and
+// human-readable explanations. A displayed "Update branch" is NOT a failure:
+// combined Testlab integration handles an outdated main baseline.
+function candidateBlockReason(pr, now = Date.now()) {
+  if (!pr || pr.state !== 'open') return 'not-open';
+  if (pr.draft) return 'draft';
+  if (pr.base?.ref !== 'main') return 'wrong-base';
+  if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return 'external-repo';
+  if (/^Testlab-batch-/.test(pr.head?.ref || '')) return 'integration-batch';
   const age = now - Date.parse(pr.updated_at || '');
+  if (!Number.isFinite(age) || age < 0 || age > ACTIVE_DAYS * 86400000) return 'inactive';
   const title = pr.title || '';
   const body = pr.body || '';
-  const tags = labels(pr);
-  return pr.state === 'open' && !pr.draft && pr.base?.ref === 'main' &&
-    pr.head?.repo?.full_name === OWNER + '/' + REPO &&
-    !/^Testlab-batch-/.test(pr.head?.ref || '') &&
-    Number.isFinite(age) && age >= 0 && age <= ACTIVE_DAYS * 86400000 &&
-    !/^\s*\[(?:draft|wip|superseded(?:\s+[^\]]+)?|hold|blocked|do not merge)\]/i.test(title) &&
-    !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge|must not be merged|should not be merged|this is draft|keep this draft|keep (?:it|the pr) (?:as )?draft|not ready for (?:production|merge))\b/i.test(body) &&
-    !/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body) &&
-    ![...tags].some(name => BLOCKED_LABELS.has(name.toLowerCase()));
+  if (/^\s*\[(?:draft|wip|superseded(?:\s+[^\]]+)?|hold|blocked|do not merge)\]/i.test(title)) {
+    return 'title-hold';
+  }
+  if (/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge|must not be merged|should not be merged|this is draft|keep this draft|keep (?:it|the pr) (?:as )?draft|not ready for (?:production|merge))\b/i.test(body)) {
+    return 'body-hold';
+  }
+  if (/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body)) return 'unfinished-checklist';
+  if ([...labels(pr)].some(name => BLOCKED_LABELS.has(name.toLowerCase()))) return 'hold-label';
+  return null;
+}
+
+function isCandidate(pr, now = Date.now()) {
+  return candidateBlockReason(pr, now) === null;
 }
 
 /** Source checks may be on an older main base. Verify THIS head's checks, then
@@ -378,6 +391,7 @@ async function run({github, context, core}) {
 
 module.exports = run;
 module.exports.isCandidate = isCandidate;
+module.exports.candidateBlockReason = candidateBlockReason;
 module.exports.isBatch = isBatch;
 module.exports.sourceChecksGreen = sourceChecksGreen;
 module.exports.hasBlockingReview = hasBlockingReview;
