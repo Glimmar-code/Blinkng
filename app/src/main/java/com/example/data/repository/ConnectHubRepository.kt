@@ -15,6 +15,7 @@ import com.example.data.models.MatchSpinPreferences
 import com.example.data.models.MatchSpinResult
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -38,62 +39,68 @@ class ConnectHubRepository(
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
 
+    /** Preserve structured cancellation instead of disguising a cancelled refresh as an outage. */
+    private inline fun <T> fetchSection(block: () -> T): Result<T> =
+        runCatching(block).onFailure { cause ->
+            if (cause is CancellationException) throw cause
+        }
+
     suspend fun fetchSnapshot(): ConnectHubSnapshot = withContext(Dispatchers.IO) {
         // Keep Connect useful when one backend surface is temporarily unavailable.
         // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
         // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
         // Fan requests out concurrently so one slow Supabase endpoint does not serialize the whole screen.
         val roommatesDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseRoommate)
             }
         }
 
         val mentorsDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc")
                 .mapObjects(::parseMentor)
             }
         }
 
         val readingDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseReadingMate)
             }
         }
 
         val agentsDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc")
                 .mapObjects(::parseHousingAgent)
             }
         }
 
         val housingRequestsDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc")
                 .mapObjects(::parseHousingRequest)
             }
         }
 
         val challengesDeferred = async {
-            runCatching {
+            fetchSection {
             getPagedArray("/rest/v1/game_challenges?select=*&order=created_at.desc")
                 .mapObjects(::parseChallenge)
             }
         }
 
         val smartMatchesDeferred = async {
-            runCatching {
+            fetchSection {
             JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
                 .mapObjects(::parseSmartMatch)
             }
         }
 
         val requestsDeferred = async {
-            runCatching {
+            fetchSection {
             JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 200)))
                 .mapObjects(::parseConnectRequest)
             }
@@ -103,7 +110,7 @@ class ConnectHubRepository(
         val gameStats = if (uid.isBlank()) {
             GameProfileStats()
         } else {
-            runCatching {
+            fetchSection {
                 val arr = getArray(
                     "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
                 )
