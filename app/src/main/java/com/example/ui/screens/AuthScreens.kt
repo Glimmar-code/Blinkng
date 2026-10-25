@@ -61,48 +61,16 @@ import kotlinx.coroutines.launch
 fun SplashScreen(
     onTimeout: () -> Unit
 ) {
-    var started by remember { mutableStateOf(false) }
-
-    val bScale by animateFloatAsState(
-        targetValue = if (started) 1f else 0.92f,
-        animationSpec = tween(
-            durationMillis = 90,
-            easing = FastOutSlowInEasing
-        ),
-        label = "splash_b_scale"
-    )
-
-    val bAlpha by animateFloatAsState(
-        targetValue = if (started) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 70,
-            easing = FastOutSlowInEasing
-        ),
-        label = "splash_b_alpha"
-    )
-
+    // Session initialization/navigation can proceed behind the full-screen intro.
+    // The independent MainActivity overlay is the visible animation, including
+    // for returning users whose cached auth reaches MAIN before this composes.
     LaunchedEffect(Unit) {
-        started = true
-        // Android already shows the system launch mark. Keep the Compose hand-off tiny
-        // so startup never waits on branding or network/session work.
         delay(120)
         onTimeout()
     }
-
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        BlinkMark(
-            size = 86.dp,
-            showText = false,
-            modifier = Modifier
-                .alpha(bAlpha)
-                .scale(bScale)
-        )
-    }
+        modifier = Modifier.fillMaxSize().background(Color.Black)
+    )
 }
 
 // ================================================================
@@ -115,195 +83,11 @@ fun OnboardingScreen(
     onSignUpClick: () -> Unit,
     onGoogleSignIn: (String) -> Unit
 ) {
-    var currentFeature by remember {
-        mutableIntStateOf(0)
-    }
-
-    val features = remember {
-        listOf(
-            Triple(
-                Icons.Default.PlayCircle,
-                "Campus Reels",
-                "Short videos, stories and live campus moments."
-            ),
-            Triple(
-                Icons.Default.Storefront,
-                "ALUTA Market",
-                "Buy, sell and discover things around campus."
-            ),
-            Triple(
-                Icons.Default.EmojiEvents,
-                "Campus Rankings",
-                "Discover trending students, creators and events."
-            ),
-            Triple(
-                Icons.Default.Groups,
-                "Student Community",
-                "Connect with people in your university."
-            )
-        )
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(2800)
-            currentFeature =
-                (currentFeature + 1) % features.size
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
-
-        DecorativeAuthBackground()
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(
-                    horizontal = 22.dp,
-                    vertical = 14.dp
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                BlinkMark(
-                    size = 38.dp,
-                    showText = true
-                )
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-
-                PremiumCampusOrb()
-
-                Spacer(
-                    modifier = Modifier.height(23.dp)
-                )
-
-                Text(
-                    text = "Your university life.\nAmplified.",
-                    fontSize = 29.sp,
-                    lineHeight = 34.sp,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center,
-                    color = Color.White
-                )
-
-                Spacer(
-                    modifier = Modifier.height(11.dp)
-                )
-
-                Text(
-                    text = "One place for campus conversations, Reels, Stories, rankings and ALUTA Market.",
-                    textAlign = TextAlign.Center,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    color = DarkTextSecondary,
-                    modifier = Modifier.padding(horizontal = 18.dp)
-                )
-
-                Spacer(
-                    modifier = Modifier.height(18.dp)
-                )
-
-                AnimatedContent(
-                    targetState = currentFeature,
-                    label = "feature_rotation"
-                ) { index ->
-
-                    PremiumFeatureCard(
-                        icon = features[index].first,
-                        title = features[index].second,
-                        description = features[index].third
-                    )
-                }
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Row {
-                    repeat(features.size) { index ->
-
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 3.dp)
-                                .size(
-                                    if (index == currentFeature)
-                                        7.dp
-                                    else
-                                        5.dp
-                                )
-                                .background(
-                                    if (index == currentFeature)
-                                        BlinkPink
-                                    else
-                                        Color.White.copy(alpha = 0.25f),
-                                    CircleShape
-                                )
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-
-                // REAL GOOGLE AUTH ENTRY POINT
-                GoogleSignInButton(
-                    text = "Continue with Google",
-                    onClick = {
-                        // Empty string intentionally.
-                        // AuthRepository opens the Android Google account chooser.
-                        onGoogleSignIn("")
-                    },
-                    modifier = Modifier
-                        .testTag("onboarding_google_btn")
-                )
-
-                PremiumAuthButton(
-                    text = "Create Student Account",
-                    icon = Icons.Default.PersonAdd,
-                    onClick = onSignUpClick,
-                    primary = true,
-                    modifier = Modifier
-                        .testTag("onboarding_signup_btn")
-                )
-
-                PremiumAuthButton(
-                    text = "Sign In with Email",
-                    icon = Icons.Default.Login,
-                    onClick = onSignInClick,
-                    primary = false,
-                    modifier = Modifier
-                        .testTag("onboarding_signin_btn")
-                )
-
-                Text(
-                    text = "By continuing, you agree to Blink's community guidelines.",
-                    textAlign = TextAlign.Center,
-                    fontSize = 11.sp,
-                    color = DarkTextSecondary
-                )
-            }
-        }
-    }
+    BlinkAuthReferenceLanding(
+        onSignInClick = onSignInClick,
+        onSignUpClick = onSignUpClick,
+        onGoogleSignIn = onGoogleSignIn,
+    )
 }
 
 // ================================================================

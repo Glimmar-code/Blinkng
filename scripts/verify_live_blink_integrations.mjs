@@ -6,12 +6,32 @@
  * page view. This will increment the approximate live metrics by one.
  */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {normalizePublicHtml} from './normalize_public_html.mjs';
 
 const site='https://blink.com.ng';
 const supabase='https://jhwgifrlxwspoedxjaly.supabase.co';
 const apk='https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk';
 const fail=[];
 const checks=[];
+// Before production publication, validate only currently published informational
+// pages. On successful deployment of this candidate, require all new SEO pages.
+const postDeploy=process.env.BLINK_SEO_POST_DEPLOY==='1';
+const existingPublicPaths=['/','/about/','/features/','/download/','/faq/','/privacy/'];
+const newPublicPaths=['/students/','/marketplace/','/safety/'];
+const expectedPublishedCommit=(process.env.BLINK_EXPECTED_MAIN_SHA||'').trim();
+const verifyStaticSource=postDeploy||process.env.BLINK_VERIFY_STATIC_SOURCE==='1';
+const publishedAssets=[
+  ['web/index.html','/'],
+  ['web/sitemap.xml','/sitemap.xml'],
+  ['web/landing.css','/landing.css'],
+  ['web/students/index.html','/students/'],
+  ['web/marketplace/index.html','/marketplace/'],
+  ['web/safety/index.html','/safety/'],
+  ['web/robots.txt','/robots.txt'],
+];
+const sha256=s=>createHash('sha256').update(s,'utf8').digest('hex');
 const get=async(path)=>{
   const res=await fetch(site+path,{headers:{Accept:'text/html,application/xml,application/json,*/*'},signal:AbortSignal.timeout(18000),redirect:'follow'});
   if(!res.ok)throw new Error(path+': HTTP '+res.status);
@@ -39,9 +59,74 @@ await check('Public informational pages and canonical URLs',async()=>{
 await check('Live sitemap and robots discovery',async()=>{
  const [{body:sitemap},{body:robots}]=await Promise.all([get('/sitemap.xml'),get('/robots.txt')]);
  const matches=[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
- assert.deepEqual(matches,['/','/about/','/features/','/download/','/faq/','/privacy/'].map(s=>site+s));
- assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'));
+ assert.equal(matches.length,new Set(matches).size,'Sitemap has duplicate locations');
+ assert.ok(matches.every(url=>url.startsWith(site+'/')),'Sitemap contains external or noncanonical URLs');
+ const required=existingPublicPaths.map(path=>site+path);
+ if(postDeploy){
+  assert.deepEqual(matches,[...existingPublicPaths,...newPublicPaths].map(path=>site+path),'Deployed sitemap must contain all nine public pages');
+ }else{
+  assert.ok(required.every(url=>matches.includes(url)),'Production sitemap is missing a baseline page');
+ }
+ assert.ok(robots.includes('User-agent: *'),'Missing public crawler directive');
+ assert.ok(robots.includes('Allow: /'),'Public crawling not permitted');
+ assert.ok(robots.includes('Sitemap: '+site+'/sitemap.xml'),'Sitemap discovery directive missing');
 });
+if(verifyStaticSource){
+ await check('Published SEO assets match the tested Git revision',async()=>{
+  assert.match(expectedPublishedCommit,/^[0-9a-f]{40}$/,'Missing checked-out Git commit SHA');
+  // blink.com.ng is served by Cloudflare Pages, not necessarily by the
+  // GitHub Pages artifact that stamps /blink-build.json. A missing marker
+  // therefore cannot establish staleness. Compare actual deployed public
+  // asset bytes against the same files checked out at the expected SHA.
+  // This verifies these assets, not private backend state or every file.
+  let differences=[];
+  for(let attempt=0;attempt<3;attempt++){
+   const suffix='blink_source_rev='+expectedPublishedCommit+'&attempt='+attempt;
+   const mismatches=[];
+   for(const [source,url] of publishedAssets){
+    const expectedText=readFileSync(new URL('../'+source,import.meta.url),'utf8');
+    const expected=sha256(expectedText);
+    try{
+     const path=url+(url.includes('?')?'&':'?')+suffix;
+     const {body}=await get(path);
+     // Cloudflare's automatic web-analytics beacon is injected after our
+     // published HTML. Strip ONLY that precisely recognized single script.
+     const clean=source.endsWith('.html')?normalizePublicHtml(body,expectedText):body;
+     const actual=sha256(clean);
+     if(actual!==expected){
+      mismatches.push(source+': expected '+expected.slice(0,12)+' received '+actual.slice(0,12));
+
+     }
+    }catch(e){mismatches.push(source+': '+String(e.message).slice(0,110));}
+   }
+   if(!mismatches.length){
+    console.log('PASS '+publishedAssets.length+' public files match checked-out '+expectedPublishedCommit);
+    return;
+   }
+   differences=mismatches;
+   if(attempt<2)await new Promise(resolve=>setTimeout(resolve,5000));
+  }
+  assert.fail('Live source fingerprint mismatch: '+differences.join('; '));
+ });
+}
+if(postDeploy){
+ await check('New SEO pages are live with static content and correct canonicals',async()=>{
+  for(const slug of ['students','marketplace','safety']){
+   const {res,body}=await get('/'+slug+'/');
+   assert.match(body,/<h1>[^<]+<\/h1>/,'Missing readable H1: '+slug);
+   assert.ok(body.includes('<link rel="canonical" href="'+site+'/'+slug+'/">'),'Wrong canonical: '+slug);
+   assert.ok(body.includes('<meta name="robots" content="index,follow'),'SEO page is not crawlable: '+slug);
+   assert.ok(!/noindex/i.test(res.headers.get('x-robots-tag')||''),'Server marked public page noindex: '+slug);
+  }
+ });
+ await check('HTML-first homepage visible to no-JavaScript crawlers',async()=>{
+  const {body}=await get('/');
+  assert.ok(body.includes('<main class="boot-static"'),'Published homepage lacks HTML-first discovery content');
+  for(const path of newPublicPaths){
+   assert.ok(body.includes('href=".'+path+'"'),'Missing initial HTML link: '+path);
+  }
+ });
+}
 await check('Published assetlinks and Android package/certificate',async()=>{
  const {body}=await get('/.well-known/assetlinks.json');
  const links=JSON.parse(body);
@@ -82,5 +167,57 @@ if(process.env.BLINK_VERIFY_SYNTHETIC_ANALYTICS==='1'){
   console.log('INFO One synthetic FAQ view was sent for deployment diagnostics; not a unique visitor.');
  });
 }
-console.log(JSON.stringify({checksPassed:checks.length,checksFailed:fail.length,publicOnly:true}));
+// Advisory checks identify DNS/Cloudflare or Pages configuration that cannot
+// be repaired by changing GitHub's static files alone. Never claim they passed.
+const warnings=[];
+async function diagnose(name,url,validate){
+ try{
+  const response=await fetch(url,{
+   redirect:'manual',
+   headers:{Accept:'text/html'},
+   signal:AbortSignal.timeout(12000)
+  });
+  const location=response.headers.get('location')||'';
+  if(!validate(response,location)){
+   warnings.push(name+': HTTP '+response.status+'; Location '+location.slice(0,100));
+   console.warn('WARN '+warnings.at(-1));
+  }else console.log('PASS advisory '+name);
+ }catch(e){
+  warnings.push(name+': '+String(e.message).slice(0,100));
+  console.warn('WARN '+warnings.at(-1));
+ }
+}
+await diagnose('Canonical www host redirects to apex','https://www.blink.com.ng/',(res,loc)=>{
+ try{
+  return [301,302,307,308].includes(res.status)
+   &&new URL(loc,'https://www.blink.com.ng/').origin===site;
+ }catch{return false;}
+});
+// Search Console reported these four historical www redirect errors on Oct 16–17.
+// Verify the exact paths, not just the host root, without falsely requiring
+// Google to index a redirecting www URL.
+for(const slug of ['faq','features','about','privacy']){
+ await diagnose('Google Search Console www /'+slug+'/ canonical redirect',
+  'https://www.blink.com.ng/'+slug+'/',(res,loc)=>{
+   try{
+    const target=new URL(loc,'https://www.blink.com.ng/'+slug+'/');
+    return [301,302,307,308].includes(res.status)
+      &&target.origin===site &&target.pathname==='/'+slug+'/'
+      &&!target.search &&!target.hash;
+   }catch{return false;}
+  });
+}
+await diagnose('HTTP redirects to canonical HTTPS','http://blink.com.ng/',(res,loc)=>{
+ try{
+  return [301,302,307,308].includes(res.status)
+   &&new URL(loc,'http://blink.com.ng/').protocol==='https:';
+ }catch{return false;}
+});
+await diagnose('Missing page returns actual HTTP 404',site+'/seo-verification-nonexistent-page-20261024',(res)=>res.status===404);
+// This legacy URL is absent from the approved sitemap and must not become a
+// soft-404 homepage. A real 404 is correct unless a genuine replacement exists.
+await diagnose('Obsolete /index2.html remains a real 404',
+ site+'/index2.html',(res)=>res.status===404);
+console.log(JSON.stringify({checksPassed:checks.length,checksFailed:fail.length,advisoryWarnings:warnings.length,publicOnly:true}));
+
 if(fail.length){console.error('Public-integration failures:',fail.join(' | '));process.exitCode=1;}

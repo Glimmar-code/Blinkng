@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.ChatConversation
+import com.example.data.models.MessageStatus
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -90,6 +98,7 @@ internal fun BlinkReferenceInbox(
     onOpenSettings: () -> Unit,
     isConnected: Boolean,
     isLoading: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit,
     filterContent: @Composable () -> Unit,
 ) {
     val bg = if (isDark) Color(0xFF0C0D0E) else Color.White
@@ -97,61 +106,74 @@ internal fun BlinkReferenceInbox(
     val secondary = if (isDark) Color(0xFFACADB0) else Color(0xFF858585)
     val border = if (isDark) Color(0xFF313236) else Color(0xFFEEEEEE)
     Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(66.dp).padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.clickable(role = Role.Button, onClick = onMyProfileClick)
-                    .testTag("inbox_my_avatar")
-            ) {
-                InboxAvatar(myAvatar, myName, 40.dp, bg)
-                if (isConnected) {
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).size(12.dp)
-                            .border(2.dp, bg, CircleShape).clip(CircleShape)
-                            .background(Color(0xFF14D76D))
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
-            Text(
-                "B L I N K",
-                modifier = Modifier.weight(1f),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = InterFontFamily,
-                color = primary,
-                maxLines = 1
+        // Phones below 380dp and large-font settings must keep the BLINK title
+        // and its three actions independently accessible instead of squeezing text.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compactHeader = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+                maxWidth.value, LocalDensity.current.fontScale
             )
-            IconButton(onClick = onToggleSearch, modifier = Modifier.size(43.dp).testTag("inbox_search")) {
-                Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
-            }
-            IconButton(onClick = onGameClick, modifier = Modifier.size(43.dp).testTag("inbox_game")) {
-                Icon(Icons.Outlined.SportsEsports, contentDescription = "Open BLINK games", tint = primary, modifier = Modifier.size(27.dp))
-            }
-            Box {
-                IconButton(onClick = onNotificationsClick, modifier = Modifier.size(43.dp).testTag("inbox_notifications")) {
-                    Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(horizontal = if (compactHeader) 12.dp else 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.clickable(role = Role.Button, onClick = onMyProfileClick)
+                        .testTag("inbox_my_avatar")
+                ) {
+                    InboxAvatar(myAvatar, myName, if (compactHeader) 36.dp else 40.dp, bg)
+                    if (isConnected) {
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).size(12.dp)
+                                .border(2.dp, bg, CircleShape).clip(CircleShape)
+                                .background(Color(0xFF14D76D))
+                        )
+                    }
                 }
-                if (hasUnreadNotifications) {
-                    Box(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 6.dp)
-                        .size(8.dp).clip(CircleShape).background(Color(0xFFFF3049)))
+                Spacer(Modifier.width(if (compactHeader) 8.dp else 14.dp))
+                Text(
+                    if (compactHeader) "BLINK" else "B L I N K",
+                    modifier = Modifier.weight(1f),
+                    fontSize = if (compactHeader) 18.sp else 20.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFontFamily,
+                    color = primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                IconButton(onClick = onToggleSearch, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_search")) {
+                    Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
+                }
+                IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_game")) {
+                    Icon(Icons.Outlined.GridView, contentDescription = "Open Items", tint = primary, modifier = Modifier.size(27.dp))
+                }
+                Box {
+                    IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_notifications")) {
+                        Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
+                    }
+                    if (hasUnreadNotifications) {
+                        Box(Modifier.align(Alignment.TopEnd).padding(top = 5.dp, end = 6.dp)
+                            .size(8.dp).clip(CircleShape).background(Color(0xFFFF3049)))
+                    }
                 }
             }
         }
         HorizontalDivider(thickness = 1.dp, color = border)
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 7.dp, bottom = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Messages", modifier = Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary)
-            TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
-                Text(if (showAll) "Close" else "See all", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compactTitle = BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout(
+                maxWidth.value, LocalDensity.current.fontScale
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 7.dp, bottom = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Messages", modifier = Modifier.weight(1f), fontSize = if (compactTitle) 22.sp else 25.sp, fontWeight = FontWeight.Bold, fontFamily = InterFontFamily, color = primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = onToggleAll, modifier = Modifier.testTag("inbox_see_all")) {
+                    Text(if (showAll) "Close" else "See all", fontSize = 13.sp, fontFamily = InterFontFamily, color = secondary)
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primary, modifier = Modifier.size(18.dp))
+                }
             }
-        }
 
+        }
         BlinkInboxStories(
             stories = stories,
             conversations = conversations,
@@ -224,7 +246,9 @@ internal fun BlinkReferenceInbox(
                         secondary = secondary,
                         border = border,
                         onOpen = { onOpenConversation(conversation.partnerUsername) },
-                        onAvatarClick = { onProfileClick(conversation.partnerUsername) }
+                        onAvatarClick = { onProfileClick(conversation.partnerUsername) },
+                        onVisibleReceipt = onVisibleInboxReceipt,
+                        isConnected = isConnected
                     )
                 }
             }
@@ -327,8 +351,17 @@ private fun BlinkInboxConversationRow(
     secondary: Color,
     border: Color,
     onOpen: () -> Unit,
-    onAvatarClick: () -> Unit
+    onAvatarClick: () -> Unit,
+    onVisibleReceipt: (String, String) -> Unit,
+    isConnected: Boolean
 ) {
+    // LazyColumn composes only visible inbox rows. Fetch metadata without
+    // opening the conversation or marking anything as read.
+    LaunchedEffect(conversation.id, conversation.lastMessageRawTime, isConnected) {
+        if (isConnected && conversation.lastMessageRawTime.isNotBlank()) {
+            onVisibleReceipt(conversation.id, conversation.lastMessageRawTime)
+        }
+    }
     val context = LocalContext.current
     val draft = remember(conversation.id, conversation.partnerUsername, conversation.lastMessageRawTime) {
         PersistentTextDraftStore.readDraft(
@@ -384,12 +417,29 @@ private fun BlinkInboxConversationRow(
                     !draft.isNullOrBlank() -> "Draft: $draft"
                     else -> conversation.lastMessage.ifBlank { "Start the conversation" }
                 }
-                Text(
-                    preview, color = secondary,
-                    fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
-                    lineHeight = 17.sp,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    conversation.lastOutgoingStatus?.let { status ->
+                        val ticks = BlinkDeliveryReceipt.ticks(status.name)
+                        Text(
+                            text = ticks,
+                            color = when (status) {
+                                MessageStatus.READ -> Color(0xFF3B82F6)
+                                MessageStatus.FAILED -> Color(0xFFFF5252)
+                                else -> secondary
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 5.dp)
+                                .testTag("inbox_receipt_${conversation.id}")
+                        )
+                    }
+                    Text(
+                        preview, color = secondary,
+                        fontSize = 14.sp, fontFamily = InterFontFamily, maxLines = 2,
+                        lineHeight = 17.sp, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
             }
             Spacer(Modifier.width(7.dp))
             Column(

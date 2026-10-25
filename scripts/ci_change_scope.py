@@ -7,6 +7,7 @@ Unknown diffs and manual runs execute all suites rather than accidentally skippi
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 
@@ -19,6 +20,8 @@ WINDOWS_ROOTS = ("desktopApp/", "shared/", "game3d/", "gradle/")
 BACKEND_ROOTS = ("supabase/",)
 ANDROID_FILES = BUILD_INPUTS | {
     ".github/workflows/android-build-check.yml",
+    "scripts/ci_verified_reuse.py",
+    "scripts/test_ci_verified_reuse.py",
     ".github/scripts/testlab_auto_promotion.test.cjs",
     ".github/scripts/test_blink_delta.py",
     "scripts/test_inapp_apk_update.py",
@@ -38,6 +41,8 @@ ANDROID_FILES = BUILD_INPUTS | {
 }
 WINDOWS_FILES = BUILD_INPUTS | {
     ".github/workflows/windows-desktop-check.yml",
+    "scripts/ci_verified_reuse.py",
+    "scripts/test_ci_verified_reuse.py",
     "scripts/check_windows_parity.py",
     "scripts/check_premium_dark_tokens.py",
     "platform-parity/changes.md",
@@ -58,10 +63,23 @@ def git(*args: str) -> str:
 
 def changed_files() -> list[str] | None:
     event = os.getenv("GITHUB_EVENT_NAME", "")
-    if event == "workflow_dispatch" or not event:
-        return None  # Always run all checks when manually dispatched or in doubt.
+    if not event:
+        return None
     try:
-        if event == "pull_request":
+        if event == "workflow_dispatch":
+            # Our trusted batch controller explicitly dispatches quality gates
+            # on a Testlab-batch SHA. Unlike arbitrary manual dispatches, its
+            # complete main...candidate diff can safely scope costly builds.
+            branch = os.getenv("GITHUB_REF_NAME", "")
+            if not re.fullmatch(r"Testlab-batch-[0-9]+", branch):
+                return None  # Manual/unknown dispatch: run every suite.
+            subprocess.run(
+                ["git", "fetch", "--no-tags", "origin",
+                 "refs/heads/main:refs/remotes/origin/main"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            diff_range = "origin/main...HEAD"
+        elif event == "pull_request":
             base = os.getenv("GITHUB_BASE_REF", "")
             if not base:
                 return None

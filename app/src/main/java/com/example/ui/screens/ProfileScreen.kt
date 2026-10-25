@@ -159,9 +159,10 @@ fun ProfileScreen(
     currentUserId: String = "",
     selectedMainTabRoute: String = "home",
     onNavigateMainTab: (String) -> Unit = {},
-    onTopAction: (String) -> Unit = {}
+    onTopAction: (String) -> Unit = {},
+    initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id) { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 6)) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
@@ -182,6 +183,7 @@ fun ProfileScreen(
     }
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
+    var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
@@ -240,6 +242,10 @@ fun ProfileScreen(
     val textPrimary = if (isDark) Color.White else LightTextPrimary
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val borderColor = if (isDark) DarkBorder else LightBorder
+
+    if (showReferGrow && isMe) {
+        BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
+    }
 
     if (showProgressHub && isMe) {
         ProgressHubSheet(
@@ -416,6 +422,8 @@ fun ProfileScreen(
                         isDark = isDark,
                         isFollowing = isFollowing,
                         followBusy = followBusy,
+                        postCount = userPosts.count { !it.isReel },
+                        profileCompletion = profileCompletion,
                         onAvatarClick = { showAvatarViewer = true },
                         onBack = onBack,
                         onEdit = onEditProfileClick,
@@ -1027,6 +1035,14 @@ fun ProfileScreen(
                                     },
                                     modifier = Modifier.weight(1f)
                                 )
+                            }
+
+                            if (isMe) {
+                                OutlinedButton(onClick = { showReferGrow = true }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Refer & Grow · My Referrals")
+                                }
                             }
 
                             if (isMe || profile.links.website.isNotBlank()) {

@@ -17,6 +17,10 @@ on:
       - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt'
       - 'web/app.js'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

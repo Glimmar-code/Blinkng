@@ -4,6 +4,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import com.blinkng.shared.BlinkPerformancePolicy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -45,5 +46,7 @@ fun rememberBlinkReduceMotion(): Boolean {
         }
     }
 
-    return reduced
+    return BlinkPerformancePolicy.reduceDecorativeMotion(
+        HighRefreshRateController.currentModeState.value, reduced
+    )
 }

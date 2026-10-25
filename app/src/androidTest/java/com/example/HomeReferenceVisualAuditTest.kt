@@ -209,11 +209,11 @@ class HomeReferenceVisualAuditTest {
         rule.waitForIdle()
         val fab = rule.onNodeWithTag("create_post_fab").fetchSemanticsNode().boundsInRoot
         val share = rule.onNodeWithContentDescription("Share post").fetchSemanticsNode().boundsInRoot
-        val message = rule.onNodeWithContentDescription("Message").fetchSemanticsNode().boundsInRoot
+        val menu = rule.onNodeWithTag("feed_nav_message").fetchSemanticsNode().boundsInRoot
         fun noOverlap(left: androidx.compose.ui.geometry.Rect, right: androidx.compose.ui.geometry.Rect): Boolean =
             left.right <= right.left || left.left >= right.right ||
                 left.bottom <= right.top || left.top >= right.bottom
-        // Share belongs to scrollable feed content and may pass behind a floating action.\n        // Keep the navigation control accessible and capture the actual visual overlap.\n        check(noOverlap(fab, message)) { "Create must not cover bottom navigation Messages." }
+        // Share belongs to scrollable feed content and may pass behind a floating action.\n        // Keep the navigation control accessible and capture the actual visual overlap.\n        check(noOverlap(fab, menu)) { "Create must not cover bottom navigation Message." }
         saveShot("home-reference-with-create.png")
     }
 }
