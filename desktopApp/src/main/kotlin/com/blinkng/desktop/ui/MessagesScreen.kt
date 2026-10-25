@@ -9,6 +9,17 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil3.compose.AsyncImage
+import androidx.compose.material3.AlertDialog
+import com.blinkng.shared.BlinkChatImageQuality
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
+import java.io.File
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,6 +92,13 @@ fun MessagesScreen(state: DesktopAppState) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
+    var selectedPictures by remember { mutableStateOf<List<File>>(emptyList()) }
+    var pictureCaption by remember { mutableStateOf("") }
+    var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
+    var pictureUploading by remember { mutableStateOf(false) }
+    var pictureProgress by remember { mutableStateOf(0) }
+    var expandedPicture by remember { mutableStateOf<String?>(null) }
+    var showMediaGallery by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
 
@@ -314,6 +332,7 @@ fun MessagesScreen(state: DesktopAppState) {
                     color = if (!active.isGroup && active.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = { showMediaGallery = true }) { Text("Photos") }
             IconButton(onClick = { error = "Desktop voice-call media adapter is not active yet." }) {
                 Icon(Icons.Rounded.Call, contentDescription = "Voice call")
             }
@@ -352,7 +371,19 @@ fun MessagesScreen(state: DesktopAppState) {
                             color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
-                                Text(message.content)
+                                if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = message.mediaUrl,
+                                        contentDescription = "Shared picture. Click to enlarge.",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.width(280.dp).height(175.dp)
+                                            .clickable { expandedPicture = message.mediaUrl }
+                                    )
+                                    if (message.content.isNotBlank() &&
+                                        !message.content.equals("Image", true)) {
+                                        Text(message.content)
+                                    }
+                                } else Text(message.content)
                                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                     if (mine) {
                                         val receipt = when {
@@ -437,6 +468,22 @@ fun MessagesScreen(state: DesktopAppState) {
                 placeholder = { Text("Message ${active.title}") },
                 maxLines = 5,
             )
+            TextButton(onClick = {
+                val chooser = JFileChooser().apply {
+                    isMultiSelectionEnabled = true
+                    fileFilter = FileNameExtensionFilter("Pictures (JPEG, PNG, GIF, WebP)",
+                        "jpg", "jpeg", "png", "gif", "webp")
+                    dialogTitle = "Choose up to 10 pictures"
+                }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    val files = chooser.selectedFiles.toList()
+                    if (files.size > 10) error = "Choose no more than 10 pictures."
+                    else {
+                        selectedPictures = files
+                        pictureCaption = ""
+                    }
+                }
+            }) { Text("📷 Picture") }
             Button(
                 onClick = {
                     val text = draft
@@ -454,6 +501,113 @@ fun MessagesScreen(state: DesktopAppState) {
                 Text("Send")
             }
         }
+        if (selectedPictures.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { if (!pictureUploading) selectedPictures = emptyList() },
+                title = { Text("Send ${selectedPictures.size} picture(s)") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(selectedPictures.joinToString(", ") { it.name }.take(250))
+                        OutlinedTextField(
+                            value = pictureCaption,
+                            onValueChange = { pictureCaption = it.take(1024) },
+                            label = { Text("Caption on first picture") }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            TextButton(onClick = {
+                                pictureQuality = BlinkChatImageQuality.STANDARD
+                            }) { Text(if (pictureQuality == BlinkChatImageQuality.STANDARD) "✓ Standard" else "Standard") }
+                            TextButton(onClick = {
+                                pictureQuality = BlinkChatImageQuality.ORIGINAL
+                            }) { Text(if (pictureQuality == BlinkChatImageQuality.ORIGINAL) "✓ Original / HD" else "Original / HD") }
+                        }
+                        if (pictureUploading) Text("Uploading $pictureProgress%")
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        enabled = !pictureUploading,
+                        onClick = {
+                            val photos = selectedPictures
+                            val quality = pictureQuality
+                            val caption = pictureCaption
+                            val conversationId = active.id
+                            pictureUploading = true
+                            scope.launch {
+                                var count = 0
+                                try {
+                                    photos.forEachIndexed { index, file ->
+                                        val result = state.client.sendChatImage(
+                                            conversationId, file, if (index == 0) caption else "", quality
+                                        ) { percent ->
+                                            pictureProgress = ((index * 100 + percent) / photos.size)
+                                        }
+                                        if (selected?.id == conversationId) messages = messages + result
+                                        count++
+                                    }
+                                    selectedPictures = emptyList()
+                                    pictureProgress = 0
+                                } catch (ex: Exception) {
+                                    error = "Sent $count of ${photos.size} pictures. " +
+                                        (ex.message ?: "Upload failed; retry remaining photos.")
+                                    selectedPictures = photos.drop(count)
+                                } finally { pictureUploading = false }
+                            }
+                        }
+                    ) { Text("Send") }
+                },
+                dismissButton = {
+                    TextButton(enabled = !pictureUploading, onClick = { selectedPictures = emptyList() }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        if (showMediaGallery) {
+            AlertDialog(
+                onDismissRequest = { showMediaGallery = false },
+                title = { Text("Shared pictures") },
+                text = {
+                    val photos = messages.filter {
+                        it.messageType == "image" && !it.mediaUrl.isNullOrBlank()
+                    }
+                    if (photos.isEmpty()) Text("No pictures in the loaded chat history.")
+                    else LazyColumn(modifier = Modifier.heightIn(max = 390.dp)) {
+                        items(photos) { photo ->
+                            AsyncImage(
+                                model = photo.mediaUrl,
+                                contentDescription = "Open shared photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.width(230.dp).height(120.dp)
+                                    .clickable { expandedPicture = photo.mediaUrl }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showMediaGallery = false }) { Text("Close") }
+                }
+            )
+        }
+        expandedPicture?.let { imageUrl ->
+            Dialog(onDismissRequest = { expandedPicture = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                Box(modifier = Modifier.fillMaxSize().clickable { expandedPicture = null },
+                    contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = "Full-size shared picture",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    TextButton(
+                        onClick = { expandedPicture = null },
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) { Text("Close") }
+                }
+            }
+        }
+
     }
     }
 }
