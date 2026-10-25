@@ -1368,3 +1368,9 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 **PARITY-EXCEPTION: profile-single-surface** — Android removes an accidental second, obsolete profile header after the current reference dashboard. Windows already renders exactly one profile header in `DesktopUserProfileDialog`, so duplicating this Android-specific removal in Windows would be meaningless. Equivalent Windows behavior is the existing single header and unchanged profile actions.
 
 - **Main reconciliation:** On the conflict-resolution branch, retained the newer main profile features (including the owner Refer & Grow entry, initial tab/deep link behavior and current profile handlers) while removing only the redundant second cover/identity/trust surface. This is still a draft PR; no production merge or deployment.
+
+## 2026-10-25 — Inbox compose entry uses existing conversation chooser
+
+- **Android:** The Messages compose action now opens the already-implemented `New conversation` dialog instead of silently navigating directly to Search. Its existing actions lead to student lookup and groups/invitations, without altering server contracts, identity, media or permissions.
+- **Windows:** The desktop app retains its platform-specific messaging and invitation navigation rather than reproducing an Android-only alert. Verify Windows new-chat and invite actions in current-head desktop tests before release.
+- **Parity:** User outcome is to start a direct conversation or manage group invitations; this is a platform-specific navigation repair, not a new backend feature. No Windows-side code or shared API change is introduced. This note is not runtime verification.
