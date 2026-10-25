@@ -251,14 +251,25 @@ data class ChatMessage(
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
     val attachedImageUrl: String? = null,
+    // Transient UI percentage; never written as a server delivery receipt.
+    val uploadProgress: Int? = null,
     val attachedVideoUrl: String? = null,
+    val voiceAudioUrl: String? = null,
+    val attachedDocumentUrl: String? = null,
+    val attachedDocumentName: String? = null,
     val replyToMessageId: String? = null,
     val editedAt: String? = null,
     val deletedForEveryone: Boolean = false,
     val reactionCounts: Map<String, Int> = emptyMap(),
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    /** True only when the server owns one-time picture access. */
+    val imageViewOnce: Boolean = false
 )
 
 data class ChatConversation(

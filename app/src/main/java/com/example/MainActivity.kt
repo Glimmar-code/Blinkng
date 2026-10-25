@@ -1319,8 +1319,20 @@ fun MainAppContent(
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onSendAttachment = { partner, uri, kind, duration, caption, quality, album ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality, album)
+                        },
+                        onSendViewOncePicture = { partner, uri, caption, quality ->
+                            viewModel.sendViewOncePicture(partner, uri, caption, quality)
+                        },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
+                        },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
+                        },
+                        onForwardPicture = { target, message ->
+                            viewModel.forwardPictureMessage(target, message)
                         },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
@@ -1786,6 +1798,18 @@ fun MainAppContent(
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
+                    onSendAttachment = { uri, kind, duration, caption, quality, album ->
+                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality, album)
+                    },
+                    onSendViewOncePicture = { uri, caption, quality ->
+                        viewModel.sendViewOncePicture(convo.partnerUsername, uri, caption, quality)
+                    },
+                    onCancelAttachment = { message ->
+                        viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
+                    },
+                    onForwardPicture = { target, message ->
+                        viewModel.forwardPictureMessage(target, message)
+                    },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
                     },
