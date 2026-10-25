@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatUploadProgress
+import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
@@ -105,7 +106,9 @@ object MessageMediaService {
         kind: BlinkChatAttachmentKind,
         durationMs: Long = 0L,
         clientMessageId: String = UUID.randomUUID().toString(),
-        onUploadProgress: (Int) -> Unit = {}
+        onUploadProgress: (Int) -> Unit = {},
+        caption: String = "",
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
@@ -174,7 +177,10 @@ object MessageMediaService {
                 ))
             }
 
-            BoundedMessageAttachment.open(context, uri, kind).use { staged ->
+            val selected = if (kind == BlinkChatAttachmentKind.IMAGE)
+                BlinkChatImagePreparer.open(context, uri, imageQuality)
+            else BoundedMessageAttachment.open(context, uri, kind)
+            selected.use { staged ->
                 val objectPath =
                     "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
                 client.newCall(
@@ -190,6 +196,7 @@ object MessageMediaService {
                 val label = when (kind) {
                     BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
                     BlinkChatAttachmentKind.VOICE -> "Voice note: ${durationMs.coerceAtLeast(0) / 1000}s"
+                    BlinkChatAttachmentKind.IMAGE -> caption.trim().take(1024).ifBlank { "Image" }
                     else -> kind.title
                 }
                 val messageBody = JSONObject()
