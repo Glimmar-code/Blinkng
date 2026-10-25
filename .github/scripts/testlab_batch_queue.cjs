@@ -203,6 +203,13 @@ async function makeBatch(github, candidates, context, core) {
         core.warning('Skipping #' + pr.number + ': incomplete changed-file list');
         continue;
       }
+      // workflow_dispatch runs code from the candidate ref. Refuse changes
+      // to CI/workflow controllers entirely so queued source PRs cannot edit
+      // their own privileged testing instructions before release review.
+      if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p))) {
+        core.warning('Skipping #' + pr.number + ': CI controller changes require a separate reviewed PR');
+        continue;
+      }
       if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
         core.info('Skipping #' + pr.number + ': staged backend/release evidence missing');
         continue;
