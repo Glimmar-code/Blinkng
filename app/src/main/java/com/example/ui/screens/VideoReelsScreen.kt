@@ -538,9 +538,12 @@ private fun ReelsContent(
     }
     // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
     // An unstable callback instance must not cause a new dispose/recompose cycle.
-    DisposableEffect(expanded, isScreenActive) {
+    val latestExpanded by rememberUpdatedState(expanded)
+    // Only restore the host bar when this Reels destination actually leaves.
+    // Keying disposal to expanded caused a transient visible bar during the transition.
+    DisposableEffect(isScreenActive) {
         onDispose {
-            if (expanded && isScreenActive) latestBottomBarVisibilityChange(true)
+            if (isScreenActive && latestExpanded) latestBottomBarVisibilityChange(true)
         }
     }
     BackHandler(enabled = expanded && !isInteractionOverlayOpen) { expanded = false }
@@ -825,15 +828,7 @@ private fun ReelsContent(
         }
 
         if (expanded) {
-        ReelsTopTabs(
-            selectedTab = if (selectedTab == "Reels") "For You" else selectedTab,
-            onTabSelected = { selectedTab = it },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 10.dp)
-        )
-
+        // Preview tabs and header disappear completely in immersive fullscreen.
         IconButton(
             onClick = { expanded = false },
             modifier = Modifier
