@@ -40,6 +40,7 @@ fun BlinkUserPickerSheet(
     minSelection: Int = 2,
     maxSelection: Int = 49,
     onConfirmSelection: (List<UserProfile>) -> Unit = {},
+    onCreateGroup: (() -> Unit)? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var users by remember(query) { mutableStateOf<List<UserProfile>>(emptyList()) }
@@ -82,6 +83,12 @@ fun BlinkUserPickerSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (!multiSelect && onCreateGroup != null) {
+                OutlinedButton(
+                    onClick = onCreateGroup,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("＋ New Group") }
+            }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it.take(50) },
