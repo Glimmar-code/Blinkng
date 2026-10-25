@@ -108,6 +108,108 @@ end;
 $$;
 revoke all on function public.ack_pending_message_deliveries() from public,anon;
 grant execute on function public.ack_pending_message_deliveries() to authenticated;
+
+-- Membership-aware paginated message reader. Preserve the established RPC
+-- signature/return type, and do not rely exclusively on external table RLS.
+create or replace function public.get_conversation_messages_page(
+  p_conversation_id uuid, p_limit integer default 40,
+  p_before timestamptz default null, p_before_id uuid default null
+) returns setof public.messages
+language sql stable security invoker set search_path=''
+as $
+  select m.*
+  from public.messages m
+  where m.conversation_id=p_conversation_id
+    and coalesce(m.deleted_for_everyone,false)=false
+    and (select auth.uid()) is not null
+    and exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id=p_conversation_id
+        and cp.user_id=(select auth.uid()) and cp.left_at is null
+    )
+    and (p_before is null or m.created_at<p_before
+      or (m.created_at=p_before and
+        (p_before_id is null or m.id<p_before_id)))
+  order by m.created_at desc,m.id desc
+  limit greatest(1,least(coalesce(p_limit,40),100))
+$;
+revoke all on function public.get_conversation_messages_page(uuid,integer,timestamptz,uuid)
+  from public,anon;
+grant execute on function public.get_conversation_messages_page(uuid,integer,timestamptz,uuid)
+  to authenticated;
+
+-- The existing username-based read receipt RPC is SECURITY DEFINER.
+-- Filter both sides to active direct-chat members before touching message rows.
+-- Do not grant departed people indirect access via read receipt side effects.
+create or replace function public.mark_conversation_read(p_partner_username text)
+returns integer language plpgsql security definer set search_path=''
+as $
+declare
+  v_me uuid:=auth.uid();
+  v_partner uuid;
+  v_changed integer:=0;
+  v_identifier text:=lower(trim(leading '@' from coalesce(p_partner_username,'')));
+begin
+  if v_me is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if v_identifier='' then raise exception 'RECIPIENT_REQUIRED'; end if;
+  select p.id into v_partner
+    from public.profiles p
+    where lower(btrim(p.username))=v_identifier
+      or lower(btrim(coalesce(p.handle,'')))=v_identifier
+    order by case when lower(btrim(p.username))=v_identifier then 0 else 1 end
+    limit 1;
+  if v_partner is null then raise exception 'RECIPIENT_NOT_FOUND'; end if;
+  update public.messages m set
+    is_read=true,
+    delivered_at=coalesce(m.delivered_at,now()),
+    read_at=coalesce(m.read_at,now())
+  where m.sender_id=v_partner
+    and coalesce(m.deleted_for_everyone,false)=false
+    and exists (
+      select 1 from public.conversations c
+      join public.conversation_participants mine
+        on mine.conversation_id=c.id
+       and mine.user_id=v_me and mine.left_at is null
+      join public.conversation_participants theirs
+        on theirs.conversation_id=c.id
+       and theirs.user_id=v_partner and theirs.left_at is null
+      where c.id=m.conversation_id and coalesce(c.is_group,false)=false
+    )
+    and (coalesce(m.is_read,false)=false
+      or m.delivered_at is null or m.read_at is null);
+  get diagnostics v_changed=row_count;
+  update public.conversation_participants mine
+    set last_read_at=now()
+  where mine.user_id=v_me and mine.left_at is null
+    and exists (
+      select 1 from public.conversations c
+      join public.conversation_participants theirs
+        on theirs.conversation_id=c.id
+       and theirs.user_id=v_partner and theirs.left_at is null
+      where c.id=mine.conversation_id and coalesce(c.is_group,false)=false
+    );
+  -- Only clear legitimate DM notifications for an active, still-authorized
+  -- conversation; a disconnected former participant cannot perform this action.
+  if exists (
+    select 1 from public.conversations c
+    join public.conversation_participants mine
+      on mine.conversation_id=c.id
+     and mine.user_id=v_me and mine.left_at is null
+    join public.conversation_participants theirs
+      on theirs.conversation_id=c.id
+     and theirs.user_id=v_partner and theirs.left_at is null
+    where coalesce(c.is_group,false)=false
+  ) then
+    update public.notifications n set is_read=true
+    where n.user_id=v_me and n.actor_id=v_partner
+      and coalesce(n.is_read,false)=false
+      and lower(coalesce(n.text,'')) like '% sent you a message%';
+  end if;
+  return v_changed;
+end;
+$;
+revoke all on function public.mark_conversation_read(text) from public,anon;
+grant execute on function public.mark_conversation_read(text) to authenticated;
 commit;
 
 -- Verify live role grants and migration snapshots before deployment.
