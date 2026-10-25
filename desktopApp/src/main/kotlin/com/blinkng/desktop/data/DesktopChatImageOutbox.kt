@@ -134,6 +134,16 @@ object DesktopChatImageOutbox {
         }.getOrNull()
     }
 
+    /** Remove only this signed-out user's staged pictures, never another account's. */
+    fun discardOwner(ownerId: String) {
+        val folder = userFolder(ownerId)
+        folder.listFiles()?.forEach { item ->
+            if (item.isFile && item.name != ".transfer.lock") {
+                runCatching { item.delete() }
+            }
+        }
+    }
+
     fun complete(record: Record) {
         val folder = userFolder(record.ownerId)
         File(folder, "${record.messageId}.progress").delete()
