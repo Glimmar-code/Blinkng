@@ -21,6 +21,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
+import com.example.data.supabase.BlinkChatPhotoEditor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -1275,6 +1278,9 @@ private fun PremiumChatDetail(
     // Confirm a selected image before sending; no backend row exists until Send.
     var selectedImageUris by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedImageCaption by remember(conversation.id) { mutableStateOf("") }
+    var selectedImageIndex by remember(conversation.id) { mutableIntStateOf(0) }
+    var imageEditBusy by remember(conversation.id) { mutableStateOf(false) }
+    val photoEditScope = rememberCoroutineScope()
     var selectedImageQuality by remember(conversation.id) { mutableStateOf(BlinkChatImageQuality.STANDARD) }
     var showMediaGallery by remember(conversation.id) { mutableStateOf(false) }
     var galleryPreviewUri by remember(conversation.id) { mutableStateOf<String?>(null) }
@@ -1379,6 +1385,7 @@ private fun PremiumChatDetail(
             Toast.makeText(context, "You can send up to 10 pictures.", Toast.LENGTH_SHORT).show()
         }
         selectedImageUris = uris.take(10)
+        selectedImageIndex = 0
         selectedImageCaption = ""
     }
     val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
@@ -1386,6 +1393,7 @@ private fun PremiumChatDetail(
         pendingCameraFile = null
         if (saved && file != null && file.length() > 0) {
             selectedImageUris = listOf(Uri.fromFile(file))
+            selectedImageIndex = 0
             selectedImageCaption = ""
         } else file?.delete()
     }
@@ -1825,18 +1833,65 @@ private fun PremiumChatDetail(
                     color = palette.textPrimary, fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(12.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(selectedImageUris) { selected ->
+                val currentPhoto = selectedImageUris.getOrNull(selectedImageIndex)
+                currentPhoto?.let { selected ->
+                    AsyncImage(
+                        model = selected,
+                        contentDescription = "Selected picture preview",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(190.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .testTag("chat_image_before_send_preview")
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(selectedImageUris.size) { index ->
                         AsyncImage(
-                            model = selected,
-                            contentDescription = "Selected picture preview",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.width(205.dp).height(190.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .testTag("chat_image_before_send_preview")
+                            model = selectedImageUris[index],
+                            contentDescription = "Edit picture ${index + 1}",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(7.dp))
+                                .border(
+                                    if (selectedImageIndex == index) 2.dp else 0.dp,
+                                    palette.accent, RoundedCornerShape(7.dp)
+                                )
+                                .clickable { selectedImageIndex = index }
                         )
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "Rotate 90°" to BlinkChatPhotoEditor.Edit.ROTATE_RIGHT,
+                        "Square crop" to BlinkChatPhotoEditor.Edit.CENTER_SQUARE
+                    ).forEach { (title, operation) ->
+                        androidx.compose.material3.TextButton(
+                            enabled = !imageEditBusy && currentPhoto != null,
+                            onClick = {
+                                val source = currentPhoto ?: return@TextButton
+                                val index = selectedImageIndex
+                                imageEditBusy = true
+                                photoEditScope.launch {
+                                    try {
+                                        val edited = BlinkChatPhotoEditor.edit(context, source, operation)
+                                        if (selectedImageUris.getOrNull(index) == source) {
+                                            val updated = selectedImageUris.toMutableList()
+                                            updated[index] = edited
+                                            selectedImageUris = updated
+                                        } else {
+                                            java.io.File(edited.path.orEmpty()).delete()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, e.message ?: "Could not edit photo.", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        imageEditBusy = false
+                                    }
+                                }
+                            }
+                        ) { Text(title, fontSize = 11.sp) }
+                    }
+                }
+                if (imageEditBusy) Text("Preparing picture…", color = palette.textSecondary)
                 Spacer(Modifier.height(12.dp))
                 TextField(
                     value = selectedImageCaption,
@@ -1863,7 +1918,9 @@ private fun PremiumChatDetail(
                     androidx.compose.material3.TextButton(onClick = {
                         selectedImageUris = emptyList()
                     }) { Text("Cancel", color = palette.textSecondary) }
-                    androidx.compose.material3.Button(onClick = {
+                    androidx.compose.material3.Button(
+                        enabled = !imageEditBusy,
+                        onClick = {
                         val photos = selectedImageUris.toList()
                         val caption = selectedImageCaption
                         val quality = selectedImageQuality
