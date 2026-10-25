@@ -87,6 +87,17 @@ enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
 
+/** Snapshot only the active navigation surface; never the entire feed or chat history. */
+data class BlinkNavigationEntry(
+    val accountId: String,
+    val selectedTab: MainTab,
+    val feedSubTab: Int,
+    val viewingProfile: UserProfile?,
+    val viewingProduct: MarketItem?,
+    val activeConversationPartner: String?,
+    val isConversationFullScreen: Boolean
+)
+
 data class BlinkUiState(
     val destination: AppDestination = AppDestination.SPLASH,
     val selectedTab: MainTab = MainTab.HOME,
@@ -95,6 +106,7 @@ data class BlinkUiState(
     val profiles: List<UserProfile> = emptyList(),
     val viewingProfile: UserProfile? = null,
     val viewingProduct: MarketItem? = null,
+    val navigationHistory: List<BlinkNavigationEntry> = emptyList(),
     val isPostItemOpen: Boolean = false,
     val isBecomeSellerOpen: Boolean = false,
     val showSellerCongratulationsDialog: Boolean = false,
@@ -3134,6 +3146,46 @@ private suspend fun restoreSupabaseSession() {
      * One state transition per primary navigation action. Reels and Connect are
      * Home sub-tabs, but must not briefly render Home before their destination.
      */
+    private fun navigationEntry(state: BlinkUiState): BlinkNavigationEntry = BlinkNavigationEntry(
+        accountId = state.myProfile.id,
+        selectedTab = state.selectedTab,
+        feedSubTab = state.feedSubTab,
+        viewingProfile = state.viewingProfile,
+        viewingProduct = state.viewingProduct,
+        activeConversationPartner = state.activeConversationPartner,
+        isConversationFullScreen = state.isConversationFullScreen
+    )
+
+    private fun pushRoute(
+        state: BlinkUiState,
+        destination: BlinkNavigationEntry
+    ): List<BlinkNavigationEntry> {
+        val current = navigationEntry(state)
+        val history = state.navigationHistory.filter { it.accountId == state.myProfile.id }
+        return com.blinkng.shared.BlinkNavigationHistoryPolicy.push(history, current, destination)
+    }
+
+    /** Back restores the prior route and its retained Compose feed/list state. */
+    fun navigateBackInHistory(): Boolean {
+        val state = _uiState.value
+        val history = state.navigationHistory.filter { it.accountId == state.myProfile.id }
+        val (remaining, previous) = com.blinkng.shared.BlinkNavigationHistoryPolicy.pop(history)
+            ?: return false
+        _uiState.value = state.copy(
+            selectedTab = previous.selectedTab,
+            feedSubTab = previous.feedSubTab,
+            viewingProfile = previous.viewingProfile,
+            viewingProduct = previous.viewingProduct,
+            activeConversationPartner = previous.activeConversationPartner,
+            isConversationFullScreen = previous.isConversationFullScreen,
+            navigationHistory = remaining,
+            routedReelId = null
+        )
+        persistUiPreferences()
+        if (previous.selectedTab == MainTab.MESSAGES) loadInboxOnEntry()
+        return true
+    }
+
     fun navigateToPrimaryTab(tab: MainTab, homeSubTab: Int = 0) {
         val current = _uiState.value
         val nextFeedSubTab = if (tab == MainTab.HOME) homeSubTab.coerceIn(0, 3) else current.feedSubTab
@@ -3142,7 +3194,16 @@ private suspend fun restoreSupabaseSession() {
             current.routedReelId != null || current.viewingProfile != null ||
             current.viewingProduct != null || current.isConversationFullScreen
         ) {
+            val destination = navigationEntry(current).copy(
+                selectedTab = tab,
+                feedSubTab = nextFeedSubTab,
+                viewingProfile = null,
+                viewingProduct = null,
+                activeConversationPartner = null,
+                isConversationFullScreen = false
+            )
             _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, destination),
                 selectedTab = tab,
                 feedSubTab = nextFeedSubTab,
                 routedReelId = null,
@@ -3397,10 +3458,22 @@ private suspend fun restoreSupabaseSession() {
         state.profilePostsByUserId.values.flatten() + state.myLikedPosts + state.mySavedPosts
 
     fun openProfile(username: String) {
-        if (isMe(username)) { _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile); return }
+        if (isMe(username)) {
+            val current = _uiState.value
+            val profile = current.myProfile
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(viewingProfile = profile)),
+                viewingProfile = profile
+            )
+            return
+        }
         val cached = cachedProfile(username)
         if (cached != null) {
-            _uiState.value = _uiState.value.copy(viewingProfile = cached)
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(viewingProfile = cached)),
+                viewingProfile = cached
+            )
         }
         if (!_uiState.value.isOnline) {
             if (cached == null) showToast("That profile is not saved on this device yet.")
@@ -3414,7 +3487,11 @@ private suspend fun restoreSupabaseSession() {
                 profileRepository.fetchByUsername(cleanIdentifier)
             }
             if (remoteProfile != null) {
-                _uiState.value = _uiState.value.copy(
+                val beforeRemote = _uiState.value
+                _uiState.value = beforeRemote.copy(
+                    navigationHistory = if (cached == null) pushRoute(
+                        beforeRemote, navigationEntry(beforeRemote).copy(viewingProfile = remoteProfile)
+                    ) else beforeRemote.navigationHistory,
                     viewingProfile = remoteProfile,
                     profiles = listOf(remoteProfile) + _uiState.value.profiles.filterNot {
                         it.id == remoteProfile.id || it.username.equals(remoteProfile.username, true)
@@ -4469,8 +4546,16 @@ private suspend fun restoreSupabaseSession() {
         }
         val state = _uiState.value
         val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
+        val newChatRoute = navigationEntry(state).copy(
+            selectedTab = MainTab.MESSAGES,
+            viewingProfile = null,
+            viewingProduct = null,
+            activeConversationPartner = clean,
+            isConversationFullScreen = false
+        )
         if (existing != null) {
             _uiState.value = state.copy(
+                navigationHistory = pushRoute(state, newChatRoute),
                 selectedTab = MainTab.MESSAGES,
                 viewingProfile = null,
                 viewingProduct = null,
@@ -4493,6 +4578,7 @@ private suspend fun restoreSupabaseSession() {
         }
 
         _uiState.value = state.copy(
+            navigationHistory = pushRoute(state, newChatRoute),
             selectedTab = MainTab.MESSAGES,
             viewingProfile = null,
             viewingProduct = null,
