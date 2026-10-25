@@ -52,3 +52,13 @@
 - Expanded the disposable PGlite suite for active/departed conversation history, unread message visibility, receipts, direct-message marking, and group-summary separation. These are **committed candidates, not reported as passing runtime checks**. Real staging still required.
 - `Testlab` is significantly historically diverged from this main-based PR branch. Do not merge or reset it without safe conflict reconciliation and full cross-platform and production-compatible integration tests. Preserve current `main`, users, production Supabase, working payments and release artifacts.
 - Android and Windows group media, invitations with recipient consent, reliable per-member receipts, community cover uploads, exact high-resolution Auth asset and complete visual/performance acceptance remain **unimplemented or unverified**. No deployment, real-device verification, main merge or signed APK release has been claimed.
+
+
+## 2026-10-25 strict-order security fixes added after matrix review
+
+- Added `direct-message-send-security-staging-20261025.sql` for active-member DM send/create RPCs that don't revive departed conversations. Read-receipt and message-list hardening is separately staged.
+- Added `group-notification-fanout-staging-20261025.sql` to correct a hosted trigger that notifies only one group recipient and omits `left_at`.
+- Added `group-invitation-consent-staging-20261025.sql` with private pending group invitations; changes BOTH group creation and later invitations to recipient-confirmed membership, new recipient-only list/response RPCs and status/capacity/block checks.
+- Android and Windows clients now implement invitation inbox/accept/decline. Fixed Windows `MessagesScreen` so its early inbox return doesn't suppress New Group / Invites dialogs.
+- `staged-market-community-contract-tests.mjs` now has tests for direct DM re-entry, blocked DMs, departed group notifications, private invitation visibility, declined/accepted membership, founder-only group creation and staged SQL replay.
+- **Verification hold unchanged:** No local PGlite/CI results on final commit yet; no current production-compatible staging, no hosted changes, no live two-account/device tests, no Testlab merge, no owner release approval, no main merge or APK publication. New candidates are not deployable merely because their source was committed.
