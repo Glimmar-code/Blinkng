@@ -1,0 +1,58 @@
+# One-time, strictly scoped retirement of the obsolete Testlab branch.
+# Do not delete other branches or rewrite main/history. A preserved backup must exist.
+name: Retire legacy Testlab branch
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/retire-testlab-branch.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  retire:
+    if: github.repository == 'Glimmar-code/Blinkng' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete only the backed-up obsolete Testlab ref
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = 'Glimmar-code', repo = 'Blinkng';
+            const branch = 'Testlab';
+            const backup = 'archive/Testlab-before-promotion-20261025';
+            const expected = '1ecc1857583fdb6860ed6fc80ec99859e67cbe98';
+            const {data: repoData} = await github.rest.repos.get({owner,repo});
+            if (repoData.default_branch !== 'main') {
+              throw new Error('Default branch is not main: refusing retirement');
+            }
+            const {data: archive} = await github.rest.repos.getBranch({owner,repo,branch:backup});
+            if (archive.commit.sha !== expected) {
+              throw new Error('Archived Testlab backup revision changed: refusing retirement');
+            }
+            let old;
+            try {
+              old = (await github.rest.repos.getBranch({owner,repo,branch})).data;
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('Testlab already deleted; backup still preserved');
+                return;
+              }
+              throw error;
+            }
+            if (old.commit.sha !== expected) {
+              throw new Error('Testlab changed since backup; refusing to lose unarchived work');
+            }
+            const open = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state:'open', per_page:100
+            });
+            if (open.some(pr => pr.head?.ref === branch && pr.head?.repo?.full_name === owner+'/'+repo)) {
+              throw new Error('An open PR still uses Testlab; refusing retirement');
+            }
+            // Repository rules may deny branch deletion. Do not bypass rules.
+            await github.rest.git.deleteRef({owner,repo,ref:'heads/'+branch});
+            core.info('Deleted exact Testlab branch; untouched main and archive');
