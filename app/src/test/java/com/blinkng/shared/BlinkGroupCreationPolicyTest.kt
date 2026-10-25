@@ -1,7 +1,7 @@
 package com.blinkng.shared
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkGroupCreationPolicyTest {
@@ -11,14 +11,14 @@ class BlinkGroupCreationPolicyTest {
 
     @Test fun creatorCannotCountTowardTwoInvitedMembers() {
         assertEquals(listOf(a, b), BlinkGroupCreationPolicy.normalizedMembers(owner, listOf(a, b, owner, a)))
-        assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(runCatching {
             BlinkGroupCreationPolicy.normalizedMembers(owner, listOf(a))
-        }
+        }.exceptionOrNull() is IllegalArgumentException)
     }
     @Test fun titleIsBoundedAndNormalized() {
         assertEquals("Study Group", BlinkGroupCreationPolicy.normalizedTitle("  Study Group  "))
-        assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(runCatching {
             BlinkGroupCreationPolicy.normalizedTitle(" ")
-        }
+        }.exceptionOrNull() is IllegalArgumentException)
     }
 }
