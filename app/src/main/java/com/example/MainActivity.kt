@@ -1804,6 +1804,13 @@ fun MainAppContent(
                         onSearchUsers = { query, limit, afterUsername, afterId ->
                             viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                         },
+                        onCreateGroup = {
+                            context.startActivitySafely(
+                                Intent(context, ProfessionalCenterActivity::class.java)
+                                    .putExtra("section", "groups"),
+                                "Could not open group creation."
+                            )
+                        },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
                         onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
