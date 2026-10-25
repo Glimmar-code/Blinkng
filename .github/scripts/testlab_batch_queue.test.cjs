@@ -129,3 +129,21 @@ test('empty queue cannot create branches or merge', async () => {
     core: {info: s => { message = s; }}});
   assert.match(message, /No recent/);
 });
+
+test('scheduled auto scanner examines unlabeled candidates instead of treating filter index as date', async () => {
+  const pr = {...base, updated_at: new Date().toISOString(), changed_files: 1,
+    head: {...base.head, sha: 'e'.repeat(40)}};
+  const log = [];
+  const github = {rest: {
+    pulls: {
+      list: async () => [pr],
+      get: async () => ({data: pr}),
+      listFiles: async () => [{filename: 'README.md'}],
+    },
+    checks: {listForRef: async () => []},
+  }, paginate: async (fn, args) => fn(args)};
+  await queue({github, context: {eventName: 'schedule', runId: 42},
+    core: {info: message => log.push(message)}});
+  assert.ok(log.some(s => s.includes('Skipping #' + pr.number) && s.includes('No verifiable current-head CI')),
+    'scheduler must evaluate source CI rather than claiming no candidates');
+});
