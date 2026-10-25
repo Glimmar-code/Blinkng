@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopCommunity
 import com.blinkng.desktop.data.DesktopProfile
+import com.blinkng.desktop.data.DesktopProfileMembership
 import com.blinkng.shared.BlinkCommunityPolicy
 import com.blinkng.shared.BlinkUserSuggestionPolicy
 import kotlinx.coroutines.delay
@@ -55,6 +56,8 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
     var coverUrl by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
     var inviteTo by remember { mutableStateOf<DesktopCommunity?>(null) }
+    var manageCommunityId by remember { mutableStateOf<String?>(null) }
+    var memberRoster by remember { mutableStateOf<List<DesktopProfileMembership>>(emptyList()) }
     var inviteQuery by remember { mutableStateOf("") }
     var inviteResults by remember(inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
 
@@ -170,6 +173,21 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                 inviteTo = community
                                 inviteQuery = ""
                             }) { Text("Invite members") }
+                            TextButton(enabled = !busy, onClick = {
+                                if (manageCommunityId == community.id) {
+                                    manageCommunityId = null
+                                } else {
+                                    scope.launch {
+                                        busy = true
+                                        try {
+                                            memberRoster = state.client.communityMemberRoster(community.id)
+                                            manageCommunityId = community.id
+                                            error = null
+                                        } catch (cause: Exception) { error = cause.message }
+                                        finally { busy = false }
+                                    }
+                                }
+                            }) { Text(if (manageCommunityId == community.id) "Close" else "Manage members") }
                         } else {
                             Button(enabled = !busy, onClick = {
                                 scope.launch {
@@ -193,6 +211,50 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                     finally { busy = false }
                                 }
                             }) { Text("Leave") }
+                        }
+                    }
+                    if (community.ownerId == ownerId && manageCommunityId == community.id) {
+                        Text("Member requests & moderation", style = MaterialTheme.typography.titleMedium)
+                        if (memberRoster.isEmpty()) Text("No membership requests yet.")
+                        memberRoster.forEach { person ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(person.displayName + "  @" + person.username)
+                                    Text(person.status + " · " + person.role,
+                                        style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (person.id != ownerId) {
+                                    val actions = when (person.status) {
+                                        "pending", "invited" -> listOf("approve", "ban")
+                                        "active" -> listOf(
+                                            if (person.role == "moderator") "demote" else "promote",
+                                            "remove", "ban"
+                                        )
+                                        else -> emptyList()
+                                    }
+                                    actions.forEach { action ->
+                                        TextButton(enabled = !busy, onClick = {
+                                            scope.launch {
+                                                busy = true
+                                                try {
+                                                    state.client.moderateCommunity(
+                                                        community.id, person.id, action
+                                                    )
+                                                    memberRoster = state.client.communityMemberRoster(
+                                                        community.id
+                                                    )
+                                                    message = "Membership updated."
+                                                    error = null
+                                                } catch (cause: Exception) { error = cause.message }
+                                                finally { busy = false }
+                                            }
+                                        }) { Text(action.replaceFirstChar(Char::uppercase)) }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
