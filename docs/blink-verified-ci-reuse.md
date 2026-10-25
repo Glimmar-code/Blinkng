@@ -25,7 +25,7 @@ GitHub is allowed to show **Update branch** even when all source PR tests were g
 - A GitHub required check **cannot simply be marked green from an earlier SHA**. GitHub still runs a short per-commit status job; only expensive steps may be reused.
 - A green source check does not constitute a successful combined Testlab integration, real-device acceptance, backend staging or production authorization.
 - The prior full suite MUST have executed normally with successful step records: cache artifacts, CI comments or skipped steps are insufficient.
-- Reuse is deliberately **one predecessor hop only**, with no transitive chain of old attestations. This may cause occasional additional runs when multiple unrelated commits are stacked, but it avoids stale proof.
+- Reuse searches up to **24 first-parent ancestor commits**, without treating a reused/skipped check as fresh evidence. Each candidate must match the current complete build-input tree; a newer failed required check or changed input stops reuse. Only a previously executed full test job counts. If no suitable evidence is found within this bounded window, the full suite runs again.
 - Workflow/controller changes are treated as protected CI changes and must be merged separately after independent review and passing checks. Do not disable branch protection to activate this optimization.
 - This doesn't alter the PR #517 release hold, update PR text, or make a publication claim.
 
