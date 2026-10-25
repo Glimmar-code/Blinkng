@@ -1,12 +1,6 @@
 name: Apply repost and game ranking changes
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_repost_game_ranking_v2.py'
-      - '.github/scripts/fix_repost_game_ranking_compile.py'
-      - '.github/workflows/apply-repost-game-ranking.yml'
   workflow_dispatch:
 
 permissions:

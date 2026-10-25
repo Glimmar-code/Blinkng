@@ -1,11 +1,6 @@
 name: Apply post identity and story ring fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_post_identity_story_ring_fix.py'
-      - '.github/workflows/apply-post-identity-story-ring-fix.yml'
   workflow_dispatch:
 
 permissions:

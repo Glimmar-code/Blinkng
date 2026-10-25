@@ -1,10 +1,7 @@
 name: Apply scheduler settings post policy and message audit
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-scheduler-settings-post-policy-message-audit.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

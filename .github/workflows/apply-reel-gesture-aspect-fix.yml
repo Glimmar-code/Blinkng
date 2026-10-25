@@ -1,10 +1,7 @@
 name: Apply reel gesture and aspect fixes
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-reel-gesture-aspect-fix.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 
