@@ -45,6 +45,11 @@ class BlinkRewardedAdManager(
 
     private var rewardedAd: RewardedAd? = null
     private var loading = false
+    private var lastLoadErrorDetails: String? = null
+
+    /** Latest rewarded-ad loading diagnostic for app support; null after a successful load. */
+    val latestLoadErrorDetails: String?
+        get() = lastLoadErrorDetails
     private var closed = false
     private var loadedAtElapsedMs = 0L
     private var loadGeneration = 0L
@@ -125,6 +130,7 @@ class BlinkRewardedAdManager(
             loadGeneration++ // Discard late callbacks after the visible request timed out.
             loading = false
             BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", -1)
+            lastLoadErrorDetails = "timeout after ${LOAD_TIMEOUT_MS}ms"
             Log.w(TAG, "Rewarded ad SDK did not respond within $LOAD_TIMEOUT_MS ms")
             clearPendingWithError(LOAD_TIMEOUT_MESSAGE)
         }
@@ -143,6 +149,7 @@ class BlinkRewardedAdManager(
                         clearPendingWithError("Ads are unavailable until your privacy choices are complete.")
                         return
                     }
+                    lastLoadErrorDetails = null
                     rewardedAd = ad
                     loadedAtElapsedMs = SystemClock.elapsedRealtime()
                     BlinkAdAnalytics.loaded(activity, "coin_reward", "rewarded")
@@ -159,6 +166,7 @@ class BlinkRewardedAdManager(
                     cancelLoadTimeout()
                     loading = false
                     rewardedAd = null
+                    lastLoadErrorDetails = "code=${error.code}; domain=${error.domain}; message=${error.message}; response=${error.responseInfo}"
                     BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", error.code)
                     Log.w(TAG, "Rewarded ad failed to load: ${error.domain}/${error.code} ${error.message}; response=${error.responseInfo}")
 
