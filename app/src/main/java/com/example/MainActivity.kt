@@ -2432,8 +2432,8 @@ fun MainAppContent(
                     onBack = { showSavedProfile = false; viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
-                        viewModel.closeProfile()
-                        viewModel.setTab(MainTab.MESSAGES)
+                        // Keep Profile on the LIFO route stack. A forced close and
+                        // preliminary Messages tab change discard the return path.
                         viewModel.openChatWithUser(partner, currentProfileToDisplay.fullName, currentProfileToDisplay.avatarUrl)
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
@@ -2464,7 +2464,7 @@ fun MainAppContent(
                         else -> "home"
                     },
                     onNavigateMainTab = { tab ->
-                        viewModel.closeProfile()
+                        // Primary navigation records the outgoing profile route.
                         when (tab) {
                             "home" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
                             "reels" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
@@ -2474,7 +2474,7 @@ fun MainAppContent(
                         }
                     },
                     onTopAction = { action ->
-                        viewModel.closeProfile()
+                        // Preserve the profile route when heading to Search.
                         when (action) {
                             "search" -> viewModel.setTab(MainTab.SEARCH)
                             "games" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(3) }
