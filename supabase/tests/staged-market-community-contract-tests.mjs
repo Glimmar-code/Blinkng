@@ -298,6 +298,9 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       insert into public.conversation_participants(conversation_id,user_id)
       values ('${privateGroup}','${other}')`), 'row-level security');
+    await rejects(() => db.exec(`
+      insert into public.conversation_participants(conversation_id,user_id)
+      values ('${unrelatedDm}','${other}')`), 'row-level security');
     await db.exec(`
       insert into public.conversation_participants(conversation_id,user_id)
       values ('${dm}','${other}')`);
