@@ -75,6 +75,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.desktop.data.DesktopChatImageOutbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.blinkng.shared.BlinkDeliveryReceipt
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
@@ -105,6 +108,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
     var pictureUploading by remember { mutableStateOf(false) }
     var pictureProgress by remember { mutableStateOf(0) }
+    var queuedPhotoCount by remember { mutableStateOf(0) }
+    var outboxUploading by remember { mutableStateOf(false) }
     var expandedPicture by remember { mutableStateOf<String?>(null) }
     var showMediaGallery by remember { mutableStateOf(false) }
     var fullGallery by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
@@ -140,6 +145,62 @@ fun MessagesScreen(state: DesktopAppState) {
     }
 
     val myUserId = state.session?.userId.orEmpty()
+    fun attemptQueuedPhotoUploads() {
+        val account = myUserId
+        if (account.isBlank() || outboxUploading) return
+        outboxUploading = true
+        scope.launch {
+            try {
+                val queued = withContext(Dispatchers.IO) {
+                    DesktopChatImageOutbox.pending(account)
+                }
+                queuedPhotoCount = queued.size
+                for (pending in queued) {
+                    if (state.session?.userId != account) break
+                    try {
+                        val result = state.client.sendChatImage(
+                            pending.conversationId, pending.file, pending.caption, pending.quality,
+                            onProgress = { progress ->
+                                scope.launch { pictureProgress = progress }
+                            },
+                            clientMessageId = pending.messageId,
+                            album = pending.album
+                        )
+                        withContext(Dispatchers.IO) {
+                            DesktopChatImageOutbox.complete(pending)
+                        }
+                        if (selected?.id == pending.conversationId &&
+                            messages.none { it.id == result.id }) {
+                            messages = messages + result
+                        }
+                        queuedPhotoCount--
+                    } catch (ex: Exception) {
+                        error = ex.message ?: "Picture upload paused. Tap Retry photos."
+                        break
+                    }
+                }
+            } finally {
+                queuedPhotoCount = runCatching {
+                    withContext(Dispatchers.IO) {
+                        DesktopChatImageOutbox.pending(account).size
+                    }
+                }.getOrDefault(queuedPhotoCount)
+                pictureProgress = 0
+                outboxUploading = false
+            }
+        }
+    }
+    LaunchedEffect(myUserId) {
+        if (myUserId.isNotBlank()) {
+            queuedPhotoCount = runCatching {
+                withContext(Dispatchers.IO) {
+                    DesktopChatImageOutbox.pending(myUserId).size
+                }
+            }.getOrDefault(0)
+            attemptQueuedPhotoUploads()
+        }
+    }
+
 
     suspend fun loadConversations() {
         loading = true
@@ -372,6 +433,14 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
             TextButton(onClick = { showMediaGallery = true }) { Text("Photos") }
+            if (queuedPhotoCount > 0) {
+                TextButton(enabled = !outboxUploading,
+                    onClick = { attemptQueuedPhotoUploads() }
+                ) {
+                    Text(if (outboxUploading) "Uploading $pictureProgress%"
+                         else "Retry $queuedPhotoCount photos")
+                }
+            }
             IconButton(onClick = { error = "Desktop voice-call media adapter is not active yet." }) {
                 Icon(Icons.Rounded.Call, contentDescription = "Voice call")
             }
@@ -686,40 +755,36 @@ fun MessagesScreen(state: DesktopAppState) {
                             val conversationId = active.id
                             pictureUploading = true
                             scope.launch {
-                                var count = 0
+                                var staged = 0
                                 try {
-                                    photos.forEachIndexed { index, file ->
-                                        val result = state.client.sendChatImage(
-                                            conversationId, file, captions[index].orEmpty(), quality,
-                                            { percent ->
-                                                pictureProgress = ((index * 100 + percent) / photos.size)
-                                            }, clientMessageId = imageIds[index],
-                                            album = if (batchId != null && batchSize > 1)
-                                                BlinkChatPhotoAlbum.of(
-                                                    batchId, batchPositions[index], batchSize
-                                                )
-                                            else BlinkChatPhotoAlbum.single()
-                                        )
-                                        if (selected?.id == conversationId) messages = messages + result
-                                        count++
+                                    withContext(Dispatchers.IO) {
+                                        photos.forEachIndexed { index, file ->
+                                            DesktopChatImageOutbox.enqueue(
+                                                myUserId, conversationId, imageIds[index], file,
+                                                captions[index].orEmpty(), quality,
+                                                if (batchId != null && batchSize > 1)
+                                                    BlinkChatPhotoAlbum.of(
+                                                        batchId, batchPositions[index], batchSize
+                                                    )
+                                                else BlinkChatPhotoAlbum.single()
+                                            )
+                                            staged++
+                                        }
                                     }
                                     selectedPictures = emptyList()
                                     selectedPictureIds = emptyList()
                                     selectedAlbumId = null
                                     selectedAlbumPositions = emptyList()
-                                    pictureProgress = 0
+                                    queuedPhotoCount += staged
+                                    attemptQueuedPhotoUploads()
                                 } catch (ex: Exception) {
-                                    error = "Sent $count of ${photos.size} pictures. " +
-                                        (ex.message ?: "Upload failed; retry remaining photos.")
-                                    selectedPictures = photos.drop(count)
-                                    selectedPictureIds = imageIds.drop(count)
-                                    selectedAlbumPositions = batchPositions.drop(count)
-                                    if (count > 0) {
-                                        pictureCaptions = pictureCaptions
-                                            .filterKeys { it >= count }
-                                            .mapKeys { it.key - count }
-                                        pictureCaptionIndex = 0
-                                    }
+                                    error = "Queued $staged of ${photos.size} pictures. " +
+                                        (ex.message ?: "Could not prepare remaining photos.")
+                                    selectedPictures = photos.drop(staged)
+                                    selectedPictureIds = imageIds.drop(staged)
+                                    selectedAlbumPositions = batchPositions.drop(staged)
+                                    queuedPhotoCount += staged
+                                    if (staged > 0) attemptQueuedPhotoUploads()
                                 } finally { pictureUploading = false }
                             }
                         }
