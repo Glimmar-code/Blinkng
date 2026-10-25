@@ -103,6 +103,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.BlinkPostGrowthTips
 import com.blinkng.shared.ConnectDiscoveryPolicy
 import com.blinkng.shared.ConnectDiscoverySignals
 import com.blinkng.shared.BlinkActivityPulseDefaults
@@ -295,6 +296,14 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    Text("✨ Make your post stand out", style = MaterialTheme.typography.titleSmall)
+                    Text(BlinkPostGrowthTips.suggestion(
+                        hasImages = false, hasVideo = false, hasPoll = false),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(BlinkPostGrowthTips.marketHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
                     val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
                         BlinkSmartTags.suggest(
@@ -392,7 +401,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment", "Marketplace").forEach { item ->
+                        BlinkPostGrowthTips.feedCategories.forEach { item ->
                             FilterChip(
                                 selected = composerCategory == item,
                                 onClick = { composerCategory = item },
@@ -461,6 +470,10 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    if (BlinkPostGrowthTips.disallowedFeedCategory(composerCategory)) {
+                                        error = BlinkPostGrowthTips.marketHint
+                                        return@launch
+                                    }
                                     if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(composer)) {
                                         error = "This is a product ad. List it in BLINK Market, or request a review."
                                         return@launch
