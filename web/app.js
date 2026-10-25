@@ -584,8 +584,24 @@
             const button=document.createElement('button');
             button.type='button';
             button.className='btn';
-            button.textContent=(person.full_name || person.username)+' (@'+person.username+')'+
-              (person.is_verified?' ✓':'')+(person.university?' · '+person.university:'');
+            // Show the real profile photo and verification mark without trusting raw HTML.
+            const photoUrl=safeUrl(person.avatar_url);
+            const photo=document.createElement(photoUrl?'img':'span');
+            photo.className='avatar-sm';
+            if(photoUrl){photo.src=photoUrl;photo.alt='';photo.loading='lazy';}
+            else{photo.classList.add('avatar-fallback');photo.textContent='@';}
+            const display=document.createElement('span');
+            display.textContent=(person.full_name || person.username)+' (@'+person.username+')'+
+              (person.university?' · '+person.university:'');
+            button.append(photo,display);
+            if(person.is_verified){
+              const badge=document.createElement('span');
+              badge.className='verified';
+              badge.title='Verified account';
+              badge.setAttribute('aria-label','Verified account');
+              badge.textContent='✓';
+              button.append(badge);
+            }
             button.onclick=()=>{
               selectedReferrerId=String(person.id||'');
               field.value='@'+person.username;
@@ -1104,8 +1120,14 @@
     const requestId=++state.searchRequestId;
     out.innerHTML='<div class="spinner"></div>';
     try{
+      // For signed-in people, use the same relevance-first referral-aware ranker
+      // as Android and Windows. Do not let a visibility boost beat an exact match.
+      const profileResults=isAuthed()
+        ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
+            .catch(()=>rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}))
+        : rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null});
       const [profiles,posts]=await Promise.all([
-        rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}),
+        profileResults,
         rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})
       ]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
