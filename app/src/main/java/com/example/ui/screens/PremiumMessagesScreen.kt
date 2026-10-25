@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.example.data.supabase.BlinkChatPhotoEditor
 import com.example.data.supabase.MessageMediaService
 import com.example.data.supabase.BlinkChatMediaPreferences
@@ -239,7 +240,7 @@ fun PremiumMessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
-    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit = { _, _, _, _, _, _ -> },
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit = { _, _, _, _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
     onForwardPicture: (String, ChatMessage) -> Unit = { _, _ -> },
@@ -496,7 +497,7 @@ private fun PremiumMessagesMasterDetail(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
-    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit,
+    onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     onCancelAttachment: ((String, ChatMessage) -> Unit)?,
     onForwardPicture: (String, ChatMessage) -> Unit,
@@ -569,8 +570,8 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
-                onSendAttachment = { uri, kind, duration, caption, quality ->
-                    onSendAttachment(displayedConversation.partnerUsername, uri, kind, duration, caption, quality)
+                onSendAttachment = { uri, kind, duration, caption, quality, album ->
+                    onSendAttachment(displayedConversation.partnerUsername, uri, kind, duration, caption, quality, album)
                 },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
@@ -1278,7 +1279,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
-    onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit,
+    onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onCancelUpload: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
@@ -1473,10 +1474,10 @@ private fun PremiumChatDetail(
         else Toast.makeText(context, "Camera permission is needed to take a photo.", Toast.LENGTH_SHORT).show()
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L, "", BlinkChatImageQuality.STANDARD)
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L, "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single())
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L, "", BlinkChatImageQuality.STANDARD)
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L, "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single())
     }
     LaunchedEffect(recording) {
         while (recording != null) {
@@ -1746,7 +1747,7 @@ private fun PremiumChatDetail(
                             IconButton(onClick = {
                                 recordedFile?.let { file ->
                                     recordedFile = null
-                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration, "", BlinkChatImageQuality.STANDARD)
+                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration, "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single())
                                 }
                             }) {
                                 Icon(Icons.Default.Send, contentDescription = "Send voice note", tint = palette.accent)
@@ -2046,11 +2047,15 @@ private fun PremiumChatDetail(
                         val photos = selectedImageUris.toList()
                         val captions = selectedImageCaptions
                         val quality = selectedImageQuality
+                        val groupId = java.util.UUID.randomUUID().toString()
                         selectedImageUris = emptyList()
                         photos.forEachIndexed { index, uri ->
                             onSendAttachment(
                                 uri, BlinkChatAttachmentKind.IMAGE, 0L,
-                                captions[index].orEmpty(), quality
+                                captions[index].orEmpty(), quality,
+                                if (photos.size > 1)
+                                    BlinkChatPhotoAlbum.of(groupId, index, photos.size)
+                                else BlinkChatPhotoAlbum.single()
                             )
                         }
                     }) { Text("Send") }
