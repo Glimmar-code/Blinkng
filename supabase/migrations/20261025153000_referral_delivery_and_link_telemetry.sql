@@ -168,7 +168,7 @@ begin
     select count(*) into burst from public.blink_referrals r
      where r.referrer_user_id=new.referrer_user_id
        and r.status='confirmed' and r.confirmed_at>now()-interval '1 hour';
-    if burst >= 8 then
+    if burst >= 5 then
       insert into private.blink_referral_risk_reviews(referred_user_id,referrer_user_id,reason)
       values(new.referred_user_id,new.referrer_user_id,'unusual_referral_velocity')
       on conflict(referred_user_id) do nothing;
