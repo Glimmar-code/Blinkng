@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -236,6 +237,7 @@ fun PremiumMessagesScreen(
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
+    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
@@ -372,6 +374,7 @@ fun PremiumMessagesScreen(
                                 onForwardMessage = onForwardMessage,
                                 onSendVideo = onSendVideo,
                                 onSendAttachment = onSendAttachment,
+                                onSendPhotoAlbum = onSendPhotoAlbum,
                                 onSendViewOncePicture = onSendViewOncePicture,
                                 onPresenceChange = onPresenceChange,
                                 allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
@@ -474,6 +477,7 @@ private fun PremiumMessagesMasterDetail(
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
+    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
     onPresenceChange: (String, String) -> Unit,
     allowLinkPreviews: Boolean,
@@ -536,6 +540,9 @@ private fun PremiumMessagesMasterDetail(
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
+                },
+                onSendPhotoAlbum = { uris, quality ->
+                    onSendPhotoAlbum(displayedConversation.partnerUsername, uris, quality)
                 },
                 onSendViewOncePicture = { uri ->
                     onSendViewOncePicture(
@@ -1375,6 +1382,7 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
+    onSendPhotoAlbum: (List<Uri>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (Uri) -> Unit,
     onPresenceChange: (String) -> Unit,
     allowLinkPreviews: Boolean,
@@ -1488,6 +1496,16 @@ private fun PremiumChatDetail(
         if (userHasScrolled && listState.firstVisibleItemIndex <= 2 && hasMoreMessages && !isLoadingOlder) {
             onLoadOlder()
         }
+    }
+    var selectedPhotoQuality by remember(conversation.id) {
+        mutableStateOf(BlinkChatImageQuality.STANDARD)
+    }
+    val photoAlbumPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        if (uris.isNotEmpty()) onSendPhotoAlbum(uris, selectedPhotoQuality)
+        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        onPresenceChange("online")
     }
     var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -2147,10 +2165,20 @@ private fun PremiumChatDetail(
         AttachmentSheet(
             palette = palette,
             onImage = {
-                viewOncePictureChoice = false
+                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
                 showAttachmentSheet = false
                 onPresenceChange("uploading")
-                imagePicker.launch("image/*")
+                photoAlbumPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onOriginalPhotos = {
+                selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                photoAlbumPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             },
             onViewOnce = {
                 viewOncePictureChoice = true
@@ -3662,6 +3690,7 @@ private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
     onViewOnce: () -> Unit,
+    onOriginalPhotos: () -> Unit,
     onVideo: () -> Unit,
     onAudio: () -> Unit,
     onDocument: () -> Unit,
@@ -3703,6 +3732,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onImage
+            )
+            AttachmentOption(
+                label = "Original photos",
+                description = "Send up to 10 photos without resizing",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onOriginalPhotos
             )
             AttachmentOption(
                 label = "View-once photo",
