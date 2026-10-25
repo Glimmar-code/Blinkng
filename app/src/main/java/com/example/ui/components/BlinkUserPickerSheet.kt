@@ -41,13 +41,14 @@ fun BlinkUserPickerSheet(
     maxSelection: Int = 49,
     onConfirmSelection: (List<UserProfile>) -> Unit = {},
     onCreateGroup: (() -> Unit)? = null,
+    initiallySelected: List<UserProfile> = emptyList(),
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var users by remember(query) { mutableStateOf<List<UserProfile>>(emptyList()) }
     var pageVisible by remember(query) { mutableIntStateOf(10) }
     var hasMoreServer by remember(query) { mutableStateOf(false) }
     var loading by remember(query) { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var selected by remember { mutableStateOf(initiallySelected.distinctBy { it.id }) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(query) {
