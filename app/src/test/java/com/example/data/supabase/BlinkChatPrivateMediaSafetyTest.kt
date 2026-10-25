@@ -1,5 +1,6 @@
 package com.example.data.supabase
 
+import android.app.Application
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -17,7 +18,7 @@ import java.io.InterruptedIOException
  * Two-account live delivery/RLS checks belong in isolated integration testing.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = Application::class)
 class BlinkChatPrivateMediaSafetyTest {
     private val context: Context
         get() = ApplicationProvider.getApplicationContext()
