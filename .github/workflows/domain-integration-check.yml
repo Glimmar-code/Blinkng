@@ -15,6 +15,16 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+      - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_local_analytics.mjs'
+      - 'scripts/test_site_aggregate_analytics.mjs'
   pull_request:
     paths:
       - 'app/build.gradle.kts'
@@ -27,6 +37,17 @@ on:
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_android_prod_links.mjs'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,14 +59,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect Android-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+      - name: Explain web-only validation
+        if: steps.scope.outputs.android != 'true'
+        run: echo "Web/domain static tests ran; no Android build inputs changed."
 
-      - name: Validate temporary Pages URL and evergreen APK downloads
+      - name: Validate official domain URL and evergreen APK downloads
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/check_github_pages_site.py
           grep -F 'const SITE_URL' web/app.js >/dev/null
-          # Every Download Android app button must resolve to the newest signed
+          # All homepage and in-app download buttons must resolve to the newest signed
           # GitHub Release, including future versions, without a site code change.
           python3 - <<'PY'
           from pathlib import Path
@@ -53,22 +84,52 @@ jobs:
           latest = "https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk"
           if app.count(latest) != 1 or f"const APK_URL = '{latest}';" not in app:
               raise SystemExit("BLINK needs exactly one canonical, evergreen latest-APK URL.")
-          if app.count('href="${APK_URL}"') != 5:
-              raise SystemExit("All five BLINK download buttons must use APK_URL.")
+          if app.count('href="${APK_URL}"') < 5:
+              raise SystemExit("BLINK download buttons must retain the official APK_URL; do not remove download links.")
           if "releases/download/v" in app:
               raise SystemExit("Website must not pin a particular BLINK APK version.")
           print("All BLINK website download buttons track future signed APK releases.")
           PY
           grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
-          grep -F '<link rel="canonical" href="https://glimmar-code.github.io/Blinkng/" />' web/index.html >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/" />' web/index.html >/dev/null
           test -f web/privacy/index.html
-          grep -F '<link rel="canonical" href="https://glimmar-code.github.io/Blinkng/privacy/" />' web/privacy/index.html >/dev/null
-          grep -F 'https://glimmar-code.github.io/Blinkng/privacy/' web/sitemap.xml >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
+          grep -F 'https://blink.com.ng/privacy/' web/sitemap.xml >/dev/null
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
-          grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
+          grep -F 'Uri.parse("https://blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
-      # Native Android verification still targets the reserved www.blink.com.ng domain.
-      # The temporary Pages project host is a separate web-only URL until Android is updated.
+      # Production Android App Links target blink.com.ng. Google OAuth and
+      # recovery callbacks must be approved in Supabase Auth URL Configuration.
+      - name: Verify secure canonical OAuth and recovery redirects
+        run: node scripts/test_domain_auth_links.mjs
+
+      - name: Guard sitewide analytics disabled defaults and no visitor data
+        run: node scripts/test_site_aggregate_analytics.mjs
+
+      - name: Check no-tracking opt-in analytics and anonymous funnel counts
+        run: node scripts/test_web_local_analytics.mjs
+
+      - name: Check mobile asset budgets and locally opt-in Core Web Vitals
+        run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Test Phase 3 resilient authentication and private-route SEO
+        run: node scripts/test_web_production_phase3_authseo.mjs
+
+      - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
+        run: node scripts/test_web_production_phase3.mjs
+
+      - name: Check Phase 2 university catalogue, public discovery and release metadata
+        run: node scripts/test_discovery_phase2.mjs
+
+      - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
+        run: node scripts/test_landing_phase1.mjs
+
+      - name: Verify official Android App Links route matrix and signing
+        run: node scripts/test_android_prod_links.mjs
+
+      - name: Validate live verification script syntax
+        run: node --check scripts/verify_live_blink_integrations.mjs
+
       - name: Validate existing Android signing association
         shell: bash
         run: |
@@ -114,13 +175,16 @@ jobs:
           PY
 
       - name: Set up Java
+        if: steps.scope.outputs.android == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.scope.outputs.android == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Compile, test, lint and build Android debug APK
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace --no-daemon

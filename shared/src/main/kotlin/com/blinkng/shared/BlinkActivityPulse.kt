@@ -73,6 +73,20 @@ fun communityActivityRange(
     )
 }
 
+/**
+ * A clearly-labelled Connect engagement *score*, not an online-user count.
+ * The first live session contributes a 300..400 band; each additional
+ * live session adds 200 to the lower bound and 400 to the upper bound.
+ * Zero active sessions must never generate a fabricated activity baseline.
+ */
+fun connectActivityScoreRange(activeSessions: Int): IntRange {
+    if (activeSessions <= 0) return 0..0
+    val count = activeSessions.coerceAtMost(100_000).toLong()
+    val minimum = 300L + (count - 1L) * 200L
+    val maximum = count * 400L
+    return minimum.toInt()..maximum.toInt()
+}
+
 fun rankPulseRange(
     rankUpsInWindow: Int,
     policy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,

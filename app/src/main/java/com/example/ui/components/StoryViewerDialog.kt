@@ -149,9 +149,10 @@ fun StoryViewerDialog(
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF1E140F),
-                                Color(0xFF2C1810),
-                                Color(0xFF0F0E0C)
+                                // Auth-style purple/black fallback only in Dark Mode.
+                                if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color(0xFF1E140F),
+                                if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFF2C1810),
+                                if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.background else Color(0xFF0F0E0C)
                             )
                         )
                     )

@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+import com.example.ui.components.BlinkSkeletonTargetRow
+import com.example.ui.components.BlinkSkeletonMetricStrip
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,6 +102,8 @@ import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import com.example.data.models.kNigerianUniversitiesList
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
@@ -156,10 +162,15 @@ fun BlinkBoostGrowthRoute(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
     onGetCoins: () -> Unit = {},
     onCreateContent: () -> Unit = {},
+    paystackCheckoutAvailable: Boolean = false,
+    onPaystackBoost: (String, String, Int, String, String, Int, String?) -> Unit =
+        { _, _, _, _, _, _, _ -> },
     onClose: () -> Unit,
 ) {
     var selectedColumn by remember { mutableStateOf(BoostGrowthColumn.BOOST) }
@@ -220,12 +231,16 @@ fun BlinkBoostGrowthRoute(
                 isDark = isDark,
                 onGetCoins = onGetCoins,
                 onCreateContent = onCreateContent,
+                paystackCheckoutAvailable = paystackCheckoutAvailable,
+                onPaystackBoost = onPaystackBoost,
             )
             BoostGrowthColumn.EARN -> EarnRankPointsColumn(
                 isDark = isDark,
                 onLikePost = onLikePost,
                 onCommentPost = onCommentPost,
                 onBookmarkPost = onBookmarkPost,
+                onVotePoll = onVotePoll,
+                onOpenPost = onOpenPost,
                 onProfileClick = onProfileClick,
                 onListingClick = onListingClick,
             )
@@ -274,6 +289,8 @@ private fun BoostCampaignColumn(
     isDark: Boolean,
     onGetCoins: () -> Unit,
     onCreateContent: () -> Unit,
+    paystackCheckoutAvailable: Boolean,
+    onPaystackBoost: (String, String, Int, String, String, Int, String?) -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
@@ -566,7 +583,7 @@ private fun BoostCampaignColumn(
                                 when (targetType) {
                                     BlinkBoostTargetType.POST -> {
                                         if (ownPosts.isEmpty()) {
-                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            if (contentLoading) BlinkSkeletonTargetRow()
                                             else EmptyTargetCard("No active posts found. Refresh or create a post.", "Create a post", onCreateContent)
                                         } else {
                                             val listState = rememberLazyListState()
@@ -590,7 +607,7 @@ private fun BoostCampaignColumn(
                                     }
                                     BlinkBoostTargetType.REEL -> {
                                         if (ownReels.isEmpty()) {
-                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            if (contentLoading) BlinkSkeletonTargetRow()
                                             else EmptyTargetCard("No active Reels found. Refresh or create a Reel.", "Create content", onCreateContent)
                                         } else {
                                             val listState = rememberLazyListState()
@@ -742,6 +759,21 @@ private fun BoostCampaignColumn(
                                     OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
                                         Text("Get Blink Coins")
                                     }
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        onPaystackBoost(
+                                            targetType.name, targetId, boostPower,
+                                            objective.name, audience.name,
+                                            durationDays, targetUniversity
+                                        )
+                                    },
+                                    enabled = paystackCheckoutAvailable && isOnline &&
+                                        !working && !quoteLoading && quote != null &&
+                                        quoteCost > 0 && targetReady,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Pay with Paystack • Final price shown at checkout")
                                 }
                                 Button(
                                     onClick = { confirmStart = true },
@@ -945,10 +977,13 @@ private fun EarnRankPointsColumn(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
@@ -1055,9 +1090,7 @@ private fun EarnRankPointsColumn(
 
         if (loading) {
             item {
-                Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                BlinkSkeletonList(modifier = Modifier.fillMaxWidth().padding(16.dp), rows = 4)
             }
         }
 
@@ -1101,12 +1134,16 @@ private fun EarnRankPointsColumn(
                                 completeMission(mission, "like") {
                                     localPost = post.copy(isLiked = true, likes = post.likes + if (post.isLiked) 0 else 1)
                                 }
+                            } else {
+                                onLikePost(post.id)
                             }
                         },
                         onComment = {
                             if ("comment" in available) {
                                 commentText = ""
                                 commentMission = mission
+                            } else {
+                                onCommentPost(post.id)
                             }
                         },
                         onBookmark = {
@@ -1114,20 +1151,32 @@ private fun EarnRankPointsColumn(
                                 completeMission(mission, "save") {
                                     localPost = post.copy(isBookmarked = true)
                                 }
+                            } else {
+                                onBookmarkPost(post.id)
                             }
                         },
-                        onRepost = {},
-                        onShare = {},
-                        onOptionsClick = {},
+                        onVotePoll = onVotePoll,
+                        onShare = {
+                            ShareLinkManager.share(
+                                context = context,
+                                type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
+                                id = post.id,
+                                title = "Share BLINK post"
+                            )
+                        },
+                        onOptionsClick = { onOpenPost(post) },
                         onProfileClick = onProfileClick,
                         authorName = mission.ownerName,
                         authorUsername = mission.ownerUsername,
                         authorProfileId = mission.ownerId,
                         isFollowingAuthor = mission.ownerId in followingIds,
-                        onFollowAuthor = {
+                        onFollowAuthor = { id ->
                             if ("follow" in available) completeMission(mission, "follow")
+                            else scope.launch { FollowStateStore.setFollowing(id, true) }
                         },
-                        onUnfollowAuthor = {},
+                        onUnfollowAuthor = { id ->
+                            scope.launch { FollowStateStore.setFollowing(id, false) }
+                        },
                         trackExposure = false,
                     )
                 }
@@ -1463,7 +1512,7 @@ private fun CampaignQuoteCard(
             Text("Campaign estimate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             when {
                 quoteLoading -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    BlinkSkeletonMetricStrip()
                     Text("Calculating from server pricing…", style = MaterialTheme.typography.bodySmall)
                 }
                 quote == null -> Text(
@@ -1634,10 +1683,13 @@ private fun CampaignHistoryCard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
-                AssistChip(
-                    onClick = {},
-                    label = { Text(if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() }) },
-                )
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
             Text(
                 "Budget " + formatter.format(budget) +

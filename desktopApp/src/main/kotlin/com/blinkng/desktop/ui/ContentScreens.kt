@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -9,6 +11,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -99,6 +103,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.BlinkPostGrowthTips
 import com.blinkng.shared.ConnectDiscoveryPolicy
 import com.blinkng.shared.ConnectDiscoverySignals
 import com.blinkng.shared.BlinkActivityPulseDefaults
@@ -110,6 +115,9 @@ import com.blinkng.shared.communityActivityRange
 import com.blinkng.shared.nextPulseValue
 import com.blinkng.shared.pulseTrend
 import com.blinkng.shared.rankPulseRange
+import com.blinkng.shared.BlinkPostFormat
+import com.blinkng.shared.BlinkMentionTokenPolicy
+import com.blinkng.shared.BlinkUserSuggestionPolicy
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -156,8 +164,31 @@ fun HomeScreen(
     var consumedPostRows by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
+    var postDetailsId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    val mentionToken = remember(composer) { BlinkMentionTokenPolicy.active(composer) }
+    var mentionProfiles by remember(mentionToken?.query) {
+        mutableStateOf<List<DesktopProfile>>(emptyList())
+    }
+    var mentionVisible by remember(mentionToken?.query) { mutableIntStateOf(10) }
+    var mentionHasMore by remember(mentionToken?.query) { mutableStateOf(false) }
+    var mentionLoading by remember(mentionToken?.query) { mutableStateOf(false) }
+    LaunchedEffect(mentionToken?.query) {
+        val query = mentionToken?.query.orEmpty()
+        if (query.isBlank()) return@LaunchedEffect
+        delay(220)
+        mentionLoading = true
+        try {
+            val matches = state.client.searchMentionProfiles(query)
+            mentionProfiles = matches.distinctBy { it.id }
+            mentionHasMore = matches.size >= 60
+        } catch (_: Exception) {
+            mentionProfiles = emptyList()
+            mentionHasMore = false
+        } finally { mentionLoading = false }
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -289,6 +320,69 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    val rankedMentions = if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.rank(
+                        mentionProfiles, mentionToken.query,
+                        username = { it.username }, displayName = { it.fullName }
+                    )
+                    if (rankedMentions.isNotEmpty()) {
+                        Text("Mention a BLINK student", style = MaterialTheme.typography.labelMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(rankedMentions.take(mentionVisible), key = { "mention_" + it.id }) { person ->
+                                AssistChip(
+                                    onClick = {
+                                        val active = BlinkMentionTokenPolicy.active(composer)
+                                        if (active != null) composer = BlinkMentionTokenPolicy.replace(
+                                            composer, active, person.username
+                                        )
+                                    },
+                                    label = {
+                                        Column {
+                                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
+                                            Text("@" + person.username, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                )
+                            }
+                            if (rankedMentions.size > mentionVisible || mentionHasMore) {
+                                item(key = "more_mentions") {
+                                    TextButton(
+                                        enabled = !mentionLoading,
+                                        onClick = {
+                                            if (rankedMentions.size > mentionVisible) {
+                                                mentionVisible += 10
+                                            } else {
+                                                val last = mentionProfiles.lastOrNull()
+                                                if (last != null && mentionToken != null) {
+                                                    scope.launch {
+                                                        mentionLoading = true
+                                                        try {
+                                                            val more = state.client.searchMentionProfiles(
+                                                                mentionToken.query, 60,
+                                                                last.username, last.id
+                                                            )
+                                                            mentionProfiles = (mentionProfiles + more).distinctBy { it.id }
+                                                            mentionHasMore = more.size >= 60
+                                                            mentionVisible += 10
+                                                        } catch (_: Exception) {
+                                                            mentionHasMore = false
+                                                        } finally { mentionLoading = false }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) { Text("See more") }
+                                }
+                            }
+                        }
+                    }
+                    Text("✨ Make your post stand out", style = MaterialTheme.typography.titleSmall)
+                    Text(BlinkPostGrowthTips.suggestion(
+                        hasImages = false, hasVideo = false, hasPoll = false),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(BlinkPostGrowthTips.marketHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
                     val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
                         BlinkSmartTags.suggest(
@@ -386,7 +480,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment", "Marketplace").forEach { item ->
+                        BlinkPostGrowthTips.feedCategories.forEach { item ->
                             FilterChip(
                                 selected = composerCategory == item,
                                 onClick = { composerCategory = item },
@@ -455,6 +549,14 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    if (BlinkPostGrowthTips.disallowedFeedCategory(composerCategory)) {
+                                        error = BlinkPostGrowthTips.marketHint
+                                        return@launch
+                                    }
+                                    if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(composer)) {
+                                        error = "This is a product ad. List it in BLINK Market, or request a review."
+                                        return@launch
+                                    }
                                     val tags = BlinkSmartTags.allTags(composer, selectedTags)
                                     if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
                                         error = "Include 1–5 relevant hashtags before posting."
@@ -514,7 +616,7 @@ fun HomeScreen(
         if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
         items(posts, key = { it.id }) { post ->
-            PostCard(
+            DesktopFeedPostCard(
                 post = post,
                 onLike = {
                     val beforeLiked = post.isLiked
@@ -604,12 +706,13 @@ fun HomeScreen(
                     }
                 },
                 onComments = { commentsFor = if (commentsFor == post.id) null else post.id },
+                onOpenPost = { postDetailsId = post.id },
                 onCopyLink = {
                     DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
                 },
                 xFeedStyle = true,
             )
-            if (commentsFor == post.id) CommentsPanel(state, post.id)
+            if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
         }
         if (loadingMorePosts) item(key = "home_more_loading") {
             LoadingRow()
@@ -622,10 +725,54 @@ fun HomeScreen(
             }
         }
     }
+    posts.firstOrNull { it.id == postDetailsId }?.let { selected ->
+        DesktopPostDetailsDialog(
+            state = state,
+            post = selected,
+            onClose = { postDetailsId = null },
+            onLike = { scope.launch { runCatching { state.client.toggleLike(selected.id) }; reload() } },
+            onBookmark = { scope.launch { runCatching { state.client.toggleBookmark(selected.id) }; reload() } },
+            onRepost = { scope.launch { runCatching { state.client.toggleRepost(selected.id) }; reload() } },
+        )
+    }
+}
+
+/** Desktop equivalent of the full-post destination; Home list scroll remains unchanged. */
+@Composable
+private fun DesktopPostDetailsDialog(
+    state: DesktopAppState,
+    post: DesktopFeedPost,
+    onClose: () -> Unit,
+    onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onRepost: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Post", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.width(680.dp).heightIn(max = 720.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DesktopFeedPostCard(
+                    post = post,
+                    onLike = onLike,
+                    onBookmark = onBookmark,
+                    onRepost = onRepost,
+                    onComments = {},
+                    onCopyLink = { DesktopShareLinkManager.copyToClipboard(post.id, post.isReel) },
+                    xFeedStyle = false,
+                )
+                DesktopCommentsPanel(state, post.id)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 @Composable
-private fun CommentsPanel(state: DesktopAppState, postId: String) {
+internal fun DesktopCommentsPanel(state: DesktopAppState, postId: String) {
     var comments by remember(postId) { mutableStateOf<List<DesktopComment>>(emptyList()) }
     var draft by remember(postId) { mutableStateOf("") }
     var loading by remember(postId) { mutableStateOf(true) }
@@ -852,7 +999,7 @@ fun SearchScreen(state: DesktopAppState) {
                             Text(
                                 desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                 fontSize = 10.sp,
-                                color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (profile.isOnline) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         TextButton(onClick = { selectedProfile = profile }) { Text("View") }
@@ -863,7 +1010,7 @@ fun SearchScreen(state: DesktopAppState) {
         if (results.posts.isNotEmpty()) {
             item { SectionTitle("Posts") }
             items(results.posts, key = { "post-${it.id}" }) { post ->
-                PostCard(
+                DesktopFeedPostCard(
                     post = post,
                     onLike = {
                         val beforeLiked = post.isLiked
@@ -957,27 +1104,169 @@ fun SearchScreen(state: DesktopAppState) {
 
 @Composable
 fun NotificationsScreen(state: DesktopAppState) {
-    var notifications by remember { mutableStateOf<List<DesktopNotification>>(emptyList()) }
+    val accountId = state.session?.userId.orEmpty()
+    var notifications by remember(accountId) { mutableStateOf<List<DesktopNotification>>(emptyList()) }
+    var savedUpdates by remember(accountId) { mutableStateOf(DesktopOfflineUpdatesCache.read(accountId)) }
+    var showSavedUpdates by remember(accountId) { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("All") }
+    var unreadOnly by remember { mutableStateOf(false) }
+    var newestFirst by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         loading = true
-        notifications = runCatching { state.client.fetchNotifications() }.getOrDefault(emptyList())
+        runCatching { state.client.fetchNotifications() }
+            .onSuccess {
+                notifications = it
+                loadError = false
+                DesktopOfflineUpdatesCache.recordFromServer(accountId, it)
+                savedUpdates = DesktopOfflineUpdatesCache.read(accountId)
+            }
+            .onFailure { loadError = true } // Preserve last known good activity on offline errors.
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { ScreenHeader("Notifications", "Activity, messages and official updates") }
+    // Never reuse another signed-in user's notification cache.
+    LaunchedEffect(state.profile?.id) {
+        notifications = emptyList()
+        query = ""
+        category = "All"
+        reload()
+    }
+
+    val visible = remember(notifications, query, category, unreadOnly, newestFirst) {
+        val filtered = notifications.filter { item ->
+            val type = item.type.lowercase()
+            val target = item.targetType.orEmpty().lowercase()
+            val text = item.text.lowercase()
+            val matchesCategory = when (category) {
+                "Mentions" -> "mention" in type || "mention" in text
+                "Comments" -> "comment" in type || "reply" in type || "comment" in text || "replied" in text
+                "Follows" -> "follow" in type || "follow" in text
+                "Market" -> "market" in type || "market" in target || "order" in type
+                "Reels" -> "reel" in type || "reel" in target || "reel" in text
+                "Stories" -> "story" in type || "story" in target || "story" in text
+                "Rewards" -> "coin" in type || "reward" in type || "coin" in text || "reward" in text
+                "BLINK" -> type in setOf("system", "admin", "security") || target == "notification"
+                else -> true
+            }
+            val matchesSearch = query.isBlank() ||
+                item.text.contains(query, ignoreCase = true) ||
+                item.subText.orEmpty().contains(query, ignoreCase = true)
+            matchesCategory && matchesSearch && (!unreadOnly || !item.isRead)
+        }
+        if (newestFirst) filtered.sortedByDescending { it.createdAt }
+        else filtered.sortedBy { it.createdAt }
+    }
+
+    if (showSavedUpdates) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                ScreenHeader("Saved Updates", "Official announcements previously received on this computer")
+                OutlinedButton(onClick = { showSavedUpdates = false }) { Text("Back to live notifications") }
+            }
+            if (savedUpdates.isEmpty()) {
+                item { Text("No official announcements saved yet.") }
+            }
+            items(savedUpdates, key = { it.id }) { item ->
+                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(item.title, fontWeight = FontWeight.Bold)
+                        Text(item.message)
+                        Text(item.publishedAt.replace('T', ' ').take(16), fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            ScreenHeader("Notifications", "Activity, messages and official updates")
+            OutlinedButton(onClick = {
+                savedUpdates = DesktopOfflineUpdatesCache.read(accountId)
+                showSavedUpdates = true
+            }) { Text("Saved Updates") }
+        }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search notifications") },
+                singleLine = true
+            )
+        }
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("All", "Mentions", "Comments", "Follows", "Market", "Reels", "Stories", "Rewards", "BLINK")) { option ->
+                    FilterChip(
+                        selected = category == option,
+                        onClick = { category = option },
+                        label = { Text(option) }
+                    )
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { unreadOnly = !unreadOnly }) {
+                    Text(if (unreadOnly) "Show all" else "Unread only")
+                }
+                TextButton(onClick = { newestFirst = !newestFirst }) {
+                    Text(if (newestFirst) "Newest first" else "Oldest first")
+                }
+                TextButton(onClick = {
+                    scope.launch {
+                        val unread = notifications.filterNot { it.isRead }
+                        for (item in unread) {
+                            runCatching { state.client.markNotificationRead(item.id) }
+                                .onSuccess {
+                                    notifications = notifications.map { row ->
+                                        if (row.id == item.id) row.copy(isRead = true) else row
+                                    }
+                                }
+                                .onFailure { loadError = true }
+                        }
+                    }
+                }) {
+                    Text("Read all")
+                }
+                TextButton(onClick = { scope.launch { reload() } }) { Text("Refresh") }
+            }
+        }
         if (loading) item { LoadingRow() }
-        if (!loading && notifications.isEmpty()) item { EmptyState("You're all caught up.") }
-        items(notifications, key = { it.id }) { item ->
+        if (loadError) item {
+            Text(
+                "Couldn't refresh notifications. Showing the last available activity.",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        if (!loading && visible.isEmpty()) item {
+            EmptyState(if (query.isNotBlank() || unreadOnly || category != "All") "No matching notifications." else "You're all caught up.")
+        }
+        items(visible, key = { it.id }) { item ->
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable {
                     if (!item.isRead) scope.launch {
                         runCatching { state.client.markNotificationRead(item.id) }
-                        notifications = notifications.map { if (it.id == item.id) it.copy(isRead = true) else it }
+                            .onSuccess {
+                                notifications = notifications.map { row ->
+                                    if (row.id == item.id) row.copy(isRead = true) else row
+                                }
+                            }
                     }
                 },
                 shape = RoundedCornerShape(16.dp),
@@ -986,14 +1275,12 @@ fun NotificationsScreen(state: DesktopAppState) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier.size(10.dp).clip(CircleShape).background(
-                            if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary,
+                            if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.onSurface,
                         ),
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
-                        }
+                        Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
                         item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -1008,25 +1295,383 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var itemsList by remember { mutableStateOf<List<DesktopMarketItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
+    var showSellerEnrollment by remember { mutableStateOf(false) }
+    var sellerReady by remember { mutableStateOf(false) }
+    var sellerStore by remember { mutableStateOf("") }
+    var sellerPhone by remember { mutableStateOf("") }
+    var sellerWhatsapp by remember { mutableStateOf("") }
+    var sellerState by remember { mutableStateOf("") }
+    var sellerCity by remember { mutableStateOf("") }
+    var sellerUniversity by remember { mutableStateOf(state.profile?.university.orEmpty()) }
+    var sellerKind by remember { mutableStateOf("individual") }
+    var sellerDescription by remember { mutableStateOf("") }
+    var sellerCategory by remember { mutableStateOf("Books & Study Materials") }
+    var sellerDelivery by remember { mutableStateOf(false) }
+    var sellerPickup by remember { mutableStateOf(true) }
+    var marketDashboard by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var marketOffers by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var marketOrders by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var disputeTarget by remember { mutableStateOf<String?>(null) }
+    var disputeReason by remember { mutableStateOf("") }
+    var disputeDetails by remember { mutableStateOf("") }
+
+    var marketOfferAmounts by remember { mutableStateOf<Map<String,String>>(emptyMap()) }
+    var marketOfferError by remember { mutableStateOf<String?>(null) }
+    var marketCheckoutEnabled by remember { mutableStateOf(false) }
+    var marketCheckoutBusy by remember { mutableStateOf(false) }
+    var marketCheckoutNotice by remember { mutableStateOf<String?>(null) }
+    var pendingMarketReference by remember { mutableStateOf<String?>(null) }
+    var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
+    var marketImagePath by remember { mutableStateOf("") }
+    var marketVideoPath by remember { mutableStateOf("") }
+    var showListingPreview by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Other") }
     var error by remember { mutableStateOf<String?>(null) }
+    var marketError by remember { mutableStateOf<String?>(null) }
+    var marketQuery by remember { mutableStateOf("") }
+    var marketCategory by remember { mutableStateOf("All Categories") }
+    var marketSort by remember { mutableStateOf("recommended") }
+    var minPriceText by remember { mutableStateOf("") }
+    var maxPriceText by remember { mutableStateOf("") }
+    var marketSavedOnly by remember { mutableStateOf(false) }
+    var marketMyCampusOnly by remember { mutableStateOf(!state.profile?.university.isNullOrBlank()) }
+    var marketVerifiedOnly by remember { mutableStateOf(false) }
+    var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(state.client) {
+        marketCheckoutEnabled = runCatching {
+            DesktopRpcActions(state.client).getEconomyStatus().optBoolean("cash_checkout_enabled", false)
+        }.getOrDefault(false)
+        sellerReady = runCatching { state.client.canPublishMarketItems() }.getOrDefault(false)
+        if (sellerReady) marketDashboard = runCatching { state.client.getMyMarketDashboard() }.getOrNull()
+        marketOffers = runCatching { state.client.fetchMarketOffers() }.getOrDefault(emptyList())
+        marketOrders = runCatching { state.client.fetchMyMarketOrders() }.getOrDefault(emptyList())
+    }
 
-    suspend fun reload() {
+    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, marketMyCampusOnly, refreshRevision) {
+        val min = minPriceText.toLongOrNull()
+        val max = maxPriceText.toLongOrNull()
+        if (min != null && max != null && min > max) {
+            marketError = "Minimum price cannot exceed maximum price."
+            loading = false
+            return@LaunchedEffect
+        }
+        delay(350)
         loading = true
-        itemsList = runCatching { state.client.fetchMarketplace() }.getOrDefault(emptyList())
+        marketError = null
+        runCatching {
+            state.client.fetchMarketplace(
+                query = marketQuery,
+                category = marketCategory,
+                sort = marketSort,
+                minPrice = min,
+                maxPrice = max,
+                savedOnly = marketSavedOnly,
+                verifiedOnly = marketVerifiedOnly,
+                university = state.profile?.university?.takeIf { marketMyCampusOnly && it.isNotBlank() }
+            )
+        }.onSuccess { itemsList = com.blinkng.shared.MarketTrustPolicy.diversify(it) { listing -> listing.sellerId ?: listing.sellerUsername } }
+            .onFailure { marketError = it.message ?: "Unable to load Market listings." }
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 ScreenHeader("Marketplace", "Real campus listings")
-                Button(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Close" else "Sell item") }
+                Button(onClick = {
+                    if (sellerReady) showCreate = !showCreate else showSellerEnrollment = !showSellerEnrollment
+                }) { Text(if (showCreate || showSellerEnrollment) "Close" else "Sell item") }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = marketQuery,
+                    onValueChange = { marketQuery = it.take(80) },
+                    label = { Text("Search Marketplace") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = minPriceText,
+                        onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Min ₦") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = maxPriceText,
+                        onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Max ₦") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("All Categories", "Phones & Tablets", "Laptops & Computers", "Electronics", "Books & Study Materials", "Food & Groceries")) { option ->
+                        FilterChip(
+                            selected = marketCategory == option,
+                            onClick = { marketCategory = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                if (!state.profile?.university.isNullOrBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = marketMyCampusOnly,
+                            onClick = { marketMyCampusOnly = true },
+                            label = { Text("My University") }
+                        )
+                        FilterChip(
+                            selected = !marketMyCampusOnly,
+                            onClick = { marketMyCampusOnly = false },
+                            label = { Text("All Universities") }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = marketSavedOnly, onCheckedChange = { marketSavedOnly = it })
+                    Text("Saved only")
+                    Checkbox(checked = marketVerifiedOnly, onCheckedChange = { marketVerifiedOnly = it })
+                    Text("Verified sellers")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("recommended" to "Recommended", "newest" to "Newest", "price_low" to "Lowest price", "price_high" to "Highest price").forEach { (code, label) ->
+                        FilterChip(selected = marketSort == code, onClick = { marketSort = code }, label = { Text(label) })
+                    }
+                    OutlinedButton(onClick = { refreshRevision++ }) { Text("Refresh") }
+                }
+            }
+        }
+        if (pendingMarketReference != null) {
+            item {
+                Surface(tonalElevation = 2.dp,shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Paystack Marketplace payment",
+                            fontWeight = FontWeight.Bold)
+                        Text("Return from Paystack to BLINK and verify your payment. " +
+                            "A checkout redirect alone is not confirmation.")
+                        Button(
+                            enabled = !marketCheckoutBusy,
+                            onClick = {
+                                val reference = pendingMarketReference ?: return@Button
+                                scope.launch {
+                                    marketCheckoutBusy = true
+                                    runCatching { state.client.verifyPaystackV2Checkout(reference) }
+                                        .onSuccess { response ->
+                                            marketCheckoutNotice = if (response.optString("status")=="fulfilled") {
+                                                pendingMarketReference = null
+                                                "Payment confirmed by BLINK."
+                                            } else "Payment is still pending. Please try again after checkout."
+                                        }.onFailure { marketCheckoutNotice = "Payment verification is unavailable." }
+                                    marketCheckoutBusy = false
+                                }
+                            }
+                        ) { Text("I've paid · Verify with Paystack") }
+                        marketCheckoutNotice?.let { Text(it) }
+                    }
+                }
+            }
+        }
+        if (marketOrders.isNotEmpty()) {
+            item {
+                Card(modifier=Modifier.fillMaxWidth()) {
+                    Column(modifier=Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("My Orders & Buyer Protection",fontWeight=FontWeight.Bold)
+                        Text("BLINK does not hold payments or guarantee transactions.",
+                            color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        marketOrders.take(12).forEach { order ->
+                            Text("₦${order.optLong("total_price")} · ${order.optString("status")}",
+                                fontWeight=FontWeight.SemiBold)
+                            TextButton(onClick={disputeTarget=order.optString("id")}) {
+                                Text("Open a Dispute")
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+        disputeTarget?.let { orderId ->
+            item {
+                AlertDialog(
+                    onDismissRequest={disputeTarget=null},
+                    title={Text("Order Dispute")},
+                    text={
+                        Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(disputeReason,
+                                {disputeReason=it.take(200)},label={Text("Reason")})
+                            OutlinedTextField(disputeDetails,
+                                {disputeDetails=it.take(2000)},
+                                label={Text("Explain what happened")})
+                            Text("BLINK will review your complaint. No refund or escrow is promised.")
+                        }
+                    },
+                    confirmButton={
+                        TextButton(
+                            enabled=disputeReason.trim().length>=8,
+                            onClick={
+                                disputeTarget=null
+                                scope.launch {
+                                    runCatching { state.client.openMarketDispute(orderId,disputeReason,disputeDetails) }
+                                        .onSuccess { marketOfferError=if(it) "Dispute submitted." else "Dispute rejected." }
+                                        .onFailure { marketOfferError=it.message }
+                                    disputeReason=""
+                                    disputeDetails=""
+                                }
+                            }
+                        ) { Text("Submit") }
+                    },
+                    dismissButton={TextButton(onClick={disputeTarget=null}){Text("Cancel")}}
+                )
+            }
+        }
+
+        if (marketOffers.isNotEmpty()) {
+            item {
+                Surface(shape=RoundedCornerShape(16.dp),tonalElevation=1.dp) {
+                    Column(modifier=Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("My Private Market Offers",fontWeight=FontWeight.Bold)
+                        Text("Accepting an offer does not collect payment or guarantee a sale.")
+                        marketOfferError?.let { InlineError(it) }
+                        marketOffers.take(15).forEach { offer ->
+                            val offerId=offer.optString("id")
+                            val seller=offer.optString("seller_id")==state.profile?.id
+                            val status=offer.optString("status")
+                            Text("Offer ₦${offer.optLong("proposed_price")} · $status",fontWeight=FontWeight.SemiBold)
+                            if (status in setOf("offered","countered")) {
+                                if (seller) {
+                                    OutlinedTextField(
+                                        value=marketOfferAmounts[offerId].orEmpty(),
+                                        onValueChange={v->marketOfferAmounts=marketOfferAmounts+(offerId to v.filter(Char::isDigit).take(12))},
+                                        label={Text("Counter price ₦")},singleLine=true
+                                    )
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    if (seller || status=="countered") {
+                                        TextButton(onClick={
+                                            scope.launch {
+                                                runCatching { state.client.respondMarketOffer(offerId,"accepted") }
+                                                    .onFailure { marketOfferError=it.message }
+                                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                            }
+                                        }) { Text("Accept") }
+                                    }
+                                    if (seller) {
+                                        TextButton(onClick={
+                                            scope.launch {
+                                                val amount=marketOfferAmounts[offerId]?.toLongOrNull()
+                                                if (amount==null || amount<1) marketOfferError="Enter a valid counter price."
+                                                else runCatching { state.client.respondMarketOffer(offerId,"countered",amount) }
+                                                    .onFailure { marketOfferError=it.message }
+                                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                            }
+                                        }) { Text("Counter") }
+                                    }
+                                    TextButton(onClick={
+                                        scope.launch {
+                                            runCatching { state.client.respondMarketOffer(
+                                                offerId,if(seller) "declined" else "cancelled") }
+                                                .onFailure { marketOfferError=it.message }
+                                            marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                                        }
+                                    }) { Text(if(seller) "Decline" else "Cancel") }
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+
+        if (sellerReady) {
+            item {
+                Surface(shape=RoundedCornerShape(14.dp),tonalElevation=1.dp) {
+                    Column(modifier=Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Seller Dashboard",fontWeight=FontWeight.Bold)
+                        if (marketDashboard == null) {
+                            Text("Seller analytics unavailable until Market services are connected.")
+                        } else {
+                            Text("Products: ${marketDashboard?.optInt("products") ?: 0}  •  Views: ${marketDashboard?.optLong("views") ?: 0L}")
+                            Text("Saves: ${marketDashboard?.optLong("saves") ?: 0L}  •  Inquiries: ${marketDashboard?.optInt("inquiries") ?: 0}")
+                            Text("Completed: ${marketDashboard?.optInt("completed_orders") ?: 0}  •  Boosts: ${marketDashboard?.optInt("boosts") ?: 0}")
+                        }
+                        Text("Merchant approval is separate from your blue verification badge.",
+                            color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (showSellerEnrollment) {
+            item {
+                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Become a BLINK Seller — Free", fontWeight = FontWeight.Bold)
+                        Text("Seller approval is separate from blue/gold verification. Registration is free. Existing applicants must wait for approval before publishing.")
+                        OutlinedTextField(sellerStore, { sellerStore = it.take(80) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business / Store name") })
+                        OutlinedTextField(sellerUniversity, { sellerUniversity = it.take(140) }, modifier = Modifier.fillMaxWidth(), label = { Text("University") })
+                        OutlinedTextField(sellerState, { sellerState = it.take(100) }, modifier = Modifier.fillMaxWidth(), label = { Text("State") })
+                        OutlinedTextField(sellerCity, { sellerCity = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Campus / City") })
+                        OutlinedTextField(sellerPhone, { sellerPhone = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business phone") })
+                        OutlinedTextField(sellerWhatsapp, { sellerWhatsapp = it.filter(Char::isDigit).take(15) }, modifier = Modifier.fillMaxWidth(), label = { Text("Business WhatsApp") })
+                        Text("Seller type")
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected=sellerKind=="individual",
+                                onClick={sellerKind="individual"},label={Text("Individual")})
+                            FilterChip(selected=sellerKind=="business",
+                                onClick={sellerKind="business"},label={Text("Business")})
+                        }
+                        OutlinedTextField(sellerDescription,{sellerDescription=it.take(1000)},
+                            modifier=Modifier.fillMaxWidth(),label={Text("Store description • 20+ characters")})
+                        OutlinedTextField(sellerCategory,{sellerCategory=it.take(100)},
+                            modifier=Modifier.fillMaxWidth(),label={Text("Product category")})
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Delivery",modifier=Modifier.weight(1f))
+                            Switch(checked=sellerDelivery,onCheckedChange={sellerDelivery=it})
+                        }
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Campus pickup",modifier=Modifier.weight(1f))
+                            Switch(checked=sellerPickup,onCheckedChange={sellerPickup=it})
+                        }
+                        Text("Use only business contact details you are comfortable sharing with buyers.")
+                        error?.let { InlineError(it) }
+                        Button(
+                            enabled = !sellerSubmitting && sellerStore.trim().length >= 2 &&
+                                sellerUniversity.trim().length >= 3 && sellerState.trim().length >= 2 &&
+                                sellerCity.trim().length >= 2 && sellerPhone.length in 10..15 &&
+                                sellerWhatsapp.length in 10..15 && sellerDescription.trim().length >= 20 &&
+                                sellerCategory.isNotBlank() && (sellerDelivery || sellerPickup),
+                            onClick = {
+                                sellerSubmitting = true
+                                scope.launch {
+                                    runCatching {
+                                        state.client.registerVerifiedMarketSeller(
+                                            sellerStore,sellerPhone,sellerWhatsapp,sellerState,sellerCity,sellerUniversity
+                                        ) && state.client.completeMarketSellerProfile(
+                                            sellerKind,sellerDescription,sellerCategory,sellerDelivery,sellerPickup
+                                        )
+                                    }.onSuccess { approved ->
+                                        if (approved) {
+                                            sellerReady = true
+                                            showSellerEnrollment = false
+                                            showCreate = true
+                                            error = null
+                                        } else error = "Registration requires active verification."
+                                    }.onFailure { error = it.message ?: "Seller registration failed." }
+                                    sellerSubmitting = false
+                                }
+                            }
+                        ) { Text(if (sellerSubmitting) "Registering…" else "Register Free") }
+                    }
+                }
             }
         }
         if (showCreate) {
@@ -1039,19 +1684,75 @@ fun MarketplaceScreen(state: DesktopAppState) {
                             OutlinedTextField(price, { price = it.filter(Char::isDigit) }, label = { Text("Price (NGN)") })
                             OutlinedTextField(category, { category = it }, label = { Text("Category") })
                         }
+                        OutlinedButton(onClick = {
+                            val chooser = javax.swing.JFileChooser()
+                            chooser.dialogTitle = "Choose a product photo"
+                            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                                marketImagePath = chooser.selectedFile.absolutePath
+                            }
+                        }) { Text(if (marketImagePath.isBlank()) "Choose product photo" else "Replace product photo") }
+                        if (marketImagePath.isNotBlank()) Text(java.io.File(marketImagePath).name)
+                        OutlinedButton(onClick = {
+                            val chooser = javax.swing.JFileChooser()
+                            chooser.dialogTitle = "Choose an optional product video"
+                            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                                marketVideoPath = chooser.selectedFile.absolutePath
+                            }
+                        }) { Text(if (marketVideoPath.isBlank()) "Choose optional video" else "Replace product video") }
+                        if (marketVideoPath.isNotBlank()) {
+                            Text(java.io.File(marketVideoPath).name)
+                            TextButton(onClick = { marketVideoPath = "" }) { Text("Remove video") }
+                        }
+                        OutlinedButton(onClick = { showListingPreview = true }) { Text("Preview Listing") }
+                        if (showListingPreview) {
+                            AlertDialog(
+                                onDismissRequest = { showListingPreview = false },
+                                title = { Text(title.ifBlank { "Listing Preview" }) },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Text("₦$price · $category",fontWeight = FontWeight.Bold)
+                                        Text(description.take(500))
+                                        if (marketImagePath.isNotBlank()) Text("Photo: " + java.io.File(marketImagePath).name)
+                                        if (marketVideoPath.isNotBlank()) Text("Video: " + java.io.File(marketVideoPath).name)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { showListingPreview = false }) { Text("Continue editing") }
+                                }
+                            )
+                        }
                         error?.let { InlineError(it) }
                         Button(onClick = {
                             scope.launch {
-                                runCatching { state.client.createMarketplaceItem(title, description, price.toLongOrNull() ?: 0L, category) }
-                                    .onSuccess { title = ""; description = ""; price = ""; showCreate = false; reload() }
-                                    .onFailure { error = it.message }
+                                runCatching {
+                                    val digest = state.client.marketPhotoFingerprint(marketImagePath)
+                                    val image = state.client.uploadMarketAttachment(marketImagePath,false)
+                                    val video = marketVideoPath.takeIf(String::isNotBlank)?.let {
+                                        state.client.uploadMarketAttachment(it,true)
+                                    }
+                                    state.client.createMarketplaceItem(
+                                        title,description,price.toLongOrNull() ?: 0L,category,image,video,digest
+                                    )
+                                }.onSuccess {
+                                    title = ""; description = ""; price = "";
+                                    marketImagePath = ""; marketVideoPath = "";
+                                    showCreate = false; refreshRevision++
+                                }.onFailure { error = it.message }
                             }
-                        }, enabled = title.isNotBlank() && price.isNotBlank()) { Text("Publish listing") }
+                        }, enabled = title.trim().length >= 3 && description.trim().length >= 10 &&
+                            (price.toLongOrNull() ?: 0L) > 0L && marketImagePath.isNotBlank()
+                        ) { Text("Publish listing • Free") }
                     }
                 }
             }
         }
+        marketError?.let { message ->
+            item { InlineError(message) }
+        }
         if (loading) item { LoadingRow() }
+        if (!loading && itemsList.isEmpty() && marketError == null) {
+            item { Text("No Market listings match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         items(itemsList, key = { it.id }) { market ->
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = if (market.isFeatured) 3.dp else 1.dp) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1063,6 +1764,56 @@ fun MarketplaceScreen(state: DesktopAppState) {
                     VerifiedName(market.sellerName, market.sellerVerified)
                     Text("${market.university} • ${market.location} • ${market.condition}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (market.isFeatured) Text("Featured", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (!market.isSold && market.sellerId != state.profile?.id && market.sellerId != null) {
+                        OutlinedTextField(
+                            value=marketOfferAmounts[market.id].orEmpty(),
+                            onValueChange={v->marketOfferAmounts=marketOfferAmounts+(market.id to v.filter(Char::isDigit).take(12))},
+                            label={Text("Offer in naira")},singleLine=true
+                        )
+                        OutlinedButton(onClick={
+                            scope.launch {
+                                val amount=marketOfferAmounts[market.id]?.toLongOrNull() ?: 0L
+                                runCatching { state.client.makeMarketOffer(market.id,amount,"Private buyer offer") }
+                                    .onFailure { marketOfferError=it.message }
+                                marketOffers=runCatching { state.client.fetchMarketOffers() }.getOrDefault(marketOffers)
+                            }
+                        },enabled=(marketOfferAmounts[market.id]?.toLongOrNull() ?: 0L)>0L) {
+                            Text("Make Private Offer")
+                        }
+                        OutlinedButton(
+                            enabled = !marketCheckoutBusy && marketCheckoutEnabled,
+                            onClick = {
+                                scope.launch {
+                                    marketCheckoutBusy = true
+                                    marketCheckoutNotice = null
+                                    runCatching { state.client.initializePaystackMarketCheckout(market.id) }
+                                        .onSuccess { response ->
+                                            val url = response.optString("checkoutUrl")
+                                            val ref = response.optString("reference")
+                                            if (!com.blinkng.shared.BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url) ||
+                                                !ref.matches(Regex("^blink-ps-[0-9a-f]{32}$"))) {
+                                                marketCheckoutNotice = "Invalid Paystack checkout response."
+                                            } else {
+                                                pendingMarketReference = ref
+                                                runCatching {
+                                                    if (!java.awt.Desktop.isDesktopSupported()) error("No browser")
+                                                    java.awt.Desktop.getDesktop().browse(java.net.URI(url))
+                                                }.onFailure { marketCheckoutNotice = "Open a supported browser to pay." }
+                                            }
+                                        }.onFailure {
+                                            marketCheckoutNotice = "Marketplace checkout is not enabled yet."
+                                        }
+                                    marketCheckoutBusy = false
+                                }
+                            }
+                        ) {
+                            Text(if (marketCheckoutEnabled) "Buy securely with Paystack"
+                                 else "Paystack checkout coming soon")
+                        }
+                    }
+                    if (!market.videoUrl.isNullOrBlank()) {
+                        Text("Product video available",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -1140,7 +1891,7 @@ fun ConnectScreen(state: DesktopAppState) {
         val inboxResult = runCatching { state.client.fetchConnectInbox() }
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
-        listings = listingsResult.getOrDefault(listings)
+        listings = listingsResult.getOrDefault(listings).distinctBy { it.id }
         val applicationsResult = runCatching {
             state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
         }
@@ -1366,12 +2117,12 @@ fun ConnectScreen(state: DesktopAppState) {
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(100.dp),
-                                    color = Color(0xFF22C55E).copy(alpha = 0.13f),
+                                    color = Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.13f),
                                 ) {
                                     Text(
                                         if (liveActivityAvailable) realOnlineCount.toString() else "—",
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                        color = Color(0xFF22C55E),
+                                        color = Color(BlinkDesignTokens.Semantic.Success),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Black,
                                     )
@@ -1719,7 +2470,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                     Text(
                                         if (!liveActivityAvailable) "Presence not current" else if (profile.isOnline) "Online" else "Offline",
                                         fontSize = 11.sp,
-                                        color = if (liveActivityAvailable && profile.isOnline) Color(0xFF22C55E)
+                                        color = if (liveActivityAvailable && profile.isOnline) Color(BlinkDesignTokens.Semantic.Success)
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -1768,7 +2519,10 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             } else {
                 val currentId = state.profile?.id.orEmpty()
-                val requestItems = inbox.requests.sortedByDescending { it.createdAt }
+                // The RPC inbox already contains game rows; the challenge stream renders them separately.
+                val requestItems = inbox.requests
+                    .filterNot { it.kind.equals("game", ignoreCase = true) }
+                    .sortedByDescending { it.createdAt }
                 val challengeItems = inbox.challenges.sortedByDescending { it.createdAt }
                 val pendingDirectoryApplications = directoryApplications.filter { it.status == "pending" }
 
@@ -2102,6 +2856,19 @@ fun StoreScreen(state: DesktopAppState) {
     }
 }
 
+/** Match punctuation variants and existing FUTA aliases without merging unknown campuses. */
+private fun sameRankCampus(first: String?, second: String?): Boolean {
+    fun key(value: String?): String {
+        val normalized = value.orEmpty().trim().lowercase().replace(Regex("[^a-z0-9]"), "")
+        return when (normalized) {
+            "futa", "futakure" -> "federaluniversityoftechnologyakure"
+            else -> normalized
+        }
+    }
+    val a = key(first)
+    return a.isNotBlank() && a == key(second)
+}
+
 @Composable
 fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
@@ -2184,13 +2951,248 @@ fun LeaderboardScreen(state: DesktopAppState) {
         }
     }
 
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedScope by remember { mutableStateOf("Global") }
+    val scope = rememberCoroutineScope()
+    val campus = state.profile?.university?.trim().orEmpty()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = Color(0xFF7548E8)
+
+    val ranked = remember(entries, selectedScope, campus) {
+        val sorted = if (selectedScope == "Campus") {
+            entries.filter { sameRankCampus(it.university, campus) }
+                .sortedWith(compareBy<DesktopLeaderboardEntry> {
+                    it.campusRank ?: Int.MAX_VALUE
+                }.thenByDescending { it.campusScore })
+        } else {
+            entries.sortedWith(compareBy<DesktopLeaderboardEntry> {
+                it.worldRank ?: Int.MAX_VALUE
+            }.thenByDescending { it.worldScore })
+        }
+        sorted.take(20)
+    }
+    val current = entries.firstOrNull { it.userId == state.profile?.id }
+    val featuredCampus = selectedScope == "Global" && campus.isNotBlank() && entries.any {
+        sameRankCampus(it.university, campus)
+    }
+    val campusChampions = entries.filter { sameRankCampus(it.university, campus) }
+        .sortedWith(compareBy<DesktopLeaderboardEntry> { it.campusRank ?: Int.MAX_VALUE }
+            .thenByDescending { it.campusScore }).take(3)
+    val topThree = if (featuredCampus) campusChampions else ranked.take(3)
+    val otherStudents = if (featuredCampus) ranked else ranked.drop(3)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { ScreenHeader("Leaderboard", "Ranks #1–#20 from live Blink activity") }
-
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🏆", fontSize = 31.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Leaderboard", fontSize = 28.sp, fontWeight = FontWeight.Black)
+                    Text("See top students and climb your rank", fontSize = 12.sp, color = muted)
+                }
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        runCatching { state.client.fetchLeaderboard() }
+                            .onSuccess { entries = it; liveActivityAvailable = true; error = null }
+                            .onFailure { error = it.message ?: "Unable to refresh rankings"; liveActivityAvailable = false }
+                    }
+                }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("Refresh")
+                }
+            }
+        }
+        item {
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(50.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Global", "Campus", "Friends").forEach { tab ->
+                        val available = tab == "Global" || (tab == "Campus" && campus.isNotBlank())
+                        val active = selectedScope == tab
+                        Surface(
+                            modifier = Modifier.weight(1f).then(
+                                if (available) Modifier.clickable { selectedScope = tab } else Modifier
+                            ),
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (active) MaterialTheme.colorScheme.onSurface else Color.Transparent
+                        ) {
+                            Box(
+                                Modifier.height(39.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    tab,
+                                    color = if (active) MaterialTheme.colorScheme.surface
+                                        else muted.copy(alpha = if (available) 1f else .45f),
+                                    fontWeight = if (active) FontWeight.Black else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = accent.copy(alpha = .14f), shape = CircleShape) {
+                            Text(
+                                state.profile?.fullName?.firstOrNull()?.uppercaseChar()?.toString() ?: "B",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                fontWeight = FontWeight.Black, fontSize = 26.sp,
+                                color = accent
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                state.profile?.fullName?.ifBlank { state.profile?.username ?: "" }
+                                    ?: "Your profile",
+                                fontWeight = FontWeight.Black, fontSize = 18.sp
+                            )
+                            Text(
+                                campus.ifBlank { "BLINK community" },
+                                color = muted, fontSize = 12.sp
+                            )
+                            val profile = state.profile
+                            if (profile != null) {
+                                Text(
+                                    "Level " + xpProgress(profile.totalXp, profile.xpLevel).level,
+                                    color = accent, fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Text("♛", color = accent, fontSize = 32.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(
+                            ("🌐 World Rank" to current?.worldRank),
+                            ("🏛 Campus Rank" to current?.campusRank)
+                        ).forEach { (label, rank) ->
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(15.dp)
+                            ) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(rank?.let { "#" + it } ?: "—", fontWeight = FontWeight.Black, fontSize = 19.sp)
+                                    Text(label, color = muted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (loading) item { LoadingRow() }
+        error?.let { item { InlineError(it) } }
+        if (!loading && ranked.isEmpty()) {
+            item {
+                EmptyState(
+                    if (selectedScope == "Campus") "No campus rankings are available yet."
+                    else "No live leaderboard results are available yet."
+                )
+            }
+        }
+        if (topThree.isNotEmpty()) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            if (selectedScope == "Campus" || featuredCampus) "Top 3 on Campus" else "Top 3 on BLINK",
+                            fontSize = 16.sp, fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            listOf(1, 0, 2).forEach { position ->
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    topThree.getOrNull(position)?.let { student ->
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            if (position == 0) Text("♛", fontSize = 29.sp, color = Color(0xFFF2B93B))
+                                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
+                                                Text(
+                                                    student.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                                    modifier = Modifier.padding(18.dp),
+                                                    fontSize = if (position == 0) 26.sp else 21.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                            Text(
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusRank else student.worldRank)?.let { "#" + it } ?: "—",
+                                                color = accent, fontWeight = FontWeight.Bold
+                                            )
+                                            Text(student.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                (if (selectedScope == "Campus" || featuredCampus) student.campusScore else student.worldScore).toString() + " points",
+                                                fontSize = 12.sp, color = muted
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (otherStudents.isNotEmpty()) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
+                    Text("#", modifier = Modifier.width(55.dp), color = muted)
+                    Text("Student", modifier = Modifier.weight(1f), color = muted)
+                    Text("Points", modifier = Modifier.width(110.dp), color = muted)
+                    Text("Change", color = muted)
+                }
+            }
+        }
+        items(otherStudents, key = { it.userId }) { student ->
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
+                Row(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        (if (selectedScope == "Campus") student.campusRank else student.worldRank)?.toString() ?: "—",
+                        modifier = Modifier.width(55.dp), fontWeight = FontWeight.Bold
+                    )
+                    Column(Modifier.weight(1f)) {
+                        VerifiedName(student.name, student.verificationTier.lowercase() != "none" && student.verificationTier.isNotBlank())
+                        Text("@" + student.handle, color = muted, fontSize = 12.sp)
+                    }
+                    Text(
+                        (if (selectedScope == "Campus") student.campusScore else student.worldScore).toString(),
+                        modifier = Modifier.width(110.dp), color = muted
+                    )
+                    Text("—", color = muted) // No rank-change snapshots supplied by desktop API.
+                }
+            }
+        }
         if (policy.enabled) {
             item {
                 Surface(
@@ -2245,27 +3247,13 @@ fun LeaderboardScreen(state: DesktopAppState) {
             }
         }
 
-        if (loading) item { LoadingRow() }
-        items(
-            entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
-            key = { it.userId }
-        ) { entry ->
-            Surface(
-                modifier = if (reduceMotion) Modifier else Modifier.animateItem(),
-                shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp
-            ) {
-                Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("#${entry.worldRank ?: "–"}", modifier = Modifier.width(64.dp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                    Column(modifier = Modifier.weight(1f)) {
-                        VerifiedName(entry.name, entry.verificationTier.lowercase() != "none" && entry.verificationTier.isNotBlank())
-                        Text("@${entry.handle} • ${entry.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("${entry.worldScore} pts", fontWeight = FontWeight.Bold)
-                        Text("Campus #${entry.campusRank ?: "–"}", fontSize = 11.sp)
-                    }
-                }
-            }
+
+        item {
+            Text(
+                "BLINK ranks are server-generated activity scores, not fabricated XP. " +
+                    "Friends rankings are unavailable until a connection-backed feed exists.",
+                fontSize = 11.sp, color = muted
+            )
         }
     }
 }
@@ -2340,6 +3328,15 @@ fun ProfileScreen(state: DesktopAppState) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        profile.coverPhotoUrl?.takeIf(String::isNotBlank)?.let { cover ->
+                            AsyncImage(
+                                model = cover,
+                                contentDescription = "Profile cover photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxWidth().height(112.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                            )
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             DesktopPremiumAvatarFrame(
                                 catalogIds = premiumCatalogIds,
@@ -2352,12 +3349,18 @@ fun ProfileScreen(state: DesktopAppState) {
                             Column {
                                 VerifiedName(profile.fullName, profile.isVerified, 21.sp)
                                 Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                profile.professionalHeadline?.takeIf(String::isNotBlank)?.let {
+                                    Text(it, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
                                 Text(
                                     desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                     fontSize = 11.sp,
-                                    color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (profile.isOnline) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
+                                Text(listOfNotNull(profile.university, profile.academicLevel, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
+                                if (profile.dailyStreak > 0) {
+                                    Text("🔥 ${profile.dailyStreak} day streak", fontSize = 11.sp)
+                                }
                             }
                         }
                         profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }
@@ -2407,6 +3410,51 @@ fun ProfileScreen(state: DesktopAppState) {
                             fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+
+            // Profile reference parity: these are category previews only.
+            // This desktop response does not yet expose verified award ownership.
+            item {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Your Badges", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Text(
+                            "Achievement categories • locked until the server confirms an award",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        listOf(
+                            "Verified Student",
+                            "Social Connector",
+                            "Campus Explorer",
+                            "Event Attendee",
+                            "Top Creator"
+                        ).chunked(3).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { title ->
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                    ) {
+                                        Text(
+                                            title, modifier = Modifier.padding(10.dp),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
                     }
                 }
             }
@@ -2560,7 +3608,7 @@ fun ProfileScreen(state: DesktopAppState) {
                             Text(
                                 message,
                                 fontSize = 11.sp,
-                                color = if (message.contains("activated", ignoreCase = true)) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
+                                color = if (message.contains("activated", ignoreCase = true)) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -2589,7 +3637,7 @@ fun ProfileScreen(state: DesktopAppState) {
                         missions.forEach { mission ->
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (mission.claimed) Color(0xFF22C55E).copy(alpha = 0.08f)
+                                color = if (mission.claimed) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.08f)
                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             ) {
                                 Column(
@@ -2608,7 +3656,7 @@ fun ProfileScreen(state: DesktopAppState) {
                                             "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Black,
-                                            color = if (mission.completed) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
+                                            color = if (mission.completed) Color(BlinkDesignTokens.Semantic.Success) else MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                     LinearProgressIndicator(
@@ -2661,7 +3709,23 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
-    DesktopGeneralStudyGame()
+    var nativeUnavailable by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("BLINK LIFE 3D · Preview", fontWeight = FontWeight.Bold)
+                Text("Optional native 3D world. Only starts after Play; online servers are not live.")
+            }
+            Button(onClick = {
+                nativeUnavailable = !BlinkLifeNativeLauncher.launch()
+            }) { Text("Play BLINK LIFE 3D") }
+        }
+        if (nativeUnavailable) {
+            Text("Native 3D runtime unavailable in this installation. BLINK games are still accessible.",
+                modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        Box(Modifier.weight(1f)) { DesktopGeneralStudyGame() }
+    }
 }
 
 @Composable
@@ -2735,13 +3799,14 @@ fun AdminScreen(state: DesktopAppState) {
 }
 
 @Composable
-private fun PostCard(
+internal fun DesktopFeedPostCard(
     post: DesktopFeedPost,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
     onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
+    onOpenPost: (() -> Unit)? = null,
     xFeedStyle: Boolean = false,
 ) {
     var expandedText by remember(post.id) { mutableStateOf(false) }
@@ -2758,7 +3823,7 @@ private fun PostCard(
     Surface(
         shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
         tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
-        color = if (xFeedStyle) Color.Black else MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(
@@ -2767,6 +3832,50 @@ private fun PostCard(
             ),
             verticalArrangement = Arrangement.spacedBy(if (xFeedStyle) 8.dp else 10.dp)
         ) {
+            if (xFeedStyle) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
+                    Spacer(Modifier.width(7.dp))
+                    Row(
+                        modifier = Modifier.weight(1f)
+                            .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            post.authorName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (post.authorVerified) {
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                Icons.Rounded.Verified,
+                                contentDescription = "Verified account",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "@${post.authorUsername}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            " · ${compactDesktopFeedAge(post.createdAt)}",
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
@@ -2798,13 +3907,16 @@ private fun PostCard(
                 }
             }
 
+            }
+
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
             if (body.isNotBlank()) {
                 Text(
                     text = body,
-                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp),
+                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                     fontSize = 15.sp,
-                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                    maxLines = if (expandedText) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { result ->
                         if (!expandedText && result.hasVisualOverflow) textCanExpand = true
@@ -2890,14 +4002,13 @@ private fun PostCard(
             }
 
             if (xFeedStyle) {
-                // Identical metric priority to Android: views, likes, comments,
-                // reposts, saved, then sharing.
+                // Five social actions first; views remain a subtle read-only
+                // metric beneath them, matching Android's feed hierarchy.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onLike) {
                             Icon(
@@ -2906,13 +4017,13 @@ private fun PostCard(
                                 tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("${post.likeCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostFormat.count(post.likeCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onComments) {
                             Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
                         }
-                        Text("${post.commentCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onRepost) {
@@ -2922,7 +4033,7 @@ private fun PostCard(
                                 tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("${post.repostCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostFormat.count(post.repostCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = onBookmark) {
                         Icon(
@@ -2932,6 +4043,14 @@ private fun PostCard(
                     }
                     TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
+                Text(
+                    text = "${BlinkPostFormat.count(post.viewCount)} views",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                    modifier = Modifier.padding(start = 58.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() }
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
                 val primaryMetrics = buildList {
@@ -3190,6 +4309,19 @@ private fun rememberDesktopManagedPulse(
 
     return value
 }
+
+private fun compactDesktopFeedAge(timestamp: String): String = runCatching {
+    val seconds = (Instant.now().epochSecond - Instant.parse(timestamp).epochSecond).coerceAtLeast(0L)
+    when {
+        seconds < 60L -> "now"
+        seconds < 3_600L -> "${seconds / 60L}m"
+        seconds < 86_400L -> "${seconds / 3_600L}h"
+        seconds < 604_800L -> "${seconds / 86_400L}d"
+        seconds < 2_592_000L -> "${seconds / 604_800L}w"
+        seconds < 31_536_000L -> "${seconds / 2_592_000L}mo"
+        else -> "${seconds / 31_536_000L}y"
+    }
+}.getOrElse { BlinkPostFormat.age(timestamp) }
 
 private fun formatTime(value: String): String = runCatching {
     val instant = Instant.parse(value)

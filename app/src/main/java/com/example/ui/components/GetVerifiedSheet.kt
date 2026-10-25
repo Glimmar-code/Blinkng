@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
+import com.example.ui.components.BlinkSkeletonList
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
@@ -35,6 +39,8 @@ import com.example.ui.theme.*
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.verification.BlinkVerificationPlans
+import com.blinkng.shared.verification.BlinkVerificationTier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,7 +58,16 @@ fun GetVerifiedSheet(
     onRefreshDailyMissions: () -> Unit = {},
     onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
-    onUpgrade: (VerificationBadge) -> Unit
+    onUpgrade: (VerificationBadge, Int) -> Unit,
+    pendingCashPayment: Boolean = false,
+    cashCheckoutBusy: Boolean = false,
+    onCheckCashPayment: () -> Unit = {},
+    onPaymentHistory: () -> Unit = {},
+    renewalStatus: String = "none",
+    renewalWorking: Boolean = false,
+    onLoadRenewal: () -> Unit = {},
+    onEnableRenewal: () -> Unit = {},
+    onCancelRenewal: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedBadge by remember {
@@ -62,9 +77,12 @@ fun GetVerifiedSheet(
     }
     val isGoldEligible = profile.followerCount >= 1000
     var showDailyMissions by remember { mutableStateOf(false) }
+    var selectedMonths by remember { mutableIntStateOf(1) }
+    var agreedToRenewal by remember(profile.id) { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         onRefreshDailyMissions()
+        onLoadRenewal()
     }
 
     val sheetBg = if (isDark) DarkSurface else LightSurface
@@ -87,6 +105,25 @@ fun GetVerifiedSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Choose payment duration", color = textPrimary,
+                        fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Row(modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        BlinkVerificationPlans.durations.forEach { duration ->
+                            FilterChip(
+                                selected = selectedMonths == duration.months,
+                                onClick = { selectedMonths = duration.months },
+                                label = { Text("${duration.months}m") }
+                            )
+                        }
+                    }
+                    Text("One-time payment • 3m saves 10%, 6m saves 20%, 12m saves 30%.",
+                        fontSize = 11.sp, color = textSecondary)
+                }
+            }
+
             // Header
             item {
                 Column(
@@ -139,7 +176,7 @@ fun GetVerifiedSheet(
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isDark) Color(0xFF1E1729) else Color(0xFFF6F4FA),
+                    color = if (isDark) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFFF6F4FA),
                     border = BorderStroke(1.dp, borderColor),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -407,7 +444,7 @@ fun GetVerifiedSheet(
                             color = if (isGoldEligible) Color(0xFF132818) else if (isDark) Color(0xFF281C10) else Color(0xFFFFF7ED),
                             border = BorderStroke(
                                 1.dp,
-                                if (isGoldEligible) Color(0xFF22C55E).copy(alpha = 0.5f) else BlinkGold.copy(alpha = 0.4f)
+                                if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.5f) else BlinkGold.copy(alpha = 0.4f)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -421,21 +458,21 @@ fun GetVerifiedSheet(
                                         Icon(
                                             imageVector = if (isGoldEligible) Icons.Default.CheckCircle else Icons.Default.Lock,
                                             contentDescription = null,
-                                            tint = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold,
+                                            tint = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Text(
                                             text = if (isGoldEligible) "Follower Requirement Met!" else "Requirement: 1,000 Followers",
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isGoldEligible) Color(0xFF22C55E) else if (isDark) Color.White else Color(0xFF9A3412)
+                                            color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else if (isDark) Color.White else Color(0xFF9A3412)
                                         )
                                     }
                                     Text(
                                         text = "${profile.followerCount} / 1,000",
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold
+                                        color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold
                                     )
                                 }
 
@@ -444,7 +481,7 @@ fun GetVerifiedSheet(
                                 val progress = (profile.followerCount.toFloat() / 1000f).coerceIn(0f, 1f)
                                 LinearProgressIndicator(
                                     progress = { progress },
-                                    color = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold,
+                                    color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
                                     trackColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -730,6 +767,10 @@ fun GetVerifiedSheet(
                                             }
                                         }
 
+                                        if (isDailyMissionsLoading && dailyMissions.isEmpty()) {
+                                            BlinkSkeletonList(rows = 3, avatar = false)
+                                        }
+
                                         if (!isDailyMissionsLoading && dailyMissions.isEmpty()) {
                                             Text(
                                                 "Missions are syncing. Try again shortly.",
@@ -817,12 +858,12 @@ fun GetVerifiedSheet(
                             }
 
                             OutlinedButton(
-                                onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !alreadyBlueOrGold && economyPolicy.cashCheckoutEnabled,
+                                onClick = { onUpgrade(VerificationBadge.BLUE, selectedMonths) },
+                                enabled = profile.verificationBadge != VerificationBadge.GOLD && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} • ${economyPolicy.blueVerificationValidDays} days", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.BLUE, selectedMonths).totalNgn} for ${selectedMonths}m", fontWeight = FontWeight.Bold)
                             }
                             if (!economyPolicy.cashCheckoutEnabled && !alreadyBlueOrGold) {
                                 Text(
@@ -858,8 +899,8 @@ fun GetVerifiedSheet(
                     val isCurrentBadge = profile.verificationBadge == selectedBadge
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
-                        onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = false,
+                        onClick = { onUpgrade(VerificationBadge.GOLD, selectedMonths) },
+                        enabled = isGoldEligible && economyPolicy.cashCheckoutEnabled && !cashCheckoutBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -868,12 +909,54 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                else -> "Gold verification is not sold through Paystack"
+                                economyPolicy.cashCheckoutEnabled -> "Pay ₦${BlinkVerificationPlans.quote(BlinkVerificationTier.GOLD, selectedMonths).totalNgn} for ${selectedMonths}m"
+                                else -> "Secure Paystack checkout not available yet"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
                     }
+                }
+            }
+
+            if (pendingCashPayment) {
+                item {
+                    OutlinedButton(
+                        onClick = onCheckCashPayment, enabled = !cashCheckoutBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("I've paid · Verify with Paystack") }
+                    Text("Purchases activate only after BLINK independently verifies the payment.",
+                        fontSize = 11.sp, color = textSecondary)
+                }
+            }
+            item {
+                HorizontalDivider()
+                Text("Automatic renewal (optional)", fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp, color = textPrimary)
+                Text("One-time plans never turn on recurring payments automatically. " +
+                    "You may opt in after a successful payment and cancel future billing.",
+                    fontSize = 12.sp, color = textSecondary)
+                Text("Recurring billing status: ${renewalStatus.replace('_',' ')}",
+                    color = textPrimary, fontSize = 12.sp)
+                if (renewalStatus == "active") {
+                    OutlinedButton(onClick = onCancelRenewal, enabled = !renewalWorking,
+                        modifier = Modifier.fillMaxWidth()) { Text("Cancel future charges") }
+                } else if (renewalStatus == "none" || renewalStatus == "cancelled") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = agreedToRenewal,
+                            onCheckedChange = { agreedToRenewal = it })
+                        Text("I agree to recurring charges for my latest paid plan.",
+                            modifier = Modifier.weight(1f), color = textPrimary,
+                            fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { agreedToRenewal = false; onEnableRenewal() },
+                        enabled = agreedToRenewal && economyPolicy.cashCheckoutEnabled && !renewalWorking,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Enable automatic renewal") }
+                }
+                TextButton(onClick = onPaymentHistory, modifier = Modifier.fillMaxWidth()) {
+                    Text("View Paystack receipts and transaction history")
                 }
             }
         }
@@ -912,5 +995,5 @@ private fun VerificationFeatureItem(
 
 @Composable
 private fun cardBg(isDark: Boolean): Color {
-    return if (isDark) Color(0xFF1B1424) else Color.White
+    return if (isDark) MaterialTheme.colorScheme.surfaceContainer else Color.White
 }

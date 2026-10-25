@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -245,7 +247,7 @@ fun StoreProScreen(state: DesktopAppState) {
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFF3B0764), Color(0xFF6D28D9), Color(0xFFDB2777)),
+                                listOf(Color(0xFF3B0764), Color(BlinkDesignTokens.Brand.PrimaryDeep), Color(0xFFDB2777)),
                             ),
                         )
                         .padding(22.dp),
@@ -820,7 +822,7 @@ private fun DesktopStoreGroupDialog(
                                     equipped -> PremiumStatusPill("APPLIED", Color(0xFF16A34A))
                                     active -> PremiumStatusPill("LIVE", Color(0xFF16A34A))
                                     ownedPermanent -> PremiumStatusPill("OWNED", accent)
-                                    item.vipOnly -> PremiumStatusPill("VIP", Color(0xFFF59E0B))
+                                    item.vipOnly -> PremiumStatusPill("VIP", Color(BlinkDesignTokens.Semantic.Warning))
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1048,6 +1050,10 @@ fun AdminProScreen(state: DesktopAppState) {
     var searchResult by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var showAnnouncementManager by remember { mutableStateOf(false) }
+    var showLiveContentManager by remember { mutableStateOf(false) }
+    var showCampaignStudio by remember { mutableStateOf(false) }
+    var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
 
@@ -1082,6 +1088,46 @@ fun AdminProScreen(state: DesktopAppState) {
         }
 
         item { DesktopBugReportPanel(state, admin = true) }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Announcement Manager", fontWeight = FontWeight.Bold)
+                        Text("Official in-app BLINK announcements", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showAnnouncementManager = true }) { Text("Create") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Live Content", fontWeight = FontWeight.Bold)
+                        Text("Manage live announcements and presentation visibility", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showLiveContentManager = true }) { Text("Manage") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Campaign Studio", fontWeight = FontWeight.Bold)
+                        Text("Draft, schedule, approve, target and analyze banners", fontSize = 12.sp)
+                    }
+                    Button(onClick = { showCampaignStudio = true }) { Text("Open") }
+                }
+            }
+        }
+        announcementStatus?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
 
         item {
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
@@ -1230,6 +1276,25 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+    if (showLiveContentManager && capability.allowed) {
+        DesktopAdminLiveContentManager(
+            actions = actions, isOwner = capability.isOwner,
+            onDismiss = { showLiveContentManager = false }
+        )
+    }
+    if (showCampaignStudio && capability.allowed) {
+        DesktopAdminCampaignManager(
+            actions = actions, isOwner = capability.isOwner,
+            onDismiss = { showCampaignStudio = false }
+        )
+    }
+    if (showAnnouncementManager && capability.allowed) {
+        DesktopAdminAnnouncementManager(
+            actions = actions,
+            onDismiss = { showAnnouncementManager = false },
+            onSent = { announcementStatus = it; showAnnouncementManager = false },
+        )
     }
 }
 

@@ -29,12 +29,20 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkAdaptiveLayoutPolicy
+import com.example.notification.BlinkOfflineAnnouncementCache
+import com.example.ui.components.BlinkOfflineAnnouncementsPanel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -54,8 +62,6 @@ import com.example.data.supabase.AdminAnnouncementService
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.BlinkVipMarkForUsername
-import com.example.ui.theme.BlinkPink
-import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -78,6 +84,9 @@ private enum class NotificationCategory(val label: String) {
     LIKES("Likes"),
     FOLLOWS("Follows"),
     MARKET("Market"),
+    REELS("Reels"),
+    STORIES("Stories"),
+    REWARDS("Rewards"),
     BLINK("BLINK")
 }
 
@@ -100,12 +109,23 @@ fun ActivityScreen(
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onMarkAllRead: () -> Unit = {},
-    onToggleRead: (ActivityItem) -> Unit = {}
+    onToggleRead: (ActivityItem) -> Unit = {},
+    accountId: String = "",
 ) {
     var filter by remember { mutableStateOf(NotificationCategory.ALL) }
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
+    var newestFirst by remember { mutableStateOf(true) }
     var searchVisible by remember { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var showSavedUpdates by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var savedUpdates by remember(accountId) {
+        mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
+    }
+    LaunchedEffect(accountId, activities, showSavedUpdates) {
+        if (showSavedUpdates) savedUpdates = BlinkOfflineAnnouncementCache.read(context, accountId)
+    }
 
     val profileService = remember { SupabaseService() }
     val announcementService = remember { AdminAnnouncementService() }
@@ -155,6 +175,10 @@ fun ActivityScreen(
         activities.filterNot { it.targetType.equals("CHAT", ignoreCase = true) }
     }
     val unread = timelineActivities.count { it.isUnread }
+    val compactToolbar = BlinkAdaptiveLayoutPolicy.compactToolbar(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    )
     val filtered = remember(timelineActivities, actorProfiles, filter, viewMode, searchQuery) {
         timelineActivities.filter { item ->
             val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
@@ -176,7 +200,13 @@ fun ActivityScreen(
             categoryMatches && unreadMatches && searchMatches
         }
     }
-    val sections = remember(filtered, viewMode) { buildNotificationSections(filtered, viewMode) }
+    val sortedNotifications = remember(filtered, newestFirst) {
+        if (newestFirst) filtered.sortedByDescending { it.rawTimestamp }
+        else filtered.sortedBy { it.rawTimestamp }
+    }
+    val sections = remember(sortedNotifications, viewMode) {
+        buildNotificationSections(sortedNotifications, viewMode)
+    }
 
     Scaffold(
         topBar = {
@@ -188,17 +218,26 @@ fun ActivityScreen(
                         }
                     },
                     title = {
-                        Column {
-                            Text("Notifications", fontWeight = FontWeight.Bold)
-                            Text(
-                                when {
-                                    unread == 0 -> "You're all caught up"
-                                    unread == 1 -> "1 unread"
-                                    else -> "$unread unread"
-                                },
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (!compactToolbar) {
+                            Column {
+                                Text(
+                                    "Notifications",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    when {
+                                        unread == 0 -> "You're all caught up"
+                                        unread == 1 -> "1 unread"
+                                        else -> "$unread unread"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -211,21 +250,87 @@ fun ActivityScreen(
                                 if (searchVisible) "Close search" else "Search notifications"
                             )
                         }
-                        if (unread > 0) {
-                            TextButton(onClick = onMarkAllRead) {
-                                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("Read all", fontSize = 12.sp)
+                        if (compactToolbar) {
+                            Box {
+                                IconButton(onClick = { actionsExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, "More notification actions")
+                                }
+                                DropdownMenu(
+                                    expanded = actionsExpanded,
+                                    onDismissRequest = { actionsExpanded = false }
+                                ) {
+                                    if (unread > 0) {
+                                        DropdownMenuItem(
+                                            text = { Text("Mark all as read") },
+                                            onClick = {
+                                                actionsExpanded = false
+                                                onMarkAllRead()
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.DoneAll, null) }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(if (newestFirst) "Sort oldest first" else "Sort newest first")
+                                        },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            newestFirst = !newestFirst
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Sort, null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Refresh") },
+                                        onClick = {
+                                            actionsExpanded = false
+                                            onRefresh()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Refresh, null) }
+                                    )
+                                }
                             }
-                        }
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, "Refresh")
+                        } else {
+                            if (unread > 0) {
+                                TextButton(onClick = onMarkAllRead) {
+                                    Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Read all", fontSize = 12.sp)
+                                }
+                            }
+                            IconButton(onClick = { newestFirst = !newestFirst }) {
+                                Icon(Icons.Default.Sort, if (newestFirst) "Sort oldest first" else "Sort newest first")
+                            }
+                            IconButton(onClick = onRefresh) {
+                                Icon(Icons.Default.Refresh, "Refresh")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background
                     )
                 )
+
+                if (compactToolbar) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "Notifications",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
+                        )
+                        Text(
+                            when {
+                                unread == 0 -> "You're all caught up"
+                                unread == 1 -> "1 unread"
+                                else -> "$unread unread"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 if (searchVisible) {
                     OutlinedTextField(
@@ -252,12 +357,22 @@ fun ActivityScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            NotificationControls(
-                filter = filter,
-                onFilterChange = { filter = it },
-                viewMode = viewMode,
-                onViewModeChange = { viewMode = it }
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { showSavedUpdates = !showSavedUpdates }) {
+                    Text(if (showSavedUpdates) "Live notifications" else "Saved Updates")
+                }
+            }
+            if (!showSavedUpdates) {
+                NotificationControls(
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    viewMode = viewMode,
+                    onViewModeChange = { viewMode = it }
+                )
+            }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
 
@@ -295,6 +410,11 @@ fun ActivityScreen(
             }
 
             when {
+                showSavedUpdates -> BlinkOfflineAnnouncementsPanel(
+                    announcements = savedUpdates,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
                 isLoading && activities.isEmpty() -> NotificationSkeletonList()
 
                 !errorMessage.isNullOrBlank() && activities.isEmpty() -> NotificationLoadError(
@@ -561,6 +681,9 @@ private fun NotificationEmptyState(
         filter == NotificationCategory.LIKES -> "No likes, saves or reposts"
         filter == NotificationCategory.FOLLOWS -> "No new followers"
         filter == NotificationCategory.MARKET -> "No market activity"
+        filter == NotificationCategory.REELS -> "No reel activity"
+        filter == NotificationCategory.STORIES -> "No story activity"
+        filter == NotificationCategory.REWARDS -> "No reward activity"
         filter == NotificationCategory.BLINK -> "No BLINK notices"
         else -> "No notifications"
     }
@@ -572,6 +695,9 @@ private fun NotificationEmptyState(
         filter == NotificationCategory.LIKES -> "Likes, saves and repost activity will appear here."
         filter == NotificationCategory.FOLLOWS -> "New followers will appear here."
         filter == NotificationCategory.MARKET -> "Marketplace updates will appear here."
+        filter == NotificationCategory.REELS -> "Reel reactions will appear here."
+        filter == NotificationCategory.STORIES -> "Story reactions will appear here."
+        filter == NotificationCategory.REWARDS -> "Coins and rewards will appear here."
         filter == NotificationCategory.BLINK -> "Official BLINK notices will appear here."
         else -> "Likes, comments, follows and profile activity will appear here."
     }
@@ -580,13 +706,13 @@ private fun NotificationEmptyState(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 shape = CircleShape,
-                color = BlinkPink.copy(alpha = .12f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .12f),
                 modifier = Modifier.size(72.dp)
             ) {
                 Icon(
                     Icons.Default.Notifications,
                     null,
-                    tint = BlinkPink,
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(20.dp)
                 )
             }
@@ -664,7 +790,7 @@ private fun NotificationSwipeRow(
         enableDismissFromStartToEnd = true,
         enableDismissFromEndToStart = false,
         backgroundContent = {
-            val accent = if (item.isUnread) Color(0xFF22C55E) else BlinkPurple
+            val accent = MaterialTheme.colorScheme.onSurface
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -697,9 +823,14 @@ private fun NotificationCard(
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit
 ) {
-    val category = resolvedNotificationCategory(item)
     val isOfficial = item.targetType.equals("notification", ignoreCase = true)
-    val accent = if (item.vipPriority) Color(0xFFF59E0B) else notificationAccent(category, isOfficial)
+    val safeAction = item.action.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    } ?: "New activity"
+    val safePreview = item.previewText?.takeUnless {
+        it.isBlank() || it.trim().equals("null", ignoreCase = true)
+    }
+    val accent = MaterialTheme.colorScheme.onSurface
 
     val rawUser = item.user.trim().removePrefix("@")
     val username = profile?.username?.takeIf { it.isNotBlank() }
@@ -779,7 +910,7 @@ private fun NotificationCard(
                         Icon(
                             notificationIcon(item),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.size(11.dp)
                         )
                     }
@@ -829,16 +960,18 @@ private fun NotificationCard(
 
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    item.action,
+                    safeAction,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (!item.previewText.isNullOrBlank()) {
+                if (safePreview != null) {
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        item.previewText.orEmpty(),
+                        safePreview,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 12.sp,
@@ -941,6 +1074,9 @@ private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter
     NotificationCategory.LIKES -> Icons.Default.Favorite
     NotificationCategory.FOLLOWS -> Icons.Default.PersonAdd
     NotificationCategory.MARKET -> Icons.Default.Storefront
+    NotificationCategory.REELS -> Icons.Default.Repeat
+    NotificationCategory.STORIES -> Icons.Default.Bookmark
+    NotificationCategory.REWARDS -> Icons.Default.DoneAll
     NotificationCategory.BLINK -> Icons.Default.Campaign
 }
 
@@ -961,23 +1097,14 @@ private fun notificationIcon(item: ActivityItem): ImageVector {
     }
 }
 
-private fun notificationAccent(category: NotificationCategory, isOfficial: Boolean): Color {
-    if (isOfficial) return BlinkPurple
-    return when (category) {
-        NotificationCategory.MARKET -> Color(0xFF22C55E)
-        NotificationCategory.MENTIONS,
-        NotificationCategory.COMMENTS,
-        NotificationCategory.BLINK -> BlinkPurple
-        NotificationCategory.ALL,
-        NotificationCategory.LIKES,
-        NotificationCategory.FOLLOWS -> BlinkPink
-    }
-}
 
 private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
     val action = item.action.lowercase()
     return when {
         item.targetType.equals("notification", ignoreCase = true) -> NotificationCategory.BLINK
+        item.targetType.equals("reel", ignoreCase = true) || action.contains("reel") -> NotificationCategory.REELS
+        item.targetType.equals("story", ignoreCase = true) || action.contains("story") -> NotificationCategory.STORIES
+        action.contains("coin") || action.contains("reward") || action.contains("rank point") -> NotificationCategory.REWARDS
         item.targetType.equals("market", ignoreCase = true) || action.contains("market") || action.contains("order") ->
             NotificationCategory.MARKET
         action.contains("mention") -> NotificationCategory.MENTIONS

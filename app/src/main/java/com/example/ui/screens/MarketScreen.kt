@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonMarketRow
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,10 +15,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -31,12 +35,16 @@ import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -67,12 +75,16 @@ fun MarketScreen(
     isSellerActive: Boolean,
     sellerStoreName: String = "",
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    sellerVerificationActive: Boolean = false,
+    verificationExpiresAtMillis: Long = 0L,
+    viewerUniversity: String = "",
+    viewerId: String = "",
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String) -> Unit = { _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean, university: String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -81,18 +93,33 @@ fun MarketScreen(
     errorMessage: String? = null,
     isDark: Boolean
 ) {
-    var selectedCategory by remember { mutableStateOf("All Categories") }
+    val marketAccessService = remember { com.example.data.supabase.SupabaseService() }
+    var sellerApproval by remember(isSellerActive) { mutableStateOf<Boolean?>(null) }
+    var approvalRevision by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isSellerActive, approvalRevision) {
+        sellerApproval = if (isSellerActive) {
+            marketAccessService.getMarketSellerDashboard()
+                ?.optJSONObject("seller_card")?.optBoolean("verified_seller", false)
+        } else false
+    }
+    var selectedCategory by rememberSaveable { mutableStateOf("All Categories") }
     var searchQuery by rememberPersistentTextState(key = "market_search_query")
-    var selectedSort by remember { mutableStateOf("newest") }
+    var selectedSort by rememberSaveable { mutableStateOf("recommended") }
     var sortMenuOpen by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
-    var savedOnly by remember { mutableStateOf(false) }
-    var verifiedOnly by remember { mutableStateOf(false) }
-    var minPriceText by remember { mutableStateOf("") }
-    var maxPriceText by remember { mutableStateOf("") }
+    var savedOnly by rememberSaveable { mutableStateOf(false) }
+    var myCampusOnly by rememberSaveable(viewerUniversity) { mutableStateOf(viewerUniversity.isNotBlank()) }
+    var verifiedOnly by rememberSaveable { mutableStateOf(false) }
+    var minPriceText by rememberSaveable { mutableStateOf("") }
+    var maxPriceText by rememberSaveable { mutableStateOf("") }
+    var draftSavedOnly by rememberSaveable { mutableStateOf(false) }
+    var draftVerifiedOnly by rememberSaveable { mutableStateOf(false) }
+    var draftMinPriceText by rememberSaveable { mutableStateOf("") }
+    var draftMaxPriceText by rememberSaveable { mutableStateOf("") }
 
     val sortOptions = remember {
         listOf(
+            MarketSortOption("recommended", "Recommended"),
             MarketSortOption("newest", "Newest"),
             MarketSortOption("popular", "Popular"),
             MarketSortOption("price_low", "Price: low to high"),
@@ -100,26 +127,40 @@ fun MarketScreen(
         )
     }
 
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort) {
-        delay(350)
-        onSearch(
-            searchQuery.trim(),
-            selectedCategory.takeUnless { it == "All Categories" },
-            selectedSort
-        )
-    }
-
     val minPrice = minPriceText.toLongOrNull()
     val maxPrice = maxPriceText.toLongOrNull()
+    val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly, myCampusOnly, viewerUniversity) {
+        if (validPriceRange) {
+            delay(350)
+            onSearch(
+                searchQuery.trim(),
+                selectedCategory.takeUnless { it == "All Categories" },
+                selectedSort,
+                minPrice,
+                maxPrice,
+                savedOnly,
+                verifiedOnly,
+                viewerUniversity.takeIf { myCampusOnly && it.isNotBlank() }
+            )
+        }
+    }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
-        items.filter { item ->
+        com.blinkng.shared.MarketTrustPolicy.diversify(items.filter { item ->
             (!savedOnly || item.isSaved) &&
                 (!verifiedOnly || item.verificationBadge != VerificationBadge.NONE || item.sellerIsVerified) &&
                 (minPrice == null || item.price >= minPrice) &&
                 (maxPrice == null || item.price <= maxPrice)
-        }
+        }) { item -> item.sellerUsername }
     }
-    val marketRows = remember(visibleItems) { visibleItems.chunked(2) }
+    val compactMarketGrid = com.blinkng.shared.BlinkAdaptiveLayoutPolicy.marketColumns(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale
+    ) == 1
+    val marketRows = remember(visibleItems, compactMarketGrid) {
+        visibleItems.chunked(if (compactMarketGrid) 1 else 2)
+    }
     val activeFilterCount = listOf(
         savedOnly,
         verifiedOnly,
@@ -127,7 +168,9 @@ fun MarketScreen(
         maxPriceText.isNotBlank()
     ).count { it }
 
+    val marketListState = rememberLazyListState()
     LazyColumn(
+        state = marketListState,
         contentPadding = PaddingValues(bottom = 120.dp),
         modifier = Modifier
             .fillMaxSize()
@@ -202,6 +245,7 @@ fun MarketScreen(
                             )
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -259,7 +303,13 @@ fun MarketScreen(
 
                 FilterChip(
                     selected = activeFilterCount > 0,
-                    onClick = { showFilters = true },
+                    onClick = {
+                        draftSavedOnly = savedOnly
+                        draftVerifiedOnly = verifiedOnly
+                        draftMinPriceText = minPriceText
+                        draftMaxPriceText = maxPriceText
+                        showFilters = true
+                    },
                     leadingIcon = { Icon(Icons.Default.FilterList, null, modifier = Modifier.size(16.dp)) },
                     label = {
                         Text(if (activeFilterCount > 0) "Filters ($activeFilterCount)" else "Filters")
@@ -268,15 +318,87 @@ fun MarketScreen(
             }
         }
 
+        if (isSellerActive && verificationExpiresAtMillis > 0L &&
+            verificationExpiresAtMillis <= System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000) {
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Your verified seller badge expires soon. Renew it to keep listings eligible.",
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 13.sp
+                        )
+                        TextButton(onClick = onOpenGetVerified) { Text("Renew") }
+                    }
+                }
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOrdersPanel(
+                    userId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (viewerId.isNotBlank()) {
+            item {
+                MarketOffersPanel(
+                    userId = viewerId,
+                    listings = items,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        if (isSellerActive && viewerId.isNotBlank()) {
+            item {
+                MarketSellerInsightsPanel(
+                    sellerId = viewerId,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        if (viewerUniversity.isNotBlank()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = myCampusOnly,
+                        onClick = { myCampusOnly = true },
+                        label = { Text("My University") }
+                    )
+                    FilterChip(
+                        selected = !myCampusOnly,
+                        onClick = { myCampusOnly = false },
+                        label = { Text("All Universities") }
+                    )
+                }
+            }
+        }
+
         item {
-            if (!isSellerActive) {
+            if (!isSellerActive || sellerApproval != true) {
                 Card(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.inverseSurface),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .clickable { onOpenBecomeSeller() }
+                        .clickable { if (isSellerActive) { approvalRevision++; onRefresh() } else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -284,24 +406,24 @@ fun MarketScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Start selling on BLINK",
+                                if (isSellerActive) "Seller approval pending" else if (sellerVerificationActive) "Become a BLINK Seller — Free" else "Verify to Sell on BLINK",
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.inverseOnSurface
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Activate a seller profile before publishing listings.",
+                                if (isSellerActive) "A separate Market review is needed before you can publish products." else if (sellerVerificationActive) "Complete seller registration to publish products." else "An active blue tick is required. Renew if your verification expired.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.75f)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Button(
-                            onClick = onOpenBecomeSeller,
+                            onClick = { if (isSellerActive) onRefresh() else if (sellerVerificationActive) onOpenBecomeSeller() else onOpenGetVerified() },
                             shape = RoundedCornerShape(100.dp),
                             modifier = Modifier.testTag("market_become_seller_btn")
                         ) {
-                            Text("Activate", fontWeight = FontWeight.Bold)
+                            Text(if (isSellerActive) "Refresh" else if (sellerVerificationActive) "Register" else "Verify / Renew", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -417,7 +539,7 @@ fun MarketScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${visibleItems.size} shown",
+                    "${visibleItems.size} loaded",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -425,23 +547,8 @@ fun MarketScreen(
         }
 
         if (isLoading && items.isEmpty()) {
-            items(4) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    repeat(2) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(220.dp)
-                        ) {}
-                    }
-                }
+            items(4, key = { "market_skeleton_$it" }) {
+                BlinkSkeletonMarketRow()
             }
         } else if (visibleItems.isEmpty()) {
             item {
@@ -467,7 +574,9 @@ fun MarketScreen(
                     )
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        if (searchQuery.isNotBlank() || activeFilterCount > 0)
+                        if (hasMore && (savedOnly || verifiedOnly))
+                            "More listings may match. Load another page below to keep looking."
+                        else if (searchQuery.isNotBlank() || activeFilterCount > 0)
                             "Try a different search or clear your filters."
                         else
                             "New listings will appear here when sellers publish them.",
@@ -509,24 +618,20 @@ fun MarketScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    if (row.size == 1 && !compactMarketGrid) Spacer(modifier = Modifier.weight(1f))
                 }
             }
 
-            if (hasMore || isLoadingMore) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLoadingMore) {
-                            CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
-                        } else {
-                            OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
-                                Text("Load more listings")
-                            }
+        }
+        // Client-side saved/verified filters may hide an entire loaded page.
+        if (!isLoading && (hasMore || isLoadingMore)) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
+                    if (isLoadingMore) {
+                        CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                    } else {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                            Text("Load more listings")
                         }
                     }
                 }
@@ -535,6 +640,10 @@ fun MarketScreen(
     }
 
     if (showFilters) {
+        val draftMinPrice = draftMinPriceText.toLongOrNull()
+        val draftMaxPrice = draftMaxPriceText.toLongOrNull()
+        val draftPriceRangeValid = draftMinPrice == null || draftMaxPrice == null ||
+            draftMinPrice <= draftMaxPrice
         AlertDialog(
             onDismissRequest = { showFilters = false },
             title = { Text("Market filters", fontWeight = FontWeight.Black) },
@@ -542,44 +651,59 @@ fun MarketScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Saved only", modifier = Modifier.weight(1f))
-                        Switch(checked = savedOnly, onCheckedChange = { savedOnly = it })
+                        Switch(checked = draftSavedOnly, onCheckedChange = { draftSavedOnly = it })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Verified sellers only", modifier = Modifier.weight(1f))
-                        Switch(checked = verifiedOnly, onCheckedChange = { verifiedOnly = it })
+                        Switch(checked = draftVerifiedOnly, onCheckedChange = { draftVerifiedOnly = it })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
-                            value = minPriceText,
-                            onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMinPriceText,
+                            onValueChange = { draftMinPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Min ₦") },
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
-                            value = maxPriceText,
-                            onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMaxPriceText,
+                            onValueChange = { draftMaxPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Max ₦") },
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
+                    }
+                    if (!draftPriceRangeValid) {
+                        Text("Minimum price must not exceed maximum price.", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilters = false }) { Text("Apply") }
+                Button(
+                    enabled = draftPriceRangeValid,
+                    onClick = {
+                        savedOnly = draftSavedOnly
+                        verifiedOnly = draftVerifiedOnly
+                        minPriceText = draftMinPriceText
+                        maxPriceText = draftMaxPriceText
+                        showFilters = false
+                    }
+                ) { Text("Apply") }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        savedOnly = false
-                        verifiedOnly = false
-                        minPriceText = ""
-                        maxPriceText = ""
-                    }
-                ) { Text("Reset") }
+                Row {
+                    TextButton(onClick = {
+                        draftSavedOnly = false
+                        draftVerifiedOnly = false
+                        draftMinPriceText = ""
+                        draftMaxPriceText = ""
+                    }) { Text("Reset") }
+                    TextButton(onClick = { showFilters = false }) { Text("Cancel") }
+                }
             }
         )
     }
@@ -632,6 +756,8 @@ fun ProductCard(
                     AsyncImage(
                         model = cover,
                         contentDescription = item.title,
+                        error = painterResource(android.R.drawable.ic_menu_gallery),
+                        fallback = painterResource(android.R.drawable.ic_menu_gallery),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -658,8 +784,8 @@ fun ProductCard(
                         onClick = onToggleSave,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
+                            .size(48.dp)
                             .padding(6.dp)
-                            .size(32.dp)
                             .background(Color.Black.copy(alpha = 0.56f), CircleShape)
                     ) {
                         Icon(

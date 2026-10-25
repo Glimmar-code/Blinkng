@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.nextPulseValue
 import com.blinkng.shared.rankPulseRange
 import org.junit.Assert.assertEquals
@@ -16,6 +17,19 @@ class ActivityPulseTest {
         assertEquals(30..50, communityActivityRange(1, policy))
         assertEquals(60..100, communityActivityRange(2, policy))
         assertEquals(90..150, communityActivityRange(3, policy))
+    }
+
+    @Test
+    fun connectActivityScore_usesRequestedBandsWithoutInventingAnOnlineUser() {
+        assertEquals(0..0, connectActivityScoreRange(0))
+        assertEquals(0..0, connectActivityScoreRange(-1))
+        assertEquals(300..400, connectActivityScoreRange(1))
+        assertEquals(500..800, connectActivityScoreRange(2))
+        assertEquals(700..1200, connectActivityScoreRange(3))
+        assertEquals(900..1600, connectActivityScoreRange(4))
+        assertEquals(1100..2000, connectActivityScoreRange(5))
+        assertEquals(2100..4000, connectActivityScoreRange(10))
+        assertEquals(20_000_100..40_000_000, connectActivityScoreRange(Int.MAX_VALUE))
     }
 
     @Test

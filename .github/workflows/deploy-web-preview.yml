@@ -10,6 +10,12 @@ on:
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      # Keep live SEO, Auth provider and browser-analytics checks aligned with web publication.
+      - '.github/workflows/blink-live-integrations-smoke.yml'
+      - 'scripts/verify_live_blink_integrations.mjs'
+      - 'scripts/normalize_public_html.mjs'
+      - 'scripts/verify_live_browser_analytics.mjs'
   workflow_dispatch:
 
 permissions:
@@ -31,13 +37,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Validate current GitHub Pages project URL
+      - name: Validate BLINK custom domain SEO
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e web/CNAME
+          test "$(tr -d '\r\n' < web/CNAME)" = "blink.com.ng"
           python3 -m json.tool web/manifest.webmanifest >/dev/null
           python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
 
       - name: Set up Java for Android link verification
         uses: actions/setup-java@v5
@@ -127,17 +136,65 @@ jobs:
           PY
 
           python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
-          echo "Generated verified Android App Links metadata for temporary GitHub Pages hosting."
+          echo "Generated verified Android App Links metadata for BLINK custom domain."
+
+      - name: Stamp public website deployment commit
+        shell: bash
+        env:
+          BLINK_DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          sha = os.environ["BLINK_DEPLOY_SHA"]
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              raise SystemExit("Invalid GitHub deployment commit SHA")
+          Path("web/blink-build.json").write_text(
+              json.dumps({
+                  "application": "BLINK",
+                  "source": "github-pages",
+                  "commit": sha,
+                  "deployedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              }, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          python3 -m json.tool web/blink-build.json >/dev/null
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
+      # upload-pages-artifact excludes root dot-directories by default. That
+      # drops .well-known/assetlinks.json, breaking verified Android App Links.
+      # Build the same Pages tar ourselves to keep the Android association.
+      - name: Package web artifact including .well-known App Links
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s web/.well-known/assetlinks.json
+          tar --dereference --hard-dereference \
+            --directory web \
+            -cvf "$RUNNER_TEMP/artifact.tar" \
+            --exclude=.git --exclude=.github .
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './.well-known/assetlinks.json'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './app-ads.txt'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './landing.css'
+          tar -tf "$RUNNER_TEMP/artifact.tar" | grep -Fx './blink-build.json'
+
       - name: Upload web artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          path: web
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Deploy to GitHub Pages
         id: deployment

@@ -66,12 +66,22 @@ fun BlinkSponsoredNativeAd(
     var nativeAd by remember(adUnitId, requestKey) { mutableStateOf<NativeAd?>(null) }
     var loadFailed by remember(adUnitId, requestKey) { mutableStateOf(false) }
     val latestOnUnavailable by rememberUpdatedState(onUnavailable)
+    // Reels remove failed slots immediately and retry on explicit refresh.
+    // Feed slots remain mounted, so allow two delayed retries there.
+    var retryCount by remember(adUnitId, requestKey, placement) { mutableStateOf(0) }
+    LaunchedEffect(loadFailed, canRequestAds, retryCount, placement) {
+        if (placement == BlinkNativeAdPlacement.FEED && loadFailed && canRequestAds &&
+            adUnitId.isNotBlank() && retryCount < 2) {
+            delay(30_000L * (retryCount + 1))
+            retryCount++
+        }
+    }
 
     // The SDK may never return (poor signal or disconnected Google services).
     // Time out BOTH native placements. A timed-out Feed slot collapses instead
     // of suddenly injecting an ad long after the reader has scrolled past.
     // Reels notify their pager to remove the unfilled full-screen placement.
-    LaunchedEffect(adUnitId, requestKey, canRequestAds, placement, nativeAd, loadFailed) {
+    LaunchedEffect(adUnitId, requestKey, canRequestAds, placement, nativeAd, loadFailed, retryCount) {
         if (!canRequestAds || nativeAd != null || loadFailed) return@LaunchedEffect
         if (adUnitId.isNotBlank()) {
             delay(if (placement == BlinkNativeAdPlacement.FEED) 8_000L else 6_000L)
@@ -85,7 +95,7 @@ fun BlinkSponsoredNativeAd(
         }
     }
 
-    DisposableEffect(adUnitId, requestKey, canRequestAds) {
+    DisposableEffect(adUnitId, requestKey, canRequestAds, placement, retryCount) {
         if (!canRequestAds) {
             nativeAd?.destroy()
             nativeAd = null
@@ -95,6 +105,7 @@ fun BlinkSponsoredNativeAd(
 
         // AdLoader has no cancel method: ignore callbacks from a recycled/disposed slot.
         var disposed = false
+        loadFailed = false
         val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
         if (adUnitId.isBlank()) {
             loadFailed = true
@@ -103,7 +114,7 @@ fun BlinkSponsoredNativeAd(
         }
         val adLoader = AdLoader.Builder(context, adUnitId)
             .forNativeAd { loaded ->
-                if (disposed || loadFailed) {
+                if (disposed || loadFailed || !BlinkAdsRuntime.canRequestAds.value) {
                     loaded.destroy()
                     return@forNativeAd
                 }
@@ -131,7 +142,7 @@ fun BlinkSponsoredNativeAd(
                         if (disposed || loadFailed) return
                         loadFailed = true
                         BlinkAdAnalytics.failed(context, placementName, "native", error.code)
-                        Log.w("BlinkSponsoredAds", "$placementName native no-fill/failure: ${error.domain} ${error.code}")
+                        Log.w("BlinkSponsoredAds", "$placementName native no-fill/failure: ${error.domain}/${error.code} ${error.message}; response=${error.responseInfo}")
                         latestOnUnavailable()
                     }
                 }

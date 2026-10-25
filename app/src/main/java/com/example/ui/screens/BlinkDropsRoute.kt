@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -304,9 +306,10 @@ fun BlinkDropsRoute(
         }
 
         if (loading && state == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            BlinkSkeletonList(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                rows = 5
+            )
             return@Column
         }
 
@@ -695,10 +698,13 @@ private fun DropCard(
                         )
                     }
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(drop.status.lowercase().replaceFirstChar { it.uppercase() }) }
-                )
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        drop.status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
 
             Text(
@@ -1045,7 +1051,8 @@ private fun OrganizeDropDialog(
                                                 onClick = {
                                                     targetType = type
                                                     selectedTargetId = ""
-                                                    action = BlinkDropsPolicy.actionsFor(type).first().name
+                                                    // An empty server/policy action set must not crash the selector.
+                                                    action = BlinkDropsPolicy.actionsFor(type).firstOrNull()?.name.orEmpty()
                                                 },
                                                 label = { Text(targetLabel(type.name)) },
                                             )

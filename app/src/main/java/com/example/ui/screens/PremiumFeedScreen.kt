@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -85,6 +88,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import com.example.BuildConfig
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
@@ -93,7 +97,9 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.network.NetworkMonitor
+import com.blinkng.shared.BlinkFeedScrollMotion
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.performance.FeedScrollPerformanceMonitor
 import com.example.performance.rememberBlinkReduceMotion
 import com.example.data.supabase.BlinkEconomyService
@@ -106,6 +112,7 @@ import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedUtilityRow
 import com.example.ui.components.FeedTopBar
+import com.example.ui.components.FeedReferenceStatsRow
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.shimmerBackground
@@ -118,16 +125,18 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
-private const val FEED_SPONSORED_INTERVAL = 8
+private const val FEED_SPONSORED_INTERVAL = 10
 
 private sealed interface PremiumHomeRow {
     data class PostRow(val post: FeedPost, val sourceIndex: Int) : PremiumHomeRow
     data class BoostedPostRow(val placement: BlinkPromotedFeedPlacement, val slot: Int) : PremiumHomeRow
+    data class MarketSponsoredRow(val placement: BlinkPromotedDiscoveryPlacement, val slot: Int) : PremiumHomeRow
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
     data class DropDiscoveryRow(val item: BlinkDropDiscovery, val slot: Int) : PremiumHomeRow
@@ -137,6 +146,7 @@ private fun premiumHomeRowKey(row: PremiumHomeRow): String =
     when (row) {
         is PremiumHomeRow.PostRow -> "post:${row.post.id}"
         is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
+        is PremiumHomeRow.MarketSponsoredRow -> "market_sponsored:${row.placement.campaignId}:${row.slot}"
         is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
         is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
         is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
@@ -146,6 +156,7 @@ private fun buildPremiumHomeRows(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     promotedPosts: List<BlinkPromotedFeedPlacement>,
+    marketPromotions: List<BlinkPromotedDiscoveryPlacement>,
     dropDiscovery: List<BlinkDropDiscovery>,
     seed: Int
 ): List<PremiumHomeRow> {
@@ -164,6 +175,7 @@ private fun buildPremiumHomeRows(
     var reelSlot = 0
     var sponsoredSlot = 0
     var promotedSlot = 0
+    var marketSponsoredSlot = 0
     var dropSlot = 0
     var postsSinceDrop = 0
     var nextDropGap = random.nextInt(8, 13)
@@ -210,7 +222,10 @@ private fun buildPremiumHomeRows(
             postsSincePreview = 0
             nextGap = random.nextInt(10, 21)
         } else if (shouldInsertSponsored) {
-            rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
+            if (marketSponsoredSlot < marketPromotions.size) {
+                rows += PremiumHomeRow.MarketSponsoredRow(marketPromotions[marketSponsoredSlot], marketSponsoredSlot)
+                marketSponsoredSlot += 1
+            } else rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
             postsSincePreview = 0
             nextGap = random.nextInt(10, 21)
         } else if (reels.isNotEmpty() && postsSincePreview >= nextGap) {
@@ -268,10 +283,13 @@ fun PremiumFeedScreen(
     reels: List<FeedPost>,
     stories: List<Story>,
     profiles: List<UserProfile>,
+    currentUserProfile: UserProfile? = null,
+    blinkCoinBalance: Long = 0L,
     leaderboardUsers: List<LeaderboardUser>,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isProfilesLoading: Boolean = false,
     currentUsername: String,
     userAvatar: String,
     currentSubTab: Int,
@@ -304,19 +322,24 @@ fun PremiumFeedScreen(
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onFollowingVisible: () -> Unit = {},
     onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     onSearchClick: () -> Unit = {},
+    isAdmin: Boolean = false,
+    onAdminClick: () -> Unit = {},
     onItemsClick: () -> Unit = {},
+    onGetCoinsClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
     onDropsClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
+    onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
     hasMoreFollowingPosts: Boolean = false,
@@ -328,7 +351,11 @@ fun PremiumFeedScreen(
     onLoadMoreFollowingPosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
+    onOpenFeedPost: (FeedPost) -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    isBottomNavigationVisible: Boolean = true,
+    onBottomBarTravelChange: (Float) -> Unit = {},
+    isMainPageActive: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
     routedReelId: String? = null,
@@ -346,6 +373,13 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    // An explicit Following visit fetches only that lane. The ViewModel's
+    // per-account cooldown handles repeat composition or quick tab changes.
+    LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
+        if (feedLane == 1 && currentSubTab == 0 && isMainPageActive) {
+            onFollowingVisible()
+        }
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
@@ -403,11 +437,15 @@ fun PremiumFeedScreen(
     ) { page ->
     when (page) {
         0 -> PremiumHomeFeed(
+            isScreenActive = isMainPageActive,
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            worldRank = currentUserProfile?.worldRank ?: 0,
+            userIsOnline = currentUserProfile?.onlineNow == true,
+            blinkCoinBalance = blinkCoinBalance,
             resumeUserKey = resumeUserKey,
             isDark = isDark,
             laneIndex = feedLane,
@@ -435,15 +473,20 @@ fun PremiumFeedScreen(
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
             onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
             onOpenCreatePost = onOpenCreatePost,
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
             onSearchClick = onSearchClick,
+            isAdmin = isAdmin,
+            onAdminClick = onAdminClick,
             onItemsClick = onItemsClick,
+            onGetCoinsClick = onGetCoinsClick,
             onLeaderboardClick = onLeaderboardClick,
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
+            onOpenMarketListing = onOpenMarketListing,
             onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
             onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
             onViewedPost = onViewedPost,
@@ -451,12 +494,16 @@ fun PremiumFeedScreen(
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            isBottomNavigationVisible = isBottomNavigationVisible,
+            onOpenFeedPost = onOpenFeedPost,
+            onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
         1 -> FeedScreen(
+            isScreenActive = isMainPageActive,
             posts = posts,
             reels = reels,
             followingReels = followingPosts.filter { it.isReel || !it.videoUrl.isNullOrBlank() },
@@ -470,6 +517,7 @@ fun PremiumFeedScreen(
             userAvatar = userAvatar,
             currentSubTab = 1,
             onSubTabChanged = onSubTabChanged,
+            hasUnreadNotifications = hasUnreadNotifications,
             isDark = isDark,
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
@@ -518,6 +566,7 @@ fun PremiumFeedScreen(
 
         2 -> PremiumConnectHost(
             profiles = profiles,
+            currentUserProfile = currentUserProfile,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             isDark = isDark,
@@ -528,6 +577,7 @@ fun PremiumFeedScreen(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isProfilesLoading = isProfilesLoading,
             isLiveDataAvailable = isServerConnected,
             activityPulsePolicy = activityPulsePolicy,
             onActivityPulseEvent = onActivityPulseEvent,
@@ -570,11 +620,15 @@ fun PremiumFeedScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PremiumHomeFeed(
+    isScreenActive: Boolean,
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
+    worldRank: Int,
+    userIsOnline: Boolean,
+    blinkCoinBalance: Long,
     resumeUserKey: String,
     isDark: Boolean,
     laneIndex: Int,
@@ -602,15 +656,20 @@ private fun PremiumHomeFeed(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
     onSearchClick: () -> Unit,
+    isAdmin: Boolean,
+    onAdminClick: () -> Unit,
     onItemsClick: () -> Unit,
+    onGetCoinsClick: () -> Unit,
     onLeaderboardClick: () -> Unit,
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
     onDropsClick: () -> Unit,
+    onOpenMarketListing: (com.example.data.models.MarketItem) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -618,14 +677,19 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    isBottomNavigationVisible: Boolean,
+    onOpenFeedPost: (FeedPost) -> Unit,
+    onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
-    val homeBackground = if (isDark) Color(0xFF08090B) else Color(0xFFF5F6FA)
+    val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color.White
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val pendingCoinGiftRequests = remember { mutableStateMapOf<String, String>() }
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
     // The Home feed must hydrate follows independently. Previously only Reels
     // called refresh(), leaving Home to show '+ Follow' for existing follows.
@@ -660,6 +724,7 @@ private fun PremiumHomeFeed(
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
     val laneResumeKey = "$resumeUserKey:$laneIndex"
+    val navScrollTravelPx = remember(laneResumeKey) { mutableStateOf(0f) }
     // The first visit in a fresh process opens at the top with the full feed.
     // Returning from another in-app screen may recover the saved scroll/filter.
     val restoreWithinProcess = remember(laneResumeKey) {
@@ -673,6 +738,20 @@ private fun PremiumHomeFeed(
     // Bottom navigation includes the system gesture bar inset.
     val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val reduceMotion = rememberBlinkReduceMotion()
+    // The bottom bar lives in MainActivity's overlay. Reserving its 64dp
+    // while hidden creates an invisible viewport gap on narrow phones.
+    val bottomRailClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedBottomRailClearance"
+    )
+    // Keep the create action above visible navigation; when navigation
+    // scrolls away it can move down without leaving a dead strip.
+    val createFabClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 144.dp + bottomNavigationInset else 24.dp + bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedCreateFabClearance"
+    )
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
@@ -725,7 +804,18 @@ private fun PremiumHomeFeed(
     val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
     val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
     val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
-    var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
+    var fabExpanded by remember(laneResumeKey) { mutableStateOf(false) }
+    var idleSignal by remember(laneResumeKey) { mutableIntStateOf(0) }
+    var fingerDown by remember(laneResumeKey) { mutableStateOf(false) }
+
+    // Only show the label after six uninterrupted seconds with no active gesture.
+    LaunchedEffect(laneResumeKey, idleSignal, fingerDown, listState.isScrollInProgress, isScreenActive) {
+        fabExpanded = false
+        if (isScreenActive && !fingerDown && !listState.isScrollInProgress) {
+            delay(6_000L)
+            if (!fingerDown && !listState.isScrollInProgress) fabExpanded = true
+        }
+    }
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -858,7 +948,7 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
     }
 
-    LaunchedEffect(laneIndex, isOnline, laneResumeKey, homeReselectSignal) {
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
         if (laneIndex != 0 || !isOnline) {
             dropDiscovery = emptyList()
             return@LaunchedEffect
@@ -878,6 +968,22 @@ private fun PremiumHomeFeed(
             .onFailure { promotedFeed = emptyList() }
     }
 
+    var marketSponsoredFeed by remember(laneResumeKey) {
+        mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
+    }
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
+        if (laneIndex != 0 || !isOnline) {
+            marketSponsoredFeed = emptyList()
+            return@LaunchedEffect
+        }
+        boostGrowthService.marketPromotedSlots("HOME",3)
+            .onSuccess { payload ->
+                marketSponsoredFeed = parseBlinkPromotedPlacements(payload)
+                    .filter { it.targetType == "LISTING" && it.listing != null }
+            }
+            .onFailure { marketSponsoredFeed = emptyList() }
+    }
+
     val visiblePromotedFeed = remember(promotedFeed, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
         promotedFeed.filterNot { placement ->
             shouldHideFrozenFeedPost(
@@ -889,11 +995,12 @@ private fun PremiumHomeFeed(
             )
         }
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, dropDiscovery, reelMixSeed) {
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, marketSponsoredFeed, dropDiscovery, reelMixSeed) {
         buildPremiumHomeRows(
             filteredPosts,
             rankedInlineReels,
             visiblePromotedFeed,
+            marketSponsoredFeed,
             dropDiscovery,
             reelMixSeed
         )
@@ -961,7 +1068,7 @@ private fun PremiumHomeFeed(
     }
 
     val scrollConnection = remember(
-        onBottomBarVisibilityChange,
+        onBottomBarTravelChange,
         headerDirectionDeadZone
     ) {
         object : NestedScrollConnection {
@@ -996,24 +1103,33 @@ private fun PremiumHomeFeed(
                     pendingDirectionDistancePx[0] = 0f
                 }
 
+                // Let posts consume the full gesture: moving the header at
+                // one-quarter speed must not steal scroll pixels from the list.
                 val previousOffset = headerOffsetPx.value
-                val nextOffset = clampFeedHeaderOffset(
-                    currentOffsetPx = previousOffset,
-                    deltaYPx = effectiveDeltaY,
-                    headerHeightPx = headerHeight
+                val nextTravel = BlinkFeedScrollMotion.advance(
+                    previous = -previousOffset,
+                    scrollUpPx = -effectiveDeltaY,
+                    ratio = BlinkFeedScrollMotion.TOP_PER_POST,
+                    maxTravelPx = headerHeight
                 )
+                val nextOffset = -nextTravel
                 if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
-                    fabExpanded = direction > 0
+                    fabExpanded = false
                 }
-                // Header and LazyColumn must never both apply the same drag
-                // distance. Consume only the pixels the header actually moved;
-                // let the list receive the remainder when the header is at an
-                // edge, or during the direction reversal dead zone.
-                return androidx.compose.ui.geometry.Offset(
-                    0f,
-                    feedHeaderConsumedScrollDelta(previousOffset, nextOffset, deltaY)
+                // Hide the complete rail on downward movement; restore on upward movement.
+                onBottomBarVisibilityChange(direction > 0)
+                val nextNavPx = BlinkFeedScrollMotion.advance(
+                    previous = navScrollTravelPx.value,
+                    scrollUpPx = -deltaY,
+                    ratio = BlinkFeedScrollMotion.NAV_PER_POST,
+                    maxTravelPx = 50f
                 )
+                if (nextNavPx != navScrollTravelPx.value) {
+                    navScrollTravelPx.value = nextNavPx
+                    onBottomBarTravelChange(nextNavPx)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
@@ -1072,7 +1188,7 @@ private fun PremiumHomeFeed(
                 }
 
                 delay(if (reduceMotion) 0 else 120)
-                fabExpanded = true
+                fabExpanded = false
                 pendingDirectionDistancePx[0] = 0f
                 lastFlingVelocityY[0] = 0f
                 hadScroll = false
@@ -1092,9 +1208,15 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
+            navScrollTravelPx.value = 0f
+            onBottomBarTravelChange(0f)
         }
+    }
+
+    DisposableEffect(laneResumeKey) {
+        onDispose { onBottomBarTravelChange(0f) }
     }
 
     LaunchedEffect(Unit) { screenVisible = true }
@@ -1209,14 +1331,13 @@ private fun PremiumHomeFeed(
                 } else {
                     listState.scrollToItem(0)
                 }
-            } else {
-                requestSafeRefresh()
             }
+            // Home reselect is not an implicit network refresh; pull refresh explicitly.
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
         }
     }
@@ -1385,11 +1506,32 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(homeBackground)
                 .nestedScroll(scrollConnection)
+                .pointerInput(laneResumeKey) {
+                    var lastActivitySignalMs = 0L
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressed = event.changes.any { it.pressed }
+                            fingerDown = pressed
+                            if (event.type == PointerEventType.Press ||
+                                event.type == PointerEventType.Release ||
+                                (event.type == PointerEventType.Move && pressed)
+                            ) {
+                                fabExpanded = false
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (event.type == PointerEventType.Release || now - lastActivitySignalMs >= 300L) {
+                                    idleSignal++
+                                    lastActivitySignalMs = now
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 56.dp + bottomNavigationInset)
+                    .padding(bottom = bottomRailClearance)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1419,24 +1561,29 @@ private fun PremiumHomeFeed(
                     FeedTopBar(
                         reserveStatusBar = false,
                         userAvatar = userAvatar,
+                        userIsOnline = userIsOnline,
                         hasUnreadNotifications = hasUnreadNotifications,
                         unreadNotificationCount = unreadNotificationCount,
                         onSearchClick = onSearchClick,
+                        isAdmin = isAdmin,
+                        onAdminClick = onAdminClick,
                         onItemsClick = onItemsClick,
                         onNotificationClick = onOpenActivity,
                         onMenuClick = onOpenMenu,
                         onProfileClick = { onProfileClick(currentUsername) }
                     )
-                    FeedUtilityRow(
-                        onLeaderboardClick = onLeaderboardClick,
-                        onGameClick = onGameClick,
-                        onStoreClick = onStoreClick,
-                        onBoostClick = onBoostClick,
-                        onDropsClick = onDropsClick
+                    // The reference places real rank and coin totals directly below BLINK.
+                    // Legacy game/boost/drops/store actions remain in their existing
+                    // destinations; Game is available INSIDE the Items menu.
+                    FeedReferenceStatsRow(
+                        worldRank = worldRank,
+                        coins = blinkCoinBalance,
+                        onRankClick = onLeaderboardClick,
+                        onCoinsClick = onGetCoinsClick
                     )
                 }
 
-                // X-style lane tabs stay pinned while only the upper BLINK chrome collapses.
+                // Reference-style underlined tabs stay pinned while the upper chrome collapses.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1484,7 +1631,7 @@ private fun PremiumHomeFeed(
                                     headerScrollDirection[0] = 0
                                     pendingDirectionDistancePx[0] = 0f
                                     lastFlingVelocityY[0] = 0f
-                                    fabExpanded = true
+                                    fabExpanded = false
                                     onBottomBarVisibilityChange(true)
                                     requestSafeRefresh()
                                 }
@@ -1532,7 +1679,8 @@ private fun PremiumHomeFeed(
                                                 isFollowingLane = laneIndex == 1,
                                                 offlineNoCache = false,
                                                 onCreatePost = onOpenCreatePost,
-                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL },
+                                                onRetry = onRetry
                                             )
                                         }
                                     }
@@ -1551,7 +1699,8 @@ private fun PremiumHomeFeed(
                                                 isFollowingLane = false,
                                                 offlineNoCache = !isOnline && stableRankedPosts.isEmpty() && offlineEmptyConfirmed,
                                                 onCreatePost = onOpenCreatePost,
-                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL },
+                                                onRetry = onRetry
                                             )
                                         }
                                     }
@@ -1566,6 +1715,7 @@ private fun PremiumHomeFeed(
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
                                             is PremiumHomeRow.BoostedPostRow -> 18
+                                            is PremiumHomeRow.MarketSponsoredRow -> 20
                                             is PremiumHomeRow.ReelPreviewRow -> 16
                                             is PremiumHomeRow.SponsoredRow -> 17
                                             is PremiumHomeRow.DropDiscoveryRow -> 19
@@ -1582,6 +1732,7 @@ private fun PremiumHomeFeed(
                                                     isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
+                                                    onOpenPost = { onOpenFeedPost(post) },
                                                     onBookmark = { onBookmarkPost(post.id) },
                                                     onRepost = { onRepostPost(post.id) },
                                                     onShare = { onSharePost(post.id) },
@@ -1599,11 +1750,37 @@ private fun PremiumHomeFeed(
                                                     authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
                                                     authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
                                                     authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                     authorUniversity = profile?.university.orEmpty(),
                                                     authorProfileId = resolvedFeedAuthorId(post, profile),
                                                     isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                     onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                     onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                    onMessageAuthor = {
+                                                        onDirectMessage(
+                                                            post.authorUsername.trim().removePrefix("@")
+                                                                .ifBlank { post.author.trim().removePrefix("@") },
+                                                            post.author,
+                                                            post.authorAvatar
+                                                        )
+                                                    },
+                                                    onGiftCoinsAuthor = { recipientId, amount ->
+                                                        val key = "$recipientId:$amount"
+                                                        val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        uiScope.launch {
+                                                            val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                            if (sent) pendingCoinGiftRequests.remove(key)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Coin gift not confirmed. No transfer shown.",
+                                                                android.widget.Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    },
+                                                    coinGiftingEnabled = true,
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1619,6 +1796,7 @@ private fun PremiumHomeFeed(
                                                 isDark = isDark,
                                                 onLike = { onLikePost(post.id) },
                                                 onComment = { onCommentPost(post.id) },
+                                                onOpenPost = { onOpenFeedPost(post) },
                                                 onBookmark = { onBookmarkPost(post.id) },
                                                 onRepost = { onRepostPost(post.id) },
                                                 onShare = { onSharePost(post.id) },
@@ -1630,23 +1808,102 @@ private fun PremiumHomeFeed(
                                                 authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
                                                 authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
                                                 authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                     authorUniversity = profile?.university.orEmpty(),
                                                 authorProfileId = resolvedFeedAuthorId(post, profile),
                                                 isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                 onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                 onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                onMessageAuthor = {
+                                                    onDirectMessage(
+                                                        post.authorUsername.trim().removePrefix("@")
+                                                            .ifBlank { post.author.trim().removePrefix("@") },
+                                                        post.author,
+                                                        post.authorAvatar
+                                                    )
+                                                },
+                                                onGiftCoinsAuthor = { recipientId, amount ->
+                                                    val key = "$recipientId:$amount"
+                                                    val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
+                                                    uiScope.launch {
+                                                        val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                        if (sent) pendingCoinGiftRequests.remove(key)
+                                                        android.widget.Toast.makeText(
+                                                            context,
+                                                            if (sent) "Sent $amount BLINK Coins"
+                                                            else "Coin gift not confirmed. No transfer shown.",
+                                                            android.widget.Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                },
+                                                coinGiftingEnabled = true,
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
                                             )
                                         }
 
+                                        is PremiumHomeRow.MarketSponsoredRow -> {
+                                            val placement = row.placement
+                                            val product = placement.listing
+                                            if (product != null) {
+                                                val key = premiumHomeRowKey(row)
+                                                LaunchedEffect(key) {
+                                                    // The view must be at least half visible continuously
+                                                    // for two seconds; the database independently enforces
+                                                    // session timing, uniqueness and paid-budget constraints.
+                                                    suspend fun visibleEnough(): Boolean {
+                                                        val info = listState.layoutInfo
+                                                        val entry = info.visibleItemsInfo.firstOrNull { it.key == key }
+                                                            ?: return false
+                                                        val visible = (
+                                                            minOf(entry.offset + entry.size, info.viewportEndOffset) -
+                                                            maxOf(entry.offset, info.viewportStartOffset)
+                                                        ).coerceAtLeast(0)
+                                                        return entry.size > 0 && visible * 2 >= entry.size
+                                                    }
+                                                    snapshotFlow {
+                                                        val info = listState.layoutInfo
+                                                        val entry = info.visibleItemsInfo.firstOrNull { it.key == key }
+                                                        entry != null && entry.size > 0 && (
+                                                            minOf(entry.offset + entry.size, info.viewportEndOffset) -
+                                                            maxOf(entry.offset, info.viewportStartOffset)
+                                                        ).coerceAtLeast(0) * 2 >= entry.size
+                                                    }.first { it }
+                                                    boostGrowthService.recordMarketQualifiedView(
+                                                        placement.campaignId,"START"
+                                                    ).getOrElse { return@LaunchedEffect }
+                                                    delay(2200)
+                                                    if (visibleEnough()) {
+                                                        boostGrowthService.recordMarketQualifiedView(
+                                                            placement.campaignId,"QUALIFIED"
+                                                        )
+                                                    }
+                                                }
+                                                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp)) {
+                                                    Text(
+                                                        "Sponsored · BLINK Market",
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.padding(bottom = 5.dp)
+                                                    )
+                                                    ProductCard(
+                                                        item = product,
+                                                        onClick = { onOpenMarketListing(product) },
+                                                        isDark = isDark
+                                                    )
+                                                }
+                                            }
+                                        }
+
                                         is PremiumHomeRow.ReelPreviewRow -> {
                                             val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
-                                                isActive = activeInlineReelKey == previewKey,
-                                                shouldPreload = preloadedInlineReelKey == previewKey,
+                                                isActive = isScreenActive && activeInlineReelKey == previewKey,
+                                                shouldPreload = isScreenActive && preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1733,7 +1990,7 @@ private fun PremiumHomeFeed(
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
                                         lastFlingVelocityY[0] = 0f
-                                        fabExpanded = true
+                                        fabExpanded = false
                                         onBottomBarVisibilityChange(true)
                                         requestSafeRefresh()
                                     }
@@ -1758,7 +2015,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 64.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = createFabClearance),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
@@ -1864,6 +2121,7 @@ private fun PremiumGameHost(
 @Composable
 private fun PremiumConnectHost(
     profiles: List<UserProfile>,
+    currentUserProfile: UserProfile?,
     currentUsername: String,
     userAvatar: String,
     isDark: Boolean,
@@ -1874,6 +2132,7 @@ private fun PremiumConnectHost(
     connectHub: ConnectHubSnapshot,
     connectHubActions: ConnectHubActions,
     isConnectHubLoading: Boolean,
+    isProfilesLoading: Boolean,
     isLiveDataAvailable: Boolean,
     activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit,
@@ -1889,6 +2148,7 @@ private fun PremiumConnectHost(
     ) {
         ConnectSection(
             profiles = profiles,
+            currentProfile = currentUserProfile,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             isDark = isDark,
@@ -1899,6 +2159,7 @@ private fun PremiumConnectHost(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isProfilesLoading = isProfilesLoading,
             isLiveDataAvailable = isLiveDataAvailable,
             activityPulsePolicy = activityPulsePolicy,
             onActivityPulseEvent = onActivityPulseEvent,
@@ -2115,7 +2376,8 @@ private fun PremiumEmptyFeed(
     isFollowingLane: Boolean,
     offlineNoCache: Boolean = false,
     onCreatePost: () -> Unit,
-    onClearFilter: () -> Unit
+    onClearFilter: () -> Unit,
+    onRetry: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -2136,7 +2398,7 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "No posts match this filter"
                 isFollowingLane -> "No posts from people you follow yet"
-                else -> if (offlineNoCache) "Your feed is ready for something new" else "No posts to show right now"
+                else -> if (offlineNoCache) "No saved posts available offline" else "No posts to show right now"
             },
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleMedium
@@ -2146,15 +2408,23 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "Choose another feed filter to keep browsing."
                 isFollowingLane -> "Follow people from Discover or profiles; their ranked posts will appear here."
-                else -> if (offlineNoCache) "You're offline and there are no saved posts on this device." else "Pull to refresh for the latest posts."
+                else -> if (offlineNoCache) "Connect to the internet and refresh to load posts." else "Pull to refresh for the latest posts."
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
         if (!isFollowingLane || isFiltered) {
-            TextButton(onClick = if (isFiltered) onClearFilter else onCreatePost) {
-                Text(if (isFiltered) "Show all posts" else "Create Post", color = MaterialTheme.colorScheme.primary)
+            TextButton(onClick = when {
+                isFiltered -> onClearFilter
+                offlineNoCache -> onRetry
+                else -> onCreatePost
+            }) {
+                Text(when {
+                    isFiltered -> "Show all posts"
+                    offlineNoCache -> "Try again"
+                    else -> "Create Post"
+                }, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

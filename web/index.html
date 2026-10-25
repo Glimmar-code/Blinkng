@@ -4,34 +4,90 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
-  <meta name="description" content="Blink on the web — browse, post, message, use Blink Store and VIP, manage creator tools, and connect with your campus community." />
-  <meta property="og:title" content="Blink" />
-  <meta property="og:description" content="Browse public Blink profiles, posts and reels, or sign in for the full web experience with app-derived parity tools." />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="description" content="BLINK Nigeria is a social and campus community app for connecting with people, sharing posts and reels, messaging friends, and discovering creators." />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_NG" />
+  <meta property="og:title" content="BLINK Nigeria | Social &amp; Campus Community App" />
+  <meta property="og:description" content="BLINK Nigeria is a social and campus community app for connecting with people, sharing posts and reels, messaging friends, and discovering creators." />
   <meta property="og:site_name" content="BLINK" />
-  <meta property="og:url" content="https://glimmar-code.github.io/Blinkng/" />
-  <meta property="og:image" content="https://glimmar-code.github.io/Blinkng/blink-logo.png" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Blink" />
-  <meta name="twitter:description" content="Connect, share posts and reels, message, and discover people on BLINK." />
-  <meta name="twitter:image" content="https://glimmar-code.github.io/Blinkng/blink-logo.png" />
-  <meta name="application-name" content="Blink" />
+  <meta property="og:url" content="https://blink.com.ng/" />
+  <meta property="og:image" content="https://blink.com.ng/og-blink.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="BLINK Nigeria | Social & Campus Community App" />
+  <meta name="twitter:description" content="BLINK Nigeria is a social and campus community app for connecting with people, sharing posts and reels, messaging friends, and discovering creators." />
+  <meta name="twitter:image" content="https://blink.com.ng/og-blink.png" />
+  <meta name="application-name" content="BLINK" />
+  <meta name="robots" content="index,follow,max-image-preview:large" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="canonical" href="https://glimmar-code.github.io/Blinkng/" />
-  <link rel="icon" type="image/png" sizes="192x192" href="./blink-logo-v2.png" />
-  <link rel="apple-touch-icon" href="./blink-logo-v2.png" />
+  <!-- Immediately mark SPA and redirect-recovery URLs noindex, before the application initializes. -->
+  <script>
+    if (new URLSearchParams(location.search).has('p') ||
+        !['/', '/index.html', '/Blinkng/'].includes(location.pathname)) {
+      document.querySelector('meta[name="robots"]').setAttribute('content', 'noindex,nofollow');
+    }
+  </script>
+  <link rel="canonical" href="https://blink.com.ng/" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+  <link rel="shortcut icon" href="./favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preload" href="./blink-logo-v2.png" as="image" fetchpriority="high" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="landing.css" />
   <link rel="stylesheet" href="parity.css" />
-  <title>Blink</title>
+  <link rel="stylesheet" href="mobile-redesign.css" />
+  <title>BLINK Nigeria | Social &amp; Campus Community App</title>
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://blink.com.ng/#organization",
+      "name": "BLINK",
+      "url": "https://blink.com.ng/",
+      "logo": "https://blink.com.ng/blink-logo-v2.png",
+      "description": "BLINK Nigeria is a social and campus community app for connecting with people, sharing posts and reels, messaging friends, and discovering creators.",
+      "sameAs": ["https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u"]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://blink.com.ng/#website",
+      "name": "BLINK",
+      "url": "https://blink.com.ng/",
+      "publisher": {
+        "@id": "https://blink.com.ng/#organization"
+      },
+      "inLanguage": "en-NG"
+    }
+  ]
+}
+  </script>
 </head>
 <body>
-  <div id="app" class="boot"><img class="boot-logo" src="./blink-logo-v2.png" alt="BLINK" /><div class="spinner"></div><strong>Opening BLINK…</strong></div>
+  <div id="app" class="boot"><img class="boot-logo" src="./blink-logo-v2.png" alt="BLINK" width="72" height="72" fetchpriority="high" decoding="async" /><div class="spinner"></div><strong>Opening BLINK…</strong><div><h1 style="margin:0;font-size:1.4rem">BLINK Nigeria — Connect, Share &amp; Discover</h1><p style="max-width:38rem;margin:0.65rem 1rem;color:#c9c5d2">Explore BLINK, a social and campus community for messaging, posts, reels and creators in Nigeria.</p><nav aria-label="Explore BLINK"><a href="./about/">About BLINK Nigeria</a> · <a href="./features/">Features</a> · <a href="./download/">Download BLINK App</a> · <a href="./faq/">FAQ</a> · <a href="./students/">For Students</a> · <a href="./marketplace/">BLINK Market</a> · <a href="./safety/">Safety</a> · <a href="./privacy/">Privacy</a> · <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a></nav>
+  <main class="boot-static" aria-label="Discover BLINK Nigeria">
+    <p class="boot-static-lead">BLINK brings student connections, public creator discovery and social sharing together. Discover what the platform offers before creating an account.</p>
+    <div class="boot-static-grid">
+      <section><h2>Campus connections</h2><p>Discover Nigerian university communities and learn how BLINK supports student connections and sharing.</p><a href="./students/">Explore BLINK for Students</a></section>
+      <section><h2>Public posts and reels</h2><p>Explore people, profiles, creative posts and short-form videos on BLINK.</p><a href="./features/">Explore BLINK Features</a></section>
+      <section><h2>BLINK Market</h2><p>Learn about product discovery, approved sellers and responsible marketplace interactions.</p><a href="./marketplace/">Explore BLINK Market</a></section>
+    </div>
+    <p class="boot-static-download"><a href="./download/">Get the official BLINK Android app</a> · <a href="./safety/">Read safety guidance</a></p>
+  </main>
+  <noscript><p>JavaScript is needed for the interactive BLINK app, but the information pages above remain available.</p></noscript>
+</div></div>
   <div id="toast" class="toast" aria-live="polite"></div>
   <div id="modal-root"></div>
-  <script src="config.js"></script>
+  <script src="paystack-return.js" defer></script>
+  <script src="config.js" defer></script>
+  <script src="site-analytics.js" defer></script>
+  <script src="discovery.js" defer></script>
   <script src="app.js" defer></script>
   <script src="parity.js" defer></script>
+  <script src="mobile-redesign.js" defer></script>
 </body>
 </html>

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,12 +58,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
+import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -80,7 +85,7 @@ private enum class DesktopSearchCollection(val label: String, val icon: ImageVec
 }
 
 private enum class DesktopSearchCategory(val label: String) {
-    ALL("All"), PEOPLE("People"), POSTS("Posts"), REELS("Reels"), HASHTAGS("Hashtags")
+    ALL("All"), PEOPLE("People"), POSTS("Posts"), MARKET("Market"), COMMUNITIES("Communities"), REELS("Reels"), HASHTAGS("Hashtags")
 }
 
 private enum class DesktopSearchSort(val label: String) {
@@ -101,25 +106,45 @@ private const val DESKTOP_SEARCH_SEPARATOR = "\u001F"
 @Composable
 fun PremiumSearchScreen(state: DesktopAppState) {
     var collection by remember { mutableStateOf(DesktopSearchCollection.SEARCH) }
+    var showReferralDashboard by remember { mutableStateOf(false) }
+    var referralCount by remember(state.session?.userId) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(state.session?.userId) {
+        if (state.session?.userId != null) {
+            referralCount = runCatching { state.client.referralDashboard().total }.getOrNull()
+        }
+    }
     var discoveryPosts by remember { mutableStateOf(emptyList<DesktopFeedPost>()) }
     var marketItems by remember { mutableStateOf(emptyList<DesktopMarketItem>()) }
     var connectListings by remember { mutableStateOf(emptyList<DesktopConnectListing>()) }
     var discoveryLoading by remember { mutableStateOf(true) }
+    var discoveryError by remember { mutableStateOf<String?>(null) }
+    var retryGeneration by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryGeneration) {
         discoveryLoading = true
-        discoveryPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
-        marketItems = runCatching { state.client.fetchMarketplace() }.getOrDefault(emptyList())
-        connectListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
+        discoveryError = null
+        // Do not turn network failures into false "no results" states. Preserve
+        // previously fetched content and offer a real retry.
+        val feedResult = runCatching { state.client.fetchFeed() }
+        val marketResult = runCatching { state.client.fetchMarketplace() }
+        val connectResult = runCatching { state.client.fetchConnectListings() }
+        feedResult.onSuccess { discoveryPosts = it }
+        marketResult.onSuccess { marketItems = it }
+        connectResult.onSuccess { connectListings = it }
+        if (listOf(feedResult, marketResult, connectResult).any { it.isFailure }) {
+            discoveryError = "Some results could not load. Check your connection and retry."
+        }
         discoveryLoading = false
     }
+
+    if (showReferralDashboard) DesktopReferGrowDialog(state) { showReferralDashboard = false }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when (collection) {
-                        DesktopSearchCollection.SEARCH -> "Search Blink"
+                        DesktopSearchCollection.SEARCH -> "B L I N K"
                         DesktopSearchCollection.TRENDING -> "Trending now"
                         DesktopSearchCollection.PLACES -> "Places"
                     },
@@ -128,7 +153,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
                 )
                 Text(
                     text = when (collection) {
-                        DesktopSearchCollection.SEARCH -> "People, posts, reels, hashtags and campus discovery"
+                        DesktopSearchCollection.SEARCH -> "Search across your campus"
                         DesktopSearchCollection.TRENDING -> "High-momentum posts, reels and topics on Blink"
                         DesktopSearchCollection.PLACES -> "Discover locations already used across Blink"
                     },
@@ -147,6 +172,40 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             }
         }
 
+        discoveryError?.let { error ->
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(error, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
+                    TextButton(onClick = { retryGeneration++ }, enabled = !discoveryLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            onClick = { showReferralDashboard = true },
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(BlinkReferralPolicy.PROMO_TITLE, fontWeight = FontWeight.Bold)
+                    Text(BlinkReferralPolicy.PROMO_MESSAGE,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    referralCount?.let { Text("$it confirmed referrals", fontSize = 12.sp) }
+                }
+                Text("Invite friends ›", color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(DesktopSearchCollection.entries, key = { it.name }) { item ->
@@ -166,8 +225,9 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             modifier = Modifier.weight(1f),
         ) { selected ->
             when (selected) {
-                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts)
+                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts, marketItems = marketItems)
                 DesktopSearchCollection.TRENDING -> DesktopTrendingCollection(
+                    state = state,
                     posts = discoveryPosts,
                     loading = discoveryLoading,
                 )
@@ -185,6 +245,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
 private fun DesktopSearchCore(
     state: DesktopAppState,
     discoveryPosts: List<DesktopFeedPost>,
+    marketItems: List<DesktopMarketItem>,
 ) {
     val prefs = remember { Preferences.userRoot().node("blinkng/search") }
     var query by remember { mutableStateOf(state.globalSearch) }
@@ -203,6 +264,26 @@ private fun DesktopSearchCore(
         )
     }
     val scope = rememberCoroutineScope()
+    var referralRecommendations by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var rankedPeople by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    LaunchedEffect(query, state.session?.userId) {
+        val clean = BlinkReferralPolicy.normalizedQuery(query)
+        if (clean.isBlank() || state.session?.userId == null) {
+            rankedPeople = emptyList()
+        } else {
+            delay(270)
+            rankedPeople = runCatching {
+                state.client.searchPeopleWithReferralRelevance(clean)
+            }.getOrDefault(emptyList())
+        }
+    }
+    var followedSuggestions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var referralFollowError by remember { mutableStateOf(false) }
+    LaunchedEffect(state.session?.userId) {
+        if (state.session?.userId != null) {
+            referralRecommendations = runCatching { state.client.referralRecommendations() }.getOrDefault(emptyList())
+        }
+    }
 
     fun rememberSearch(value: String) {
         val valueToStore = value.trim()
@@ -235,12 +316,19 @@ private fun DesktopSearchCore(
     }
 
     val clean = query.trim().removePrefix("@").removePrefix("#")
-    val people = remember(results.profiles, clean, verifiedOnly, selectedUniversity, sort) {
+    val promotedPeople = if (sort == DesktopSearchSort.RELEVANT) {
+        rankedPeople.filter {
+            (!verifiedOnly || it.isVerified) &&
+                (selectedUniversity.isBlank() || it.university.equals(selectedUniversity, true))
+        }
+    } else emptyList()
+    val promotedIds = promotedPeople.map { it.id }.toSet()
+    val people = remember(results.profiles, clean, verifiedOnly, selectedUniversity, sort, promotedIds) {
         results.profiles
             .filter { profile ->
                 (!verifiedOnly || profile.isVerified) &&
                     (selectedUniversity.isBlank() || profile.university.equals(selectedUniversity, true)) &&
-                    desktopProfileMatches(profile, clean)
+                    desktopProfileMatches(profile, clean) && profile.id !in promotedIds
             }
             .sortedWith(
                 when (sort) {
@@ -261,6 +349,12 @@ private fun DesktopSearchCore(
                     .thenByDescending { desktopTrendScore(it) }
             }
         )
+    }
+    val visibleMarket = remember(marketItems, clean) {
+        marketItems.filter { !it.isSold && (clean.isBlank() ||
+            it.title.contains(clean, true) || it.category.contains(clean, true) ||
+            it.university.contains(clean, true) || it.location.contains(clean, true))
+        }.take(30)
     }
     val posts = content.filterNot { it.isReel }
     val reels = content.filter { it.isReel }
@@ -303,7 +397,7 @@ private fun DesktopSearchCore(
                         IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear") }
                     }
                 },
-                placeholder = { Text("Search name, @username, #hashtag, post or reel") },
+                placeholder = { Text("Search people, posts, market, communities...") },
                 shape = RoundedCornerShape(18.dp),
             )
             IconButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Rounded.FilterList, "Filters") }
@@ -314,8 +408,10 @@ private fun DesktopSearchCore(
             items(DesktopSearchCategory.entries, key = { it.name }) { item ->
                 val count = when (item) {
                     DesktopSearchCategory.ALL -> null
-                    DesktopSearchCategory.PEOPLE -> people.size
+                    DesktopSearchCategory.PEOPLE -> people.size + promotedPeople.size
                     DesktopSearchCategory.POSTS -> posts.size
+                    DesktopSearchCategory.MARKET -> visibleMarket.size
+                    DesktopSearchCategory.COMMUNITIES -> null
                     DesktopSearchCategory.REELS -> reels.size
                     DesktopSearchCategory.HASHTAGS -> hashtags.size
                 }
@@ -323,6 +419,12 @@ private fun DesktopSearchCore(
                     selected = category == item,
                     onClick = { category = item },
                     label = { Text(if (clean.isNotBlank() && count != null) "${item.label} $count" else item.label) },
+                    shape = RoundedCornerShape(22.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
+                        selectedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                        selectedLabelColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    ),
                 )
             }
         }
@@ -423,6 +525,45 @@ private fun DesktopSearchCore(
                             }
                         }
                     }
+                    if (referralRecommendations.isNotEmpty()) {
+                        item { DesktopSearchSection(
+                            "Discover students on BLINK",
+                            "Referral activity can improve discovery; following is always your choice.",
+                        ) }
+                        items(referralRecommendations, key = { "referral:" + it.id }) { person ->
+                            Surface(
+                                modifier = Modifier.trackDesktopReferralImpression(state, person.id, "recommendations"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    DesktopReferralAvatar(person.avatarUrl)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(person.fullName.ifBlank { person.username },
+                                            fontWeight = FontWeight.Bold)
+                                        Text("@${person.username} · ${person.university.orEmpty()}",
+                                            fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    TextButton(
+                                        enabled = person.id !in followedSuggestions,
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching { state.client.followBack(person.id) }
+                                                    .onSuccess { followedSuggestions = followedSuggestions + person.id }
+                                                    .onFailure { referralFollowError = true }
+                                            }
+                                        },
+                                    ) { Text(if (person.id in followedSuggestions) "Following" else "Follow") }
+                                }
+                            }
+                        }
+                        if (referralFollowError) item {
+                            Text("Couldn't follow right now. Please try again.",
+                                color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        }
+                    }
                     if (discoveryTrending.isNotEmpty()) {
                         item { DesktopSearchSection("Trending at FUTA", "Popular hashtags from current Blink activity") }
                         item {
@@ -479,9 +620,62 @@ private fun DesktopSearchCore(
                             }
                         }
                     }
-                    if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.PEOPLE) && people.isNotEmpty()) {
-                        item { DesktopSearchSection("People", "${people.size} results") }
-                        items(people, key = { "person-${it.id}" }) { profile -> DesktopPremiumPerson(profile) }
+                    if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.MARKET) && visibleMarket.isNotEmpty()) {
+                        item { DesktopSearchSection("Market", "${visibleMarket.size} available marketplace listings") }
+                        items(visibleMarket, key = { "market-${it.id}" }) { product ->
+                            Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Text(product.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(product.category + " · " + product.university, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                    Text(product.currency + " " + String.format(Locale.US, "%,d", product.price), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    if (category == DesktopSearchCategory.COMMUNITIES) {
+                        item { DesktopSearchSection("Communities", "Community lookup unavailable in Windows search") }
+                        item { Text("Community discovery requires the shared BLINK directory.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+                    }
+                    if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.PEOPLE) &&
+                        (promotedPeople.isNotEmpty() || people.isNotEmpty())) {
+                        item { DesktopSearchSection("People", "${people.size + promotedPeople.size} relevant results") }
+                        items(promotedPeople, key = { "ranked-${it.id}" }) { person ->
+                            Surface(
+                                modifier = Modifier.trackDesktopReferralImpression(state, person.id, "search"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    DesktopReferralAvatar(person.avatarUrl)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(person.fullName.ifBlank { person.username },
+                                                fontWeight = FontWeight.Bold)
+                                            if (person.isVerified) Icon(Icons.Rounded.Verified,
+                                                contentDescription = "Verified account", modifier = Modifier.size(15.dp))
+                                        }
+                                        Text("@${person.username} · ${person.university.orEmpty()}" +
+                                            if (person.visibilityPoints > 0) " · Discovery boost" else "",
+                                            fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    TextButton(
+                                        enabled = person.id !in followedSuggestions,
+                                        onClick = { scope.launch {
+                                            runCatching { state.client.followBack(person.id) }
+                                                .onSuccess { followedSuggestions = followedSuggestions + person.id }
+                                                .onFailure { referralFollowError = true }
+                                        } },
+                                    ) { Text(if (person.id in followedSuggestions) "Following" else "Follow") }
+                                }
+                            }
+                        }
+                        items(people, key = { "person-${it.id}" }) { profile ->
+                            Box(Modifier.trackDesktopReferralImpression(state, profile.id, "search")) {
+                                DesktopPremiumPerson(profile)
+                            }
+                        }
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.HASHTAGS) && hashtags.isNotEmpty()) {
                         item { DesktopSearchSection("Hashtags", "${hashtags.size} matches") }
@@ -499,13 +693,13 @@ private fun DesktopSearchCore(
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.REELS) && reels.isNotEmpty()) {
                         item { DesktopSearchSection("Reels", "${reels.size} matches") }
-                        items(reels, key = { "reel-${it.id}" }) { post -> DesktopPremiumContent(post) }
+                        items(reels, key = { "reel-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.POSTS) && posts.isNotEmpty()) {
                         item { DesktopSearchSection("Posts", "${posts.size} matches") }
-                        items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post) }
+                        items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
                     }
-                    if (!loading && people.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty()) {
+                    if (!loading && people.isEmpty() && promotedPeople.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty() && visibleMarket.isEmpty() && category != DesktopSearchCategory.COMMUNITIES) {
                         item {
                             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
                                 Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -529,6 +723,7 @@ private fun DesktopSearchCore(
 
 @Composable
 private fun DesktopTrendingCollection(
+    state: DesktopAppState,
     posts: List<DesktopFeedPost>,
     loading: Boolean,
 ) {
@@ -576,7 +771,7 @@ private fun DesktopTrendingCollection(
         }
         if (ranked.isNotEmpty()) {
             item { DesktopSearchSection("Rising posts & reels", "Sorted by views, likes, comments and shares") }
-            items(ranked, key = { "trend-${it.id}" }) { post -> DesktopPremiumContent(post) }
+            items(ranked, key = { "trend-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
         } else if (!loading) {
             item { DesktopCollectionEmpty("Nothing is trending yet", "Rising content will appear here as people interact with Blink.") }
         }
@@ -763,43 +958,79 @@ private fun DesktopPremiumPerson(profile: DesktopProfile) {
     }
 }
 
+/**
+ * Search and Trending reuse the very same full post card as Desktop Home.
+ * The post model comes from the authenticated feed; no synthetic thumbnails,
+ * stripped-down author rows or placeholder content are substituted for it.
+ */
 @Composable
-private fun DesktopPremiumContent(post: DesktopFeedPost) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(if (post.isReel) Icons.Rounded.PlayCircle else Icons.Rounded.Tag, null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(post.authorName, fontWeight = FontWeight.Bold)
-                    if (post.authorVerified) {
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Rounded.Verified, "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+private fun DesktopPremiumContent(post: DesktopFeedPost, state: DesktopAppState) {
+    val scope = rememberCoroutineScope()
+    var visible by remember(post) { mutableStateOf(post) }
+    var showComments by remember(post.id) { mutableStateOf(false) }
+    var error by remember(post.id) { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        DesktopFeedPostCard(
+            post = visible,
+            onLike = {
+                val before = visible
+                val liked = !before.isLiked
+                visible = before.copy(
+                    isLiked = liked,
+                    likeCount = (before.likeCount + if (liked) 1 else -1).coerceAtLeast(0),
+                )
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update like."
+                    } else if (confirmed != liked) {
+                        visible = visible.copy(isLiked = confirmed, likeCount = before.likeCount)
                     }
                 }
-                Text(
-                    post.caption ?: post.text ?: if (post.isReel) "Reel" else "Post",
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 12.sp,
+            },
+            onBookmark = {
+                val before = visible
+                visible = before.copy(isBookmarked = !before.isBookmarked)
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update saved post."
+                    } else {
+                        visible = visible.copy(isBookmarked = confirmed)
+                    }
+                }
+            },
+            onRepost = {
+                val before = visible
+                val reposted = !before.isRepostedByMe
+                visible = before.copy(
+                    isRepostedByMe = reposted,
+                    repostCount = (before.repostCount + if (reposted) 1 else -1).coerceAtLeast(0),
                 )
-                Text(
-                    "${desktopCompactNumber(post.viewCount.toLong())} views · ${desktopCompactNumber(post.likeCount.toLong())} likes · ${desktopCompactNumber(post.commentCount.toLong())} comments · ${desktopCompactNumber(post.shareCount.toLong())} shares",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (desktopTrendScore(post) > 0) {
-                Icon(Icons.Rounded.TrendingUp, null, tint = MaterialTheme.colorScheme.primary)
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update repost."
+                    } else {
+                        visible = visible.copy(
+                            isRepostedByMe = confirmed.first,
+                            repostCount = confirmed.second,
+                        )
+                    }
+                }
+            },
+            onComments = { showComments = !showComments },
+            onCopyLink = { DesktopShareLinkManager.copyToClipboard(post.id, post.isReel) },
+        )
+        if (showComments) DesktopCommentsPanel(state, post.id)
+        error?.let { message ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                TextButton(onClick = { error = null }) { Text("Dismiss") }
             }
         }
     }

@@ -1,59 +1,134 @@
 #!/usr/bin/env python3
-"""Regression guard for the temporary BLINK GitHub Pages project website.
+"""BLINK official-domain and crawlability regression guard.
 
-The downloaded APK stays on GitHub Releases /latest/download; the paid domain
-and Android manifest/App Links configuration are handled in a later rollout.
+Legacy filename retained because multiple CI workflows invoke it.
+This checks repository artifacts, NOT external DNS, search ranking, or Search Console.
 """
 from pathlib import Path
+import json
 import re
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://glimmar-code.github.io/Blinkng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
     if not condition:
-        raise SystemExit("GitHub Pages website configuration error: " + message)
+        raise SystemExit("BLINK domain / SEO configuration error: " + message)
 
 
 def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(not (WEB / "CNAME").exists(), "CNAME must be absent until a domain is purchased")
+check(read("CNAME").strip() == "blink.com.ng", "Pages CNAME")
 config = read("config.js")
-check(f'siteUrl: "{SITE}"' in config, "client siteUrl must use the GitHub Pages project path")
-check("www.blink.com.ng" not in config, "do not redirect sign-in to an unowned custom domain")
-
+check(f'siteUrl: "{SITE}"' in config, "web client siteUrl")
 index = read("index.html")
-check(f'<link rel="canonical" href="{SITE}/"' in index, "home canonical URL")
-check(f'<meta property="og:url" content="{SITE}/"' in index, "home sharing URL")
-check(f"{SITE}/blink-logo.png" in index, "absolute social preview image")
+check(f'<link rel="canonical" href="{SITE}/"' in index, "homepage canonical")
+check(f'<meta property="og:url" content="{SITE}/"' in index, "homepage og:url")
+check(f"{SITE}/blink-logo-v2.png" in index, "absolute social image")
+check('<meta name="robots" content="index,follow,max-image-preview:large"' in index, "homepage indexability")
+check("<h1" in index and "campus community" in index.lower(), "crawlable BLINK brand content")
+check("<title>BLINK" in index, "descriptive brand title")
+check("<title>BLINK Nigeria | Social &amp; Campus Community App</title>" in index, "distinctive homepage brand title")
+check("<h1" in index and "BLINK Nigeria" in index, "crawlable homepage identifies BLINK Nigeria")
+check('class="boot-static"' in index and index.count('class="boot-static-grid"') == 1, "homepage has raw HTML public discovery information")
+for href in ("./students/", "./marketplace/", "./features/", "./download/", "./safety/"):
+    check(f'href="{href}"' in index, f"pre-rendered homepage includes {href}")
+check("new URLSearchParams(location.search).has('p')" in index, "early noindex on redirected SPA routes")
+check("BLINK Nigeria | Social & Campus Community App" in read("app.js"), "runtime title matches official BLINK Nigeria brand")
+check("BLINK Nigeria</span>" in read("app.js"), "interactive hero heading distinguishes BLINK Nigeria")
+check('<meta name="description"' in index, "description")
 
+match = re.search(r'<script type="application/ld\+json">\s*([\s\S]*?)\s*</script>', index)
+check(match is not None, "homepage structured data")
+data = json.loads(match.group(1)) if match else {}
+graph = data.get("@graph", [])
+types = {item.get("@type") for item in graph}
+check({"Organization", "WebSite"} <= types, "Organization and WebSite schema types")
+check(all(item.get("url") == SITE + "/" for item in graph), "schema URLs")
+check(all(item.get("name") == "BLINK" for item in graph), "schema brand name")
+WHATSAPP = "https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u"
+organization = next(item for item in graph if item.get("@type") == "Organization")
+check(organization.get("sameAs") == [WHATSAPP], "official WhatsApp social link in Organization schema")
+check(index.count(WHATSAPP) == 2, "homepage links WhatsApp in schema and crawlable navigation")
+check(WHATSAPP in read("app.js"), "interactive landing includes WhatsApp channel link")
+for page in ("about/index.html", "download/index.html", "features/index.html", "faq/index.html", "privacy/index.html", "students/index.html", "marketplace/index.html", "safety/index.html"):
+    check(WHATSAPP in read(page), f"WhatsApp channel link present in {page}")
+    check('target="_blank" rel="noopener noreferrer"' in read(page), f"safe external-link attributes in {page}")
 privacy = read("privacy/index.html")
-check(f'<link rel="canonical" href="{SITE}/privacy/"' in privacy, "privacy canonical URL")
-check(f"{SITE}/blink-logo-v2.png" in privacy, "privacy sharing image")
-
+check(f'<link rel="canonical" href="{SITE}/privacy/"' in privacy, "privacy canonical")
+check(f'<meta property="og:url" content="{SITE}/privacy/"' in privacy, "privacy social URL")
+check(f"{SITE}/blink-logo-v2.png" in privacy, "privacy image")
 sitemap = ET.fromstring(read("sitemap.xml"))
-locs = [element.text for element in sitemap.iter() if element.tag.endswith("loc")]
-check(locs == [SITE + "/", SITE + "/privacy/"], "sitemap must list Pages homepage and privacy")
-check("Sitemap: " + SITE + "/sitemap.xml" in read("robots.txt"), "sitemap index URL")
+locs = [x.text for x in sitemap.iter() if x.tag.endswith("loc")]
+check(locs == [SITE + "/" + path for path in ("", "about/", "features/", "download/", "faq/", "privacy/", "students/", "marketplace/", "safety/")], "sitemap lists only approved public canonical pages")
+check(len(locs) == len(set(locs)), "sitemap has no duplicate URLs")
+for slug in ("features", "download", "faq", "students", "marketplace", "safety"):
+    page = read(f"{slug}/index.html")
+    check(f'<link rel="canonical" href="{SITE}/{slug}/">' in page, f"{slug} canonical URL")
+    check(f'<meta property="og:url" content="{SITE}/{slug}/">' in page, f"{slug} sharing URL")
+    check('<meta name="description"' in page and '<h1>' in page, f"{slug} informative page")
+    check('href="../privacy/"' in page, f"{slug} links to privacy policy")
+    check('href="../features/"' in page and 'href="../download/"' in page and 'href="../faq/"' in page, f"{slug} cross-links")
+check("https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk" in read("download/index.html"), "official APK download")
+download_schema_scripts = re.findall(r'<script type="application/ld\+json">\s*([\s\S]*?)\s*</script>', read("download/index.html"))
+check(len(download_schema_scripts) == 2, "download page WebPage and MobileApplication structured data")
+download_json_objects = [json.loads(script) for script in download_schema_scripts]
+download_schema = next((item for item in download_json_objects if item.get("@type") == "MobileApplication"), {})
+check(download_schema.get("name") == "BLINK", "app structured data brand name")
+check(download_schema.get("operatingSystem") == "Android", "app structured data platform")
+check(download_schema.get("downloadUrl") == "https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk", "app structured data uses official APK")
+check(download_schema.get("offers", {}).get("price") == "0", "free Android download is described accurately")
+check(download_schema.get("offers", {}).get("priceCurrency") == "NGN", "free download offer specifies Nigerian currency")
+check("Github is not" not in read("download/index.html"), "no false Google Play claims")
+check(read("faq/index.html").count("<details ") >= 7, "FAQ contains substantial readable answers")
+check('href="./features/"' in index and 'href="./download/"' in index and 'href="./faq/"' in index, "homepage contains crawlable discovery links")
+check('About BLINK Nigeria' in read("app.js") and "Download BLINK App" in read("app.js"), "dynamic landing page has public discovery links")
+check('href="../features/"' in read("about/index.html"), "about page has links to new pages")
+about = read("about/index.html")
+check(f'<link rel="canonical" href="{SITE}/about/"' in about, "about canonical URL")
+check(f'<meta property="og:url" content="{SITE}/about/"' in about, "about sharing URL")
+check("About BLINK" in about and "Nigeria" in about, "about page describes the brand")
+check('href="./about/"' in index, "homepage links to about")
+check("About BLINK Nigeria" in read("app.js"), "interactive landing links to about")
+check('<main class="landing-page" aria-label="BLINK Nigeria">' in read("app.js"), "homepage provides accessible main landmark")
+check('</footer>' in read("app.js") and '</main>`' in read("app.js"), "homepage has closing footer and main landmark")
+check("Sitemap: " + SITE + "/sitemap.xml" in read("robots.txt"), "robots sitemap URL")
+check(("glimmar-code.github.io/Blinkng" not in index + privacy + read("robots.txt") + read("sitemap.xml")), "no obsolete indexable GitHub Pages URLs")
 
 app = read("app.js")
-check("location.hostname.endsWith('github.io') ? '/Blinkng' : ''" in app, "SPA routes must preserve the project prefix")
-check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk'" in app, "all app download links must use the latest APK alias")
-check("redirect_to:`${redirectBase}/`" in app, "OAuth redirects must resolve against active siteUrl")
-
+check("location.hostname.endsWith('github.io') ? '/Blinkng' : ''" in app, "legacy SPA route support")
+check("'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk'" in app, "latest-APK alias")
+check("redirect_to:`${redirectBase}/`" in app, "OAuth redirect base wiring")
 fallback = read("404.html")
-check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA deep-link fallback must preserve /Blinkng")
-
-sw = read("sw.js")
-check("blink-web-v14-github-pages-primary" in sw, "web service worker version must be bumped for URL migration")
-
+check("location.hostname.endsWith('github.io')?'/Blinkng/':'/'" in fallback, "SPA fallback routing")
+check("blink-web-v27-approved-blink-logo" in read("sw.js"), "new service worker version")
+check('href="landing.css"' in index and "landing.css" in read("sw.js"), "mobile-first landing stylesheet loaded and cached")
+check('src="discovery.js" defer' in index, "phase 2 script loaded before public app")
+check('campuses.json' in read("sw.js") and 'discovery.js' in read("sw.js"), "public discovery assets cached")
+check("blink-web-v27-approved-blink-logo" in read("sw.js"), "phase 2 service worker version")
+check('href="./blink-logo-v2.png" as="image" fetchpriority="high"' in index, "logo preload")
+check('class="boot-logo" src="./blink-logo-v2.png" alt="BLINK" width="72" height="72"' in index, "boot logo size")
+check('src="${LOGO_URL}" width="39" height="39" alt="BLINK"' in app, "landing hero brand logo has stable dimensions")
+check("await Promise.all([loadMyProfile(),loadFollowing(),refreshUnreadCount()]);" in app, "parallel startup auth")
+check("scheduleServiceWorkerRegistration();" in app and "requestIdleCallback(register,{timeout:4000})" in app, "deferred SW registration")
+check('src="${esc(video)}" controls playsinline preload="none"' in app, "video feed no eager download")
+check('data-src="${esc(src)}" playsinline controls muted preload="none"' in app, "reel lazy loading")
+check('src="${esc(media)}" muted preload="none"' in app, "profile preview lazy video")
+check('entry.isIntersecting && video.dataset.src' in app, "load reel near viewport")
+check("navigator.connection?.saveData!==true" in app, "respect Data Saver")
+check("video.addEventListener('canplay'" in app, "autoplay on canplay")
+check("Keep tap-to-play available on older browsers" in app, "browser fallback")
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
-check("web/CNAME" in workflow and "test ! -e web/CNAME" in workflow, "deploy must block custom domains")
-check("scripts/check_github_pages_site.py" in workflow, "deployment must validate Pages project setup")
+check('tr -d' in workflow and 'web/CNAME' in workflow, "deployment verifies CNAME")
+check("scripts/check_github_pages_site.py" in workflow, "deployment validates site")
+check("test -s web/.well-known/assetlinks.json" in workflow, "Pages requires signed Android App Links")
+check("tar -tf" in workflow and "'./.well-known/assetlinks.json'" in workflow, "Pages archive must contain Android App Links")
+check("actions/upload-artifact@v4" in workflow and "name: github-pages" in workflow, "Pages upload uses custom tar with dot-directory")
+check('exclude=".[^/]*"' not in workflow, "Pages must not filter out dot-directories")
 
-print("BLINK GitHub Pages project URL, SPA navigation and latest APK regression checks passed.")
+print("BLINK domain, schema, sitemap, robots, metadata and SPA static guards passed.")

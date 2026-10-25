@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
@@ -76,6 +78,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.blinkng.shared.BlinkSwipeNavigation
+import com.blinkng.shared.brand.BlinkBeyondLinkIntro
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -101,10 +104,15 @@ import com.blinkng.desktop.data.DesktopCall
 import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
+import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.DesktopNewStudentSuggestionsDialog
+import com.blinkng.desktop.ui.BlinkDesktopMenuScreen
+import com.blinkng.desktop.ui.BlinkDesktopWalletScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
+import com.blinkng.desktop.ui.DesktopDiscoveryGuide
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
 import com.blinkng.desktop.ui.GamesScreen
@@ -121,19 +129,6 @@ import com.blinkng.desktop.ui.StoreProScreen
 import kotlinx.coroutines.delay
 import java.awt.Dimension
 
-private val BlinkPurple = Color(0xFF6D3DF5)
-private val BlinkBackground = Color(0xFF0B0B0F)
-private val BlinkSurface = Color(0xFF121218)
-private val BlinkSurfaceRaised = Color(0xFF191920)
-
-private val BlinkDarkColors = darkColorScheme(
-    primary = BlinkPurple,
-    background = BlinkBackground,
-    surface = BlinkSurface,
-    surfaceVariant = BlinkSurfaceRaised,
-)
-private val BlinkLightColors = lightColorScheme(primary = BlinkPurple)
-
 private data class DesktopDestination(
     val id: String,
     val title: String,
@@ -146,6 +141,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
     DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
     DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
+    DesktopDestination("communities", "Communities", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
@@ -155,6 +151,8 @@ private val desktopDestinations = listOf(
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
+    DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
+    DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
 )
 
 fun runBlinkDesktopApplication() = application {
@@ -164,6 +162,7 @@ fun runBlinkDesktopApplication() = application {
     val rpc = remember(appState.client) { DesktopRpcActions(appState.client) }
     val trayState = rememberTrayState()
     var isWindowVisible by remember { mutableStateOf(true) }
+    var showStartupIntro by remember { mutableStateOf(true) }
     var incomingCall by remember { mutableStateOf<DesktopCall?>(null) }
     var incomingCallerName by remember { mutableStateOf("Blink user") }
     var lastNotifiedCallId by remember { mutableStateOf<String?>(null) }
@@ -315,9 +314,9 @@ fun runBlinkDesktopApplication() = application {
                 window.minimumSize = Dimension(960, 640)
             }
 
-            val theme = appState.settings?.theme?.lowercase()
-            val colors = if (theme == "light") BlinkLightColors else BlinkDarkColors
-            MaterialTheme(colorScheme = colors) {
+            // The window now uses the same shared Auth-inspired tokens as Android.
+            // BlinkDesktopTheme also respects the saved light/dark/system choice.
+            com.blinkng.desktop.ui.BlinkDesktopTheme(appearance = appState.settings?.theme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         when {
@@ -327,6 +326,11 @@ fun runBlinkDesktopApplication() = application {
                             appState.profile?.onboardingCompleted == false ->
                                 BlinkDesktopOnboardingScreen(appState)
                             else -> Column(modifier = Modifier.fillMaxSize()) {
+                                if (appState.showNewStudentSuggestions) {
+                                    DesktopNewStudentSuggestionsDialog(appState) {
+                                        appState.showNewStudentSuggestions = false
+                                    }
+                                }
                                 incomingCall?.let { call ->
                                     IncomingCallBanner(
                                         call = call,
@@ -349,6 +353,16 @@ fun runBlinkDesktopApplication() = application {
                             }
                         }
 
+                        if (appState.session != null) {
+                            DesktopDiscoveryGuide(
+                                userId = appState.session?.userId.orEmpty(),
+                                safeToShow = appState.selectedRoute == "home" &&
+                                    !appState.busy &&
+                                    incomingCall == null &&
+                                    foregroundNotification == null,
+                                onNavigate = { route -> appState.selectedRoute = route },
+                            )
+                        }
                         foregroundNotification?.let { item ->
                             DesktopInAppNotificationBanner(
                                 notification = item,
@@ -361,6 +375,13 @@ fun runBlinkDesktopApplication() = application {
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
                         }
+                    }
+                    // Play only once per process launch, not on re-focus/reopening.
+                    if (showStartupIntro) {
+                        BlinkBeyondLinkIntro(
+                            onFinished = { showStartupIntro = false },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -512,6 +533,7 @@ private fun AuthenticatedShell(
         }
     }) {
         DesktopTopBar(state, unreadNotificationCount)
+        DesktopLiveStrip(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
@@ -539,6 +561,7 @@ private fun AuthenticatedShell(
                         "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
                         "connect" -> ConnectScreen(state)
+                        "communities" -> com.blinkng.desktop.ui.DesktopCommunitiesScreen(state)
                         "messages" -> MessagesScreen(state)
                         "marketplace" -> MarketplaceScreen(state)
                         "games" -> GamesScreen(state)
@@ -549,6 +572,8 @@ private fun AuthenticatedShell(
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
+                        "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
+                        "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })
                         "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
@@ -667,7 +692,7 @@ private fun DesktopSidebar(
                 icon = { Icon(destination.icon, contentDescription = destination.title, tint = iconTint) },
                 shape = RoundedCornerShape(14.dp),
                 colors = NavigationDrawerItemDefaults.colors(
-                    selectedContainerColor = BlinkPurple.copy(alpha = 0.18f),
+                    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
                 ),

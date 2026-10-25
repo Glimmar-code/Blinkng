@@ -73,8 +73,8 @@ class ConnectCategoryCatalogRepository {
             }
         }.getOrNull()
             ?.sortedBy { it.displayOrder }
-            ?.take(20)
-            ?.takeIf { it.size == 20 }
+            ?.distinctBy { it.slug }
+            ?.takeIf { it.isNotEmpty() }
             ?: defaultCategories()
     }
 

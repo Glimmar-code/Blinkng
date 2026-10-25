@@ -1,0 +1,152 @@
+# Device-test build only. Never replaces production latest or exposes release signing secrets.
+name: BLINK LIFE Option B phone-test APK
+
+on:
+  push:
+    branches:
+      - Testlab-blink-life-web-on-demand-20261015
+    paths:
+      - '.github/workflows/blink-life-device-test.yml'
+      - 'app/**'
+      - 'blinkLifeFeature/**'
+      - 'game3d/**'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'gradle/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: blink-life-device-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-phone-test:
+    if: github.repository == 'Glimmar-code/Blinkng' && github.ref == 'refs/heads/Testlab-blink-life-web-on-demand-20261015'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve isolated staging release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "VERSION_CODE=$((400000000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=testlab-blinklife-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "GAME_RELEASE_TAG=vtestlab-blinklife-${GITHUB_RUN_NUMBER}-debug" >> "$GITHUB_ENV"
+
+      - name: Export BLINK LIFE on-demand browser game
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/setup_godot_43_web.sh
+          bash scripts/build_blink_life_web_pack.sh
+          GAME_SHA="$(sha256sum app/build/outputs/publish/blink-life-web.zip | cut -d' ' -f1)"
+          echo "BLINK_LIFE_WEB_SHA256=$GAME_SHA" >> "$GITHUB_ENV"
+          echo "Test game pack SHA-256: $GAME_SHA"
+
+      - name: Build SHA-pinned Android device test APK
+        shell: bash
+        env:
+          # No production Firebase credentials or signing keystore are available to this job.
+          ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify small APK, game hash, version and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          PACK="app/build/outputs/publish/blink-life-web.zip"
+          test -s "$APK"
+          test -s "$PACK"
+          test -n "$BLINK_LIFE_WEB_SHA256"
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/base-entry-list.txt"
+          if grep -E '(^|/)libgodot_android\\.so$|(^|/)project\\.godot$|(^|/)scenes/main\\.tscn$' "$RUNNER_TEMP/base-entry-list.txt"; then
+            echo "::error::Staging APK unintentionally includes the large native game"
+            exit 1
+          fi
+          BUILD_CONFIG="$(find app/build/generated -path '*/debug/*/BuildConfig.java' -type f | head -n1)"
+          test -n "$BUILD_CONFIG"
+          grep -F "BLINK_LIFE_WEB_SHA256 = \"$BLINK_LIFE_WEB_SHA256\"" "$BUILD_CONFIG"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK" | head -n1)"
+          echo "$BADGING" | grep -F "versionName='${VERSION_NAME}-debug'"
+          sha256sum "$APK" "$PACK"
+          du -h "$APK" "$PACK"
+
+      - name: Prepare clearly marked test downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phone-test
+          cp app/build/outputs/apk/debug/app-debug.apk phone-test/Blink-OptionB-Test.apk
+          cp app/build/outputs/publish/blink-life-web.zip phone-test/blink-life-web.zip
+          (cd phone-test && sha256sum Blink-OptionB-Test.apk blink-life-web.zip > SHA256SUMS)
+          cat > phone-test/README.txt <<EOF
+          BLINK LIFE Option B - TEST ONLY
+          Test commit: $GITHUB_SHA
+          Build: ${VERSION_NAME}-debug
+          This APK is signed with a disposable DEBUG key, not BLINK's production key.
+          Do not publish as the normal BLINK download. You cannot update a production
+          install with this APK; Android requires uninstalling a differently signed build.
+          Firebase is a CI test placeholder, so normal account/login functionality may not work.
+          The optional 3D pack downloads from the matching staging GitHub prerelease.
+          Download starts when you click BLINK LIFE > Download game.
+          Verify in-app game download, background progress, offline play and removal on-device.
+          This WEBGL preview does not deliver live multiplayer. No second APK installation.
+          EOF
+
+      - name: Upload Android phone-test files as Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blink-OptionB-Phone-Test-${{ github.run_number }}
+          path: phone-test/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish matching opt-in staging prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Staging release is not latest: production's published APK is unchanged.
+          cat > "$RUNNER_TEMP/staging-notes.txt" <<EOF
+          BLINK LIFE Option B phone test (TEST ONLY; not production).
+
+          APK and optional browser game are paired to the same commit and SHA-256.
+          Install Blink-OptionB-Test.apk, open BLINK LIFE, then tap Download game.
+          Android DownloadManager transfers the verified ZIP in the background.
+          The app is DEBUG signed and uses placeholder Firebase config; logins or ads
+          may not work. Does not update production BLINK; do not treat as production-ready.
+          This WebGL game preview has not passed physical-device gameplay testing.
+          EOF
+          gh release create "$GAME_RELEASE_TAG" \
+            phone-test/Blink-OptionB-Test.apk \
+            phone-test/blink-life-web.zip \
+            phone-test/SHA256SUMS \
+            phone-test/README.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "BLINK LIFE Option B phone test ${VERSION_NAME}-debug" \
+            --notes-file "$RUNNER_TEMP/staging-notes.txt"
+          gh release view "$GAME_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,tagName,isPrerelease

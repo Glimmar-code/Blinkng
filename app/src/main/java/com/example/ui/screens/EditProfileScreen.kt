@@ -5,6 +5,7 @@ import com.blinkng.shared.ProfileVisibilityScope
 import com.example.data.local.rememberPersistentTextState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,103 +66,103 @@ fun EditProfileScreen(
             ProfileRepository()
         }
 
-    var fullName by remember {
+    var fullName by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.fullName
         )
     }
 
-    var username by remember {
+    var username by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.username
         )
     }
 
-    var avatarUrl by remember {
+    var avatarUrl by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.avatarUrl
         )
     }
 
-    var coverUrl by remember {
+    var coverUrl by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.coverPhotoUrl
         )
     }
 
-    var headline by remember {
+    var headline by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.professionalHeadline
         )
     }
 
-    var jobTitle by remember {
+    var jobTitle by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.currentJobTitle
         )
     }
 
-    var bio by remember {
+    var bio by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.bio
         )
     }
 
-    var university by remember {
+    var university by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.university
         )
     }
 
-    var faculty by remember {
+    var faculty by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.faculty
         )
     }
 
-    var department by remember {
+    var department by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.department
         )
     }
 
-    var courseOfStudy by remember {
+    var courseOfStudy by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.courseOfStudy
         )
     }
 
-    var academicLevel by remember {
+    var academicLevel by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.academicLevel
         )
     }
 
-    var graduationYear by remember {
+    var graduationYear by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.graduationYear
         )
     }
 
-    var relationshipStatus by remember {
+    var relationshipStatus by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.relationshipStatus.ifBlank { "Private" }
         )
     }
 
-    var email by remember {
+    var email by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.email.value
         )
     }
 
-    var phone by remember {
+    var phone by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.phone.value
         )
     }
 
-    var whatsapp by remember {
+    var whatsapp by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.whatsapp.value
         )
@@ -182,37 +184,37 @@ fun EditProfileScreen(
         mutableStateOf(profile.presenceVisibility)
     }
 
-    var website by remember {
+    var website by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.website
         )
     }
 
-    var linkedin by remember {
+    var linkedin by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.linkedin
         )
     }
 
-    var twitter by remember {
+    var twitter by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.twitter
         )
     }
 
-    var instagram by remember {
+    var instagram by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.instagram
         )
     }
 
-    var featuredLink by remember {
+    var featuredLink by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.featuredLink
         )
     }
 
-    var featuredLinkLabel by remember {
+    var featuredLinkLabel by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.featuredLinkLabel
         )
@@ -252,6 +254,62 @@ fun EditProfileScreen(
 
     var successMessage by remember {
         mutableStateOf<String?>(null)
+    }
+
+    var showDiscardChangesDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    val hasUnsavedChanges =
+        fullName != profile.fullName ||
+        username != profile.username ||
+        avatarUrl != profile.avatarUrl ||
+        coverUrl != profile.coverPhotoUrl ||
+        headline != profile.professionalHeadline ||
+        jobTitle != profile.currentJobTitle ||
+        bio != profile.bio ||
+        university != profile.university ||
+        faculty != profile.faculty ||
+        department != profile.department ||
+        courseOfStudy != profile.courseOfStudy ||
+        academicLevel != profile.academicLevel ||
+        graduationYear != profile.graduationYear ||
+        relationshipStatus != profile.relationshipStatus ||
+        email != profile.email.value ||
+        phone != profile.phone.value ||
+        whatsapp != profile.whatsapp.value ||
+        emailVisibility != profile.emailVisibility ||
+        phoneVisibility != profile.phoneVisibility ||
+        whatsappVisibility != profile.whatsappVisibility ||
+        presenceVisibility != profile.presenceVisibility ||
+        website != profile.links.website ||
+        linkedin != profile.links.linkedin ||
+        twitter != profile.links.twitter ||
+        instagram != profile.links.instagram ||
+        featuredLink != profile.links.featuredLink ||
+        featuredLinkLabel != profile.links.featuredLinkLabel ||
+        selectedAvatarUri != null || selectedCoverUri != null
+
+    fun requestLeaveEditor() {
+        if (saving) return
+        if (hasUnsavedChanges) showDiscardChangesDialog = true
+        else onBack()
+    }
+
+    BackHandler(enabled = !saving) { requestLeaveEditor() }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            title = { Text("Discard profile changes?") },
+            text = { Text("You have changes that haven't been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardChangesDialog = false
+                    onBack()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardChangesDialog = false }) { Text("Keep editing") }
+            }
+        )
     }
 
     val avatarPicker =
@@ -372,8 +430,7 @@ fun EditProfileScreen(
                 navigationIcon = {
 
                     IconButton(
-                        onClick =
-                            onBack,
+                        onClick = { requestLeaveEditor() },
                         enabled =
                             !saving
                     ) {
@@ -409,6 +466,16 @@ fun EditProfileScreen(
                                     true
 
                                 try {
+
+                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+
+                                    if (validationError != null) throw IllegalArgumentException(validationError)
+
+                                    val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
+
+                                    if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
+
+                                    if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
 
                                     var finalAvatar =
                                         avatarUrl
@@ -550,9 +617,7 @@ fun EditProfileScreen(
                                                 )
                                         )
 
-                                    try {
-                                        repository.updateProfile(updated)
-                                    } catch (_: Exception) {}
+                                    if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
 
                                     onSave(
                                         updated
@@ -770,16 +835,13 @@ fun EditProfileScreen(
                 ) {
 
                     CoverEditor(
-                        currentUrl =
-                            coverUrl,
-                        pendingUri =
-                            selectedCoverUri,
-                        onPick =
-                            {
-                                coverPicker.launch(
-                                    "image/*"
-                                )
-                            }
+                        currentUrl = coverUrl,
+                        pendingUri = selectedCoverUri,
+                        onPick = { coverPicker.launch("image/*") },
+                        onRemove = {
+                            coverUrl = ""
+                            selectedCoverUri = null
+                        }
                     )
 
                     Spacer(
@@ -790,16 +852,13 @@ fun EditProfileScreen(
                     )
 
                     AvatarEditor(
-                        currentUrl =
-                            avatarUrl,
-                        pendingUri =
-                            selectedAvatarUri,
-                        onPick =
-                            {
-                                avatarPicker.launch(
-                                    "image/*"
-                                )
-                            }
+                        currentUrl = avatarUrl,
+                        pendingUri = selectedAvatarUri,
+                        onPick = { avatarPicker.launch("image/*") },
+                        onRemove = {
+                            avatarUrl = ""
+                            selectedAvatarUri = null
+                        }
                     )
                 }
             }
@@ -1027,11 +1086,12 @@ fun EditProfileScreen(
                                 it
                         },
                         label =
-                            "Email",
+                            "Sign-in email (managed in Account Security)",
                         icon =
                             Icons.Default.Email,
                         keyboardType =
-                            KeyboardType.Email
+                            KeyboardType.Email,
+                        readOnly = true
                     )
 
                     ProfileField(
@@ -1295,6 +1355,16 @@ fun EditProfileScreen(
 
                             try {
 
+                                val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+
+                                if (validationError != null) throw IllegalArgumentException(validationError)
+
+                                val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
+
+                                if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
+
+                                if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
+
                                 var finalAvatar =
                                     avatarUrl
 
@@ -1342,7 +1412,7 @@ fun EditProfileScreen(
                                             fullName.trim(),
 
                                         username =
-                                            username.trim(),
+                                            username.trim().lowercase().removePrefix("@"),
 
                                         avatarUrl =
                                             finalAvatar,
@@ -1427,9 +1497,7 @@ fun EditProfileScreen(
                                             )
                                     )
 
-                                try {
-                                    repository.updateProfile(updated)
-                                } catch (_: Exception) {}
+                                if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
 
                                 avatarUrl =
                                     finalAvatar
@@ -1754,7 +1822,8 @@ private fun ProfileField(
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
     minLines: Int = 1,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    readOnly: Boolean = false
 ) {
 
     OutlinedTextField(
@@ -1787,6 +1856,7 @@ private fun ProfileField(
             minLines,
         singleLine =
             singleLine,
+        readOnly = readOnly,
         shape =
             RoundedCornerShape(
                 14.dp
@@ -2140,7 +2210,8 @@ private fun UniversityPickerDialog(
 private fun CoverEditor(
     currentUrl: String,
     pendingUri: Uri?,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    onRemove: () -> Unit
 ) {
 
     val model =
@@ -2225,13 +2296,18 @@ private fun CoverEditor(
 
             Text(
                 "Change cover photo",
-                color =
-                    Color.White,
-                fontSize =
-                    11.sp,
-                fontWeight =
-                    FontWeight.Bold
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
             )
+        }
+        if (model.isNotBlank()) {
+            TextButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                Text("Remove cover", color = Color.White)
+            }
         }
     }
 }
@@ -2240,9 +2316,11 @@ private fun CoverEditor(
 private fun AvatarEditor(
     currentUrl: String,
     pendingUri: Uri?,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    onRemove: () -> Unit
 ) {
 
+    val model = pendingUri?.toString() ?: currentUrl
     Row(
         verticalAlignment =
             Alignment.CenterVertically
@@ -2254,10 +2332,6 @@ private fun AvatarEditor(
                     88.dp
                 )
         ) {
-
-            val model =
-                pendingUri?.toString()
-                    ?: currentUrl
 
             if (
                 model.isNotBlank()
@@ -2349,16 +2423,43 @@ private fun AvatarEditor(
                     )
             )
 
-            OutlinedButton(
-                onClick =
-                    onPick
-            ) {
-                Text(
-                    "Choose image",
-                    fontSize =
-                        10.sp
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPick) {
+                    Text("Choose image", fontSize = 10.sp)
+                }
+                if (model.isNotBlank()) {
+                    TextButton(onClick = onRemove) {
+                        Text("Remove", fontSize = 10.sp)
+                    }
+                }
             }
         }
     }
 }
+
+
+/**
+ * Local validation shared by both editor Save entry points. Run before any media upload.
+ * The server remains authoritative for username uniqueness and database constraints.
+ */
+private fun validateProfileEditInputs(
+    fullName: String,
+    username: String,
+    email: String,
+    phone: String,
+    whatsapp: String,
+    graduationYear: String,
+    website: String,
+    linkedin: String,
+    twitter: String,
+    instagram: String,
+    featuredLink: String
+): String? = com.blinkng.shared.ProfileEditValidation.validate(
+    fullName = fullName,
+    username = username,
+    email = email,
+    phone = phone,
+    whatsapp = whatsapp,
+    graduationYear = graduationYear,
+    links = listOf(website, linkedin, twitter, instagram, featuredLink)
+)

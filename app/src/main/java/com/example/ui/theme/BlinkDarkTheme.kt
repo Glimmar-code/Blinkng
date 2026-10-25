@@ -6,12 +6,13 @@ import androidx.compose.ui.graphics.Color
 
 val BlinkDarkColorScheme: ColorScheme = darkColorScheme(
     primary = FeedPurple,
-    onPrimary = Color.White,
+    // Dark text matches Auth's purple CTA and reaches AA contrast.
+    onPrimary = Color.Black,
     primaryContainer = FeedDeepPurple,
     onPrimaryContainer = Color.White,
     inversePrimary = FeedPurpleBright,
     secondary = FeedPurpleBright,
-    onSecondary = Color.White,
+    onSecondary = Color.Black,
     secondaryContainer = DarkSurfaceElevated,
     onSecondaryContainer = DarkTextPrimary,
     tertiary = BlinkCyan,
@@ -20,6 +21,14 @@ val BlinkDarkColorScheme: ColorScheme = darkColorScheme(
     onBackground = DarkTextPrimary,
     surface = DarkSurface,
     onSurface = DarkTextPrimary,
+    // Without explicit containers, Material 3 defaults wash some cards gray/purple.
+    surfaceDim = DarkBackground,
+    surfaceBright = DarkSurfaceHighest,
+    surfaceContainerLowest = DarkBackground,
+    surfaceContainerLow = DarkSurface,
+    surfaceContainer = DarkSurfaceElevated,
+    surfaceContainerHigh = DarkSurfaceHighest,
+    surfaceContainerHighest = DarkSurfaceHighest,
     surfaceVariant = DarkSurfaceElevated,
     onSurfaceVariant = DarkTextSecondary,
     surfaceTint = FeedPurple,

@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -38,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -68,24 +73,30 @@ fun DesktopGeneralStudyGame() {
     val pane = remember(paneName) { DesktopGeneralStudyPane.valueOf(paneName) }
     var difficultyName by rememberSaveable { mutableStateOf(GeneralStudyDifficulty.EASY.name) }
     val difficulty = remember(difficultyName) { GeneralStudyDifficulty.valueOf(difficultyName) }
+    var selectedCategory by rememberSaveable { mutableStateOf("") }
     var seed by rememberSaveable { mutableLongStateOf(0L) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
     var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(pane, questionIndex) { listState.scrollToItem(0) }
 
-    val questions = remember(difficulty, seed) {
+    val questions = remember(difficulty, seed, selectedCategory) {
         if (seed == 0L) emptyList()
         else GeneralStudyBank.round(
             difficulty = difficulty,
             seed = seed,
             count = GeneralStudyBank.DEFAULT_ROUND_SIZE,
+            category = selectedCategory.takeIf { it.isNotBlank() },
         )
     }
     val question = questions.getOrNull(questionIndex)
 
     fun startRound() {
-        seed = System.currentTimeMillis()
+        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
+        confirmExit = false
         questionIndex = 0
         score = 0
         selectedOption = -1
@@ -112,6 +123,7 @@ fun DesktopGeneralStudyGame() {
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -129,6 +141,8 @@ fun DesktopGeneralStudyGame() {
 
                     DesktopGeneralStudyPane.SETUP -> DesktopGeneralStudySetup(
                         difficulty = difficulty,
+                        selectedCategory = selectedCategory,
+                        onCategory = { selectedCategory = it },
                         onDifficulty = { difficultyName = it.name },
                         onBack = { paneName = DesktopGeneralStudyPane.CATALOG.name },
                         onStart = ::startRound,
@@ -142,10 +156,7 @@ fun DesktopGeneralStudyGame() {
                         score = score,
                         selectedOption = selectedOption,
                         answered = answered,
-                        onClose = {
-                            seed = 0L
-                            paneName = DesktopGeneralStudyPane.SETUP.name
-                        },
+                        onClose = { confirmExit = true },
                         onAnswer = ::submitAnswer,
                         onNext = ::nextQuestion,
                     )
@@ -167,6 +178,23 @@ fun DesktopGeneralStudyGame() {
                 }
             }
         }
+    }
+    if (confirmExit && pane == DesktopGeneralStudyPane.PLAY) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("Leave General Study?") },
+            text = { Text("Your unfinished quiz round will be discarded.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = false
+                    seed = 0L
+                    paneName = DesktopGeneralStudyPane.SETUP.name
+                }) { Text("Leave round") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text("Keep playing") }
+            },
+        )
     }
 }
 
@@ -284,6 +312,8 @@ private fun DesktopGameCatalog(onOpenGeneralStudy: () -> Unit) {
 @Composable
 private fun DesktopGeneralStudySetup(
     difficulty: GeneralStudyDifficulty,
+    selectedCategory: String,
+    onCategory: (String) -> Unit,
     onDifficulty: (GeneralStudyDifficulty) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -345,6 +375,30 @@ private fun DesktopGeneralStudySetup(
             }
         }
 
+        Text("Study area", fontWeight = FontWeight.Black, fontSize = 14.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            (listOf("") + GeneralStudyBank.categories).forEach { category ->
+                val selected = selectedCategory == category
+                Surface(
+                    modifier = Modifier.clickable { onCategory(category) },
+                    shape = RoundedCornerShape(100.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .12f)
+                        else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Text(
+                        if (category.isBlank()) "All topics" else category,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+            }
+        }
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
@@ -352,7 +406,9 @@ private fun DesktopGeneralStudySetup(
             Column(Modifier.padding(18.dp)) {
                 Text("Round format", fontWeight = FontWeight.Black, fontSize = 13.sp)
                 Text(
-                    "10 mixed questions per round with instant answer feedback. The 20,000-question bank is generated on demand so it stays lightweight.",
+                    "10 questions per round from " +
+                        (if (selectedCategory.isBlank()) "mixed study areas" else selectedCategory) +
+                        ". Instant feedback works offline.",
                     fontSize = 11.sp,
                     lineHeight = 17.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -421,7 +477,8 @@ private fun DesktopGeneralStudyRound(
             }
         }
 
-        val progress = if (totalQuestions == 0) 0f else questionNumber.toFloat() / totalQuestions
+        val completed = (questionNumber - 1 + (if (answered) 1 else 0)).coerceIn(0, totalQuestions)
+        val progress = if (totalQuestions == 0) 0f else completed.toFloat() / totalQuestions
         LinearProgressIndicator(
             progress = progress,
             modifier = Modifier.fillMaxWidth().height(6.dp),

@@ -3,16 +3,37 @@
 # as a separate /bin/sh -c command, so shell variables cannot span YAML lines.
 set -euo pipefail
 PACKAGE="com.aistudio.blink.appvtwo"
+EXPECTED_CODE="${EXPECTED_VERSION_CODE:-1999000000}"
 APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
 if [[ -z "$APK" || ! -s "$APK" ]]; then
   echo "::error::Signed release smoke APK is missing"
   exit 1
 fi
 
-echo "Installing R8-minified, signed (disposable CI key) release APK on Android 15..."
+if [[ -n "${PREVIOUS_PRODUCTION_APK:-}" ]]; then
+  if [[ ! -s "$PREVIOUS_PRODUCTION_APK" ]]; then
+    echo "::error::Previous production APK is missing; upgrade cannot be verified."
+    exit 1
+  fi
+  echo "Installing the previously published signed APK as the upgrade baseline..."
+  adb install "$PREVIOUS_PRODUCTION_APK"
+  adb shell pm path "$PACKAGE" | grep -F 'package:'
+  BEFORE_FIRST_INSTALL="$(adb shell dumpsys package "$PACKAGE" | sed -n 's/.*firstInstallTime=//p' | head -n 1 | tr -d '\r')"
+  test -n "$BEFORE_FIRST_INSTALL" || { echo "::error::Cannot verify upgrade's first-install state"; exit 1; }
+fi
+
+echo "Installing the exact signed release APK on Android 15 (replacement, not uninstall)..."
 adb install -r "$APK"
+if [[ -n "${PREVIOUS_PRODUCTION_APK:-}" ]]; then
+  AFTER_FIRST_INSTALL="$(adb shell dumpsys package "$PACKAGE" | sed -n 's/.*firstInstallTime=//p' | head -n 1 | tr -d '\r')"
+  if [[ "$AFTER_FIRST_INSTALL" != "$BEFORE_FIRST_INSTALL" ]]; then
+    echo "::error::Android lost its original first-install state; refusing potentially destructive upgrade."
+    exit 1
+  fi
+  echo "PASS: published-to-candidate APK replacement kept Android first-install state."
+fi
 adb shell pm path "$PACKAGE" | grep -F 'package:'
-adb shell dumpsys package "$PACKAGE" | grep -F 'versionCode=1999000000'
+adb shell dumpsys package "$PACKAGE" | grep -F "versionCode=$EXPECTED_CODE"
 echo "Release APK installed; validating actual MainActivity startup (not just installability)."
 
 # The previous gate verified only PackageManager installation. A release could

@@ -107,6 +107,7 @@ object BlinkNotificationHelper {
     const val EXTRA_PROFILE_IDENTIFIER = "EXTRA_PROFILE_IDENTIFIER"
 
     const val ACTION_OPEN_CHAT = "OPEN_CHAT"
+    const val ACTION_OPEN_MESSAGES = "OPEN_MESSAGES"
     const val ACTION_OPEN_POST = "OPEN_POST"
     const val ACTION_OPEN_REEL = "OPEN_REEL"
     const val ACTION_OPEN_PROFILE = "OPEN_PROFILE"

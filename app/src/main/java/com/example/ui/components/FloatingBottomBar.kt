@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,7 +66,7 @@ private data class FeedBottomItem(
 
 private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.HOME, Icons.Filled.Home, Icons.Outlined.Home, "Home"),
-    FeedBottomItem(FeedBottomDestination.REELS, Icons.Filled.PlayArrow, Icons.Filled.PlayArrow, "Reels"),
+    FeedBottomItem(FeedBottomDestination.REELS, Icons.Outlined.SmartDisplay, Icons.Outlined.SmartDisplay, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
     FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
     FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
@@ -80,6 +84,7 @@ fun FeedBottomBar(
     isDark: Boolean,
     onMenuClick: () -> Unit = {},
     isMenuOpen: Boolean = false,
+    hasUnreadMessages: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val selectedDestination = when {
@@ -93,7 +98,8 @@ fun FeedBottomBar(
 
     val reduceMotion = rememberBlinkReduceMotion()
     val navigationSurface = if (isDark) Color.Black else Color.White
-    val navigationBorder = if (isDark) Color(0xFF242424) else Color(0xFFE1E4E8)
+    // Mirror Auth's restrained translucent-white borders, not gray blocks.
+    val navigationBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFE1E4E8)
 
     Surface(
         // Paint behind gesture navigation and keep destinations above the
@@ -111,7 +117,7 @@ fun FeedBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(64.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -120,7 +126,9 @@ fun FeedBottomBar(
                 FeedBottomBarItem(
                     item = item,
                     selected = selected,
+                    isDark = isDark,
                     reduceMotion = reduceMotion,
+                    showUnreadDot = hasUnreadMessages && item.destination == FeedBottomDestination.MESSAGE,
                     onClick = {
                         when (item.destination) {
                             FeedBottomDestination.HOME -> onHomeClick()
@@ -140,11 +148,14 @@ fun FeedBottomBar(
 private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     item: FeedBottomItem,
     selected: Boolean,
+    isDark: Boolean,
     reduceMotion: Boolean,
+    showUnreadDot: Boolean,
     onClick: () -> Unit
 ) {
+    val activeAccent = MaterialTheme.colorScheme.onSurface
     val tint by animateColorAsState(
-        targetValue = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) activeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavTint"
     )
@@ -154,7 +165,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
         label = "bottomNavIconScale"
     )
     val indicatorColor by animateColorAsState(
-        targetValue = if (selected) FeedBlue else Color.Transparent,
+        targetValue = if (selected) activeAccent else Color.Transparent,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavIndicator"
     )
@@ -162,33 +173,36 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(56.dp)
+            .height(64.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .semantics { this.selected = selected }
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.62f)
-                .height(3.dp)
-                .background(indicatorColor)
+        Spacer(Modifier.height(6.dp))
+        Box(contentAlignment = Alignment.TopEnd) {
+            Icon(
+                imageVector = if (selected) item.filledIcon else item.outlinedIcon,
+                contentDescription = item.label,
+                tint = tint,
+                modifier = Modifier.size(22.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+            )
+            if (showUnreadDot) {
+                Box(Modifier.size(7.dp).background(Color(0xFFF12D45), CircleShape))
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = item.label, color = tint,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
         )
         Spacer(Modifier.height(5.dp))
-        Icon(
-            imageVector = if (selected) item.filledIcon else item.outlinedIcon,
-            contentDescription = item.label,
-            tint = tint,
-            modifier = Modifier.size(23.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = item.label,
-            color = tint,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1
+        Box(
+            modifier = Modifier.width(45.dp).height(2.dp)
+                .background(indicatorColor, RoundedCornerShape(2.dp))
         )
     }
 }

@@ -28,8 +28,13 @@ class PostRepositoryLikeFailureTest {
         assertTrue(isRecoverableRankedFeedTimeout(
             IllegalStateException("canceling statement due to statement timeout")
         ))
-        assertTrue(isRecoverableRankedFeedTimeout(
+        // SQLSTATE 57014 alone also means a user-requested cancellation.
+        // It must NOT trigger another expensive RPC or a chronological fallback.
+        assertFalse(isRecoverableRankedFeedTimeout(
             IllegalStateException("Query failed", IllegalStateException("SQLSTATE 57014"))
+        ))
+        assertTrue(isRecoverableRankedFeedTimeout(
+            IllegalStateException("Query failed", IllegalStateException("canceling statement due to statement timeout"))
         ))
     }
 

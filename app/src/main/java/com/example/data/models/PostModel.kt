@@ -65,6 +65,8 @@ data class FeedPost(
     val repostedById: String? = null,
     val repostedByUsername: String? = null,
     var viewsCount: Int = 0,
+    /** Public aggregate supplied by the authenticated backend; null when unavailable. */
+    var savesCount: Int? = null,
     var isBookmarked: Boolean = false,
     val isReel: Boolean = false,
     val videoDuration: String = "0:00",
@@ -198,7 +200,11 @@ data class MarketItem(
     val viewsCount: Long = 0L,
     val savesCount: Long = 0L,
     val isSaved: Boolean = false,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val sellerId: String = "",
+    val videoUrl: String = "",
+    val mediaDigest: String = "",
+    val moderationState: String = "approved"
 )
 
 data class LeaderboardUser(
@@ -304,7 +310,16 @@ data class ChatMessage(
     val contactPhone: String? = null,
     val forwardedFromMessageId: String? = null,
     val isForwarded: Boolean = false,
-    val localAttachmentUri: String? = null
+    val localAttachmentUri: String? = null,
+    // Additional private picture metadata, additive to main's richer message model.
+    val uploadProgress: Int? = null,
+    val voiceAudioUrl: String? = null,
+    val attachedDocumentName: String? = null,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false
 )
 
 data class ChatConversation(
@@ -331,7 +346,11 @@ data class ChatConversation(
     val inboxCategory: String = "primary",
     val notificationMode: String = "all",
     val muteUntil: String? = null,
-    val presenceLabel: String = ""
+    val presenceLabel: String = "",
+    val lastOutgoingStatus: MessageStatus? = null,
+    val lastReceiptMessageId: String = "",
+    /** Server-derived conversation kind. Never infer group-ness from a username. */
+    val isGroup: Boolean = false
 )
 
 data class ChatPrivacySettings(
