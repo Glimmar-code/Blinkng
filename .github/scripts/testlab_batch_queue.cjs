@@ -1,5 +1,5 @@
 /**
- * BLINK opt-in PR batching controller. Runs ONLY from trusted main.
+ * BLINK automatic verified-PR batching controller. Runs ONLY from trusted main.
  *
  * The GitHub API creates merge commits on an isolated Testlab-batch-* branch,
  * never executes untrusted PR code with a write token, and leaves conflicting
@@ -10,8 +10,14 @@
 
 const OWNER = 'Glimmar-code';
 const REPO = 'Blinkng';
-const QUEUE = 'batch-testlab';
+const QUEUE = 'batch-testlab'; // Legacy optional priority flag, not required.
 const MAX_BATCH = 10;
+const MAX_SCAN = 60;
+const ACTIVE_DAYS = 30;
+const BLOCKED_LABELS = new Set([
+  'do-not-merge', 'do-not-batch', 'hold', 'blocked', 'wip',
+  'needs-review', 'needs-staging', 'needs-device-verification',
+]);
 const promo = require('./testlab_auto_promotion.cjs');
 
 const WORKFLOW = Object.freeze({
@@ -33,12 +39,56 @@ const isBatch = p => p.base?.ref === 'main' &&
   /^Testlab-batch-[0-9]+$/.test(p.head?.ref || '') &&
   p.head?.repo?.full_name === OWNER + '/' + REPO;
 
-function isCandidate(pr) {
+function isCandidate(pr, now = Date.now()) {
+  const age = now - Date.parse(pr.updated_at || '');
+  const title = pr.title || '';
+  const body = pr.body || '';
+  const tags = labels(pr);
   return pr.state === 'open' && !pr.draft && pr.base?.ref === 'main' &&
     pr.head?.repo?.full_name === OWNER + '/' + REPO &&
     !/^Testlab-batch-/.test(pr.head?.ref || '') &&
-    labels(pr).has(QUEUE) &&
-    !/\bdo not auto-merge\b/i.test(pr.body || '');
+    Number.isFinite(age) && age >= 0 && age <= ACTIVE_DAYS * 86400000 &&
+    !/^\s*\[(?:draft|wip|superseded(?:\s+[^\]]+)?|hold|blocked|do not merge)\]/i.test(title) &&
+    !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge)\b/i.test(body) &&
+    !/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body) &&
+    ![...tags].some(name => BLOCKED_LABELS.has(name.toLowerCase()));
+}
+
+/** Source checks may be on an older main base. Verify THIS head's checks, then
+ * require full integration testing on an up-to-date Testlab batch before main.
+ * Do not mistake a successful job from another PR or old SHA for verification.
+ */
+function sourceChecksGreen(checks, pr, files) {
+  const latest = new Map();
+  for (const c of checks) {
+    if (c.app?.slug !== 'github-actions' || c.head_sha !== pr.head.sha ||
+        !(c.pull_requests || []).some(p => p.number === pr.number)) continue;
+    if (!latest.has(c.name) || c.id > latest.get(c.name).id) latest.set(c.name, c);
+  }
+  if (!latest.size) return 'No verifiable current-head CI checks';
+  for (const name of promo.requiredChecks(files)) {
+    const c = latest.get(name);
+    if (!c || c.status !== 'completed' || c.conclusion !== 'success') {
+      return 'Missing or unsuccessful source check: ' + name;
+    }
+  }
+  for (const c of latest.values()) {
+    if (c.status !== 'completed' ||
+        ['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'].includes(c.conclusion)) {
+      return 'Source CI pending or failed: ' + c.name;
+    }
+  }
+  return null;
+}
+
+function hasBlockingReview(reviews) {
+  const latest = new Map();
+  for (const review of reviews) {
+    if (review.state === 'PENDING' || !review.user?.login) continue;
+    const old = latest.get(review.user.login);
+    if (!old || review.id > old.id) latest.set(review.user.login, review);
+  }
+  return [...latest.values()].some(r => r.state === 'CHANGES_REQUESTED');
 }
 
 function relevantWorkflows(paths) {
@@ -62,17 +112,8 @@ async function allFiles(github, number) {
   return data.map(f => f.filename);
 }
 
-async function ensureQueueLabel(github) {
-  try {
-    await github.rest.issues.getLabel({...repoArgs, name: QUEUE});
-  } catch (error) {
-    if (error.status !== 404) throw error;
-    await github.rest.issues.createLabel({
-      ...repoArgs, name: QUEUE, color: '0366d6',
-      description: 'Owner opt-in: combine this PR with other compatible changes in an isolated Testlab batch'
-    });
-  }
-}
+// The former batch-testlab label remains supported but is no longer required.
+
 
 async function dispatch(github, pr, paths, core) {
   const sha = pr.head.sha;
@@ -186,97 +227,130 @@ async function processBatch(github, pr, core) {
   }
 }
 
+async function selectVerified(github, candidates, core) {
+  const ready = [];
+  for (const summary of candidates.slice(0, MAX_SCAN)) {
+    if (ready.length >= MAX_BATCH) break;
+    const pr = (await github.rest.pulls.get({
+      ...repoArgs, pull_number: summary.number
+    })).data;
+    if (!isCandidate(pr)) continue;
+    const files = await allFiles(github, pr.number);
+    if (!files.length || pr.changed_files > files.length) {
+      core.info('Skipping #' + pr.number + ': incomplete changed-file list');
+      continue;
+    }
+    // A write-enabled dispatcher must not execute altered workflow, action
+    // or CI helper code supplied by another PR.
+    if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p) ||
+        /^scripts\/(?:ci_change_scope\.py|check_[^/]+|test_[^/]+)$/.test(p))) {
+      core.info('Skipping #' + pr.number + ': CI policy or testing changes require separate review');
+      continue;
+    }
+    if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
+      core.info('Skipping #' + pr.number + ': hosted staging evidence missing');
+      continue;
+    }
+    if (promo.requiresDeviceVerification(files, labels(pr)) &&
+        !labels(pr).has('device-verified')) {
+      core.info('Skipping #' + pr.number + ': device evidence missing');
+      continue;
+    }
+    const checks = await github.paginate(github.rest.checks.listForRef, {
+      ...repoArgs, ref: pr.head.sha, per_page: 100, filter: 'latest'
+    });
+    const reason = sourceChecksGreen(checks, pr, files);
+    if (reason) { core.info('Skipping #' + pr.number + ': ' + reason); continue; }
+    const reviews = await github.paginate(github.rest.pulls.listReviews, {
+      ...repoArgs, pull_number: pr.number, per_page: 100
+    });
+    if (hasBlockingReview(reviews)) {
+      core.info('Skipping #' + pr.number + ': requested review changes unresolved');
+      continue;
+    }
+    ready.push({pr, files});
+    core.info('Eligible PR #' + pr.number + ': current-head CI green; will retest against main');
+  }
+  return ready;
+}
+
 async function makeBatch(github, candidates, context, core) {
+  // Select + check source PRs before creating the integration branch so
+  // empty/noncompliant PR collections cannot generate repeated empty branches.
+  const approved = await selectVerified(github, candidates, core);
+  if (!approved.length) {
+    core.info('No recent, green, ready-for-production PRs found; no changes made');
+    return;
+  }
   const main = (await github.rest.repos.getBranch({
     ...repoArgs, branch: 'main'})).data.commit.sha;
   const branch = 'Testlab-batch-' + context.runId;
-  // Create the isolated branch only when an opted-in source PR exists.
   await github.rest.git.createRef({
     ...repoArgs, ref: 'refs/heads/' + branch, sha: main
   });
   const added = [];
   const allChangedPaths = new Set();
-  try {
-    for (const pr of candidates) {
-      const files = await allFiles(github, pr.number);
-      if (!files.length || pr.changed_files > files.length) {
-        core.warning('Skipping #' + pr.number + ': incomplete changed-file list');
-        continue;
-      }
-      // workflow_dispatch runs code from the candidate ref. Refuse changes
-      // to CI/workflow controllers entirely so queued source PRs cannot edit
-      // their own privileged testing instructions before release review.
-      if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p))) {
-        core.warning('Skipping #' + pr.number + ': CI controller changes require a separate reviewed PR');
-        continue;
-      }
-      if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
-        core.info('Skipping #' + pr.number + ': staged backend/release evidence missing');
-        continue;
-      }
-      if (promo.requiresDeviceVerification(files, labels(pr)) &&
-          !labels(pr).has('device-verified')) {
-        core.info('Skipping #' + pr.number + ': independent device evidence missing');
-        continue;
-      }
-      try {
-        const result = await github.rest.repos.merge({
-          ...repoArgs, base: branch, head: pr.head.sha,
-          commit_message: 'Testlab integrate PR #' + pr.number + ': ' +
-            (pr.title || '').slice(0, 90)
-        });
-        if (result.status === 204) {
-          core.info('Skipping #' + pr.number + ': already present in baseline');
-          continue;
-        }
-        added.push(pr.number);
-        for (const path of files) allChangedPaths.add(path);
-        core.info('Safely combined PR #' + pr.number + ' without executing its code');
-      } catch (error) {
-        if (error.status === 409) {
-          core.warning('PR #' + pr.number + ': merge conflict, left open and untouched');
-          continue;
-        }
-        throw error;
-      }
+  for (const {pr, files} of approved) {
+    // Avoid a TOCTOU merge of newer untested source commits.
+    const latest = (await github.rest.pulls.get({
+      ...repoArgs, pull_number: pr.number
+    })).data;
+    if (!isCandidate(latest) || latest.head.sha !== pr.head.sha ||
+        latest.base.ref !== 'main') {
+      core.warning('Skipping #' + pr.number + ': PR changed after source verification');
+      continue;
     }
-    if (!added.length) {
-      await github.rest.git.deleteRef({...repoArgs, ref: 'heads/' + branch});
-      core.info('No compatible opted-in PRs; removed empty Testlab branch');
-      return;
+    try {
+      const result = await github.rest.repos.merge({
+        ...repoArgs, base: branch, head: pr.head.sha,
+        commit_message: 'Testlab integrate PR #' + pr.number + ': ' +
+          (pr.title || '').slice(0, 90)
+      });
+      if (result.status === 204) {
+        core.info('Skipping #' + pr.number + ': already present in main or prior batch');
+        continue;
+      }
+      added.push(pr.number);
+      for (const path of files) allChangedPaths.add(path);
+      core.info('Safely combined PR #' + pr.number + ' without executing its code');
+    } catch (error) {
+      if (error.status === 409) {
+        core.warning('PR #' + pr.number + ': merge conflict, left open and untouched');
+        continue;
+      }
+      throw error;
     }
-    const body = [
-      '## Automatic Testlab integration batch',
-      'Included source PRs: ' + added.map(n => '#' + n).join(', '),
-      'Built from main ' + main + '.',
-      '',
-      'Source PRs remain open until safe production integration.',
-      'This candidate must pass Android, Windows, backend, security and all applicable',
-      'feature / release smoke checks at its exact combined SHA.',
-      'Conflicts are never auto-resolved by choosing one side.',
-      'Risky changes also need independent staging / device evidence before release.',
-      'The default-branch promotion controller performs the final gate; no bypass.',
-    ].join('\n');
-    const response = await github.rest.pulls.create({
-      ...repoArgs, title: 'Testlab: verified PR batch (' +
-        added.map(n => '#' + n).join(', ') + ')',
-      head: branch, base: 'main', body, draft: false
-    });
-    const pr = response.data;
-    core.info('Opened Testlab batch PR #' + pr.number + ' for source PRs ' + added.join(', '));
-    await dispatch(github, pr, [...allChangedPaths], core);
-  } catch (error) {
-    // If a PR was opened, preserve its branch for diagnosis. Never
-    // discard a candidate with unmerged original work.
-    throw error;
   }
+  if (!added.length) {
+    await github.rest.git.deleteRef({...repoArgs, ref: 'heads/' + branch});
+    core.info('No compatible PRs; removed empty Testlab branch');
+    return;
+  }
+  const body = [
+    '## Automatically discovered, verified Testlab integration batch',
+    'Included source PRs: ' + added.map(n => '#' + n).join(', '),
+    'Built from main ' + main + '.',
+    '',
+    'Source PRs were current-head CI green; all combined checks must also pass.',
+    'Source PRs remain open until safe production integration.',
+    'Conflicts are never auto-resolved by choosing one side.',
+    'Risky changes require independent staging/device verification.',
+    'The trusted main-branch controller must reverify and promote; no bypass.',
+  ].join('\n');
+  const response = await github.rest.pulls.create({
+    ...repoArgs, title: 'Testlab: verified PR batch (' +
+      added.map(n => '#' + n).join(', ') + ')',
+    head: branch, base: 'main', body, draft: false
+  });
+  const pr = response.data;
+  core.info('Opened Testlab batch PR #' + pr.number + ' for ' + added.join(', '));
+  await dispatch(github, pr, [...allChangedPaths], core);
 }
 
 async function run({github, context, core}) {
-  await ensureQueueLabel(github);
   if (context.eventName === 'pull_request_target' &&
-      (context.payload.action !== 'labeled' ||
-       context.payload.label?.name !== QUEUE)) return;
+      !['opened', 'reopened', 'synchronize', 'ready_for_review', 'labeled'].includes(
+        context.payload.action)) return;
 
   const list = await github.paginate(github.rest.pulls.list, {
     ...repoArgs, state: 'open', base: 'main', per_page: 100
@@ -290,9 +364,11 @@ async function run({github, context, core}) {
     return;
   }
   const eligible = list.filter(isCandidate)
-    .sort((a, b) => a.number - b.number).slice(0, MAX_BATCH);
+    // Examine newest active work first; old abandoned PRs should not
+    // automatically become production releases.
+    .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
   if (!eligible.length) {
-    core.info('No opted-in, open, internal main-targeting PRs in queue');
+    core.info('No recent, ready, internal main-targeting PRs found');
     return;
   }
   await makeBatch(github, eligible, context, core);
@@ -301,5 +377,8 @@ async function run({github, context, core}) {
 module.exports = run;
 module.exports.isCandidate = isCandidate;
 module.exports.isBatch = isBatch;
+module.exports.sourceChecksGreen = sourceChecksGreen;
+module.exports.hasBlockingReview = hasBlockingReview;
+module.exports.selectVerified = selectVerified;
 module.exports.relevantWorkflows = relevantWorkflows;
 module.exports.bodyWithoutStaleMarkers = bodyWithoutStaleMarkers;
