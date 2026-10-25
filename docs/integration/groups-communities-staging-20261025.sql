@@ -238,6 +238,43 @@ end $$;
 revoke all on function public.blink_community_moderate(uuid,uuid,text) from public,anon;
 grant execute on function public.blink_community_moderate(uuid,uuid,text) to authenticated;
 
+-- A community's roster and join-request queue is visible only to an
+-- authorized owner/active moderator. All profile names are sourced from
+-- authenticated database rows, never from client-supplied member claims.
+create or replace function public.blink_community_members_page(
+  p_community_id uuid,p_limit integer default 50
+) returns table (
+  user_id uuid, username text, full_name text, avatar_url text,
+  role text,status text,joined_at timestamptz
+)
+language plpgsql stable security definer set search_path=''
+as $
+declare v_uid uuid:=auth.uid();v_owner uuid;v_can_moderate boolean;
+begin
+  if v_uid is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select c.owner_id into v_owner from public.blink_communities c
+    where c.id=p_community_id;
+  if v_owner is null then raise exception 'COMMUNITY_NOT_FOUND'; end if;
+  v_can_moderate := v_uid=v_owner or exists (
+    select 1 from public.blink_community_members cm
+    where cm.community_id=p_community_id and cm.user_id=v_uid
+      and cm.role='moderator' and cm.status='active'
+  );
+  if not v_can_moderate then raise exception 'COMMUNITY_ADMIN_REQUIRED'; end if;
+  return query
+    select cm.user_id,p.username,p.full_name,p.avatar_url,cm.role,cm.status,cm.joined_at
+    from public.blink_community_members cm
+    join public.profiles p on p.id=cm.user_id
+    where cm.community_id=p_community_id
+    order by case cm.status when 'pending' then 0 when 'invited' then 1
+      when 'active' then 2 else 3 end,cm.joined_at desc,cm.user_id
+    limit greatest(1,least(coalesce(p_limit,50),100));
+end $;
+revoke all on function public.blink_community_members_page(uuid,integer)
+  from public,anon;
+grant execute on function public.blink_community_members_page(uuid,integer)
+  to authenticated;
+
 -- Isolated server-backed group listing; never modify existing DM summary RPC
 -- until Android/Windows consumers support group titles and member counts.
 create or replace function public.blink_my_group_conversations(p_limit integer default 50)
