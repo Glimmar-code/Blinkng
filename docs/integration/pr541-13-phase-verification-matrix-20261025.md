@@ -44,3 +44,11 @@
 - Release gate: per `AGENTS.md`, require exact owner comment `BLINK APPROVE <current-PR-head-SHA>` on the production PR after verification. New commits invalidate that approval.
 
 **DO NOT merge, deploy hosted SQL, or publish a new APK while any release blocker remains.**
+
+
+## Further implementation in PR #541 (25 October 2026)
+- Inspected production RPC definitions read-only. `get_conversation_messages_page` and privileged `mark_conversation_read` were still missing active `left_at` checks; added signature-compatible STAGING-ONLY implementations to `departed-member-rpc-hardening-staging-20261025.sql`.
+- Added `direct-message-summaries-staging-20261025.sql` by adapting the actual deployed `get_conversation_summaries_page` function. Group threads are excluded from legacy DM results so they cannot be repeated as fake 1:1 chats; real group listing remains a separate active-membership RPC.
+- Expanded the disposable PGlite suite for active/departed conversation history, unread message visibility, receipts, direct-message marking, and group-summary separation. These are **committed candidates, not reported as passing runtime checks**. Real staging still required.
+- `Testlab` is significantly historically diverged from this main-based PR branch. Do not merge or reset it without safe conflict reconciliation and full cross-platform and production-compatible integration tests. Preserve current `main`, users, production Supabase, working payments and release artifacts.
+- Android and Windows group media, invitations with recipient consent, reliable per-member receipts, community cover uploads, exact high-resolution Auth asset and complete visual/performance acceptance remain **unimplemented or unverified**. No deployment, real-device verification, main merge or signed APK release has been claimed.
