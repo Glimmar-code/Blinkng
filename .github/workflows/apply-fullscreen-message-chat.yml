@@ -1,11 +1,6 @@
 name: Apply full-screen message chat navigation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-fullscreen-message-chat.yml'
-      - '.github/scripts/apply_fullscreen_message_chat.py'
   workflow_dispatch:
 
 permissions:

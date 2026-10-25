@@ -1,11 +1,7 @@
 name: Apply feed cache and network banner fix
 
 on:
-  push:
-    paths:
-      - '.github/scripts/apply_feed_cache_network_banner_fix.py'
-      - '.github/workflows/apply-feed-cache-network-banner-fix.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

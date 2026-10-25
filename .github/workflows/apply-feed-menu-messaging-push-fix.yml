@@ -1,11 +1,6 @@
 name: Apply feed menu messaging push fixes
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_feed_menu_messaging_push_fix.py'
-      - '.github/workflows/apply-feed-menu-messaging-push-fix.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,11 +1,6 @@
 name: Apply final audit integrations
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-final-audit-integrations.yml'
-      - '.github/scripts/final_audit_patch.py'
   workflow_dispatch:
 
 permissions:

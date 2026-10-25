@@ -1,11 +1,6 @@
 name: Apply feed game icon and author identity fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_feed_game_icon_author_identity_fix.py'
-      - '.github/workflows/apply-feed-game-icon-author-identity-fix.yml'
   workflow_dispatch:
 
 permissions:

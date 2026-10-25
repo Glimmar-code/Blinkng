@@ -1,10 +1,7 @@
 name: Apply inline reel feed previews v2
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-inline-reel-feed-previews-v2.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

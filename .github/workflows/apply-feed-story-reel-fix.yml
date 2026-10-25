@@ -1,11 +1,6 @@
 name: Apply feed story reel fixes
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_feed_story_reel_fix.py'
-      - '.github/workflows/apply-feed-story-reel-fix.yml'
   workflow_dispatch:
 
 permissions:
