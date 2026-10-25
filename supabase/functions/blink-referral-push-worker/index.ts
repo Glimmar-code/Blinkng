@@ -53,8 +53,12 @@ Deno.serve(async (request) => {
       });
       const responseBody = await response.json() as Record<string, unknown>;
       const skip = String(responseBody.skipped ?? "");
+      // Honor recipient opt-out permanently; transient missing tokens still retry.
       success = response.ok && (
-        Number(responseBody.delivered ?? 0) > 0 || skip === "already_sent"
+        Number(responseBody.delivered ?? 0) > 0 ||
+        skip === "already_sent" ||
+        skip === "recipient_preferences" ||
+        skip === "self_or_missing_recipient"
       );
       reason = success ? "" : String(responseBody.error ?? responseBody.skipped ?? response.status);
     } catch (e) {
@@ -64,6 +68,7 @@ Deno.serve(async (request) => {
       p_notification_id: item.notification_id,
       p_succeeded: success,
       p_error: reason.slice(0, 400),
+      p_attempt_count: item.attempt_count,
     });
     return { success, persisted: !finishError };
   }));
