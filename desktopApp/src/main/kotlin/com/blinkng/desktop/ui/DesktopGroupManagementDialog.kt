@@ -104,7 +104,9 @@ fun DesktopGroupManagementDialog(
                             scope.launch {
                                 busy = true
                                 try {
-                                    state.client.inviteGroupMember(conversation.id, person.id)
+                                    check(state.client.inviteGroupMember(conversation.id, person.id)) {
+                                        "Server did not confirm the invitation."
+                                    }
                                     info = "Invited @" + person.username
                                     inviting = false
                                     refresh()
@@ -130,9 +132,9 @@ fun DesktopGroupManagementDialog(
                                                 scope.launch {
                                                     busy = true
                                                     try {
-                                                        state.client.moderateGroupMember(
+                                                        check(state.client.moderateGroupMember(
                                                             conversation.id, member.id, action
-                                                        )
+                                                        )) { "Server did not confirm member update." }
                                                         info = "Member updated."
                                                         refresh()
                                                     } catch (cause: Exception) { error = cause.message }
@@ -156,7 +158,9 @@ fun DesktopGroupManagementDialog(
                     scope.launch {
                         busy = true
                         try {
-                            state.client.leaveGroup(conversation.id)
+                            check(state.client.leaveGroup(conversation.id)) {
+                                "Server did not confirm leaving the group."
+                            }
                             onLeft()
                         } catch (cause: Exception) { error = cause.message }
                         finally { busy = false }
