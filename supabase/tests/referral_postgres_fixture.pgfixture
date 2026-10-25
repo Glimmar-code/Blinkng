@@ -4,6 +4,7 @@ create role authenticated nologin;
 -- The real Supabase project includes this privileged role. Keep the fixture faithful.
 create role service_role nologin;
 create schema auth;
+create schema private;
 create or replace function auth.uid() returns uuid
 language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
@@ -30,6 +31,18 @@ create table public.follows (
   following_id uuid not null references auth.users(id),
   created_at timestamptz not null default now(),
   primary key(follower_id, following_id)
+);
+create table public.user_balances(
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  spendable_coin_balance numeric not null default 0,
+  updated_at timestamptz not null default now()
+);
+create table public.blink_coin_transactions(
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id),
+  kind text not null, item_name text not null,amount bigint not null,
+  balance_after bigint not null,metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
 );
 create table public.user_settings(
   user_id uuid primary key references auth.users(id) on delete cascade,

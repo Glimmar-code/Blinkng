@@ -272,3 +272,73 @@ begin
 end $$;
 reset role;
 select 'Relevance-first search exact match regression passed' as result;
+
+-- Testable rewards policy is deliberately disabled until the owner approves Coins.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+declare rewards_enabled boolean;
+begin
+  select reward_enabled into rewards_enabled from public.blink_referral_coin_status();
+  if rewards_enabled then raise exception 'Referral Coin minting must be off by default'; end if;
+  if exists(select 1 from public.blink_referral_coin_milestones)
+  then raise exception 'Unexpected Coin mint while disabled'; end if;
+end $$;
+
+-- Enable milestone 5 ONLY in this disposable database, verify idempotent accounting.
+update private.blink_referral_reward_policy set enabled=true where milestone=5;
+update public.blink_referral_achievements set confirmed_referrals=5
+where user_id='00000000-0000-0000-0000-000000000001';
+do $$
+declare earned bigint; balance numeric; count_events integer;
+begin
+  select earned_coins into earned from public.blink_referral_coin_status();
+  select spendable_coin_balance into balance from public.user_balances
+  where user_id='00000000-0000-0000-0000-000000000001';
+  select count(*) into count_events from public.blink_coin_transactions
+  where user_id='00000000-0000-0000-0000-000000000001' and kind='referral_milestone';
+  if earned<>25 or balance<>25 or count_events<>1 then
+    raise exception 'Milestone reward mismatch %, %, %',earned,balance,count_events;
+  end if;
+end $$;
+update public.blink_referral_achievements set confirmed_referrals=5
+where user_id='00000000-0000-0000-0000-000000000001';
+do $$
+begin
+  if (select count(*) from public.blink_referral_coin_milestones)<>1
+  then raise exception 'Duplicate Coin reward'; end if;
+end $$;
+-- Restore no-mint configuration in the disposable fixture only.
+update private.blink_referral_reward_policy set enabled=false;
+
+-- Source attribution records only valid unique daily public profile opens.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+begin
+  if not public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'First Search open should count'; end if;
+  if public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'Duplicate same-day Search open counted'; end if;
+  if not public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','recommendations')
+  then raise exception 'Recommended profile open should count'; end if;
+  if public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000006','search')
+  then raise exception 'Self profile counted as discovery'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare search_count bigint; suggested_count bigint;
+begin
+  select search_profile_opens,recommendation_profile_opens
+  into search_count,suggested_count from public.blink_referral_source_analytics();
+  if search_count<>1 or suggested_count<>1 then
+    raise exception 'Source analytics mismatch %, %', search_count,suggested_count;
+  end if;
+end $$;
+reset role;
+select 'Milestone Coin rewards and Search/recommendation source attribution passed' as result;

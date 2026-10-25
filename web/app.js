@@ -338,13 +338,32 @@
     }
   }
 
-  async function signup(fullName,username,email,password,referrerId=''){
+  async function signup(fullName,username,email,password,referrerId='',birthDate=''){
+    const parsed=new Date(birthDate+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+       !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10)!==birthDate ||
+       parsed > new Date() || parsed < new Date(new Date().getUTCFullYear()-120,0,1)){
+      throw new Error('Enter a valid birthday before selecting your referrer.');
+    }
     if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/\d/.test(password)||!/[\W_]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
     const cleanUser=username.trim().toLowerCase().replace(/^@/,''); if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(cleanUser))throw new Error('Use 2–30 lowercase letters, numbers, dots, dashes or underscores.');
     const metadata={username:cleanUser,full_name:fullName.trim(),name:fullName.trim()};
     if(/^[0-9a-fA-F-]{36}$/.test(String(referrerId)))metadata.blink_referrer_id=referrerId;
     const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:metadata}});
-    if(data?.access_token){saveSession(data);await loadMyProfile();void wakeReferralPush();} return data;
+    if(data?.access_token){
+      saveSession(data);
+      let privateBirthdaySaved=false;
+      try {
+        await api('/rest/v1/profile_private_details?on_conflict=user_id',{
+          method:'POST', prefer:'resolution=merge-duplicates,return=minimal',
+          body:{user_id:uid(),birth_date:birthDate}
+        });
+        privateBirthdaySaved=true;
+      }catch{/* Account creation succeeds; private birthday can be updated in profile setup. */}
+      await loadMyProfile();void wakeReferralPush();
+      data.private_birthday_saved=privateBirthdaySaved;
+    }
+    return data;
   }
   function googleLogin(){
     state.authError=null;
@@ -535,6 +554,9 @@
         '<input class="field" name="username" placeholder="Username" required>' +
         '<input class="field" type="email" name="email" placeholder="Email" required>' +
         '<input class="field" type="password" name="password" placeholder="Strong password" required>' +
+        '<label class="muted small" for="signup-birthday">Birthday</label>' +
+        '<input class="field" id="signup-birthday" name="birthday" type="date" required autocomplete="bday">' +
+        '<p class="muted small">Your birthday is private and is not shared with a referrer.</p>' +
         '<label class="muted small" for="referrer-search">Referred by (optional)</label>' +
         '<input class="field" id="referrer-search" name="referrer" placeholder="Search name or @username" autocomplete="off">' +
         '<div id="referrer-results" class="form-stack" aria-live="polite"></div>' +
@@ -597,10 +619,12 @@
         const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');
         msg.textContent='Creating account…';
         try{
-          const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'),selectedReferrerId);
+          const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'),selectedReferrerId,String(f.get('birthday')||''));
           storageRemove(INVITE_REFERRER_KEY);
-          if(data?.access_token){toast('Account created');navigate('/feed');}
-          else msg.textContent='Account created. Check your email if Blink requires verification.';
+          if(data?.access_token){
+            toast(data.private_birthday_saved?'Account created':'Account created. Confirm your birthday in Profile.');
+            navigate('/feed');
+          } else msg.textContent='Account created. Check your email, then confirm your birthday during profile setup.';
         }catch(err){msg.textContent=err.message||'Sign up failed.';}
       };
     };

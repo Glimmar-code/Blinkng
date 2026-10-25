@@ -46,6 +46,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
     var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
+    var birthday by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     var authActionPending by remember { mutableStateOf(false) }
@@ -211,6 +212,14 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     )
                 }
                 if (mode == AuthMode.SIGN_UP) {
+                    OutlinedTextField(
+                        value = birthday,
+                        onValueChange = { birthday = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
+                        label = { Text("Birthday (YYYY-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                    )
                     DesktopReferrerPicker(
                         state = state,
                         selected = selectedReferrer,
@@ -251,7 +260,13 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         runAuthOnce {
                             when (mode) {
                                 AuthMode.SIGN_IN -> state.signIn(email, password)
-                                AuthMode.SIGN_UP -> state.signUpWithReferral(email, password, fullName, selectedReferrer?.id)
+                                AuthMode.SIGN_UP -> {
+                                    if (!com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthday))
+                                        notice = "Enter a valid birthday (YYYY-MM-DD)."
+                                    else state.signUpWithReferral(
+                                        email, password, fullName, selectedReferrer?.id, birthday
+                                    )
+                                }
                                 AuthMode.RESET -> {
                                     state.sendPasswordReset(email)
                                     notice = "Password reset email sent. Check your inbox."

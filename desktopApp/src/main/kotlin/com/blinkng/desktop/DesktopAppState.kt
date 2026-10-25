@@ -56,8 +56,18 @@ class DesktopAppState(
         loadAuthenticatedState()
     }
 
-    suspend fun signUpWithReferral(email: String, password: String, fullName: String, referrerId: String?) = authAction {
+    suspend fun signUpWithReferral(
+        email: String, password: String, fullName: String,
+        referrerId: String?, birthDate: String,
+    ) = authAction {
+        require(com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthDate)) {
+            "Enter a valid birthday (YYYY-MM-DD)."
+        }
         session = client.signUpWithReferral(email, password, fullName, referrerId)
+        if (session != null) {
+            runCatching { client.savePrivateBirthDate(birthDate) }
+                .onFailure { errorMessage = "Birthday wasn't saved. Update your private birthday in profile settings." }
+        }
         pendingNewMemberDiscovery = session != null
         loadAuthenticatedState()
     }

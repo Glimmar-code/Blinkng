@@ -49,6 +49,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_fixture.pgfixture
       - name: Apply new referral migration to disposable Postgres only
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261024203000_blink_refer_and_grow.sql
+      - name: Apply optional milestone and source-attribution extension
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025114000_referral_coins_and_discovery_attribution.sql
       - name: Verify one-referrer credit, RLS, privacy, duplicate prevention and recommendations
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_assertions.pgfixture
       - name: Confirm live Supabase is unchanged
