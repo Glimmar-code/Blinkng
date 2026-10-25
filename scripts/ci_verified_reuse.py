@@ -133,7 +133,8 @@ def run_git(*args: str) -> str:
     ).strip()
 
 
-def event_source(event: str, payload: dict[str, Any], head: str) -> tuple[str, int | None]:
+def event_source(event: str, payload: dict[str, Any], head: str,
+                 git=run_git) -> tuple[str, int | None]:
     """The candidate MUST be a direct tested predecessor, not arbitrary SHA."""
     if event == "pull_request":
         pr = payload["pull_request"]
@@ -145,12 +146,12 @@ def event_source(event: str, payload: dict[str, Any], head: str) -> tuple[str, i
             raise ValueError("invalid PR head SHA")
         # The PR checkout might be a synthetic merge commit. First parent of
         # the actual PR *source* commit is its previous revision.
-        parent = run_git("rev-parse", prhead + "^1")
+        parent = git("rev-parse", prhead + "^1")
         return parent, int(pr["number"])
     if event == "push":
         if payload["ref"] != "refs/heads/main":
             raise ValueError("not a main push")
-        parents = run_git("rev-list", "--parents", "-n", "1", head).split()
+        parents = git("rev-list", "--parents", "-n", "1", head).split()
         if len(parents) != 3:
             raise ValueError("only 2-parent verified PR merges support reuse")
         return parents[2], None
@@ -161,20 +162,21 @@ def validate_evidence(checks: list[dict], job: dict, tested_sha: str,
                       scope: str, pr_number: int | None) -> bool:
     if not SHA_RE.fullmatch(tested_sha):
         return False
-    valid = [
+    linked = [
         c for c in checks
         if c.get("name") == JOB_NAME[scope]
         and c.get("app", {}).get("slug") == "github-actions"
         and c.get("head_sha") == tested_sha
-        and c.get("status") == "completed"
-        and c.get("conclusion") == "success"
         and (pr_number is None and bool(c.get("pull_requests"))
              or pr_number is not None and any(
                 p.get("number") == pr_number for p in c.get("pull_requests", [])))
     ]
-    if not valid:
+    if not linked:
         return False
-    newest = max(valid, key=lambda c: int(c.get("id", 0)))
+    # A failed newer retry must INVALIDATE an earlier passing check.
+    newest = max(linked, key=lambda c: int(c.get("id", 0)))
+    if newest.get("status") != "completed" or newest.get("conclusion") != "success":
+        return False
     if int(job.get("id", -1)) != int(newest["id"]):
         return False
     if (job.get("head_sha") != tested_sha or
@@ -208,7 +210,7 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
     try:
         # event_source deliberately uses local Git ancestry; never accept
         # user-supplied SHA/branch as a previously-tested revision.
-        tested_sha, pr_number = event_source(event, payload, head)
+        tested_sha, pr_number = event_source(event, payload, head, git)
         if not SHA_RE.fullmatch(tested_sha) or tested_sha == head:
             return False, "Invalid predecessor"
         changed = git("diff", "--name-only", "--no-renames", tested_sha, head).splitlines()
@@ -216,15 +218,23 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
         if affected:
             return False, "Changed build/test inputs: " + ", ".join(affected[:5])
         checks = fetch("/commits/" + tested_sha + "/check-runs?per_page=100", token)
+        results = checks.get("check_runs", [])
+        if int(checks.get("total_count", len(results))) > len(results):
+            return False, "Incomplete prior check-run history; run full suite"
         candidates = [
-            c for c in checks.get("check_runs", [])
-            if c.get("name") == JOB_NAME[scope] and
-            c.get("head_sha") == tested_sha and
-            c.get("conclusion") == "success"
+            c for c in results
+            if c.get("name") == JOB_NAME[scope]
+            and c.get("head_sha") == tested_sha
+            and c.get("app", {}).get("slug") == "github-actions"
+            and (pr_number is None and bool(c.get("pull_requests"))
+                 or pr_number is not None and any(
+                    p.get("number") == pr_number for p in c.get("pull_requests", [])))
         ]
         if not candidates:
-            return False, "No successful prior required check on predecessor"
+            return False, "No prior linked required check on predecessor"
         newest = max(candidates, key=lambda c: int(c.get("id", 0)))
+        if newest.get("status") != "completed" or newest.get("conclusion") != "success":
+            return False, "Previous required check is pending/failed"
         prior_job = fetch("/actions/jobs/" + str(newest["id"]), token)
         if not validate_evidence(checks.get("check_runs", []), prior_job,
                                  tested_sha, scope, pr_number):
