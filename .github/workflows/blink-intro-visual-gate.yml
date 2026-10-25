@@ -17,7 +17,7 @@ on:
       - '.github/workflows/blink-intro-visual-gate.yml'
 
 concurrency:
-  group: blink-intro-visual-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
