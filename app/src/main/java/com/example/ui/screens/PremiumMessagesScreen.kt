@@ -242,6 +242,7 @@ fun PremiumMessagesScreen(
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit = { _, _, _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
+    onForwardPicture: (String, ChatMessage) -> Unit = { _, _ -> },
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
     onLoadOlder: (String) -> Unit = {},
@@ -379,6 +380,7 @@ fun PremiumMessagesScreen(
                         onSendAttachment = onSendAttachment,
                         onRetryMessage = onRetryMessage,
                         onCancelAttachment = onCancelAttachment,
+                        onForwardPicture = onForwardPicture,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
                         onLoadOlder = onLoadOlder,
@@ -497,6 +499,7 @@ private fun PremiumMessagesMasterDetail(
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     onCancelAttachment: ((String, ChatMessage) -> Unit)?,
+    onForwardPicture: (String, ChatMessage) -> Unit,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
     onLoadOlder: (String) -> Unit,
@@ -507,6 +510,7 @@ private fun PremiumMessagesMasterDetail(
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
     isConnected: Boolean
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
 
@@ -550,11 +554,18 @@ private fun PremiumMessagesMasterDetail(
                     onSendMessage(displayedConversation.partnerUsername, content, replyTo)
                 },
                 onForward = { target, message ->
-                    val forwarded = message.text.takeIf { it.isNotBlank() }
-                        ?: message.attachedVideoUrl
-                        ?: message.attachedImageUrl
-                        ?: "Forwarded message"
-                    onSendMessage(target, forwarded, null)
+                    when {
+                        !message.attachedImageUrl.isNullOrBlank() ->
+                            onForwardPicture(target, message)
+                        message.isVoiceNote ||
+                            !message.attachedVideoUrl.isNullOrBlank() ||
+                            !message.attachedDocumentUrl.isNullOrBlank() ->
+                            Toast.makeText(
+                                context, "This media type cannot be forwarded yet.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        message.text.isNotBlank() -> onSendMessage(target, message.text, null)
+                    }
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
