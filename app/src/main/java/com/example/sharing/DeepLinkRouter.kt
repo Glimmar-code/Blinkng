@@ -22,6 +22,16 @@ object DeepLinkRouter {
             Uri.parse("https://glimmar-code.github.io/Blinkng")
         ).distinctBy { "${it.host.orEmpty().lowercase()}${it.path.orEmpty().trimEnd('/')}" }
 
+    /** Accept invite links only on the real BLINK origins; never trust arbitrary hosts. */
+    fun invitedBy(uri: Uri?): String? {
+        if (uri == null || !uri.scheme.equals("https", ignoreCase = true)) return null
+        if (uri.host?.lowercase() !in setOf("blink.com.ng", "www.blink.com.ng")) return null
+        val segments = uri.pathSegments.filter(String::isNotBlank)
+        if (segments.size != 2 || !segments[0].equals("invite", ignoreCase = true)) return null
+        val username = segments[1].lowercase().removePrefix("@")
+        return username.takeIf { it.matches(Regex("[a-z0-9][a-z0-9._-]{1,29}")) }
+    }
+
     fun parse(uri: Uri?): AppDeepLink? {
         if (uri == null) return null
 
