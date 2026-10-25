@@ -930,6 +930,25 @@ class DesktopSupabaseClient(
         communityRpc("blink_community_leave",
             JSONObject().put("p_community_id", id)).equals("true", ignoreCase = true)
 
+    suspend fun communityMemberRoster(id: String): List<DesktopProfileMembership> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_community_members_page",
+                JSONObject().put("p_community_id", id).put("p_limit", 100))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopProfileMembership(
+                        id = row.optString("user_id"),
+                        username = row.optString("username"),
+                        displayName = row.optString("full_name")
+                            .ifBlank { row.optString("username") },
+                        role = row.optString("role"),
+                        status = row.optString("status")
+                    )
+                }
+            }
+        }
+
     suspend fun moderateCommunity(id: String, userId: String, action: String): Boolean {
         require(action in setOf("approve","ban","remove","promote","demote"))
         return communityRpc("blink_community_moderate",
