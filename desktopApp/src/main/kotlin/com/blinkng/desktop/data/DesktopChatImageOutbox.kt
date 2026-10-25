@@ -48,6 +48,8 @@ object DesktopChatImageOutbox {
                 "png" -> "png"
                 "gif" -> "gif"
                 "webp" -> "webp"
+                "heic" -> "heic"
+                "heif" -> "heif"
                 else -> throw IllegalArgumentException("Unsupported picture format.")
             }
         }
@@ -55,6 +57,8 @@ object DesktopChatImageOutbox {
             "jpg" -> "image/jpeg"
             "png" -> "image/png"
             "gif" -> "image/gif"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
             else -> "image/webp"
         }
         BlinkChatAttachmentKind.IMAGE.verify(mime, original.length())
