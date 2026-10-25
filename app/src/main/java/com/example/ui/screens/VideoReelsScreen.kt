@@ -518,7 +518,11 @@ private fun ReelsContent(
 
     // The preview and fullscreen are one continuously mounted pager/player, not two routes.
     // A deep-linked reel starts expanded, while a normal Reels tap opens the reference layout.
-    var expanded by rememberSaveable(resumeUserKey) { mutableStateOf(!initialReelId.isNullOrBlank()) }
+    // Enter from the bottom Reels tab in preview mode every time; only deep links
+    // intentionally start fullscreen. Do not restore fullscreen across a later tab visit.
+    var expanded by remember(resumeUserKey, initialReelId) {
+        mutableStateOf(!initialReelId.isNullOrBlank())
+    }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
     val animationScope = rememberCoroutineScope()
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
