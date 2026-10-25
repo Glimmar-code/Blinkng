@@ -32,7 +32,8 @@ export async function stagedMarketCommunityContractTests() {
       grant select, insert, update, delete on public.feed_posts to authenticated, service_role;
       create table public.conversations (
         id uuid primary key, title text, description text, avatar_url text,
-        is_group boolean not null default false, updated_at timestamptz not null default now()
+        is_group boolean not null default false, created_by uuid,
+        updated_at timestamptz not null default now()
       );
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
@@ -177,7 +178,7 @@ export async function stagedMarketCommunityContractTests() {
       create table public.messages (
         id uuid primary key default gen_random_uuid(),
         conversation_id uuid references public.conversations(id),
-        sender_id uuid, content text,
+        sender_id uuid, content text, message_type text default 'text',
         created_at timestamptz default now()
       );
       grant select,insert,update on public.conversation_participants to authenticated;
@@ -265,7 +266,29 @@ export async function stagedMarketCommunityContractTests() {
       insert into public.messages(conversation_id,sender_id,content)
       values ('${group}','${other}','Unauthorized after leaving')`),
       'row-level security');
+    await rejects(() => db.exec(`
+      select public.send_group_message('${group}','Unauthorized after leaving')`),
+      'NOT_AN_ACTIVE_GROUP_MEMBER');
     await db.exec('reset role');
+    // Two active group members, but only the administrator may change title.
+    const managed = '88888888-8888-4888-8888-888888888888';
+    await db.exec(`
+      insert into public.conversations(id,title,is_group,created_by)
+      values ('${managed}','Member Club',true,'${owner}');
+      insert into public.conversation_participants(conversation_id,user_id,is_admin)
+      values ('${managed}','${owner}',true),
+             ('${managed}','${other}',false);
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      update public.conversations set title='Hijacked Club' where id='${managed}'`),
+      'BLINK_GROUP_ADMIN_REQUIRED');
+    await rejects(() => db.exec(`
+      update public.conversations set is_group=false where id='${managed}'`),
+      'BLINK_GROUP_IDENTITY_REQUIRES_SERVER');
+    await db.exec('reset role');
+    console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     console.log('PASS independent offline staged Marketplace + Community contracts');
   } finally {
