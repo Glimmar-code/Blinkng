@@ -30,6 +30,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
     var growth by remember { mutableStateOf<BlinkReferralGrowthStats?>(null) }
     var coins by remember { mutableStateOf<BlinkReferralCoinStatus?>(null) }
     var sources by remember { mutableStateOf<BlinkReferralSourceStats?>(null) }
+    var impressions by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralImpressionStats?>(null) }
     var linkStats by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralLinkStats?>(null) }
     var leaders by remember { mutableStateOf<List<BlinkReferralLeaderboardEntry>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -40,6 +41,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
         growth = runCatching { BlinkReferralClient.growthStats() }.getOrNull()
         coins = runCatching { BlinkReferralClient.coinRewardStatus() }.getOrNull()
         sources = runCatching { BlinkReferralClient.sourceStats() }.getOrNull()
+        impressions = runCatching { BlinkReferralClient.impressionStats() }.getOrNull()
         linkStats = runCatching { BlinkReferralClient.linkStats() }.getOrNull()
         leaders = runCatching { BlinkReferralClient.leaderboard() }.getOrDefault(emptyList())
     }
@@ -64,7 +66,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                     Text("Real profile views this week: ${it.profileViewsThisWeek}")
                     Text("Followers gained this week: ${it.followersGainedThisWeek}")
                     Text("Referral link share actions: ${it.shareActions}")
-                    Text("Search and recommendation view sources are not yet tracked separately.",
+                    Text("Discovery opens and visible-card impressions are counted separately.",
                         style = MaterialTheme.typography.labelSmall)
                 }
                 sources?.let {
@@ -76,6 +78,12 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                     Text("Unique invite-browser opens (30 days, estimated): ${it.estimatedUniqueOpens30Days}")
                     Text("Confirmed referral signups (30 days): ${it.confirmedSignups30Days}")
                     Text("Link opens are estimates and cannot earn Coins.", style = MaterialTheme.typography.labelSmall)
+                }
+                impressions?.let {
+                    Text("Estimated viewed Search cards (7 days): ${it.searchImpressions7d}")
+                    Text("Estimated viewed recommendation cards (7 days): ${it.recommendationImpressions7d}")
+                    Text("Only sustained on-screen cards count; repeated same-day views are deduplicated.",
+                        style = MaterialTheme.typography.labelSmall)
                 }
                 coins?.let {
                     Text("Referral milestone Coins earned: ${it.earnedCoins}")
