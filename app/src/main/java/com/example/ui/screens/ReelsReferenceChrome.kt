@@ -56,6 +56,7 @@ internal fun ReelsReferenceChrome(
     userAvatar: String,
     currentUsername: String,
     isDark: Boolean,
+    hasUnreadNotifications: Boolean,
     selectedTab: String,
     onSelectTab: (String) -> Unit,
     onAddStory: () -> Unit,
@@ -102,8 +103,14 @@ internal fun ReelsReferenceChrome(
             IconButton(onClick = onGame, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Default.SportsEsports, contentDescription = "Games", tint = foreground)
             }
-            IconButton(onClick = onNotifications, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = foreground)
+            Box(contentAlignment = Alignment.TopEnd) {
+                IconButton(onClick = onNotifications, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = foreground)
+                }
+                if (hasUnreadNotifications) {
+                    Box(Modifier.padding(top = 3.dp, end = 4.dp).size(9.dp)
+                        .clip(CircleShape).background(Color(0xFFFF315C)))
+                }
             }
             IconButton(onClick = onMenu, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Default.Menu, contentDescription = "Menu", tint = foreground)
