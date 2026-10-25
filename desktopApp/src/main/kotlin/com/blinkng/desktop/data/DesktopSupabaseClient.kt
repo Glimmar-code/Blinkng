@@ -707,6 +707,26 @@ class DesktopSupabaseClient(
         }.getOrDefault(false)
     }
 
+    /** Full-history paginated photo gallery, respecting the messages conversation RLS. */
+    suspend fun fetchChatImagePage(conversationId: String, offset: Int = 0):
+        List<DesktopMessage> = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(conversationId).toString()
+        require(offset in 0..100000) { "Invalid gallery offset." }
+        val rows = getArray(
+            "/rest/v1/messages?select=id,conversation_id,sender_id,content,media_url," +
+                "message_type,is_read,delivered_at,read_at,created_at&conversation_id=eq.$id" +
+                "&message_type=eq.image&deleted_for_everyone=eq.false" +
+                "&order=created_at.desc,id.desc&limit=36&offset=$offset"
+        )
+        (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { row ->
+                val ref = row.optNullableString("media_url")
+                val url = ref?.let { signedChatImageUrl(it, id) }
+                if (url == null) null else parseMessage(row).copy(mediaUrl = url)
+            }
+        }
+    }
+
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
         val rows = getArray(
             "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
