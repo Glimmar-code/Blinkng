@@ -860,6 +860,33 @@ class DesktopSupabaseClient(
         )
     }
 
+    /** Lightweight privacy-filtered, paginated username search for inline mentions. */
+    suspend fun searchMentionProfiles(
+        query: String,
+        limit: Int = 60,
+        afterUsername: String? = null,
+        afterId: String? = null
+    ): List<DesktopProfile> = withContext(Dispatchers.IO) {
+        val clean = query.trim().removePrefix("@")
+        if (clean.isBlank()) return@withContext emptyList()
+        val response = postObject(
+            "/rest/v1/rpc/search_profiles_page",
+            JSONObject()
+                .put("p_query", clean)
+                .put("p_limit", limit.coerceIn(1, 100))
+                .put("p_after_username", afterUsername ?: JSONObject.NULL)
+                .put("p_after_id", afterId ?: JSONObject.NULL)
+        )
+        val rows = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let(::parseProfile)
+        }
+    }
+
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
         recordTagSearch(clean)
