@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.blinkng.shared.BlinkChatUploadProgress
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
 import okhttp3.RequestBody.Companion.asRequestBody
