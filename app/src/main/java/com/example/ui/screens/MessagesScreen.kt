@@ -57,6 +57,18 @@ fun MessagesScreen(
                 BlinkChatPhotoAlbum.single()
             )
         },
+        onSendViewOncePicture = onSendViewOncePicture,
+        onSendPhotoAlbum = { partner, uris, quality ->
+            val photos = uris.take(10)
+            val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
+            photos.forEachIndexed { index, uri ->
+                onSendAttachment(
+                    partner, uri, BlinkChatAttachmentKind.IMAGE, 0L, "", quality,
+                    if (albumId == null) BlinkChatPhotoAlbum.single()
+                    else BlinkChatPhotoAlbum.of(albumId, index, photos.size)
+                )
+            }
+        },
         onRetryMessage = onRetryMessage,
         hasMoreMessages = hasMoreMessages,
         isLoadingOlder = isLoadingOlder,
@@ -116,6 +128,20 @@ fun ChatConversationView(
                 uri, attachment, 0L, "", BlinkChatImageQuality.STANDARD,
                 BlinkChatPhotoAlbum.single()
             )
+        },
+        onSendViewOncePicture = { _, uri, caption, quality ->
+            onSendViewOncePicture(uri, caption, quality)
+        },
+        onSendPhotoAlbum = { _, uris, quality ->
+            val photos = uris.take(10)
+            val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
+            photos.forEachIndexed { index, uri ->
+                onSendAttachment(
+                    uri, BlinkChatAttachmentKind.IMAGE, 0L, "", quality,
+                    if (albumId == null) BlinkChatPhotoAlbum.single()
+                    else BlinkChatPhotoAlbum.of(albumId, index, photos.size)
+                )
+            }
         },
         onRetryMessage = onRetryMessage?.let { retry -> { _, message -> retry(message) } },
         hasMoreMessages = { hasMoreMessages },
