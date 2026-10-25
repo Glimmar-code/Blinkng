@@ -148,8 +148,7 @@ module.exports = async function preserveUnmergedPr({ github, context, core }) {
       '`BLINK SUPERSEDED BY #<merged-PR-number> HEAD ' + headSha + '`\n\n' +
       'The guard compares every changed file against the merged commit. ' +
       'For work already on the target branch, use owner comment `BLINK PRESERVED ON BASE #' + pr.number + ' HEAD ' + headSha + '`. ' +
-      'To intentionally drop unfinished work, use `blink-intentional-abandon` ' +
-      'plus owner comment `BLINK ABANDON #' + pr.number + ' HEAD ' + headSha + '`. ' +
+      'To intentionally drop unfinished work, use owner comment `BLINK ABANDON #' + pr.number + ' HEAD ' + headSha + '`. ' +
       'See `.github/PR_PRESERVATION_POLICY.md`.'
   });
 };
