@@ -1284,7 +1284,7 @@ private fun PremiumChatDetail(
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     // Confirm a selected image before sending; no backend row exists until Send.
     var selectedImageUris by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
-    var selectedImageCaption by remember(conversation.id) { mutableStateOf("") }
+    var selectedImageCaptions by remember(conversation.id) { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var selectedImageIndex by remember(conversation.id) { mutableIntStateOf(0) }
     var imageEditBusy by remember(conversation.id) { mutableStateOf(false) }
     val photoEditScope = rememberCoroutineScope()
@@ -1393,7 +1393,7 @@ private fun PremiumChatDetail(
         }
         selectedImageUris = uris.take(10)
         selectedImageIndex = 0
-        selectedImageCaption = ""
+        selectedImageCaptions = emptyMap()
     }
     val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val file = pendingCameraFile
@@ -1401,7 +1401,7 @@ private fun PremiumChatDetail(
         if (saved && file != null && file.length() > 0) {
             selectedImageUris = listOf(Uri.fromFile(file))
             selectedImageIndex = 0
-            selectedImageCaption = ""
+            selectedImageCaptions = emptyMap()
         } else file?.delete()
     }
     fun openChatCamera() {
@@ -1902,9 +1902,11 @@ private fun PremiumChatDetail(
                 if (imageEditBusy) Text("Preparing picture…", color = palette.textSecondary)
                 Spacer(Modifier.height(12.dp))
                 TextField(
-                    value = selectedImageCaption,
-                    onValueChange = { selectedImageCaption = it.take(1024) },
-                    label = { Text("Caption (optional, first picture)") },
+                    value = selectedImageCaptions[selectedImageIndex].orEmpty(),
+                    onValueChange = { value ->
+                        selectedImageCaptions = selectedImageCaptions + (selectedImageIndex to value.take(1024))
+                    },
+                    label = { Text("Caption (optional, picture ${selectedImageIndex + 1})") },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 3
                 )
@@ -1930,13 +1932,13 @@ private fun PremiumChatDetail(
                         enabled = !imageEditBusy,
                         onClick = {
                         val photos = selectedImageUris.toList()
-                        val caption = selectedImageCaption
+                        val captions = selectedImageCaptions
                         val quality = selectedImageQuality
                         selectedImageUris = emptyList()
                         photos.forEachIndexed { index, uri ->
                             onSendAttachment(
                                 uri, BlinkChatAttachmentKind.IMAGE, 0L,
-                                if (index == 0) caption else "", quality
+                                captions[index].orEmpty(), quality
                             )
                         }
                     }) { Text("Send") }
