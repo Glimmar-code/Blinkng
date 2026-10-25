@@ -7,6 +7,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.data.local.rememberPersistentTextState
 import com.example.data.models.FeedPost
+import com.example.data.repository.SearchDiscoveryRepository
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.sharing.ShareContentType
@@ -157,6 +158,16 @@ internal fun ProfessionalSearchScreen(
     var selectedFaculty by rememberSaveable { mutableStateOf("") }
     var selectedLevel by rememberSaveable { mutableStateOf("") }
 
+    val tagsRepository = remember { SearchDiscoveryRepository() }
+    var serverTrendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(selectedUniversity) {
+        // The backend is authoritative when available; retained feed tags remain
+        // a useful offline fallback while the smart-tags migration is pending.
+        serverTrendingTags = tagsRepository.trendingTags(
+            selectedUniversity.takeIf { it.isNotBlank() }, 40
+        )
+    }
+
     val recentPrefs = remember {
         context.getSharedPreferences(PROFESSIONAL_RECENT_SEARCHES_PREF, Context.MODE_PRIVATE)
     }
@@ -208,6 +219,12 @@ internal fun ProfessionalSearchScreen(
     val clean = rawClean.removePrefix("#").removePrefix("@").trim()
 
     LaunchedEffect(clean) { onSearchQueryChange(clean) }
+    LaunchedEffect(rawClean) {
+        if (rawClean.startsWith("#") && clean.length >= 2) {
+            delay(600)
+            tagsRepository.recordTagSearch(rawClean)
+        }
+    }
     LaunchedEffect(rawClean.firstOrNull()) {
         when (rawClean.firstOrNull()) {
             '@' -> selectedSection = ProfessionalDiscoverSection.PEOPLE
@@ -323,18 +340,21 @@ internal fun ProfessionalSearchScreen(
     val matchingPosts = remember(filteredPosts) { filteredPosts.filterNot { it.isReel }.take(60) }
     val matchingReels = remember(filteredPosts) { filteredPosts.filter { it.isReel }.take(60) }
 
-    val hashtags = remember(posts, serverPosts, clean) {
-        (posts + serverPosts)
+    val hashtags = remember(posts, serverPosts, clean, serverTrendingTags) {
+        val localCount = (posts + serverPosts)
             .distinctBy { it.id }
             .flatMap { it.tags }
             .map { it.trim().removePrefix("#").lowercase() }
             .filter { it.isNotBlank() }
             .groupingBy { it }
             .eachCount()
-            .entries
-            .filter { clean.isBlank() || it.key.contains(clean, true) }
-            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+        val localOrder = localCount.keys.sortedWith(
+            compareByDescending<String> { localCount[it] ?: 0 }.thenBy { it }
+        )
+        (serverTrendingTags + localOrder).distinct()
+            .filter { clean.isBlank() || it.contains(clean, ignoreCase = true) }
             .take(30)
+            .map { java.util.AbstractMap.SimpleEntry(it, localCount[it] ?: 0) }
     }
 
     val suggestions = remember(realProfiles, posts, clean) {
@@ -662,7 +682,7 @@ internal fun ProfessionalSearchScreen(
                                         leadingIcon = {
                                             Icon(Icons.Default.Tag, null, modifier = Modifier.size(15.dp))
                                         },
-                                        label = { Text("#${tag.key}  ·  ${tag.value} posts") }
+                                        label = { Text(if (tag.value > 0) "#${tag.key}  ·  ${tag.value} posts" else "#${tag.key}  ·  Trending") }
                                     )
                                 }
                             }

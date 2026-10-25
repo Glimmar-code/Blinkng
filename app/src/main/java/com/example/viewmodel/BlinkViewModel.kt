@@ -41,6 +41,7 @@ import com.example.notification.ConversationMuteExpiryWorker
 import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkRefreshPolicy
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.example.util.safeBoolean
@@ -48,13 +49,16 @@ import com.example.util.safeInt
 import com.example.util.safeString
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.BlinkOnboardingPolicy
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -72,6 +76,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+/** PostgREST can relay the raw database code or the friendly error mapped by BlinkEconomyService. */
+internal fun isPendingRewardClaimError(message: String): Boolean =
+    message.contains("REWARDED_AD_VERIFICATION_PENDING", ignoreCase = true) ||
+    message.contains("REWARDED_AD_TOO_SOON", ignoreCase = true) ||
+    message.contains("ad reward is not ready yet", ignoreCase = true)
 
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
@@ -112,6 +122,7 @@ data class BlinkUiState(
     val isLoadingMoreMarket: Boolean = false,
     val marketHasMore: Boolean = true,
     val marketErrorMessage: String? = null,
+    val isRequestingMarketOrder: Boolean = false,
     val isPublishingMarketItem: Boolean = false,
     val isSellerActivationLoading: Boolean = false,
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
@@ -128,6 +139,9 @@ data class BlinkUiState(
     val isCommentsLoading: Boolean = false,
     val isPostingComment: Boolean = false,
     val mutedUsers: Set<String> = emptySet(),
+    // Explicit local/realtime removals must also hide frozen Compose Feed rows.
+    // This is session-only and cleared by logout to prevent account crossover.
+    val hiddenFeedPostIds: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
     val routedReelId: String? = null,
     val isOnline: Boolean = true,
@@ -135,8 +149,14 @@ data class BlinkUiState(
     val isMessagingRealtimeConnected: Boolean = false,
     val isFeedLoading: Boolean = true,
     val isRefreshingContent: Boolean = false,
+    val isRefreshingHome: Boolean = false,
+    val isRefreshingFollowing: Boolean = false,
+    val isRefreshingReels: Boolean = false,
+    val postsRefreshRevision: Int = 0,
+    val followingRefreshRevision: Int = 0,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
+    val followingFeedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
@@ -160,10 +180,17 @@ data class BlinkUiState(
     val loadingOlderConversationId: String? = null,
     val loadingInitialConversationId: String? = null,
     val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val profileMarketItemsByUserId: Map<String, List<MarketItem>> = emptyMap(),
+    val profileMarketLoadingIds: Set<String> = emptySet(),
+    val profileMarketLoadedIds: Set<String> = emptySet(),
+    val profileMarketFailedIds: Set<String> = emptySet(),
     val myLikedPosts: List<FeedPost> = emptyList(),
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
-    val profileSurfaceLoadedIds: Set<String> = emptySet()
+    val profileSurfaceLoadedIds: Set<String> = emptySet(),
+    val profileSurfaceFailedIds: Set<String> = emptySet(),
+    val privateProfileCollectionsLoadingIds: Set<String> = emptySet(),
+    val privateProfileCollectionsFailedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -216,9 +243,23 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext: Context = application.applicationContext
     private var marketQuery: String = ""
     private var marketCategory: String? = null
-    private var marketSort: String = "newest"
+    private var marketUniversity: String? = null
+    private var marketSort: String = "recommended"
+    private var marketMinPrice: Long? = null
+    private var marketMaxPrice: Long? = null
+    private var marketSavedOnly: Boolean = false
+    private var marketVerifiedOnly: Boolean = false
+    // Reject late network responses after the user changes search, sort or price.
+    private var marketRequestVersion = 0L
+    private var lastMarketQueryCompletedAt = 0L
+    private var marketNextOffset = 0
+    private val marketplaceSaveInFlight = mutableSetOf<String>()
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+    // A Google SSV callback can arrive after the ad closes or the app is backgrounded.
+    // Store only the claim ID, scoped to the signed-in user, never a synthetic reward.
+    private val rewardedAdPrefs = application.getSharedPreferences("blink_rewarded_claim_pending", Context.MODE_PRIVATE)
+    private var rewardedCompletionJob: Job? = null
     private val supabaseService = SupabaseService()
     val authRepository = AuthRepository(application, supabaseService)
     val profileRepository = ProfileRepository(supabaseService)
@@ -236,10 +277,27 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     // CHAT_CACHE_RECONCILIATION_V1: stale async snapshots must never write after newer ones.
     private val conversationCacheRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private val messageOutboxMutex = Mutex()
+    // Prevent repeated taps from racing optimistic updates with old server responses.
+    // Locks are per post so interactions on unrelated posts remain responsive.
+    private val pendingLikePostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingBookmarkPostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingRepostPostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private var chatUiForeground = false
+    private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var syncJob: Job? = null
+    // An inbox visit must never refetch the entire feed, Market and Connect payload.
+    private var inboxEntryJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
+    private val visibleRefreshAt = mutableMapOf<String, Long>()
+    private var visibleFeedRefreshJob: Job? = null
+    private var visibleConversationsRefreshJob: Job? = null
+    // Ignore pagination results started before a user-initiated lane refresh.
+    private var postPageEpoch = 0
+    private var reelPageEpoch = 0
+    private var followingPageEpoch = 0
     private var discoverSearchJob: Job? = null
     private var addAccountMode = AccountSessionStore.consumeAddAccountRequest(appContext)
     private var recoveryPreviousSession: SupabaseService.SessionSnapshot? = null
@@ -270,7 +328,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         observeCachedContent()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
-            restoreResumableRouteFromCurrentState()
+            // A new process starts on Home / For You. Backgrounding keeps this ViewModel
+            // and its current page alive; draft text is restored independently above.
+            // Do not resurrect stale sheets, chats or pages after the task was dismissed.
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     destination = AppDestination.MAIN,
@@ -529,8 +589,48 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Open an authenticated Search result in the normal full post or reel viewer. */
+    fun openSearchPost(post: FeedPost) {
+        val state = _uiState.value
+        if (post.isReel) {
+            _uiState.value = state.copy(
+                selectedTab = MainTab.HOME,
+                feedSubTab = 1,
+                routedReelId = post.id,
+                reels = listOf(post) + state.reels.filterNot { it.id == post.id },
+                deepLinkedPost = null,
+                activeCommentsPostId = null,
+                activePostOptionsPost = null
+            )
+        } else {
+            // Search opens a detail overlay in place. Do not force Home, inject a
+            // search result into the ranked Feed, or discard Search scroll state.
+            openFeedPostDetails(post)
+        }
+        persistCurrentFeed()
+    }
+
+    /** Open a Feed card without switching tabs, re-ranking posts or losing scroll position. */
+    fun openFeedPostDetails(post: FeedPost) {
+        if (post.isReel) {
+            openSearchPost(post)
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = post,
+            activeCommentsPostId = null,
+            activePostOptionsPost = null
+        )
+    }
+
     fun closeDeepLinkedPost() {
-        _uiState.value = _uiState.value.copy(deepLinkedPost = null)
+        _uiState.value = _uiState.value.copy(
+            deepLinkedPost = null,
+            activeCommentsPostId = null,
+            comments = emptyList(),
+            isCommentsLoading = false,
+            isPostingComment = false
+        )
     }
 
     private fun observeAuthState() {
@@ -735,6 +835,19 @@ private suspend fun restoreSupabaseSession() {
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
             conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
+            viewingProfile = if (accountChanged) null else _uiState.value.viewingProfile,
+            profilePostsByUserId = if (accountChanged) emptyMap() else _uiState.value.profilePostsByUserId,
+            myLikedPosts = if (accountChanged) emptyList() else _uiState.value.myLikedPosts,
+            mySavedPosts = if (accountChanged) emptyList() else _uiState.value.mySavedPosts,
+            profileSurfaceLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadingIds,
+            profileSurfaceLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadedIds,
+            profileSurfaceFailedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceFailedIds,
+            privateProfileCollectionsLoadingIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsFailedIds,
+            profileMarketItemsByUserId = if (accountChanged) emptyMap() else _uiState.value.profileMarketItemsByUserId,
+            profileMarketLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadingIds,
+            profileMarketLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadedIds,
+            profileMarketFailedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketFailedIds,
             destination = authenticatedDestination(UserProfile(onboardingCompleted = savedOnboardingCompleted))
         )
     }
@@ -766,12 +879,12 @@ private suspend fun restoreSupabaseSession() {
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
     private fun restoreUiPreferences() {
-        val tabName = prefs.safeString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
-        val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
+        // A cold process start is different from briefly backgrounding the app.
+        // Keep the account and theme, but always reopen at Home / For You.
         _uiState.value = _uiState.value.copy(
             isDarkMode = prefs.safeBoolean(KEY_DARK_MODE, true),
-            selectedTab = selected,
-            feedSubTab = prefs.safeInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+            selectedTab = MainTab.HOME,
+            feedSubTab = 0
         )
     }
 
@@ -1065,6 +1178,71 @@ private suspend fun restoreSupabaseSession() {
      * Never replace the local list outright: doing so erases visible chat history
      * and optimistic/offline messages whenever a realtime summary event arrives.
      */
+    private fun strongestReceipt(existing: MessageStatus, incoming: MessageStatus): MessageStatus =
+        MessageStatus.valueOf(BlinkDeliveryReceipt.strongest(existing.name, incoming.name))
+
+    private fun sameMessageTime(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        if (a == b) return true
+        return runCatching {
+            java.time.OffsetDateTime.parse(a).toInstant() ==
+                java.time.OffsetDateTime.parse(b).toInstant()
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Fetch only a visible inbox row's latest receipt with the membership-scoped
+     * Supabase RPC. This does not load the chat or mark anything as read.
+     * Cache briefly so Compose recomposition/scrolling cannot flood the backend.
+     */
+    fun refreshVisibleInboxReceipt(conversationId: String, expectedTimestamp: String) {
+        if (conversationId.isBlank() || conversationId.startsWith("local_")) return
+        val snapshot = _uiState.value
+        val owner = snapshot.myProfile.id
+        if (owner.isBlank() || !snapshot.isOnline) return
+        val key = "$owner:$conversationId:$expectedTimestamp"
+        val now = SystemClock.elapsedRealtime()
+        val previous = inboxReceiptFetchedAt[key]
+        if (previous != null && now - previous in 0 until 45_000L) return
+        if (!inboxReceiptInFlight.add(key)) return
+        inboxReceiptFetchedAt[key] = now
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val receipt = chatRepository.fetchLatestConversationReceipt(conversationId)
+                withContext(Dispatchers.Main) {
+                    val latest = _uiState.value
+                    if (latest.myProfile.id != owner) return@withContext
+                    val updated = latest.conversations.map { conversation ->
+                        if (conversation.id != conversationId ||
+                            !sameMessageTime(conversation.lastMessageRawTime, expectedTimestamp)
+                        ) return@map conversation
+                        if (receipt == null ||
+                            !sameMessageTime(conversation.lastMessageRawTime, receipt.createdAt)
+                        ) return@map conversation
+                        val incoming = receipt.outgoingStatus
+                        val status = if (incoming != null &&
+                            conversation.lastReceiptMessageId == receipt.messageId &&
+                            conversation.lastOutgoingStatus != null
+                        ) strongestReceipt(conversation.lastOutgoingStatus, incoming) else incoming
+                        conversation.copy(
+                            lastOutgoingStatus = status,
+                            lastReceiptMessageId = receipt.messageId
+                        )
+                    }
+                    if (updated != latest.conversations) {
+                        _uiState.value = latest.copy(conversations = updated)
+                        persistConversations()
+                    }
+                }
+            } catch (e: Exception) {
+                // An offline/error state is not evidence of delivery or reading.
+                Log.w(TAG, "Inbox receipt could not be refreshed", e)
+            } finally {
+                inboxReceiptInFlight.remove(key)
+            }
+        }
+    }
+
     private fun mergeConversationSummaries(
         summaries: List<ChatConversation>,
         local: List<ChatConversation>
@@ -1075,7 +1253,14 @@ private suspend fun restoreSupabaseSession() {
                 val cached = local.firstOrNull {
                     it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
                 }
-                summary.copy(messages = cached?.messages?.toMutableList() ?: mutableListOf())
+                summary.copy(
+                    messages = cached?.messages?.toMutableList() ?: mutableListOf(),
+                    lastOutgoingStatus = cached?.lastOutgoingStatus
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) },
+                    lastReceiptMessageId = cached?.lastReceiptMessageId
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) }
+                        .orEmpty()
+                )
             }
 
         val localOnly = local.filter { cached ->
@@ -1089,6 +1274,22 @@ private suspend fun restoreSupabaseSession() {
         return localOnly + server
     }
 
+
+    /** Refresh only the authenticated wallet after a verified checkout, not the feed. */
+    fun refreshCoinBalanceAfterPayment() {
+        val accountId = _uiState.value.myProfile.id
+        if (accountId.isBlank() || !_uiState.value.isOnline) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                .onFailure { Log.w(TAG, "Payment wallet refresh failed", it) }
+                .getOrNull() ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (_uiState.value.myProfile.id != accountId) return@withContext
+                _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                BlinkWalletStore.publish(balance)
+            }
+        }
+    }
 
     fun refreshProfileRewards() {
         val before = _uiState.value
@@ -1237,42 +1438,89 @@ private suspend fun restoreSupabaseSession() {
             },
             onFailure = { error ->
                 Log.w(TAG, "Rewarded ad claim start failed", error)
-                showToast(error.message ?: "Unable to prepare the ad reward. Please try again.")
+                showToast("Unable to prepare the ad reward. Please try again.")
                 null
             }
         )
     }
 
-    fun completeRewardedAdClaim(claimId: String) {
-        if (claimId.isBlank()) return
+    fun retryPendingRewardedAdClaim() {
+        val userId = _uiState.value.myProfile.id.takeIf { it.isNotBlank() } ?: return
+        if (rewardedCompletionJob?.isActive == true || !_uiState.value.isOnline) return
+        val claimId = rewardedAdPrefs.getString("claim:$userId", null)
+            ?.takeIf { it.isNotBlank() } ?: return
+        val timestamp = rewardedAdPrefs.getLong("started:$userId", 0L)
+        val age = System.currentTimeMillis() - timestamp
+        if (timestamp == 0L || age !in 0..(7 * 24 * 60 * 60_000L)) {
+            clearPendingRewardedAdClaim(userId)
+            return
+        }
+        completeRewardedAdClaim(claimId)
+    }
 
-        viewModelScope.launch {
-            val result = blinkEconomyService.completeRewardedAdClaim(claimId)
-            result.fold(
-                onSuccess = { payload ->
-                    val latest = _uiState.value
-                    val reward = payload.optInt("reward_amount", latest.economyPolicy.rewardedAdBaseCoins)
-                    val bonus = payload.optInt("milestone_bonus", 0)
-                    val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
-                    val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
-                    BlinkWalletStore.publish(balance)
-                    _uiState.value = latest.copy(
-                        blinkCoinBalance = balance,
-                        rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
-                        rewardedCoinsToday = latest.rewardedCoinsToday + reward
-                    )
-                    persistExtendedCache()
-                    showToast(
-                        if (bonus > 0) "+$reward Blink Coins • +$bonus milestone bonus"
-                        else "+$reward Blink Coins"
-                    )
-                },
-                onFailure = { error ->
-                    Log.w(TAG, "Rewarded ad coin credit failed", error)
-                    showToast(error.message ?: "Your ad finished, but the coin reward could not be credited. Please try again.")
-                    refreshProfileRewards()
-                }
-            )
+    private fun clearPendingRewardedAdClaim(userId: String) {
+        rewardedAdPrefs.edit()
+            .remove("claim:$userId")
+            .remove("started:$userId")
+            .apply()
+    }
+
+    fun completeRewardedAdClaim(claimId: String) {
+        if (claimId.isBlank() || rewardedCompletionJob?.isActive == true) return
+        val userId = _uiState.value.myProfile.id.takeIf { it.isNotBlank() } ?: return
+        if (rewardedAdPrefs.getString("claim:$userId", null) != claimId) {
+            rewardedAdPrefs.edit()
+                .putString("claim:$userId", claimId)
+                .putLong("started:$userId", System.currentTimeMillis())
+                .apply()
+        }
+        rewardedCompletionJob = viewModelScope.launch {
+            // Google server-side verification often arrives shortly after the client reward
+            // callback. Recheck without minting any coins locally; the RPC stays authoritative.
+            repeat(8) { attempt ->
+                val result = blinkEconomyService.completeRewardedAdClaim(claimId)
+                result.fold(
+                    onSuccess = { payload ->
+                        clearPendingRewardedAdClaim(userId)
+                        val latest = _uiState.value
+                        if (latest.myProfile.id != userId) return@launch
+                        val reward = payload.optInt("reward_amount", latest.economyPolicy.rewardedAdBaseCoins)
+                        val bonus = payload.optInt("milestone_bonus", 0)
+                        val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
+                        val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
+                        BlinkWalletStore.publish(balance)
+                        _uiState.value = latest.copy(
+                            blinkCoinBalance = balance,
+                            rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
+                            rewardedCoinsToday = latest.rewardedCoinsToday + reward
+                        )
+                        persistExtendedCache()
+                        showToast(
+                            if (bonus > 0) "+$reward Blink Coins • +$bonus milestone bonus"
+                            else "+$reward Blink Coins"
+                        )
+                        return@launch
+                    },
+                    onFailure = { error ->
+                        val detail = error.message.orEmpty()
+                        if (isPendingRewardClaimError(detail)) {
+                            if (attempt < 7) {
+                                delay(2_500L)
+                            } else {
+                                showToast("Ad completed. Your coin reward is awaiting Google verification; BLINK will check again.")
+                            }
+                        } else {
+                            Log.w(TAG, "Rewarded ad coin credit failed", error)
+                            if (detail.contains("REWARDED_AD_CLAIM_EXPIRED", ignoreCase = true) ||
+                                detail.contains("REWARDED_AD_DAILY_LIMIT", ignoreCase = true)
+                            ) clearPendingRewardedAdClaim(userId)
+                            showToast("Coin credit could not be confirmed. BLINK will check again.")
+                            refreshProfileRewards()
+                            return@launch
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -1318,7 +1566,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Daily mission claim failed", error)
-                    showToast(error.message ?: "Couldn't claim this mission.")
+                    showToast("Couldn't claim this mission. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1326,12 +1574,8 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun buyBlinkCoins() {
-        val policy = _uiState.value.economyPolicy
-        if (!policy.cashCheckoutEnabled) {
-            val packs = policy.coinPacks.joinToString(" • ") { "₦${it.priceNgn}→${it.coins}" }
-            showToast("Blink Coin packs are ready ($packs). Secure cash checkout is not enabled yet.")
-            return
-        }
+        // The secured Edge Function authorises the owner-only pilot and kill switches.
+        // Client-side economy cache cannot disable access to the pack picker.
         _uiState.value = _uiState.value.copy(isCoinPackPickerOpen = true)
     }
 
@@ -1347,7 +1591,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack coin checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1368,7 +1612,7 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = ::openPaystackCheckout,
                 onFailure = { error ->
                     Log.w(TAG, "Paystack verification checkout failed to initialize", error)
-                    showToast(error.message ?: "Couldn't start secure checkout.")
+                    showToast("Couldn't start secure checkout. Please try again.")
                 }
             )
         }
@@ -1468,7 +1712,7 @@ private suspend fun restoreSupabaseSession() {
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Blink Coin verification purchase failed", error)
-                    showToast(error.message ?: "Couldn't activate BLINK Verified.")
+                    showToast("Couldn't activate BLINK Verified. Please try again.")
                     refreshProfileRewards()
                 }
             )
@@ -1491,10 +1735,111 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
-        val lastSync = lastSuccessfulSyncAt
-        val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
-        if (!isFresh) fetchSupabaseData()
+    /**
+     * Resuming BLINK must not reload the whole app. Only the visible surface
+     * may quietly revalidate its data, retaining the current rows and scroll.
+     */
+    fun refreshIfStale(maxAgeMillis: Long = BlinkRefreshPolicy.FOREGROUND_REFRESH_INTERVAL_MS) {
+        val state = _uiState.value
+        if (state.destination != AppDestination.MAIN || !state.isOnline ||
+            state.myProfile.username.isBlank() || syncJob?.isActive == true
+        ) return
+
+        val scope = when (state.selectedTab) {
+            MainTab.HOME -> when (state.feedSubTab) {
+                0 -> "feed"
+                1 -> "reels"
+                2 -> "connect"
+                else -> return // The optional game has its own data lifecycle.
+            }
+            MainTab.MARKET -> "market"
+            MainTab.MESSAGES -> "messages"
+            MainTab.LEADERBOARD -> "leaderboard"
+            MainTab.SEARCH -> return // Preserve the current search without new requests.
+        }
+        val ownerKey = state.myProfile.id.ifBlank { state.myProfile.username.lowercase() }
+        val key = "$ownerKey:$scope"
+        val now = SystemClock.elapsedRealtime()
+        val lastRefresh = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
+        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, maxAgeMillis)) return
+        // Reserve this scope immediately to coalesce repeated onResume callbacks.
+        visibleRefreshAt[key] = now
+
+        when (scope) {
+            "feed" -> refreshVisibleFeedQuietly(isReel = false)
+            "reels" -> refreshVisibleFeedQuietly(isReel = true)
+            "connect" -> {
+                refreshConnectStudents()
+                refreshConnectHub()
+            }
+            "market" -> refreshMarketItems()
+            "messages" -> refreshVisibleConversationsQuietly()
+            "leaderboard" -> refreshLeaderboardQuietly()
+        }
+    }
+
+    private fun refreshVisibleFeedQuietly(isReel: Boolean) {
+        if (visibleFeedRefreshJob?.isActive == true) return
+        val accountId = _uiState.value.myProfile.id
+        visibleFeedRefreshJob = viewModelScope.launch {
+            try {
+                syncMutex.withLock {
+                    val fresh = postRepository.fetchFeed(isReel = isReel)
+                    if (fresh.isEmpty() || _uiState.value.myProfile.id != accountId) return@withLock
+                    val current = _uiState.value
+                    _uiState.value = if (isReel) {
+                        current.copy(reels = reconcileRefreshedFeed(current.reels, fresh))
+                    } else {
+                        current.copy(posts = reconcileRefreshedFeed(current.posts, fresh))
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Feed refresh failed", error)
+                // Existing cached content remains untouched.
+            }
+        }
+    }
+
+    private fun refreshVisibleConversationsQuietly() {
+        if (visibleConversationsRefreshJob?.isActive == true || inboxEntryJob?.isActive == true || !_uiState.value.isOnline) return
+        val accountId = _uiState.value.myProfile.id
+        if (_uiState.value.conversations.isEmpty()) {
+            _uiState.value = _uiState.value.copy(isConversationsLoading = true)
+        }
+        visibleConversationsRefreshJob = viewModelScope.launch {
+            try {
+                val fresh = chatRepository.fetchConversations()
+                if (_uiState.value.myProfile.id != accountId) return@launch
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = mergeConversationSummaries(fresh, current.conversations),
+                    isConversationsLoading = false
+                )
+                persistConversations()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet visible Messages refresh failed", error)
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
+        }
+    }
+
+    private fun refreshLeaderboardQuietly() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchLeaderboard() }
+                .onSuccess { live ->
+                    _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+                    persistExtendedCache()
+                }
+                .onFailure { Log.w(TAG, "Quiet leaderboard refresh failed", it) }
+        }
     }
 
     private fun reconcileRefreshedFeed(
@@ -1529,14 +1874,20 @@ private suspend fun restoreSupabaseSession() {
 
             syncMutex.withLock {
                 val before = _uiState.value
+                val marketVersionAtSyncStart = marketRequestVersion
+                val marketWasUnfilteredAtSyncStart =
+                    marketQuery.isBlank() && marketCategory == null && marketSort == "newest" &&
+                        marketMinPrice == null && marketMaxPrice == null &&
+                        !marketSavedOnly && !marketVerifiedOnly
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
-                    isFeedLoading = !hadFeed && !showRefreshIndicator,
+                    isFeedLoading = !hadFeed,
                     isRefreshingContent = showRefreshIndicator,
                     isSyncingContent = true,
                     isConversationsLoading = before.conversations.isEmpty(),
-                    feedErrorMessage = null
+                    feedErrorMessage = null,
+                    followingFeedErrorMessage = null
                 )
 
                 try {
@@ -1585,8 +1936,13 @@ private suspend fun restoreSupabaseSession() {
                         isLiveSupabaseConnected = feedSucceeded,
                         activityPulsePolicy = activityPulsePolicy,
                         isFeedLoading = false,
-                        feedErrorMessage = if (!feedSucceeded) {
-                            "Couldn't refresh live Supabase data. Check your connection and try again."
+                        feedErrorMessage = if (postsResult.isFailure && normalPosts.isEmpty()) {
+                            "Posts couldn't load right now. Pull to retry."
+                        } else if (!feedSucceeded) {
+                            "Couldn't update your feed. Check your connection and try again."
+                        } else null,
+                        followingFeedErrorMessage = if (followingResult.isFailure && fetchedFollowing.isEmpty()) {
+                            "Following posts couldn't load right now. Pull to retry."
                         } else null
                     )
 
@@ -1608,9 +1964,25 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { supabaseService.fetchMarketItems() }
                             .onFailure { Log.e(TAG, "Market fetch failed", it) }
                     }
+                    val inboxOwner = supabaseService.getCurrentUserId()
                     val conversationsRequest = async {
-                        runCatching { MessageMediaService.hydrateVideos(chatRepository.fetchConversations()) }
-                            .onFailure { Log.e(TAG, "Message fetch failed", it) }
+                        runCatching {
+                            val all = chatRepository.fetchConversations(onFirstPage = { first ->
+                                if (inboxOwner != null && supabaseService.getCurrentUserId() == inboxOwner) {
+                                    withContext(Dispatchers.Main) {
+                                        val current = _uiState.value
+                                        _uiState.value = current.copy(
+                                            conversations = mergeConversationSummaries(
+                                                summaries = first,
+                                                local = current.conversations
+                                            ),
+                                            isConversationsLoading = false
+                                        )
+                                    }
+                                }
+                            })
+                            MessageMediaService.hydrateVideos(all)
+                        }.onFailure { Log.e(TAG, "Message fetch failed", it) }
                     }
                     val chatPrivacyRequest = async {
                         runCatching { chatRepository.fetchChatPrivacySettings() }
@@ -1655,13 +2027,23 @@ private suspend fun restoreSupabaseSession() {
                     }
 
                     val marketResult = marketRequest.await()
-                    val market = marketResult.getOrDefault(before.marketItems)
+                    // Do not overwrite a newer filtered Market query with a default sync.
+                    val marketSyncIsRelevant =
+                        marketWasUnfilteredAtSyncStart && marketVersionAtSyncStart == marketRequestVersion
+                    if (marketSyncIsRelevant && marketResult.isSuccess) {
+                        lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
+                    }
+                    val market = if (marketSyncIsRelevant) {
+                        marketResult.getOrDefault(before.marketItems)
+                    } else {
+                        _uiState.value.marketItems
+                    }
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
                     val conversations = mergeConversationSummaries(
                         summaries = conversationSummaries,
-                        local = before.conversations
+                        local = _uiState.value.conversations
                     )
                     val chatPrivacySettings = chatPrivacyRequest.await()
                         .getOrDefault(before.chatPrivacySettings)
@@ -1679,6 +2061,7 @@ private suspend fun restoreSupabaseSession() {
 
                     val connectHub = connectHubRequest.await()
                         .getOrDefault(before.connectHub)
+                        .retainFailedSectionsFrom(before.connectHub)
 
                     val scheduledPosts = scheduledPostsRequest.await()
                         .getOrDefault(before.scheduledPosts)
@@ -1710,9 +2093,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
                         marketItems = market,
-                        isMarketLoading = false,
-                        marketHasMore = marketResult.isSuccess && market.size >= 40,
-                        marketErrorMessage = marketResult.exceptionOrNull()?.message,
+                        isMarketLoading = if (marketSyncIsRelevant) false else _uiState.value.isMarketLoading,
+                        marketHasMore = if (marketSyncIsRelevant) {
+                            marketResult.isSuccess && market.size >= 40
+                        } else _uiState.value.marketHasMore,
+                        marketErrorMessage = if (marketSyncIsRelevant) {
+                            if (marketResult.isFailure) "Couldn't update Marketplace. Tap to retry." else null
+                        } else _uiState.value.marketErrorMessage,
                         conversations = conversations,
                         chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
@@ -1737,7 +2124,7 @@ private suspend fun restoreSupabaseSession() {
                                 { error ->
                                     _uiState.value = _uiState.value.copy(
                                         activitiesLoading = false,
-                                        activitiesError = error.message
+                                        activitiesError = "Couldn't load notifications. Please try again."
                                     )
                                 }
                             )
@@ -1745,7 +2132,7 @@ private suspend fun restoreSupabaseSession() {
                         .onFailure { error ->
                             _uiState.value = _uiState.value.copy(
                                 activitiesLoading = false,
-                                activitiesError = error.message
+                                activitiesError = "Couldn't load notifications. Please try again."
                             )
                         }
 
@@ -1763,9 +2150,137 @@ private suspend fun restoreSupabaseSession() {
                         isRefreshingContent = false,
                         isSyncingContent = false,
                         isConversationsLoading = false,
-                        isMarketLoading = false
+                        isMarketLoading = if (marketWasUnfilteredAtSyncStart &&
+                            marketVersionAtSyncStart == marketRequestVersion
+                        ) false else _uiState.value.isMarketLoading
                     )
                     persistExtendedCache()
+                }
+            }
+        }
+    }
+
+    /**
+     * Refresh one visible lane without refetching Market, conversations, or leaderboards.
+     * Existing rows stay on screen and in the offline cache if the request fails.
+     */
+    fun refreshFeedLane(isReel: Boolean = false, following: Boolean = false) {
+        val before = _uiState.value
+        if (!before.isOnline) {
+            showToast("You're offline. Showing saved content.")
+            return
+        }
+        if ((following && before.isRefreshingFollowing) ||
+            (!following && isReel && before.isRefreshingReels) ||
+            (!following && !isReel && before.isRefreshingHome)
+        ) return
+
+        // A pull-to-refresh supersedes a pending pagination result. Reset the visible
+        // loading-more state now so stale requests cannot splice old rows into a new page.
+        when {
+            following -> followingPageEpoch++
+            isReel -> reelPageEpoch++
+            else -> postPageEpoch++
+        }
+        _uiState.value = when {
+            following -> before.copy(
+                isRefreshingFollowing = true,
+                isLoadingMoreFollowingPosts = false,
+                followingFeedErrorMessage = null
+            )
+            isReel -> before.copy(
+                isRefreshingReels = true,
+                isLoadingMoreReels = false,
+                feedErrorMessage = null
+            )
+            else -> before.copy(
+                isRefreshingHome = true,
+                isLoadingMorePosts = false,
+                feedErrorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                // Ranked discovery pages have a server-maintained cursor; restarting it on
+                // explicit refresh should not race a load-more or background sync.
+                syncMutex.withLock {
+                    val pageSize = if (following) 30 else 60
+                    val page = when {
+                        following -> postRepository.fetchFollowingFeedPage(limit = pageSize)
+                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = pageSize)
+                        else -> postRepository.fetchFeedPage(isReel = false, limit = pageSize)
+                    }
+                    val now = _uiState.value
+                    val previous = when {
+                        following -> now.followingPosts
+                        isReel -> now.reels
+                        else -> now.posts
+                    }
+                    val refreshed = planSmartRefresh(
+                        previous = previous,
+                        fetched = page,
+                        idOf = { it.id },
+                        prioritizeNew = !following
+                    )
+                    _uiState.value = when {
+                        following -> now.copy(
+                            followingPosts = refreshed.items,
+                            followingRefreshRevision = now.followingRefreshRevision + 1,
+                            hasMoreFollowingPosts = page.size >= pageSize,
+                            followingFeedErrorMessage = null
+                        )
+                        isReel -> now.copy(
+                            reels = refreshed.items,
+                            hasMoreReels = page.size >= pageSize
+                        )
+                        else -> now.copy(
+                            posts = refreshed.items,
+                            postsRefreshRevision = now.postsRefreshRevision + 1,
+                            hasMorePosts = page.size >= pageSize
+                        )
+                    }
+                    lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
+                    if (!following) {
+                        val updated = _uiState.value
+                        cacheWriteMutex.withLock {
+                            runCatching {
+                                offlineContentStore.replaceFeed(
+                                    updated.posts, updated.reels, updated.myProfile.username
+                                )
+                            }.onFailure { Log.w(TAG, "Manual refresh cache write failed", it) }
+                        }
+                    }
+                    if (refreshed.newlyDiscoveredCount == 0) {
+                        showToast(
+                            when {
+                                following -> "No new posts from people you follow."
+                                isReel -> "No new reels right now."
+                                else -> "No new posts right now."
+                            }
+                        )
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Manual feed refresh failed", error)
+                _uiState.value = if (following) {
+                    _uiState.value.copy(
+                        followingFeedErrorMessage = "Couldn't refresh Following. Showing existing posts."
+                    )
+                } else {
+                    _uiState.value.copy(
+                        feedErrorMessage = "Couldn't refresh right now. Showing existing posts."
+                    )
+                }
+                showToast("Refresh failed. Please try again.")
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = when {
+                    following -> latest.copy(isRefreshingFollowing = false)
+                    isReel -> latest.copy(isRefreshingReels = false)
+                    else -> latest.copy(isRefreshingHome = false)
                 }
             }
         }
@@ -1811,7 +2326,7 @@ private suspend fun restoreSupabaseSession() {
                 .onSuccess { live ->
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
                     persistExtendedCache()
-                    showToast("Leaderboard refreshed from Supabase.")
+                    showToast("Leaderboard is up to date.")
                 }
                 .onFailure {
                     Log.e(TAG, "Leaderboard refresh failed", it)
@@ -1855,12 +2370,16 @@ private suspend fun restoreSupabaseSession() {
     fun loadMoreFeed(isReel: Boolean) {
         val state = _uiState.value
         if (!state.isOnline) return
-        if (isReel && (state.isLoadingMoreReels || !state.hasMoreReels)) return
-        if (!isReel && (state.isLoadingMorePosts || !state.hasMorePosts)) return
+        if (isReel && (state.isLoadingMoreReels || state.isRefreshingReels || !state.hasMoreReels)) return
+        if (!isReel && (state.isLoadingMorePosts || state.isRefreshingHome || !state.hasMorePosts)) return
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
-        if (last.createdAt.isBlank()) return
+        // Ranked discovery uses its own offset, but a timeout falls back to
+        // chronological paging. Both ID and timestamp must be valid so the
+        // fallback cannot silently repeat page one forever.
+        if (last.id.isBlank() || last.createdAt.isBlank()) return
+        val requestEpoch = if (isReel) reelPageEpoch else postPageEpoch
 
         _uiState.value = if (isReel) {
             state.copy(isLoadingMoreReels = true)
@@ -1869,37 +2388,47 @@ private suspend fun restoreSupabaseSession() {
         }
 
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFeedPage(
-                    isReel = isReel,
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                if (isReel) {
-                    val merged = (latest.reels + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        reels = merged,
-                        isLoadingMoreReels = false,
-                        hasMoreReels = page.size >= 30
-                    )
-                } else {
-                    val merged = (latest.posts + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        posts = merged,
-                        isLoadingMorePosts = false,
-                        hasMorePosts = page.size >= 30
+            try {
+                // Serialize ranked cursor mutations with manual refresh and reconnect sync.
+                val page = syncMutex.withLock {
+                    if (requestEpoch != (if (isReel) reelPageEpoch else postPageEpoch)) null
+                    else postRepository.fetchFeedPage(
+                        isReel = isReel,
+                        beforeCreatedAt = last.createdAt.takeIf { it.isNotBlank() },
+                        beforeId = last.id,
+                        limit = 30
                     )
                 }
-                persistCurrentFeed()
-            }.onFailure {
-                Log.w(TAG, "Load more feed failed", it)
-                _uiState.value = if (isReel) {
-                    _uiState.value.copy(isLoadingMoreReels = false)
-                } else {
-                    _uiState.value.copy(isLoadingMorePosts = false)
+                if (page != null && requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    if (isReel) {
+                        _uiState.value = latest.copy(
+                            reels = (latest.reels + page).distinctBy { it.id },
+                            // Server-side ranking/fallback must advance the visible cursor.
+                            hasMoreReels = page.size >= 30 &&
+                                page.any { item -> latest.reels.none { it.id == item.id } }
+                        )
+                    } else {
+                        _uiState.value = latest.copy(
+                            posts = (latest.posts + page).distinctBy { it.id },
+                            hasMorePosts = page.size >= 30 &&
+                                page.any { item -> latest.posts.none { it.id == item.id } }
+                        )
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more feed failed", error)
+            } finally {
+                if (requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    _uiState.value = if (isReel) {
+                        latest.copy(isLoadingMoreReels = false)
+                    } else {
+                        latest.copy(isLoadingMorePosts = false)
+                    }
                 }
             }
         }
@@ -1907,29 +2436,84 @@ private suspend fun restoreSupabaseSession() {
 
     fun loadMoreFollowingFeed() {
         val state = _uiState.value
-        if (!state.isOnline || state.isLoadingMoreFollowingPosts || !state.hasMoreFollowingPosts) return
+        if (!state.isOnline || state.isLoadingMoreFollowingPosts || state.isRefreshingFollowing || !state.hasMoreFollowingPosts) return
         val last = state.followingPosts.lastOrNull() ?: return
         if (last.createdAt.isBlank()) return
+        val requestEpoch = followingPageEpoch
 
         _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFollowingFeedPage(
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                _uiState.value = latest.copy(
-                    followingPosts = (latest.followingPosts + page).distinctBy { it.id },
-                    isLoadingMoreFollowingPosts = false,
-                    hasMoreFollowingPosts = page.size >= 30
-                )
-            }.onFailure {
-                Log.w(TAG, "Load more following feed failed", it)
-                _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+            try {
+                val page = syncMutex.withLock {
+                    if (requestEpoch != followingPageEpoch) null
+                    else postRepository.fetchFollowingFeedPage(
+                        beforeCreatedAt = last.createdAt,
+                        beforeId = last.id,
+                        limit = 30
+                    )
+                }
+                if (page != null && requestEpoch == followingPageEpoch) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        followingPosts = (latest.followingPosts + page).distinctBy { it.id },
+                        hasMoreFollowingPosts = page.size >= 30
+                    )
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more following feed failed", error)
+            } finally {
+                if (requestEpoch == followingPageEpoch) {
+                    _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+                }
             }
+        }
+    }
+
+    /** Reflect the authoritative balance returned by a successful Connect Match RPC. */
+    fun onConnectMatchSpinCoinsUpdated(remainingCoins: Long) {
+        if (remainingCoins >= 0L) {
+            _uiState.value = _uiState.value.copy(blinkCoinBalance = remainingCoins)
+        }
+    }
+
+    /** Re-fetch the profile directory without clearing previously loaded results on failure. */
+    private var connectStudentSearchEpoch: Long = 0
+
+    /** Search beyond the first directory page; stale results cannot replace newer queries. */
+    fun searchConnectStudents(query: String) {
+        val cleaned = query.trim()
+        val epoch = ++connectStudentSearchEpoch
+        if (cleaned.length < 2) return
+        val accountId = _uiState.value.myProfile.id
+        viewModelScope.launch {
+            val found = runCatching { supabaseService.searchProfilesPage(cleaned, limit = 60) }
+                .getOrDefault(emptyList())
+            if (epoch == connectStudentSearchEpoch &&
+                _uiState.value.myProfile.id == accountId && found.isNotEmpty()) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    profiles = (listOf(current.myProfile) + found + current.profiles)
+                        .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        .take(600)
+                )
+            }
+        }
+    }
+
+    fun refreshConnectStudents() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchProfiles() }
+                .onSuccess { fresh ->
+                    if (fresh.isNotEmpty()) {
+                        val own = _uiState.value.myProfile
+                        _uiState.value = _uiState.value.copy(
+                            profiles = (listOf(own) + fresh).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        )
+                    }
+                }
+                .onFailure { Log.w(TAG, "Connect students refresh failed", it) }
         }
     }
 
@@ -1939,7 +2523,7 @@ private suspend fun restoreSupabaseSession() {
             runCatching { connectHubRepository.fetchSnapshot() }
                 .onSuccess { snapshot ->
                     _uiState.value = _uiState.value.copy(
-                        connectHub = snapshot,
+                        connectHub = snapshot.retainFailedSectionsFrom(_uiState.value.connectHub),
                         isConnectHubLoading = false
                     )
                     persistExtendedCache()
@@ -1947,26 +2531,84 @@ private suspend fun restoreSupabaseSession() {
                 .onFailure {
                     Log.e(TAG, "Connect Hub refresh failed", it)
                     _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
-                    showToast(it.message ?: "Couldn't refresh Connect Hub.")
+                    showToast("Couldn't refresh Connect. Please try again.")
                 }
         }
     }
 
-    private fun runConnectAction(successMessage: String, action: suspend () -> Boolean) {
+    private val pendingConnectActions = mutableSetOf<String>()
+
+    /** Ignore rapid repeated taps while the same Connect request is in flight. */
+    private fun runConnectAction(
+        successMessage: String,
+        actionKey: String = successMessage,
+        action: suspend () -> Boolean
+    ) {
+        if (!pendingConnectActions.add(actionKey)) return
         viewModelScope.launch {
-            runCatching { action() }
-                .onSuccess { ok ->
-                    if (ok) {
-                        showToast(successMessage)
-                        refreshConnectHub()
-                    } else {
-                        showToast("That request is no longer available.")
+            try {
+                runCatching { action() }
+                    .onSuccess { ok ->
+                        if (ok) {
+                            showToast(successMessage)
+                            refreshConnectHub()
+                        } else {
+                            showToast("That request is no longer available.")
+                        }
                     }
+                    .onFailure {
+                        Log.e(TAG, "Connect Hub action failed", it)
+                        showToast("Couldn't complete this action. Please try again.")
+                    }
+            } finally {
+                pendingConnectActions.remove(actionKey)
+            }
+        }
+    }
+
+    /** Publish a Connect form with explicit acknowledgement so user input survives failures. */
+    fun submitConnectForm(
+        kind: String,
+        first: String,
+        second: String,
+        third: String,
+        fourth: String,
+        fifth: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val values = first.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val otherValues = second.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val budget = third.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                require(third.isBlank() || kind !in setOf("ROOMMATE", "HOUSING") ||
+                    (budget != null && budget.isFinite() && budget >= 0.0)) {
+                    "Enter a valid non-negative budget."
                 }
-                .onFailure {
-                    Log.e(TAG, "Connect Hub action failed", it)
-                    showToast(it.message ?: "Connect Hub action failed.")
+                when (kind) {
+                    "ROOMMATE" -> connectHubRepository.upsertRoommate(
+                        first, fourth, second, null, budget
+                    )
+                    "MENTOR" -> connectHubRepository.upsertMentor("mentor", values, second, third)
+                    "READING" -> connectHubRepository.upsertReadingMate(
+                        values, fourth.ifBlank { "Focused" }, otherValues, third, fifth
+                    )
+                    "AGENT" -> connectHubRepository.applyAsHousingAgent(first, otherValues, third)
+                    "HOUSING" -> connectHubRepository.createHousingRequest(first, second, null, budget, fourth)
+                    else -> throw IllegalArgumentException("Unknown Connect form.")
                 }
+            }
+            result.onSuccess { ok ->
+                if (ok) {
+                    refreshConnectHub()
+                    onResult(true, null)
+                } else {
+                    onResult(false, "The server did not confirm your submission.")
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Connect form submission failed", error)
+                onResult(false, "Couldn't submit your request. Please try again.")
+            }
         }
     }
 
@@ -1981,7 +2623,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyForRoommate(profileId: String) =
-        runConnectAction("Roommate request sent.") {
+        runConnectAction("Roommate request sent.", actionKey = "roommate:$profileId") {
             connectHubRepository.applyRoommate(profileId)
         }
 
@@ -1995,7 +2637,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestMentor(profileId: String) =
-        runConnectAction("Mentor request sent.") {
+        runConnectAction("Mentor request sent.", actionKey = "mentor:$profileId") {
             connectHubRepository.requestMentor(profileId)
         }
 
@@ -2010,7 +2652,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun requestReadingMate(profileId: String) =
-        runConnectAction("Reading-mate request sent.") {
+        runConnectAction("Reading-mate request sent.", actionKey = "reading:$profileId") {
             connectHubRepository.requestReadingMate(profileId)
         }
 
@@ -2033,7 +2675,7 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun applyToHousingRequest(requestId: String, message: String) =
-        runConnectAction("Housing application sent.") {
+        runConnectAction("Housing application sent.", actionKey = "housing:$requestId") {
             connectHubRepository.applyToHousingRequest(requestId, message)
         }
 
@@ -2041,7 +2683,7 @@ private suspend fun restoreSupabaseSession() {
         userId: String,
         gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName
     ) =
-        runConnectAction("Game challenge sent.") {
+        runConnectAction("Game challenge sent.", actionKey = "challenge:$userId:$gameType") {
             connectHubRepository.challengeUser(userId, gameType)
         }
 
@@ -2061,18 +2703,18 @@ private suspend fun restoreSupabaseSession() {
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Game challenge response failed", error)
-                    showToast(error.message ?: "Couldn't update the challenge.")
+                    showToast("Couldn't update the challenge. Please try again.")
                 }
         }
     }
 
     fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
-        runConnectAction(if (accept) "Request accepted." else "Request declined.") {
+        runConnectAction(if (accept) "Request accepted." else "Request declined.", actionKey = "respond:$kind:$requestId") {
             connectHubRepository.respondToConnectRequest(kind, requestId, accept)
         }
 
     fun submitChallengeScore(challengeId: String, score: Int) =
-        runConnectAction("Challenge score submitted.") {
+        runConnectAction("Challenge score submitted.", actionKey = "challenge-score:$challengeId") {
             connectHubRepository.submitChallengeScore(challengeId, score)
         }
 
@@ -2144,7 +2786,7 @@ private suspend fun restoreSupabaseSession() {
                         else "Choose your BLINK username to continue."
                     )
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
-            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast(e.message ?: "Google authentication failed.") }
+            } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast("Google sign-in didn't complete. Please try again.") }
         }
     }
 
@@ -2157,7 +2799,7 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, email: String, password: String) {
+    fun signUp(fullName: String, email: String, password: String, referrerId: String? = null, birthDate: String = "") {
         val temporaryUsername = "blink_" + UUID.randomUUID()
             .toString()
             .replace("-", "")
@@ -2168,11 +2810,13 @@ private suspend fun restoreSupabaseSession() {
             username = temporaryUsername,
             email = email,
             password = password,
-            faculty = ""
+            faculty = "",
+            referrerId = referrerId,
+            birthDate = birthDate
         )
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
+    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "", referrerId: String? = null, birthDate: String = "") {
         if (fullName.isBlank()) { showToast("Please enter your real name."); return }
         if (username.isBlank()) { showToast("Please choose a username."); return }
         if (password.isBlank()) { showToast("Please create a password before continuing."); return }
@@ -2189,20 +2833,26 @@ private suspend fun restoreSupabaseSession() {
         // Supabase Auth and BLINK profile initialization have both succeeded.
         viewModelScope.launch {
             try {
-                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())
+                val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim(), referrerId)
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
+                    // Birth dates belong only in the account's private details, not auth metadata.
+                    val savedBirthday = birthDate.isBlank() ||
+                        runCatching { supabaseService.updatePrivateBirthDate(birthDate) }.getOrDefault(false)
+                    val completed = if (savedBirthday && birthDate.isNotBlank())
+                        profile.copy(birthDate = birthDate) else profile
                     _uiState.value = _uiState.value.copy(
-                        myProfile = profile,
-                        destination = authenticatedDestination(profile)
+                        myProfile = completed,
+                        destination = authenticatedDestination(completed)
                     )
-                    saveLocalProfile(profile)
+                    saveLocalProfile(completed)
+                    if (!savedBirthday) showToast("Birthday not saved yet. Confirm it in your profile.")
                     showToast(
                         if (profile.onboardingCompleted) "Welcome back, @${profile.username}."
                         else "Account created! Set up your BLINK profile."
                     )
                 } else showToast(result.errorMessage ?: "Sign up failed.")
-            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
+            } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast("Couldn't create your account. Please try again.") }
         }
     }
 
@@ -2422,35 +3072,72 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
         viewModelScope.launch {
             val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
-            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally, but Supabase sync failed.") }
+            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device. Sign in to sync it."); return@launch }
+            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("Profile created and synced successfully.") }
+            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved on this device, but sync failed. Please try again.") }
         }
     }
 
     fun setDestination(destination: AppDestination) { _uiState.value = _uiState.value.copy(destination = destination) }
     fun navigateTo(destination: AppDestination) = setDestination(destination)
-    fun selectTab(tab: MainTab) {
-        val nextFeedSubTab = if (tab == MainTab.HOME) 0 else _uiState.value.feedSubTab
-        _uiState.value = _uiState.value.copy(
-            selectedTab = tab,
-            feedSubTab = nextFeedSubTab,
-            routedReelId = null,
-            viewingProfile = null,
-            viewingProduct = null,
-            isConversationFullScreen = false,
-            isConversationsLoading = if (
-                tab == MainTab.MESSAGES &&
-                _uiState.value.conversations.isEmpty() &&
-                _uiState.value.isOnline
-            ) true else _uiState.value.isConversationsLoading
-        )
-        persistUiPreferences()
-        if (tab == MainTab.MESSAGES && _uiState.value.conversations.isEmpty() && _uiState.value.isOnline) {
-            fetchSupabaseData()
+    /**
+     * One state transition per primary navigation action. Reels and Connect are
+     * Home sub-tabs, but must not briefly render Home before their destination.
+     */
+    fun navigateToPrimaryTab(tab: MainTab, homeSubTab: Int = 0) {
+        val current = _uiState.value
+        val nextFeedSubTab = if (tab == MainTab.HOME) homeSubTab.coerceIn(0, 3) else current.feedSubTab
+        if (
+            current.selectedTab != tab || current.feedSubTab != nextFeedSubTab ||
+            current.routedReelId != null || current.viewingProfile != null ||
+            current.viewingProduct != null || current.isConversationFullScreen
+        ) {
+            _uiState.value = current.copy(
+                selectedTab = tab,
+                feedSubTab = nextFeedSubTab,
+                routedReelId = null,
+                viewingProfile = null,
+                viewingProduct = null,
+                isConversationFullScreen = false
+            )
+            persistUiPreferences()
+        }
+        if (tab == MainTab.MESSAGES) loadInboxOnEntry()
+    }
+
+    fun selectTab(tab: MainTab) = navigateToPrimaryTab(tab)
+    fun setTab(tab: MainTab) = selectTab(tab)
+
+    /** Fetch only the inbox when it has no cached summaries and no full sync is active. */
+    private fun loadInboxOnEntry() {
+        val state = _uiState.value
+        if (!state.isOnline || state.conversations.isNotEmpty() ||
+            inboxEntryJob?.isActive == true || syncJob?.isActive == true
+        ) return
+        val accountId = state.myProfile.id
+        _uiState.value = state.copy(isConversationsLoading = true)
+        inboxEntryJob = viewModelScope.launch {
+            try {
+                runCatching { chatRepository.fetchConversations() }
+                    .onSuccess { summaries ->
+                        if (_uiState.value.myProfile.id != accountId) return@onSuccess
+                        val latest = _uiState.value
+                        _uiState.value = latest.copy(
+                            conversations = mergeConversationSummaries(
+                                summaries = summaries,
+                                local = latest.conversations
+                            )
+                        )
+                        persistConversations()
+                    }
+                    .onFailure { Log.w(TAG, "Inbox-only refresh failed", it) }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConversationsLoading = false)
+                }
+            }
         }
     }
-    fun setTab(tab: MainTab) = selectTab(tab)
     fun setFeedSubTab(tab: Int) {
         _uiState.value = _uiState.value.copy(
             feedSubTab = tab.coerceIn(0, 3),
@@ -2503,9 +3190,12 @@ private suspend fun restoreSupabaseSession() {
         if (identifier.isNullOrBlank()) return false
         val clean = identifier.trim().removePrefix("@").trim()
         val myUser = _uiState.value.myProfile.username.trim().removePrefix("@").trim()
-        val myName = _uiState.value.myProfile.fullName.trim()
         val myId = _uiState.value.myProfile.id.trim()
-        return clean.equals("you", true) || clean.equals("me", true) || clean.equals(myUser, true) || clean.equals(myName, true) || clean.equals(myId, true) || clean.replace(" ", ".").equals(myUser, true) || myUser.replace(".", " ").equals(clean, true)
+        // Display names are not unique. Never equate someone else's identity to
+        // the signed-in account because they happen to have the same name.
+        return clean.equals("you", true) || clean.equals("me", true) ||
+            (myUser.isNotBlank() && clean.equals(myUser, true)) ||
+            (myId.isNotBlank() && clean.equals(myId, true))
     }
 
     private fun cachedProfile(identifier: String): UserProfile? {
@@ -2518,31 +3208,134 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+    /** Independently load every active listing belonging to the viewed seller. */
+    fun loadProfileMarketData(profile: UserProfile, force: Boolean = false) {
+        val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
+        if (key.isBlank()) return
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(
+                profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key,
+                profileMarketLoadingIds = _uiState.value.profileMarketLoadingIds - key
+            )
+            return
+        }
+        val state = _uiState.value
+        if (key in state.profileMarketLoadingIds || (!force && key in state.profileMarketLoadedIds)) return
+        _uiState.value = state.copy(
+            profileMarketLoadingIds = state.profileMarketLoadingIds + key,
+            profileMarketFailedIds = state.profileMarketFailedIds - key
+        )
+        viewModelScope.launch {
+            try {
+                val resolved = profile.id.takeIf { it.isNotBlank() }
+                    ?: profileRepository.fetchByUsername(profile.username)?.id
+                    ?: throw IllegalStateException("Seller profile is missing.")
+                val items = supabaseService.fetchProfileMarketItems(resolved)
+                if (supabaseService.getCurrentUserId() != ownerId) return@launch
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    profileMarketItemsByUserId = latest.profileMarketItemsByUserId +
+                        mapOf(key to items, resolved to items),
+                    profileMarketLoadedIds = latest.profileMarketLoadedIds + key + resolved,
+                    profileMarketFailedIds = latest.profileMarketFailedIds - key - resolved
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_MARKET_LOAD failed", error)
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key
+                    )
+                }
+            } finally {
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        profileMarketLoadingIds = latest.profileMarketLoadingIds - key
+                    )
+                }
+            }
+        }
+    }
+
     fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
         val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
-        val ownerId = supabaseService.getCurrentUserId() ?: return
-        if (key.isBlank() || !_uiState.value.isOnline) return
+        if (key.isBlank()) return
+        loadProfileMarketData(profile, force)
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            // Do not leave a profile with no cached posts permanently shimmering offline.
+            _uiState.value = _uiState.value.copy(
+                profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key,
+                profileSurfaceLoadingIds = _uiState.value.profileSurfaceLoadingIds - key
+            )
+            return
+        }
         val current = _uiState.value
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
-        _uiState.value = current.copy(profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key)
+        _uiState.value = current.copy(
+            profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key,
+            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key,
+            privateProfileCollectionsLoadingIds = if (profile.id == ownerId) current.privateProfileCollectionsLoadingIds + key else current.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = current.privateProfileCollectionsFailedIds - key
+        )
         viewModelScope.launch {
             try {
                 val resolved = if (profile.id.isNotBlank()) profile
                     else profileRepository.fetchByUsername(profile.username) ?: profile
-                if (resolved.id.isBlank()) return@launch
-                val content = supabaseService.fetchProfileSurfaceContent(resolved.id)
+                if (resolved.id.isBlank()) throw IllegalStateException("Profile has no user ID.")
+                // Show actual profile posts as soon as one short request completes.
+                // The liked/saved collections are optional secondary requests and
+                // must not hold the entire Posts/Reels timeline hostage.
+                val posts = supabaseService.fetchProfilePostsOnly(resolved.id)
                 if (supabaseService.getCurrentUserId() != ownerId) return@launch
                 val latest = _uiState.value
                 val isOwner = resolved.id == ownerId
                 _uiState.value = latest.copy(
-                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
-                    myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
-                    mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
-                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id
+                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to posts, resolved.id to posts),
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id,
+                    profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
+                if (isOwner) {
+                    // Private tabs must not claim "nothing saved/liked" while still loading.
+                    _uiState.value = _uiState.value.copy(
+                        privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds + key
+                    )
+                    try {
+                        val content = supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            val state = _uiState.value
+                            _uiState.value = state.copy(
+                                profilePostsByUserId = state.profilePostsByUserId +
+                                    mapOf(key to content.posts, resolved.id to content.posts),
+                                myLikedPosts = content.likedPosts,
+                                mySavedPosts = content.savedPosts,
+                                privateProfileCollectionsFailedIds = state.privateProfileCollectionsFailedIds - key
+                            )
+                        }
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Private profile collections sync failed", error)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsFailedIds = _uiState.value.privateProfileCollectionsFailedIds + key
+                            )
+                        }
+                    } finally {
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds - key
+                            )
+                        }
+                    }
+                }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
-                showToast("Could not load profile content. Pull to refresh to retry.")
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
+                    )
+                    showToast("Could not load profile content. Tap Retry to try again.")
+                }
             } finally {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
@@ -2618,6 +3411,29 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
+    /** Reconcile profile counters, verification, XP and other server-owned fields. */
+    fun refreshViewedProfile() {
+        val viewing = _uiState.value.viewingProfile ?: return
+        val actorId = supabaseService.getCurrentUserId() ?: return
+        viewModelScope.launch {
+            val refreshed = runCatching {
+                if (viewing.id.isNotBlank()) profileRepository.fetchById(viewing.id)
+                else profileRepository.fetchByUsername(viewing.username)
+            }.getOrNull() ?: return@launch
+            if (supabaseService.getCurrentUserId() != actorId) return@launch
+            val state = _uiState.value
+            if (state.viewingProfile?.id != refreshed.id) return@launch
+            val isOwner = refreshed.id == actorId
+            _uiState.value = state.copy(
+                viewingProfile = refreshed,
+                myProfile = if (isOwner) refreshed else state.myProfile,
+                profiles = listOf(refreshed) + state.profiles.filterNot { it.id == refreshed.id }
+            )
+            if (isOwner) saveLocalProfile(refreshed)
+            persistProfile(refreshed)
+        }
+    }
+
     fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
 
     fun updateProfile(updated: UserProfile) {
@@ -2649,12 +3465,41 @@ private suspend fun restoreSupabaseSession() {
                 val normalized = updated.copy(username = cleanUsername, fullName = cleanName)
                 if (profileRepository.updateProfile(normalized)) {
                     val authoritative = profileRepository.fetchCurrent(normalized.username) ?: normalized
-                    _uiState.value = _uiState.value.copy(myProfile = authoritative, isEditProfileOpen = false, viewingProfile = if (_uiState.value.viewingProfile?.username?.equals(authoritative.username, true) == true) authoritative else _uiState.value.viewingProfile)
-                    saveLocalProfile(authoritative); persistProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
+                    onProfilePersisted(authoritative)
+                    showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
-            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
+            } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("Couldn't update your profile. Please try again.") }
         }
     }
+    /**
+     * Called only after EditProfileScreen has received successful confirmation from Supabase.
+     * Never POST/PATCH this profile again: that used to create duplicate requests.
+     */
+    fun onProfilePersisted(updated: UserProfile) {
+        val old = _uiState.value.myProfile
+        if (old.id.isNotBlank() && updated.id != old.id) {
+            Log.w(TAG, "Rejected persisted profile for a different signed-in account")
+            return
+        }
+        // Update cached author metadata while the former display name and username
+        // are still known, then switch the account's public identity.
+        updateLocalAuthorData(updated)
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            myProfile = updated,
+            viewingProfile = if (state.viewingProfile?.id == updated.id ||
+                state.viewingProfile?.username?.equals(old.username, ignoreCase = true) == true
+            ) updated else state.viewingProfile,
+            profiles = listOf(updated) + state.profiles.filterNot {
+                it.id == updated.id || it.username.equals(old.username, ignoreCase = true)
+            },
+            isEditProfileOpen = false
+        )
+        saveLocalProfile(updated)
+        persistProfile(updated)
+        persistCurrentFeed()
+    }
+
     fun updateMyProfile(updated: UserProfile) = updateProfile(updated)
 
     private fun updateLocalAuthorData(profile: UserProfile) {
@@ -2860,7 +3705,7 @@ private suspend fun restoreSupabaseSession() {
             } catch (e: Exception) {
                 Log.e(TAG, "Schedule post failed", e)
                 withContext(Dispatchers.Main) {
-                    showToast(e.message ?: "Couldn't schedule the post.")
+                    showToast("Couldn't schedule the post. Please try again.")
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -2881,7 +3726,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Cancel scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't cancel scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't cancel the scheduled post. Please try again.") }
             }
         }
     }
@@ -2898,7 +3743,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Publish scheduled post failed", e)
-                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't publish scheduled post.") }
+                withContext(Dispatchers.Main) { showToast("Couldn't publish the scheduled post. Please try again.") }
             }
         }
     }
@@ -2926,6 +3771,10 @@ private suspend fun restoreSupabaseSession() {
         clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
+        if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
+            showToast("Item sales belong in BLINK Market. Open Market to list your product.")
+            return
+        }
 
         val profile = _uiState.value.myProfile
         val userId = supabaseService.getCurrentUserId()
@@ -2997,6 +3846,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) current.posts else listOf(resultPost) + current.posts,
                         reels = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) listOf(resultPost) + current.reels else current.reels,
+                        profilePostsByUserId = current.profilePostsByUserId.toMutableMap().apply {
+                            listOf(profile.id, profile.username.trim().lowercase()).filter { it.isNotBlank() }
+                                .forEach { ownerKey ->
+                                    put(ownerKey, (listOf(resultPost) + get(ownerKey).orEmpty()).distinctBy { it.id })
+                                }
+                        },
+                        feedErrorMessage = null,
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )
@@ -3006,7 +3862,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation failed", e)
-                showToast(e.message ?: "Couldn't publish the post. Please try again.")
+                showToast("Couldn't publish the post. Please try again.")
             } finally {
                 _uiState.value = _uiState.value.copy(isCreatingPost = false)
             }
@@ -3068,6 +3924,7 @@ private suspend fun restoreSupabaseSession() {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingLikePostIds.add(postId)) return
         val nextLiked = !target.isLiked
         val nextCount = (target.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
         fun update(items: List<FeedPost>, liked: Boolean, count: Int): List<FeedPost> =
@@ -3079,7 +3936,9 @@ private suspend fun restoreSupabaseSession() {
             reels = update(state.reels, nextLiked, nextCount),
             discoverPosts = update(state.discoverPosts, nextLiked, nextCount),
             profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, nextLiked, nextCount) },
-            myLikedPosts = update((state.myLikedPosts + target).distinctBy { it.id }, nextLiked, nextCount),
+            myLikedPosts = syncInteractionCollection(
+                state.myLikedPosts, target, nextLiked
+            ) { it.copy(isLiked = nextLiked, likes = nextCount) },
             mySavedPosts = update(state.mySavedPosts, nextLiked, nextCount)
         )
         persistCurrentFeed()
@@ -3106,18 +3965,23 @@ private suspend fun restoreSupabaseSession() {
                     reels = update(latest.reels, target.isLiked, target.likes),
                     discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes),
                     profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isLiked, target.likes) },
-                    myLikedPosts = update(latest.myLikedPosts, target.isLiked, target.likes),
+                    myLikedPosts = syncInteractionCollection(
+                        latest.myLikedPosts, target, target.isLiked
+                    ) { it.copy(isLiked = target.isLiked, likes = target.likes) },
                     mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update like.")
             }
+        }.invokeOnCompletion {
+            pendingLikePostIds.remove(postId)
         }
     }
     fun toggleRepost(postId: String) {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingRepostPostIds.add(postId)) return
         val optimisticReposted = !target.isRepostedByMe
         val optimisticCount = (target.repostsCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
 
@@ -3174,15 +4038,26 @@ private suspend fun restoreSupabaseSession() {
                 mySavedPosts = update(latest.mySavedPosts, serverReposted, serverCount)
             )
             persistCurrentFeed()
+        }.invokeOnCompletion {
+            pendingRepostPostIds.remove(postId)
         }
     }
     fun toggleBookmark(postId: String) {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingBookmarkPostIds.add(postId)) return
         val next = !target.isBookmarked
+        fun updatedPost(post: FeedPost, value: Boolean): FeedPost {
+            val saves = post.savesCount?.let { count ->
+                // Keep the displayed aggregate honest and stable during optimistic saves.
+                if (value == target.isBookmarked) target.savesCount ?: count
+                else (target.savesCount ?: count).plus(if (value) 1 else -1).coerceAtLeast(0)
+            }
+            return post.copy(isBookmarked = value, savesCount = saves)
+        }
         fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
-            items.map { if (it.id == postId) it.copy(isBookmarked = value) else it }
+            items.map { if (it.id == postId) updatedPost(it, value) else it }
 
         _uiState.value = state.copy(
             posts = update(state.posts, next),
@@ -3191,7 +4066,9 @@ private suspend fun restoreSupabaseSession() {
             discoverPosts = update(state.discoverPosts, next),
             profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, next) },
             myLikedPosts = update(state.myLikedPosts, next),
-            mySavedPosts = update((state.mySavedPosts + target).distinctBy { it.id }, next)
+            mySavedPosts = syncInteractionCollection(
+                state.mySavedPosts, target, next
+            ) { updatedPost(it, next) }
         )
         persistCurrentFeed()
 
@@ -3205,11 +4082,15 @@ private suspend fun restoreSupabaseSession() {
                     discoverPosts = update(latest.discoverPosts, target.isBookmarked),
                     profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isBookmarked) },
                     myLikedPosts = update(latest.myLikedPosts, target.isBookmarked),
-                    mySavedPosts = update(latest.mySavedPosts, target.isBookmarked)
+                    mySavedPosts = syncInteractionCollection(
+                        latest.mySavedPosts, target, target.isBookmarked
+                    ) { updatedPost(it, target.isBookmarked) }
                 )
                 persistCurrentFeed()
                 showToast("Failed to update bookmark.")
             }
+        }.invokeOnCompletion {
+            pendingBookmarkPostIds.remove(postId)
         }
     }
     fun sharePost(postId: String) {
@@ -3256,6 +4137,7 @@ private suspend fun restoreSupabaseSession() {
             profilePostsByUserId = state.profilePostsByUserId.mapValues { it.value.filterNot { post -> post.id == postId } },
             myLikedPosts = state.myLikedPosts.filterNot { it.id == postId },
             mySavedPosts = state.mySavedPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId,
             activePostOptionsPost = null
         )
         persistCurrentFeed()
@@ -3271,7 +4153,8 @@ private suspend fun restoreSupabaseSession() {
                     reels = reelsBefore,
                     profilePostsByUserId = state.profilePostsByUserId,
                     myLikedPosts = state.myLikedPosts,
-                    mySavedPosts = state.mySavedPosts
+                    mySavedPosts = state.mySavedPosts,
+                    hiddenFeedPostIds = _uiState.value.hiddenFeedPostIds - postId
                 )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
@@ -3288,7 +4171,8 @@ private suspend fun restoreSupabaseSession() {
             posts = state.posts.filterNot { it.id == postId },
             followingPosts = state.followingPosts.filterNot { it.id == postId },
             reels = state.reels.filterNot { it.id == postId },
-            discoverPosts = state.discoverPosts.filterNot { it.id == postId }
+            discoverPosts = state.discoverPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId
         )
         persistCurrentFeed()
         showToast(
@@ -3512,6 +4396,20 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Mark as read only while the chat is genuinely visible in the foreground. */
+    fun setChatUiForeground(isForeground: Boolean) {
+        chatUiForeground = isForeground
+        val current = _uiState.value
+        val partner = current.activeConversationPartner
+        if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
+            current.chatPrivacySettings.sendReadReceipts &&
+            (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
+            viewModelScope.launch {
+                runCatching { chatRepository.markConversationRead(partner) }
+            }
+        }
+    }
+
     fun openChatWithUser(username: String, sellerName: String? = null, sellerAvatar: String? = null) {
         val clean = username.trim().removePrefix("@")
         if (clean.isBlank() || clean.equals("null", true)) {
@@ -3688,7 +4586,13 @@ private suspend fun restoreSupabaseSession() {
                     // Server rows win for matching IDs so delivery/read status is refreshed.
                     page.forEach { message ->
                         val key = message.id.ifBlank { "server:${message.rawTimestamp}:${message.text}" }
-                        merged[key] = message.copy(conversationId = resolvedConversationId)
+                        val cached = merged[key]
+                        merged[key] = message.copy(
+                            conversationId = resolvedConversationId,
+                            status = cached?.let { strongestReceipt(it.status, message.status) }
+                                ?: message.status,
+                            isRead = message.isRead || cached?.isRead == true
+                        )
                     }
                     val messages = merged.values
                         .sortedWith(compareBy<ChatMessage> { it.rawTimestamp.ifBlank { "9999" } }.thenBy { it.id })
@@ -3711,7 +4615,11 @@ private suspend fun restoreSupabaseSession() {
             // Make the merged page durable before acknowledging it to the server.
             persistConversationsNow()
             runCatching { chatRepository.ackPendingDeliveries() }
-            if (!older && _uiState.value.chatPrivacySettings.sendReadReceipts) {
+            // Read only after this chat is actively visible, never merely hydrated.
+            if (!older && chatUiForeground &&
+                _uiState.value.chatPrivacySettings.sendReadReceipts &&
+                (_uiState.value.selectedTab == MainTab.MESSAGES || _uiState.value.isConversationFullScreen) &&
+                _uiState.value.activeConversationPartner.equals(partnerUsername, ignoreCase = true)) {
                 runCatching { chatRepository.markConversationRead(partnerUsername) }
             }
         } catch (e: Exception) {
@@ -3830,7 +4738,7 @@ private suspend fun restoreSupabaseSession() {
                     onFailure = { error ->
                         withContext(Dispatchers.Main) {
                             updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                            showToast(error.message ?: "Message couldn't be sent. It will retry when you're online.")
+                            showToast("Message couldn't be sent. It will retry when you're online.")
                         }
                     }
                 )
@@ -3892,7 +4800,10 @@ private suspend fun restoreSupabaseSession() {
         )
 
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendAttachmentMessage(appContext, cleanPartner, uri, cleanKind).fold(
+            MessageMediaService.sendAttachmentMessage(
+                appContext, cleanPartner, uri, cleanKind,
+                clientMessageId = tempId.removePrefix("temp_attachment_")
+            ).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
                         replaceMessageInState(
@@ -3911,7 +4822,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment couldn't be sent. Tap to retry.")
+                        showToast("Attachment couldn't be sent. Tap to retry.")
                     }
                 }
             )
@@ -3931,7 +4842,8 @@ private suspend fun restoreSupabaseSession() {
                 appContext,
                 partnerUsername.trim().removePrefix("@"),
                 uri,
-                failedMessage.messageType
+                failedMessage.messageType,
+                clientMessageId = failedMessage.id.removePrefix("temp_attachment_")
             ).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
@@ -3951,7 +4863,7 @@ private suspend fun restoreSupabaseSession() {
                 onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED)
-                        showToast(error.message ?: "Attachment retry failed.")
+                        showToast("Attachment retry failed. Please try again.")
                     }
                 }
             )
@@ -4494,7 +5406,7 @@ private suspend fun restoreSupabaseSession() {
 
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
-            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
+            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message, event.eventType)
             is RealtimeEvent.ConversationPresenceEvent -> {
                 val myId = _uiState.value.myProfile.id
                 if (event.userId.isNotBlank() && event.userId != myId && event.conversationId.isNotBlank()) {
@@ -4572,16 +5484,32 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = current.posts.filterNot { it.id == event.postId },
                         followingPosts = current.followingPosts.filterNot { it.id == event.postId },
-                        reels = current.reels.filterNot { it.id == event.postId }
+                        reels = current.reels.filterNot { it.id == event.postId },
+                        hiddenFeedPostIds = current.hiddenFeedPostIds + event.postId
                     )
                     persistCurrentFeed()
                     return@launch
                 }
 
-                val freshRequest = async { postRepository.fetchFeed() }
-                val followingRequest = async { postRepository.fetchFollowingFeed(limit = 30) }
-                val fresh = freshRequest.await()
-                val following = followingRequest.await()
+                // Timeouts are independent for the For You and Following lanes.
+                // Preserve cached lists and do not cancel this realtime handler
+                // on ordinary HTTP/SQL failures. Keep coroutine cancellation intact.
+                val fresh = try {
+                    postRepository.fetchFeed()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime ranked refresh failed; retaining cached posts", error)
+                    emptyList()
+                }
+                val following = try {
+                    postRepository.fetchFollowingFeed(limit = 30)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime Following refresh failed; retaining cached posts", error)
+                    emptyList()
+                }
                 val latest = _uiState.value
                 val muted = latest.mutedUsers
 
@@ -4823,7 +5751,7 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
-    private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
+    private fun handleIncomingRealtimeMessage(msg: ChatMessage, eventType: String) {
         val myId = supabaseService.getCurrentUserId().orEmpty()
         val isMine = msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)
         if (isMine) {
@@ -4833,13 +5761,27 @@ private suspend fun restoreSupabaseSession() {
                 var messageChanged = false
                 val messages = conversation.messages.map { existing ->
                     if (existing.id == msg.id && msg.id.isNotBlank()) {
-                        messageChanged = true
-                        existing.copy(status = msg.status, isRead = msg.isRead)
+                        val status = strongestReceipt(existing.status, msg.status)
+                        if (status != existing.status || msg.isRead != existing.isRead) messageChanged = true
+                        existing.copy(status = status, isRead = existing.isRead || msg.isRead)
                     } else existing
                 }.toMutableList()
-                if (messageChanged) {
+                // Realtime receipts also update the inbox if this conversation was
+                // never opened and its message page is not loaded.
+                val latestOutgoing = conversation.id == msg.conversationId &&
+                    conversation.lastMessageRawTime.isNotBlank() &&
+                    sameMessageTime(conversation.lastMessageRawTime, msg.rawTimestamp)
+                val newStatus = if (latestOutgoing) {
+                    conversation.lastOutgoingStatus?.let { strongestReceipt(it, msg.status) } ?: msg.status
+                } else conversation.lastOutgoingStatus
+                if (messageChanged || (latestOutgoing &&
+                    (newStatus != conversation.lastOutgoingStatus || msg.id != conversation.lastReceiptMessageId))) {
                     changed = true
-                    conversation.copy(messages = messages)
+                    conversation.copy(
+                        messages = messages,
+                        lastOutgoingStatus = newStatus,
+                        lastReceiptMessageId = if (latestOutgoing) msg.id else conversation.lastReceiptMessageId
+                    )
                 } else conversation
             }
             if (changed) {
@@ -4849,6 +5791,9 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
+        // Delivery/read UPDATEs are not new incoming messages: never increment
+        // unread count, show another alert or overwrite last-message summaries.
+        if (!eventType.equals("INSERT", ignoreCase = true)) return
         viewModelScope.launch {
             if (msg.id.isNotBlank()) {
                 runCatching { chatRepository.markMessageDelivered(msg.id) }
@@ -4892,7 +5837,9 @@ private suspend fun restoreSupabaseSession() {
             )
 
             val latest = _uiState.value
-            val active = latest.activeConversationPartner?.equals(partner, true) == true
+            val active = chatUiForeground &&
+                (latest.selectedTab == MainTab.MESSAGES || latest.isConversationFullScreen) &&
+                latest.activeConversationPartner?.equals(partner, true) == true
             val conversations = latest.conversations.toMutableList()
             val index = conversations.indexOfFirst {
                 it.id == conversationId || it.partnerUsername.equals(partner, true)
@@ -4911,6 +5858,8 @@ private suspend fun restoreSupabaseSession() {
                     lastMessageTime = enriched.timestamp,
                     lastMessageRawTime = enriched.rawTimestamp,
                     unreadCount = if (active) 0 else old.unreadCount + 1,
+                    lastOutgoingStatus = null,
+                    lastReceiptMessageId = enriched.id,
                     messages = messages.distinctBy { it.id }.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList()
                 )
             } else {
@@ -4932,6 +5881,8 @@ private suspend fun restoreSupabaseSession() {
                         lastMessageTime = enriched.timestamp,
                         lastMessageRawTime = enriched.rawTimestamp,
                         unreadCount = if (active) 0 else 1,
+                        lastOutgoingStatus = null,
+                        lastReceiptMessageId = enriched.id,
                         messages = mutableListOf(enriched)
                     )
                 )
@@ -4974,8 +5925,12 @@ private suspend fun restoreSupabaseSession() {
 
     private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
         val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
-        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList()) }
-        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
+        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList(),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id) }
+        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id))
         _uiState.value = _uiState.value.copy(conversations = conversations)
         persistConversations()
     }
@@ -4998,7 +5953,9 @@ private suspend fun restoreSupabaseSession() {
                     lastMessage = newMsg.text,
                     lastMessageTime = newMsg.timestamp,
                     lastMessageRawTime = newMsg.rawTimestamp,
-                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId))
+                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId)),
+                    lastOutgoingStatus = if (newMsg.isFromMe) newMsg.status else null,
+                    lastReceiptMessageId = newMsg.id
                 )
             )
             _uiState.value = state.copy(conversations = conversations)
@@ -5021,6 +5978,8 @@ private suspend fun restoreSupabaseSession() {
             lastMessage = normalized.text,
             lastMessageTime = normalized.timestamp,
             lastMessageRawTime = normalized.rawTimestamp,
+            lastOutgoingStatus = if (normalized.isFromMe) normalized.status else null,
+            lastReceiptMessageId = normalized.id,
             messages = messages.distinctBy { it.id.ifBlank { "${it.rawTimestamp}:${it.text}" } }
                 .sortedBy { it.rawTimestamp.ifBlank { "9999" } }
                 .toMutableList()
@@ -5079,88 +6038,130 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun searchMarketItems(query: String, category: String?, sort: String) {
-        marketQuery = query.trim()
-        marketCategory = category?.takeUnless { it.equals("All Categories", true) }
+    fun searchMarketItems(
+        query: String,
+        category: String?,
+        sort: String,
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+        savedOnly: Boolean = false,
+        verifiedOnly: Boolean = false,
+        university: String? = null
+    ) {
+        val cleanQuery = query.trim()
+        val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
+        if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
+        val sameQuery = marketQuery == cleanQuery && marketCategory == cleanCategory &&
+            marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
+            marketSavedOnly == savedOnly && marketVerifiedOnly == verifiedOnly &&
+            marketUniversity == university?.takeIf { it.isNotBlank() }
+        // Restoring Market must not reissue identical in-flight or fresh queries.
+        if (sameQuery && _uiState.value.marketErrorMessage == null &&
+            (_uiState.value.isMarketLoading ||
+                !BlinkRefreshPolicy.isStale(lastMarketQueryCompletedAt, SystemClock.elapsedRealtime()))
+        ) return
+        marketQuery = cleanQuery
+        marketCategory = cleanCategory
+        marketUniversity = university?.trim()?.takeIf { it.isNotBlank() }
         marketSort = sort
-        if (!_uiState.value.isOnline) return
+        marketMinPrice = minPrice
+        marketMaxPrice = maxPrice
+        marketSavedOnly = savedOnly
+        marketVerifiedOnly = verifiedOnly
+        refreshMarketItems()
+    }
 
-        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
+    fun refreshMarketItems() {
+        val generation = ++marketRequestVersion
+        if (!_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(
+                isMarketLoading = false,
+                isLoadingMoreMarket = false,
+                marketErrorMessage = "Offline: showing previously loaded Market listings."
+            )
+            return
+        }
+        val requestQuery = marketQuery
+        val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
+        val requestSort = marketSort
+        val requestMin = marketMinPrice
+        val requestMax = marketMaxPrice
+        val requestSaved = marketSavedOnly
+        val requestVerified = marketVerifiedOnly
+        _uiState.value = _uiState.value.copy(
+            isMarketLoading = true, isLoadingMoreMarket = false, marketErrorMessage = null
+        )
         viewModelScope.launch {
-            runCatching {
+            val result = runCatching {
                 supabaseService.fetchMarketItems(
                     limit = 40,
                     offset = 0,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
+                    query = requestQuery,
+                    category = requestCategory,
+                    university = requestUniversity,
+                    sort = requestSort,
+                    minPrice = requestMin,
+                    maxPrice = requestMax,
+                    savedOnly = requestSaved,
+                    verifiedOnly = requestVerified
                 )
-            }.onSuccess { fresh ->
+            }
+            if (generation != marketRequestVersion) return@launch
+            result.onSuccess { fresh ->
+                lastMarketQueryCompletedAt = SystemClock.elapsedRealtime()
+                marketNextOffset = fresh.size
                 _uiState.value = _uiState.value.copy(
                     marketItems = fresh,
                     isMarketLoading = false,
+                    isLoadingMoreMarket = false,
                     marketHasMore = fresh.size >= 40,
                     marketErrorMessage = null
                 )
                 persistExtendedCache()
             }.onFailure { error ->
-                Log.w(TAG, "Market search failed", error)
+                Log.w(TAG, "Market refresh failed", error)
                 _uiState.value = _uiState.value.copy(
                     isMarketLoading = false,
-                    marketErrorMessage = error.message ?: "Couldn't search Market."
+                    isLoadingMoreMarket = false,
+                    marketErrorMessage = "Couldn't refresh Marketplace. Tap to retry."
                 )
             }
-        }
-    }
-
-    fun refreshMarketItems() {
-        if (!_uiState.value.isOnline) {
-            showToast("You're offline. Showing your saved Market cache.")
-            return
-        }
-        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
-        viewModelScope.launch {
-            runCatching {
-                supabaseService.fetchMarketItems(
-                    limit = 40,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
-                )
-            }
-                .onSuccess { fresh ->
-                    _uiState.value = _uiState.value.copy(
-                        marketItems = fresh,
-                        isMarketLoading = false,
-                        marketHasMore = fresh.size >= 40,
-                        marketErrorMessage = null
-                    )
-                    persistExtendedCache()
-                }
-                .onFailure { error ->
-                    Log.w(TAG, "Market refresh failed", error)
-                    _uiState.value = _uiState.value.copy(
-                        isMarketLoading = false,
-                        marketErrorMessage = error.message ?: "Couldn't refresh Market."
-                    )
-                }
         }
     }
 
     fun loadMoreMarketItems() {
         val current = _uiState.value
-        if (!current.isOnline || current.isLoadingMoreMarket || !current.marketHasMore) return
+        if (!current.isOnline || current.isMarketLoading || current.isLoadingMoreMarket || !current.marketHasMore) return
+        val generation = marketRequestVersion
+        val offset = marketNextOffset.coerceAtLeast(current.marketItems.size)
+        val requestQuery = marketQuery
+        val requestCategory = marketCategory
+        val requestUniversity = marketUniversity
+        val requestSort = marketSort
+        val requestMin = marketMinPrice
+        val requestMax = marketMaxPrice
+        val requestSaved = marketSavedOnly
+        val requestVerified = marketVerifiedOnly
         _uiState.value = current.copy(isLoadingMoreMarket = true)
         viewModelScope.launch {
-            runCatching {
+            val result = runCatching {
                 supabaseService.fetchMarketItems(
                     limit = 40,
-                    offset = _uiState.value.marketItems.size,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
+                    offset = offset,
+                    query = requestQuery,
+                    category = requestCategory,
+                    university = requestUniversity,
+                    sort = requestSort,
+                    minPrice = requestMin,
+                    maxPrice = requestMax,
+                    savedOnly = requestSaved,
+                    verifiedOnly = requestVerified
                 )
-            }.onSuccess { page ->
+            }
+            if (generation != marketRequestVersion) return@launch
+            result.onSuccess { page ->
+                marketNextOffset = offset + page.size
                 val latest = _uiState.value
                 _uiState.value = latest.copy(
                     marketItems = (latest.marketItems + page).distinctBy { it.id },
@@ -5173,7 +6174,7 @@ private suspend fun restoreSupabaseSession() {
                 Log.w(TAG, "Market pagination failed", error)
                 _uiState.value = _uiState.value.copy(
                     isLoadingMoreMarket = false,
-                    marketErrorMessage = error.message ?: "Couldn't load more listings."
+                    marketErrorMessage = "Couldn't load more listings. Tap to retry."
                 )
             }
         }
@@ -5187,11 +6188,70 @@ private suspend fun restoreSupabaseSession() {
         val mimeType = resolver.getType(uri) ?: "image/jpeg"
         if (!mimeType.startsWith("image/")) return@withContext null
         val bytes = runCatching {
-            resolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+            resolver.openInputStream(uri)?.use { stream ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(64 * 1024)
+                var total = 0
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > 10 * 1024 * 1024) return@use ByteArray(0)
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
         }.getOrNull() ?: return@withContext null
-        if (bytes.isEmpty() || bytes.size > 10 * 1024 * 1024) return@withContext null
+        if (bytes.isEmpty()) return@withContext null
         supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
+
+    private suspend fun marketFirstPhotoSha256(source: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            runCatching {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 10 * 1024 * 1024) return@use null
+                        digest.update(buffer, 0, count)
+                    }
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+            }.getOrNull()
+        }
+
+    private suspend fun uploadMarketVideo(source: String, userId: String): String? =
+        withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(source) }.getOrNull() ?: return@withContext null
+            if (uri.scheme != "content") return@withContext null
+            val resolver = appContext.contentResolver
+            val mime = resolver.getType(uri)?.lowercase().orEmpty()
+            if (mime !in setOf("video/mp4","video/webm")) return@withContext null
+            val bytes = runCatching {
+                resolver.openInputStream(uri)?.use { stream ->
+                    val sink = ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    var n = 0
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        n += count
+                        if (n > 25 * 1024 * 1024) return@use ByteArray(0)
+                        sink.write(buffer,0,count)
+                    }
+                    sink.toByteArray()
+                }
+            }.getOrNull() ?: return@withContext null
+            if (bytes.isEmpty()) return@withContext null
+            supabaseService.uploadMarketVideo(userId,bytes,mime)
+        }
 
     fun addMarketItem(
         title: String,
@@ -5203,13 +6263,14 @@ private suspend fun restoreSupabaseSession() {
         quantity: Int,
         negotiable: Boolean,
         deliveryMethod: String,
-        pickupLocation: String
+        pickupLocation: String,
+        videoSource: String? = null
     ) {
         val state = _uiState.value
         val p = state.myProfile
         if (!state.isPostItemOpen) return
-        if (!p.isSellerActive) {
-            showToast("Activate your seller account before publishing listings.")
+        if (!p.isSellerActive || !p.hasActiveMarketVerification()) {
+            showToast("Register as a seller and keep your verification active to publish.")
             return
         }
         val cleanTitle = title.trim()
@@ -5222,15 +6283,32 @@ private suspend fun restoreSupabaseSession() {
 
         _uiState.value = state.copy(isPublishingMarketItem = true)
         viewModelScope.launch {
+            val coverDigest = marketFirstPhotoSha256(cleanSources.first())
+            if (coverDigest == null) {
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Can't verify the product cover photo. Choose it again.")
+                return@launch
+            }
             val uploaded = mutableListOf<String>()
             for (source in cleanSources) {
                 val url = uploadMarketImage(source, p.id)
                 if (url == null) {
+                    // Prevent abandoned storage objects from earlier successful uploads.
+                    uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
                     _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                     showToast("One of the product photos couldn't be uploaded. Please try again.")
                     return@launch
                 }
                 uploaded += url
+            }
+            val videoUrl = videoSource?.takeIf(String::isNotBlank)?.let {
+                uploadMarketVideo(it,p.id)
+            }
+            if (!videoSource.isNullOrBlank() && videoUrl.isNullOrBlank()) {
+                uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id,it) }
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Product video must be MP4/WebM and 25 MB or smaller.")
+                return@launch
             }
 
             val listing = MarketItem(
@@ -5241,8 +6319,10 @@ private suspend fun restoreSupabaseSession() {
                 sellerUsername = p.username,
                 sellerAvatar = p.avatarUrl,
                 sellerName = p.fullName.ifBlank { p.username },
-                sellerPhone = p.phone.value,
-                sellerWhatsapp = p.whatsapp.value,
+                // Never publish private profile or enrollment contact details.
+                // Buyers can contact the seller through the in-app DM.
+                sellerPhone = "",
+                sellerWhatsapp = "",
                 sellerIsVerified = p.verificationBadge != VerificationBadge.NONE,
                 verificationBadge = p.verificationBadge,
                 university = p.university,
@@ -5254,11 +6334,13 @@ private suspend fun restoreSupabaseSession() {
                 quantity = quantity.coerceIn(1,9999),
                 isNegotiable = negotiable,
                 deliveryMethod = deliveryMethod,
-                pickupLocation = pickupLocation.trim()
+                pickupLocation = pickupLocation.trim(),
+                videoUrl = videoUrl.orEmpty(),
+                mediaDigest = coverDigest
             )
 
             if (supabaseService.createMarketItem(listing)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, university = marketUniversity, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 _uiState.value = _uiState.value.copy(
                     marketItems = live,
@@ -5270,9 +6352,39 @@ private suspend fun restoreSupabaseSession() {
                 persistExtendedCache()
                 showToast("Product published to BLINK Market.")
             } else {
+                uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
+                if (!videoUrl.isNullOrBlank()) supabaseService.deleteStagedMarketVideo(p.id,videoUrl)
                 _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                 showToast("Product wasn't published. Check your seller status and details.")
             }
+        }
+    }
+
+    fun makeMarketOffer(item: MarketItem, price: Long, message: String) {
+        if (item.id.isBlank() || price <= 0L) return
+        viewModelScope.launch {
+            val created = supabaseService.makeMarketOffer(item.id, price, message)
+            showToast(if (created) "Your offer was sent privately to the seller."
+                else "Couldn't send this offer. Check that you have no other pending offer.")
+        }
+    }
+
+    fun requestMarketModerationReview(item: MarketItem, reason: String) {
+        if (item.id.isBlank() || reason.trim().length < 15) return
+        viewModelScope.launch {
+            val sent = supabaseService.requestMarketModerationReview(item.id, reason)
+            showToast(if (sent) "Your listing has been submitted for a moderation review."
+                else "Couldn't submit the review. Please try again.")
+        }
+    }
+
+    fun confirmMarketAvailability(item: MarketItem) {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            val confirmed = supabaseService.confirmMarketAvailability(item.id)
+            showToast(if (confirmed) "Availability confirmed for another 30 days."
+                else "Couldn't renew availability. Check your seller verification.")
+            if (confirmed) refreshMarketItems()
         }
     }
 
@@ -5321,50 +6433,63 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun toggleMarketSaved(item: MarketItem) {
-        if (item.id.isBlank()) return
-        val before = _uiState.value
-        val optimisticSaved = !item.isSaved
-        fun update(current: MarketItem): MarketItem =
-            if (current.id == item.id) current.copy(
+        if (item.id.isBlank() || !marketplaceSaveInFlight.add(item.id)) return
+        val previousSaved = item.isSaved
+        val previousCount = item.savesCount
+        val optimisticSaved = !previousSaved
+        fun optimistic(row: MarketItem): MarketItem =
+            if (row.id == item.id) row.copy(
                 isSaved = optimisticSaved,
-                savesCount = (current.savesCount + if (optimisticSaved) 1 else -1).coerceAtLeast(0)
-            ) else current
-        _uiState.value = before.copy(
-            marketItems = before.marketItems.map(::update),
-            viewingProduct = before.viewingProduct?.let(::update)
+                savesCount = (row.savesCount + if (optimisticSaved) 1 else -1).coerceAtLeast(0)
+            ) else row
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            marketItems = current.marketItems.map(::optimistic),
+            viewingProduct = current.viewingProduct?.let(::optimistic)
         )
         viewModelScope.launch {
-            val saved = supabaseService.toggleMarketWishlist(item.id)
-            if (saved == null) {
-                _uiState.value = before
-                showToast("Couldn't update saved listing.")
-            } else {
+            try {
+                val saved = supabaseService.toggleMarketWishlist(item.id)
+                fun reconcile(row: MarketItem): MarketItem =
+                    if (row.id == item.id) row.copy(
+                        isSaved = saved ?: previousSaved,
+                        savesCount = if (saved == null) previousCount else row.savesCount
+                    ) else row
+                // Reconcile just this listing. Do not overwrite a newer app state.
                 val latest = _uiState.value
-                fun reconcile(current: MarketItem): MarketItem =
-                    if (current.id == item.id) current.copy(isSaved = saved) else current
                 _uiState.value = latest.copy(
                     marketItems = latest.marketItems.map(::reconcile),
                     viewingProduct = latest.viewingProduct?.let(::reconcile)
                 )
-                persistExtendedCache()
+                if (saved == null) showToast("Couldn't update saved listing.")
+                else persistExtendedCache()
+            } finally {
+                marketplaceSaveInFlight.remove(item.id)
             }
         }
     }
 
     fun requestMarketplaceOrder(item: MarketItem, quantity: Int) {
-        if (item.id.isBlank() || item.isSold || item.status != "active") {
-            showToast("This listing is no longer available.")
+        if (item.id.isBlank() || item.isSold || item.status != "active" ||
+            quantity !in 1..20 || item.quantity < quantity) {
+            showToast("This listing is no longer available in the requested quantity.")
             return
         }
+        if (_uiState.value.isRequestingMarketOrder) return
+        _uiState.value = _uiState.value.copy(isRequestingMarketOrder = true)
         viewModelScope.launch {
-            val orderId = supabaseService.createMarketplaceOrder(item.id, quantity)
-            if (orderId != null) {
-                showToast("Purchase request sent. Continue in BLINK DM to arrange pickup or delivery.")
-                if (item.sellerUsername.isNotBlank()) {
-                    openChatWithUser(item.sellerUsername, item.sellerName, item.sellerAvatar)
+            try {
+                val orderId = supabaseService.createMarketplaceOrder(item.id, quantity)
+                if (orderId != null) {
+                    showToast("Purchase request sent. Continue in BLINK DM to arrange pickup or delivery.")
+                    if (item.sellerUsername.isNotBlank()) {
+                        openChatWithUser(item.sellerUsername, item.sellerName, item.sellerAvatar)
+                    }
+                } else {
+                    showToast("Couldn't create the purchase request. The item may have changed.")
                 }
-            } else {
-                showToast("Couldn't create the purchase request. The item may have changed.")
+            } finally {
+                _uiState.value = _uiState.value.copy(isRequestingMarketOrder = false)
             }
         }
     }
@@ -5384,7 +6509,7 @@ private suspend fun restoreSupabaseSession() {
         if (item.id.isBlank()) return
         viewModelScope.launch {
             if (supabaseService.updateMarketListingStatus(item.id, status)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice, savedOnly = marketSavedOnly, verifiedOnly = marketVerifiedOnly) }
                     .getOrDefault(_uiState.value.marketItems)
                 val latest = _uiState.value
                 val updatedViewing = latest.viewingProduct?.let { current ->
@@ -5427,58 +6552,75 @@ private suspend fun restoreSupabaseSession() {
         phone: String,
         whatsapp: String,
         state: String,
-        city: String
+        city: String,
+        university: String,
+        sellerKind: String,
+        businessDescription: String,
+        productCategory: String,
+        delivery: Boolean,
+        pickup: Boolean
     ) {
-        val currentState = _uiState.value
-        val current = currentState.myProfile
-        if (current.isSellerActive) {
-            showToast("Your Market seller account is already active.")
+        val snapshot = _uiState.value
+        val current = snapshot.myProfile
+        if (!current.hasActiveMarketVerification()) {
+            showToast("Get or renew your blue verification before becoming a seller.")
             return
         }
-        if (!currentState.economyPolicy.cashCheckoutEnabled) {
-            showToast("Secure Paystack seller activation is not enabled yet.")
-            return
-        }
-
         val cleanStore = storeName.trim()
         val cleanPhone = phone.filter(Char::isDigit)
         val cleanWhatsapp = whatsapp.filter(Char::isDigit)
-        if (cleanStore.length < 2 || cleanPhone.length !in 10..15 || cleanWhatsapp.length !in 10..15) {
-            showToast("Enter a valid store name, phone number and WhatsApp number.")
+        val cleanUni = university.trim()
+        if (cleanStore.length !in 2..80 ||
+            cleanPhone.length !in 10..15 || cleanWhatsapp.length !in 10..15 ||
+            cleanUni.length < 3 || state.isBlank() || city.trim().length < 2
+        ) {
+            showToast("Enter your business details, contact information and university.")
             return
         }
 
-        val profileUpdate = current.copy(
-            sellerStoreName = cleanStore,
-            phone = ContactField(phone.trim(), true),
-            whatsapp = ContactField(whatsapp.trim(), true),
-            currentCityState = listOf(city.trim(), state.trim()).filter { it.isNotBlank() }.joinToString(", ")
-        )
-        _uiState.value = currentState.copy(isSellerActivationLoading = true)
+        _uiState.value = snapshot.copy(isSellerActivationLoading = true)
         viewModelScope.launch {
-            val profileSaved = profileRepository.updateProfile(profileUpdate)
-            if (!profileSaved) {
+            // Persist only profile details the owner is allowed to edit.
+            val profileUpdate = current.copy(
+                sellerStoreName = cleanStore,
+                phone = ContactField(phone.trim(), false),
+                whatsapp = ContactField(whatsapp.trim(), false),
+                university = cleanUni,
+                currentCityState = listOf(city.trim(), state.trim()).joinToString(", ")
+            )
+            if (!profileRepository.updateProfile(profileUpdate)) {
                 _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
                 showToast("Couldn't save your seller details.")
                 return@launch
             }
-
-            _uiState.value = _uiState.value.copy(myProfile = profileUpdate)
-            saveLocalProfile(profileUpdate)
-            blinkEconomyService.initializePaystackMarketSellerCheckout(cleanStore).fold(
-                onSuccess = { payload ->
-                    _uiState.value = _uiState.value.copy(
-                        isSellerActivationLoading = false,
-                        isBecomeSellerOpen = false
-                    )
-                    openPaystackCheckout(payload)
-                },
-                onFailure = { error ->
-                    Log.w(TAG, "Market seller checkout failed to initialize", error)
-                    _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
-                    showToast(error.message ?: "Couldn't start seller activation checkout.")
-                }
+            val registered = current.isSellerActive ||
+                supabaseService.registerVerifiedMarketSeller(
+                    cleanStore, phone, whatsapp, state, city, cleanUni
+                )
+            if (!registered) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Seller registration requires active verification and an available Market server.")
+                return@launch
+            }
+            if (!supabaseService.completeMarketSellerProfile(
+                    sellerKind, businessDescription, productCategory, delivery, pickup
+                )) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Seller details could not be completed. Please review the form.")
+                return@launch
+            }
+            val fresh = runCatching { profileRepository.fetchById(current.id) }.getOrNull()
+                ?: profileUpdate.copy(isSellerActive = true)
+            _uiState.value = _uiState.value.copy(
+                myProfile = fresh,
+                isSellerActivationLoading = false,
+                isBecomeSellerOpen = false,
+                showSellerCongratulationsDialog = true
             )
+            saveLocalProfile(fresh)
+            persistProfile(fresh)
+            persistExtendedCache()
+            showToast("Seller application submitted. BLINK will review it before listings can be published.")
         }
     }
 
@@ -5739,7 +6881,7 @@ private suspend fun restoreSupabaseSession() {
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
                 showToast("✨ Story published!")
-            }else showToast("Failed to persist story to Supabase.")
+            }else showToast("Couldn't save your story. Please try again.")
         }
     }
 
@@ -5760,7 +6902,7 @@ private suspend fun restoreSupabaseSession() {
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
-                showToast(e.message?:"Unable to share story.")
+                showToast("Unable to share your story. Please try again.")
             }finally{
                 _uiState.value=_uiState.value.copy(isCreatingStory=false)
             }

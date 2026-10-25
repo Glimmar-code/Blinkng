@@ -44,9 +44,21 @@ class VideoReelsBehaviorTest {
     }
 
     @Test
-    fun preloadWindow_keepsOnlyCurrentAndAdjacentPagesWarm() {
+    fun nativeSponsoredCadence_includesExactBoundaryAndRejectsShortLists() {
+        assertFalse(shouldInsertSponsoredAfter(4, 8))
+        assertTrue(shouldInsertSponsoredAfter(8, 8))
+        assertTrue(shouldInsertSponsoredAfter(16, 8))
+        assertFalse(shouldInsertSponsoredAfter(6, 7))
+        assertTrue(shouldInsertSponsoredAfter(7, 7))
+        assertTrue(shouldInsertSponsoredAfter(14, 7))
+        assertFalse(shouldInsertSponsoredAfter(0, 7))
+        assertFalse(shouldInsertSponsoredAfter(7, 0))
+    }
+
+    @Test
+    fun preloadWindow_keepsOnlyCurrentAndNextPagesWarm() {
         assertTrue(shouldPreloadReelPage(index = 5, currentPage = 5))
-        assertTrue(shouldPreloadReelPage(index = 4, currentPage = 5))
+        assertFalse(shouldPreloadReelPage(index = 4, currentPage = 5))
         assertTrue(shouldPreloadReelPage(index = 6, currentPage = 5))
         assertFalse(shouldPreloadReelPage(index = 3, currentPage = 5))
         assertFalse(shouldPreloadReelPage(index = 7, currentPage = 5))

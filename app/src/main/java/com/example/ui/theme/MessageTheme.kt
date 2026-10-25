@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.blinkng.shared.BlinkDesignTokens
 
 /** Independent appearance modes for the messaging experience. */
 enum class MessageThemeMode(val storageValue: String, val displayName: String) {
@@ -75,19 +76,19 @@ private val PinkMessagePalette = MessagePalette(
 
 private val DarkMessagePalette = MessagePalette(
     mode = MessageThemeMode.DARK,
-    backgroundTop = Color(0xFF050505),
-    backgroundMiddle = Color(0xFF000000),
-    backgroundBottom = Color(0xFF000000),
-    glass = Color(0xFF080808),
-    glassElevated = Color(0xFF0F0F0F),
-    border = Color(0xFF242424),
-    accent = Color(0xFF9B6CFF),
-    accentSecondary = Color(0xFF3B82F6),
-    textPrimary = Color(0xFFF8F7FF),
-    textSecondary = Color(0xFFB7B5C8),
-    textMuted = Color(0xFF777B8E),
-    incomingBubble = Color(0xFF121212),
-    outgoingBubble = Color(0xFF6D3FEF),
+    backgroundTop = Color(BlinkDesignTokens.Dark.Background),
+    backgroundMiddle = Color(BlinkDesignTokens.Dark.Background),
+    backgroundBottom = Color(BlinkDesignTokens.Dark.Background),
+    glass = Color(BlinkDesignTokens.Dark.Surface),
+    glassElevated = Color(BlinkDesignTokens.Dark.SurfaceElevated),
+    border = Color(BlinkDesignTokens.Dark.BorderSoft),
+    accent = Color(BlinkDesignTokens.Brand.Primary),
+    accentSecondary = Color(BlinkDesignTokens.Brand.PrimaryBright),
+    textPrimary = Color(BlinkDesignTokens.Dark.TextPrimary),
+    textSecondary = Color(BlinkDesignTokens.Dark.TextSecondary),
+    textMuted = Color(BlinkDesignTokens.Dark.TextMuted),
+    incomingBubble = Color(BlinkDesignTokens.Dark.SurfaceHighest),
+    outgoingBubble = Color(BlinkDesignTokens.Brand.PrimaryDeep),
     outgoingText = Color.White
 )
 

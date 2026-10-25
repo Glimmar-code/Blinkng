@@ -166,6 +166,7 @@ internal fun PremiumSearchExperience(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -552,6 +553,15 @@ internal fun PremiumSearchExperience(
                     onHashtag = { query = "#$it"; category = PremiumSearchCategory.HASHTAGS },
                     onProfileClick = onProfileClick,
                     onPostClick = onPostClick,
+                    currentUsername = currentUsername,
+                    isDark = isDark,
+                    onLikePost = onLikePost,
+                    onCommentPost = onCommentPost,
+                    onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
+                    onSharePost = onSharePost,
+                    onOptionsClick = onOptionsClick,
+                    onDeletePost = onDeletePost,
                 )
             } else {
                 PremiumSearchResults(
@@ -575,6 +585,7 @@ internal fun PremiumSearchExperience(
                     onLikePost = onLikePost,
                     onCommentPost = onCommentPost,
                     onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
                     onSharePost = onSharePost,
                     onOptionsClick = onOptionsClick,
                     onDeletePost = onDeletePost,
@@ -708,7 +719,7 @@ private fun PremiumSearchBar(
                             modifier = Modifier.align(Alignment.TopEnd).size(15.dp),
                             shape = CircleShape,
                             color = colors.primary,
-                        ) { Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 8.sp, color = androidx.compose.ui.graphics.Color.White) } }
+                        ) { Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 11.sp, color = androidx.compose.ui.graphics.Color.White) } }
                     }
                 }
             }
@@ -733,6 +744,15 @@ private fun PremiumDiscoveryHome(
     onHashtag: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    currentUsername: String,
+    isDark: Boolean,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
     LazyColumn(
@@ -803,10 +823,47 @@ private fun PremiumDiscoveryHome(
             }
         }
 
+        item(key = "promoted-discovery") {
+            BlinkPromotedDiscoveryRail(
+                surface = "SEARCH",
+                currentUsername = currentUsername,
+                isDark = isDark,
+                onProfileClick = onProfileClick,
+                onPostClick = onPostClick,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onVotePoll = onVotePoll,
+                onSharePost = onSharePost,
+                onOptionsClick = onOptionsClick,
+                onDeletePost = onDeletePost,
+            )
+        }
+
         if (trendingPosts.isNotEmpty()) {
             item { PremiumSectionTitle("Popular posts & reels", "High-engagement content right now") }
             items(trendingPosts, key = { "trend-${it.id}" }) { post ->
-                PremiumDiscoveryPostPreview(post = post, onClick = { onPostClick(post) })
+                Column {
+                    PostCard(
+                        post = post,
+                        isDark = isDark,
+                        onLike = { onLikePost(post.id) },
+                        onComment = { onCommentPost(post.id) },
+                        onBookmark = { onBookmarkPost(post.id) },
+                        onVotePoll = onVotePoll,
+                        onShare = { onSharePost(post.id) },
+                        onOptionsClick = { onOptionsClick(post) },
+                        onProfileClick = onProfileClick,
+                        isAuthor = post.author.equals(currentUsername, true) ||
+                            post.authorUsername.equals(currentUsername, true),
+                        onDelete = { onDeletePost(post.id) },
+                        trackExposure = false,
+                        xFeedStyle = true,
+                    )
+                    TextButton(onClick = { onPostClick(post) }) {
+                        Text(if (post.isReel) "Open reel" else "Open post")
+                    }
+                }
             }
         }
     }
@@ -834,6 +891,7 @@ private fun PremiumSearchResults(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -933,6 +991,7 @@ private fun PremiumSearchResults(
                         onLike = { onLikePost(post.id) },
                         onComment = { onCommentPost(post.id) },
                         onBookmark = { onBookmarkPost(post.id) },
+                        onVotePoll = onVotePoll,
                         onShare = { onSharePost(post.id) },
                         onOptionsClick = { onOptionsClick(post) },
                         onProfileClick = onProfileClick,
@@ -1091,27 +1150,6 @@ private fun PremiumReelTile(post: FeedPost, modifier: Modifier, onClick: () -> U
                     Text("${post.viewsCount} views · ${post.videoDuration}", fontSize = 9.sp, color = colors.textSecondary)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PremiumDiscoveryPostPreview(post: FeedPost, onClick: () -> Unit) {
-    val colors = BlinkThemeTokens.colors
-    BlinkCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), onClick = onClick) {
-        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = colors.surfaceHighest, modifier = Modifier.size(66.dp)) {
-                val preview = post.images.firstOrNull()
-                if (!preview.isNullOrBlank()) AsyncImage(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                else Box(contentAlignment = Alignment.Center) { Icon(if (post.isReel) Icons.Rounded.PlayCircle else Icons.Rounded.Photo, null, tint = colors.primaryBright) }
-            }
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text(post.author, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                Text(post.text.ifBlank { if (post.isReel) "Reel" else "Post" }, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, color = colors.textSecondary)
-                Text("${post.viewsCount} views · ${post.likes} likes · ${post.commentsCount} comments", fontSize = 9.sp, color = colors.textMuted)
-            }
-            Icon(Icons.Rounded.TrendingUp, null, tint = colors.primaryBright)
         }
     }
 }

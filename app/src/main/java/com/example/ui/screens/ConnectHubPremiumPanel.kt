@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import com.example.data.local.rememberPersistentTextState
+import com.example.data.local.ConnectMatchPreferencesStore
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
@@ -30,6 +33,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -95,6 +100,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,6 +120,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.ConnectInboxPolicy
 import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
 import com.example.data.models.MatchSpinPreferences
@@ -136,7 +143,11 @@ import kotlinx.coroutines.launch
 
 data class ConnectHubActions(
     val refresh: () -> Unit = {},
+    val refreshStudents: () -> Unit = {},
+    val searchStudents: (String) -> Unit = {},
     val publishRoommate: (String, String, String, Double?, Double?) -> Unit = { _, _, _, _, _ -> },
+    val submitHubForm: (String, String, String, String, String, String, (Boolean, String?) -> Unit) -> Unit =
+        { _, _, _, _, _, _, onResult -> onResult(false, "Publishing is currently unavailable.") },
     val applyRoommate: (String) -> Unit = {},
     val publishMentor: (List<String>, String, String, String) -> Unit = { _, _, _, _ -> },
     val requestMentor: (String) -> Unit = {},
@@ -150,6 +161,7 @@ data class ConnectHubActions(
     val respondRequest: (String, String, Boolean) -> Unit = { _, _, _ -> },
     val submitChallengeScore: (String, Int) -> Unit = { _, _ -> },
     val recordGameResult: (String, Int) -> Unit = { _, _ -> },
+    val onMatchSpinCoinsUpdated: (Long) -> Unit = {},
     // Optimistic "follow" action used from the browse and applicant cards below.
     // Wire this to your real follow endpoint; the UI updates immediately either way.
     val followUser: (String) -> Unit = {}
@@ -176,8 +188,6 @@ private enum class ConnectCategory(
 }
 
 
-private val PagerHeight = 620.dp
-
 @Composable
 fun ConnectHubPremiumPanel(
     current: UserProfile?,
@@ -190,25 +200,36 @@ fun ConnectHubPremiumPanel(
     modifier: Modifier = Modifier,
     discoveryContent: @Composable () -> Unit = {}
 ) {
-    var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
-    var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
-    var hubQuery by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:hubQuery:1")
+    var match by remember(current?.id) { mutableStateOf<Pair<UserProfile, Int>?>(null) }
+    var form by rememberSaveable(current?.id) { mutableStateOf(HubForm.NONE) }
+    var isFormSubmitting by remember(form, current?.id) { mutableStateOf(false) }
+    var formSubmissionError by remember(form, current?.id) { mutableStateOf<String?>(null) }
+    var hubQuery by rememberPersistentTextState(key = "connect:hub:query:${current?.id.orEmpty()}")
     var isMatching by remember { mutableStateOf(false) }
-    var showMatchSpinDialog by rememberSaveable { mutableStateOf(false) }
-    var matchRemainingCoins by remember { mutableStateOf<Long?>(null) }
-    var matchReasons by remember { mutableStateOf<List<String>>(emptyList()) }
-    var matchError by remember { mutableStateOf<String?>(null) }
-    var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
-    var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
-    var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
-    var showUnifiedInbox by rememberSaveable { mutableStateOf(false) }
+    var showMatchSpinDialog by rememberSaveable(current?.id) { mutableStateOf(false) }
+    var matchRemainingCoins by remember(current?.id) { mutableStateOf<Long?>(null) }
+    var matchReasons by remember(current?.id) { mutableStateOf<List<String>>(emptyList()) }
+    var matchError by remember(current?.id) { mutableStateOf<String?>(null) }
+    val localContext = LocalContext.current
+    val preferencesStore = remember(localContext) { ConnectMatchPreferencesStore(localContext) }
+    var savedMatchPreferences by remember(current?.id) {
+        mutableStateOf(preferencesStore.load(current?.id))
+    }
+    var recentMatches by remember(current?.id) { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
+    var challengeTarget by remember(current?.id) { mutableStateOf<UserProfile?>(null) }
+    var showUnifiedInbox by rememberSaveable(current?.id) { mutableStateOf(false) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val pagerHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 225)
+        .coerceIn(420, 760).dp
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
-    var directoryCategories by remember { mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories()) }
+    var directoryCategories by remember(current?.id) {
+        mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories())
+    }
+    var selectedDirectoryCategory by remember { mutableStateOf<ConnectDirectoryCategory?>(null) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(current?.id) {
         directoryCategories = categoryCatalogRepository.fetchCategories()
     }
 
@@ -225,34 +246,31 @@ fun ConnectHubPremiumPanel(
         }
     }
 
-    val candidates = remember(hub.smartMatches, profiles, current) {
-        if (hub.smartMatches.isNotEmpty()) {
-            hub.smartMatches.mapNotNull { candidate ->
-                if (candidate.username.isBlank()) null else {
-                    UserProfile(
-                        id = candidate.userId,
-                        fullName = candidate.fullName,
-                        username = candidate.username,
-                        avatarUrl = candidate.avatarUrl,
-                        university = candidate.university,
-                        faculty = candidate.faculty,
-                        department = candidate.department,
-                        academicLevel = candidate.academicLevel,
-                        relationshipStatus = candidate.relationshipStatus,
-                        onlineNow = candidate.onlineNow,
-                        lastSeenAt = candidate.lastSeenAt,
-                        coreSkills = candidate.commonSkills.toMutableList(),
-                        hobbies = candidate.commonHobbies
-                    ) to candidate.compatibilityScore
-                }
+    // Only server-approved candidates from get_connect_matches are eligible.
+    // Falling back to unrelated local profiles can bypass private/discoverability rules.
+    val candidates = remember(hub.smartMatches, current?.id) {
+        hub.smartMatches.asSequence()
+            .filter { it.userId.isNotBlank() && it.username.isNotBlank() }
+            .filterNot { it.userId == current?.id }
+            .distinctBy { it.userId.lowercase() }
+            .map { candidate ->
+                UserProfile(
+                    id = candidate.userId,
+                    fullName = candidate.fullName,
+                    username = candidate.username,
+                    avatarUrl = candidate.avatarUrl,
+                    university = candidate.university,
+                    faculty = candidate.faculty,
+                    department = candidate.department,
+                    academicLevel = candidate.academicLevel,
+                    relationshipStatus = candidate.relationshipStatus,
+                    onlineNow = candidate.onlineNow,
+                    lastSeenAt = candidate.lastSeenAt,
+                    coreSkills = candidate.commonSkills.toMutableList(),
+                    hobbies = candidate.commonHobbies
+                ) to candidate.compatibilityScore
             }
-        } else {
-            val me = current
-            if (me == null) emptyList() else profiles
-                .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
-                .sortedByDescending { compatibilityScore(me, it) }
-                .map { it to compatibilityScore(me, it) }
-        }
+            .toList()
     }
 
     val filteredRoommates = remember(hub.roommates, hubQuery) {
@@ -326,10 +344,11 @@ fun ConnectHubPremiumPanel(
         hub.housingAgents.any { it.userId == current?.id && it.verified }
     }
 
-    val pendingInboxCount = remember(hub.requests, incomingChallenges) {
-        hub.requests.count {
-            it.direction.equals("incoming", true) && it.status.equals("pending", true)
-        } + incomingChallenges.size
+    val inboxRequests = remember(hub.requests) {
+        ConnectInboxPolicy.requestsWithoutGames(hub.requests)
+    }
+    val pendingInboxCount = remember(hub.requests, hub.gameChallenges, current?.id) {
+        ConnectInboxPolicy.incomingPendingCount(hub.requests, hub.gameChallenges, current?.id)
     }
 
     val categories = remember { ConnectCategory.entries }
@@ -378,6 +397,36 @@ fun ConnectHubPremiumPanel(
 
         Spacer(Modifier.height(18.dp))
 
+        if (hub.failedSections.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Some Connect features could not load",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            hub.failedSections.joinToString(", "),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                    TextButton(onClick = actions.refresh, enabled = !isLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -422,7 +471,7 @@ fun ConnectHubPremiumPanel(
             state = connectSurfacePager,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(PagerHeight),
+                .height(pagerHeight),
             pageSpacing = 12.dp
         ) { page ->
             if (page == 0) {
@@ -476,18 +525,9 @@ fun ConnectHubPremiumPanel(
                         shape = RoundedCornerShape(18.dp)
                     )
 
-                    if (isLoading) {
+                    if (isLoading && profiles.isEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .shimmerBackground(
-                                    shape = RoundedCornerShape(16.dp),
-                                    baseColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
-                                    highlightColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f)
-                                )
-                        )
+                        BlinkSkeletonList(modifier = Modifier.fillMaxWidth(), rows = 3)
                     }
 
                     Spacer(Modifier.height(14.dp))
@@ -498,7 +538,8 @@ fun ConnectHubPremiumPanel(
                         badgeCounts = badgeCounts,
                         onOpenCategory = { targetIndex ->
                             openCategoryIndex = targetIndex
-                        }
+                        },
+                        onOpenDirectory = { selectedDirectoryCategory = it }
                     )
 
                     Spacer(Modifier.height(12.dp))
@@ -648,11 +689,11 @@ fun ConnectHubPremiumPanel(
                                         body = listing.description,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Apply",
-                                        onPrimary = { actions.applyRoommate(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Apply",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.applyRoommate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -703,11 +744,11 @@ fun ConnectHubPremiumPanel(
                                         body = listing.description,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Request mentor",
-                                        onPrimary = { actions.requestMentor(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Request mentor",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.requestMentor(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -758,11 +799,11 @@ fun ConnectHubPremiumPanel(
                                             .filter { it.isNotBlank() }.joinToString(" • "),
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Study together",
-                                        onPrimary = { actions.requestReadingMate(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Study together",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.requestReadingMate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -810,9 +851,9 @@ fun ConnectHubPremiumPanel(
                                         body = agent.bio,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Chat",
-                                        onPrimary = {
-                                            owner?.let { onMessageUser(it.username, it.fullName, it.avatarUrl) }
+                                        primaryLabel = if (owner != null) "Chat" else null,
+                                        onPrimary = owner?.let { o ->
+                                            { onMessageUser(o.username, o.fullName, o.avatarUrl) }
                                         },
                                         isFollowing = owner != null && owner.id in followingIds,
                                         onFollow = owner?.let { o -> { toggleFollow(o.id) } },
@@ -852,7 +893,7 @@ fun ConnectHubPremiumPanel(
                                         avatarUrl = student?.avatarUrl.orEmpty(),
                                         online = student?.onlineNow == true,
                                         primaryLabel = if (currentIsVerifiedAgent) "Apply to help" else null,
-                                        onPrimary = if (currentIsVerifiedAgent) {
+                                        onPrimary = if (currentIsVerifiedAgent && request.studentId != current?.id) {
                                             {
                                                 actions.applyToHousingRequest(
                                                     request.id,
@@ -861,8 +902,8 @@ fun ConnectHubPremiumPanel(
                                             }
                                         } else null,
                                         isFollowing = student != null && student.id in followingIds,
-                                        onFollow = student?.let { s -> { toggleFollow(s.id) } },
-                                        onMessage = student?.let { s -> { onMessageUser(s.username, s.fullName, s.avatarUrl) } },
+                                        onFollow = student?.takeIf { it.id != current?.id }?.let { s -> { toggleFollow(s.id) } },
+                                        onMessage = student?.takeIf { it.id != current?.id }?.let { s -> { onMessageUser(s.username, s.fullName, s.avatarUrl) } },
                                         onOpen = student?.let { s -> { onProfileClick(s.username) } }
                                     )
                                 }
@@ -928,9 +969,20 @@ fun ConnectHubPremiumPanel(
         }
     }
 
+    selectedDirectoryCategory?.let { directory ->
+        ConnectDirectoryDetailDialog(
+            category = directory,
+            currentUserId = current?.id.orEmpty(),
+            profiles = profiles,
+            onDismiss = { selectedDirectoryCategory = null },
+            onProfileClick = onProfileClick,
+            onMessageUser = onMessageUser
+        )
+    }
+
     if (showUnifiedInbox) {
         UnifiedConnectInboxDialog(
-            requests = hub.requests,
+            requests = inboxRequests,
             challenges = hub.gameChallenges,
             currentUserId = current?.id.orEmpty(),
             profiles = profiles,
@@ -942,44 +994,19 @@ fun ConnectHubPremiumPanel(
     if (form != HubForm.NONE) {
         HubFormDialog(
             form = form,
-            onDismiss = { form = HubForm.NONE },
-            onSubmit = { a, b, c ->
-                when (form) {
-                    HubForm.ROOMMATE -> actions.publishRoommate(
-                        a.ifBlank { "Looking for a roommate" },
-                        "",
-                        b,
-                        null,
-                        c.toDoubleOrNull()
-                    )
-                    HubForm.MENTOR -> actions.publishMentor(
-                        a.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        b,
-                        c,
-                        "mentor"
-                    )
-                    HubForm.READING -> actions.publishReadingMate(
-                        a.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        "Focused",
-                        b.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        c,
-                        ""
-                    )
-                    HubForm.AGENT -> actions.applyHousingAgent(
-                        a,
-                        b.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        c
-                    )
-                    HubForm.HOUSING -> actions.publishHousingRequest(
-                        a.ifBlank { "Need accommodation" },
-                        b,
-                        null,
-                        c.toDoubleOrNull(),
-                        ""
-                    )
-                    HubForm.NONE -> Unit
+            isSubmitting = isFormSubmitting,
+            errorMessage = formSubmissionError,
+            onDismiss = { if (!isFormSubmitting) form = HubForm.NONE },
+            onSubmit = { a, b, c, d, e ->
+                if (!isFormSubmitting) {
+                    isFormSubmitting = true
+                    formSubmissionError = null
+                    actions.submitHubForm(form.name, a, b, c, d, e) { success, error ->
+                        isFormSubmitting = false
+                        if (success) form = HubForm.NONE
+                        else formSubmissionError = error ?: "Could not publish. Please retry."
+                    }
                 }
-                form = HubForm.NONE
             }
         )
     }
@@ -989,7 +1016,11 @@ fun ConnectHubPremiumPanel(
             profiles = profiles,
             isSubmitting = isMatching,
             initialPreferences = savedMatchPreferences,
-            onSavePreferences = { savedMatchPreferences = it },
+            onSavePreferences = {
+                savedMatchPreferences = it
+                preferencesStore.save(current?.id, it)
+                showMatchSpinDialog = false
+            },
             onDismiss = { showMatchSpinDialog = false },
             onSpin = { preferences ->
                 showMatchSpinDialog = false
@@ -1020,7 +1051,9 @@ fun ConnectHubPremiumPanel(
                             recentMatches = (listOf(scoredMatch) + recentMatches.filterNot { it.first.id == candidate.userId })
                                 .take(5)
                             savedMatchPreferences = preferences
+                            preferencesStore.save(current?.id, preferences)
                             matchRemainingCoins = result.remainingCoins
+                            actions.onMatchSpinCoinsUpdated(result.remainingCoins)
                             val intentReason = preferences.connectionIntent
                                 ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
                                 ?.let { "Good fit for $it" }
@@ -1477,21 +1510,31 @@ private fun SmartMatchHero(
     onMessage: (UserProfile) -> Unit,
     onChallenge: (UserProfile) -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "matchGlow")
-    val glow by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "glowScale"
+    // Match animations are idle until the user actually starts a spin.
+    // Pause them when the app is backgrounded and respect reduced-motion settings.
+    val reduceMotion = rememberReducedMotionEnabled()
+    val windowActive = rememberWindowActive()
+    val runMotion = isMatching && !reduceMotion && windowActive
+    var animationStep by remember(isMatching) { mutableStateOf(0) }
+    LaunchedEffect(runMotion) {
+        if (runMotion) {
+            while (true) {
+                delay(620)
+                animationStep++
+            }
+        } else {
+            animationStep = 0
+        }
+    }
+    val glow by animateFloatAsState(
+        targetValue = if (runMotion) 1.08f else 1f,
+        animationSpec = tween(if (reduceMotion) 0 else 260),
+        label = "matchGlowScale"
     )
-    val spinAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
-        label = "spinAngle"
+    val spinAngle by animateFloatAsState(
+        targetValue = if (runMotion) animationStep * 75f else 0f,
+        animationSpec = tween(if (reduceMotion) 0 else 620, easing = LinearEasing),
+        label = "matchSpinAngle"
     )
     val stages = remember {
         listOf(
@@ -1501,17 +1544,7 @@ private fun SmartMatchHero(
             "Selecting the strongest fit"
         )
     }
-    var searchStage by remember(isMatching) { mutableStateOf(0) }
-    androidx.compose.runtime.LaunchedEffect(isMatching) {
-        if (isMatching) {
-            while (true) {
-                delay(620)
-                searchStage = (searchStage + 1) % stages.size
-            }
-        } else {
-            searchStage = 0
-        }
-    }
+    val searchStage = if (isMatching) animationStep % stages.size else 0
 
     Surface(
         shape = RoundedCornerShape(26.dp),
@@ -1830,17 +1863,17 @@ private fun ConnectForYouSummary(
         ),
         ConnectQuickPick(
             title = "Study",
-            detail = "${hub.readingMates.size} reading mates",
+            detail = "${hub.readingMates.size} recent reading mates",
             onClick = { onOpenCategory(ConnectCategory.READING) }
         ),
         ConnectQuickPick(
             title = "Housing",
-            detail = "${hub.roommates.size + hub.housingRequests.size} active needs",
-            onClick = { onOpenCategory(ConnectCategory.ROOMMATE) }
+            detail = "${hub.roommates.size + hub.housingRequests.size} recent needs",
+            onClick = { onOpenCategory(ConnectCategory.HOUSING) }
         ),
         ConnectQuickPick(
             title = "Guidance",
-            detail = "${hub.mentors.size} mentors available",
+            detail = "${hub.mentors.size} recent mentor listings",
             onClick = { onOpenCategory(ConnectCategory.MENTOR) }
         )
     )
@@ -2047,10 +2080,11 @@ private fun CategoryTabBar(
     categories: List<ConnectCategory>,
     directoryCategories: List<ConnectDirectoryCategory>,
     badgeCounts: List<Int>,
-    onOpenCategory: (Int) -> Unit
+    onOpenCategory: (Int) -> Unit,
+    onOpenDirectory: (ConnectDirectoryCategory) -> Unit
 ) {
     val visibleDirectory = remember(directoryCategories) {
-        directoryCategories.sortedBy { it.displayOrder }.take(20)
+        directoryCategories.sortedBy { it.displayOrder }
     }
     var selectedSlug by rememberSaveable(visibleDirectory) {
         mutableStateOf(visibleDirectory.firstOrNull()?.slug.orEmpty())
@@ -2087,7 +2121,11 @@ private fun CategoryTabBar(
                 val targetCategory = directoryTargetCategory(item)
                 val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
                 val selected = selectedSlug == item.slug
-                val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
+                val nativeCategory = item.slug in setOf(
+                    "roommates", "mentors", "reading_mates", "housing_agents",
+                    "accommodation_requests", "game_challenges"
+                )
+                val pendingCount = if (nativeCategory) badgeCounts.getOrElse(targetIndex) { 0 } else 0
 
                 val background by animateColorAsState(
                     targetValue = if (selected) {
@@ -2113,7 +2151,13 @@ private fun CategoryTabBar(
                         .fillMaxWidth()
                         .clickable {
                             selectedSlug = item.slug
-                            onOpenCategory(targetIndex)
+                            // Core flows retain their existing screens. Every other directory row
+                            // owns an independent, persisted category instead of reusing Mentors.
+                            if (nativeCategory) {
+                                onOpenCategory(targetIndex)
+                            } else {
+                                onOpenDirectory(item)
+                            }
                         },
                     shape = RoundedCornerShape(18.dp),
                     color = background,
@@ -2196,7 +2240,7 @@ private fun CategoryTabBar(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
                         ) {
                             Text(
-                                text = targetCategory.shortLabel,
+                                text = if (nativeCategory) targetCategory.shortLabel else "Explore",
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 9.5.sp,
@@ -2614,7 +2658,10 @@ private fun HubListingCard(
                 )
             }
 
-            if (onPrimary != null && primaryLabel != null || onMessage != null) {
+            if (onPrimary == null && primaryLabel == "Your listing") {
+                Text("Your listing", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+            }
+            if ((onPrimary != null && primaryLabel != null) || onMessage != null) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onMessage != null) {
@@ -2832,12 +2879,23 @@ private fun ChallengeModeDialog(
 @Composable
 private fun HubFormDialog(
     form: HubForm,
+    isSubmitting: Boolean,
+    errorMessage: String?,
     onDismiss: () -> Unit,
-    onSubmit: (String, String, String) -> Unit
+    onSubmit: (String, String, String, String, String) -> Unit
 ) {
     var first by rememberSaveable(form) { mutableStateOf("") }
     var second by rememberSaveable(form) { mutableStateOf("") }
     var third by rememberSaveable(form) { mutableStateOf("") }
+    var fourth by rememberSaveable(form) { mutableStateOf("") }
+    var fifth by rememberSaveable(form) { mutableStateOf("") }
+    val isBudgetForm = form == HubForm.ROOMMATE || form == HubForm.HOUSING
+    val validBudget = !isBudgetForm || third.isBlank() ||
+        (third.toDoubleOrNull()?.let { it.isFinite() && it >= 0.0 } == true)
+    val requiredDetailsValid = when (form) {
+        HubForm.ROOMMATE, HubForm.HOUSING, HubForm.MENTOR, HubForm.AGENT -> second.isNotBlank()
+        else -> true
+    }
 
     val labels = when (form) {
         HubForm.ROOMMATE -> Triple("Listing title", "Preferred location", "Maximum budget")
@@ -2849,7 +2907,7 @@ private fun HubFormDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         title = {
             Text(
                 when (form) {
@@ -2864,19 +2922,43 @@ private fun HubFormDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                OutlinedTextField(first, { first = it }, label = { Text(labels.first) }, singleLine = true)
-                OutlinedTextField(second, { second = it }, label = { Text(labels.second) }, singleLine = true)
-                OutlinedTextField(third, { third = it }, label = { Text(labels.third) })
+            Column(
+                modifier = Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                if (!errorMessage.isNullOrBlank()) {
+                    Text(errorMessage, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
+                OutlinedTextField(first, { first = it.take(120) }, label = { Text(labels.first) }, singleLine = true)
+                OutlinedTextField(second, { second = it.take(240) }, label = { Text(labels.second) }, singleLine = true)
+                OutlinedTextField(
+                    third, { third = it.take(if (isBudgetForm) 22 else 800) },
+                    label = { Text(labels.third) },
+                    singleLine = isBudgetForm,
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isBudgetForm) KeyboardType.Decimal else KeyboardType.Text),
+                    isError = !validBudget
+                )
+                if (!validBudget) {
+                    Text("Enter a valid non-negative amount, or leave it blank.",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
+                if (form == HubForm.ROOMMATE || form == HubForm.HOUSING) {
+                    OutlinedTextField(fourth, { fourth = it.take(800) }, label = { Text("Description (optional)") }, maxLines = 4)
+                } else if (form == HubForm.READING) {
+                    OutlinedTextField(fourth, { fourth = it.take(80) }, label = { Text("Study style") }, singleLine = true)
+                    OutlinedTextField(fifth, { fifth = it.take(800) }, label = { Text("Description (optional)") }, maxLines = 4)
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSubmit(first.trim(), second.trim(), third.trim()) },
-                enabled = first.isNotBlank()
-            ) { Text("Submit") }
+                onClick = {
+                    onSubmit(first.trim(), second.trim(), third.trim(), fourth.trim(), fifth.trim())
+                },
+                enabled = !isSubmitting && first.isNotBlank() && requiredDetailsValid && validBudget
+            ) { Text(if (isSubmitting) "Submitting…" else "Submit") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Cancel") } }
     )
 }
 

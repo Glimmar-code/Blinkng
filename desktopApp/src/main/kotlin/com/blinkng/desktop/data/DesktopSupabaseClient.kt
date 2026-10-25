@@ -1,9 +1,18 @@
 package com.blinkng.desktop.data
 
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.BlinkAuthFeedback
+import com.blinkng.shared.discovery.BlinkReferralPolicy
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
+import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,6 +42,12 @@ private class DesktopApiException(
     val responseBody: String,
     message: String,
 ) : IllegalStateException(message)
+
+data class DesktopPendingGroupInvite(
+    val groupId: String,
+    val groupTitle: String,
+    val inviterUsername: String,
+)
 
 class DesktopSupabaseClient(
     private val sessionStore: DesktopSessionStore = DesktopSessionStore(),
@@ -76,14 +91,29 @@ class DesktopSupabaseClient(
     }
 
     suspend fun signIn(email: String, password: String): DesktopSession = withContext(Dispatchers.IO) {
-        val cleanEmail = email.trim().lowercase()
-        require(cleanEmail.isNotBlank()) { "Email is required." }
+        val identifier = email.trim().lowercase()
+        require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
-        val response = authPost(
-            "/auth/v1/token?grant_type=password",
-            JSONObject().put("email", cleanEmail).put("password", password),
-        )
-        saveAuthResponse(response, cleanEmail)
+        val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
+        val response = try {
+            // An invalid email login must not be retried as a username: that masked
+            // wrong-password messages and caused duplicate authentication requests.
+            if (identifier.contains("@") && !identifier.startsWith("@")) {
+                authPost("/auth/v1/token?grant_type=password",
+                    JSONObject().put("email", identifier).put("password", password))
+            } else {
+                authPost("/functions/v1/username-login", body)
+            }
+        } catch (error: Exception) {
+            val code = (error as? DesktopApiException)?.statusCode
+            val feedback = when {
+                code == 429 -> "Too many attempts. Please wait a little and try again."
+                code != null && code in 500..599 -> "Unable to sign in. Please try again later."
+                else -> BlinkAuthFeedback.friendly(error.message, "Unable to sign in.")
+            }
+            throw IllegalStateException(feedback, error)
+        }
+        saveAuthResponse(response, identifier)
     }
 
     suspend fun signUp(
@@ -98,11 +128,22 @@ class DesktopSupabaseClient(
         return signUp(email, password, temporaryUsername, fullName)
     }
 
+    suspend fun signUpWithReferral(
+        email: String,
+        password: String,
+        fullName: String,
+        referrerId: String?,
+    ): DesktopSession {
+        val username = "blink_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        return signUp(email, password, username, fullName, referrerId)
+    }
+
     suspend fun signUp(
         email: String,
         password: String,
         username: String,
         fullName: String,
+        referrerId: String? = null,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
@@ -119,7 +160,11 @@ class DesktopSupabaseClient(
                 JSONObject()
                     .put("username", cleanUsername)
                     .put("full_name", fullName.trim().ifBlank { cleanUsername })
-                    .put("name", fullName.trim().ifBlank { cleanUsername }),
+                    .put("name", fullName.trim().ifBlank { cleanUsername })
+                    .apply {
+                        referrerId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                            ?.let { put("blink_referrer_id", it) }
+                    },
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
@@ -127,6 +172,240 @@ class DesktopSupabaseClient(
         }
         saveAuthResponse(response, cleanEmail)
     }
+
+    suspend fun findReferrers(query: String, offset: Int = 0): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val payload = JSONObject().put("p_query", clean).put("p_limit", 10)
+                .put("p_offset", offset.coerceIn(0, 500))
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/blink_referrer_suggestions")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $anonKey")
+                .header("Accept", "application/json")
+                .post(payload.toString().toRequestBody(jsonMedia))
+                .build()
+            val rows = JSONArray(execute(request))
+            (0 until rows.length()).map { i ->
+                val x = rows.getJSONObject(i)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"),
+                    username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                    isVerified = x.optBoolean("is_verified"),
+                    verificationBadge = x.optString("verification_badge").takeIf(String::isNotBlank),
+                )
+            }
+        }
+
+    suspend fun dispatchConfirmedReferralPushes() = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_my_referral_push_ids",
+            JSONObject(), "return=representation",
+        )
+        for (i in 0 until rows.length().coerceAtMost(3)) {
+            val notificationId = rows.getJSONObject(i).optString("notification_id")
+            if (notificationId.isBlank()) continue
+            execute(authenticatedRequest("/functions/v1/send-activity-notification")
+                .post(JSONObject().put("notification_id", notificationId).toString()
+                    .toRequestBody(jsonMedia))
+                .build())
+        }
+    }
+
+    suspend fun referralRecommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_referral_recommendations",
+            JSONObject().put("p_limit", 10),
+            "return=representation",
+        )
+        (0 until rows.length()).map { i ->
+            val person = rows.getJSONObject(i)
+            BlinkReferralSuggestion(
+                id = person.getString("id"),
+                username = person.getString("username"),
+                fullName = person.optString("full_name"),
+                avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
+                university = person.optString("university").takeIf(String::isNotBlank),
+                isVerified = person.optBoolean("is_verified"),
+                verificationBadge = person.optString("verification_badge").takeIf(String::isNotBlank),
+            )
+        }
+    }
+
+    suspend fun searchPeopleWithReferralRelevance(query: String): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val rows = postArray("/rest/v1/rpc/blink_referral_profile_search",
+                JSONObject().put("p_query",clean).put("p_limit",20), "return=representation")
+            (0 until rows.length()).map { index ->
+                val x = rows.getJSONObject(index)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"), username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                    isVerified = x.optBoolean("is_verified"),
+                    verificationBadge = x.optString("verification_badge").takeIf(String::isNotBlank),
+                    visibilityPoints = x.optInt("visibility_points"),
+                )
+            }
+        }
+
+    suspend fun referralCoinRewardStatus(): BlinkReferralCoinStatus = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_coin_status", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralCoinStatus()
+        BlinkReferralCoinStatus(
+            earnedCoins = row.optLong("earned_coins"),
+            nextMilestone = row.optInt("next_milestone").takeIf { !row.isNull("next_milestone") },
+            rewardEnabled = row.optBoolean("reward_enabled"),
+            nextRewardCoins = row.optInt("next_reward_coins"),
+        )
+    }
+
+    /** Invitees join only after accepting the server-owned invitation. */
+    suspend fun createGroupWithInvitations(title: String, ids: List<String>): String =
+        withContext(Dispatchers.IO) {
+            require(title.trim().length in 2..80) { "Choose a group name of 2–80 characters." }
+            require(ids.distinct().size in 2..30) { "Choose 2–30 different students." }
+            require(ids.all { runCatching { UUID.fromString(it) }.isSuccess }) {
+                "Invalid student selection."
+            }
+            val data = postObject("/rest/v1/rpc/blink_create_invite_only_group",
+                JSONObject().put("p_title", title.trim()).put("p_member_ids", JSONArray(ids.distinct())))
+            (data as? JSONObject)?.optString("value").orEmpty().removeSurrounding("\"")
+                .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                ?: throw IllegalStateException("The server did not confirm group creation.")
+        }
+
+    suspend fun pendingGroupInvitations(): List<DesktopPendingGroupInvite> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_my_group_invitations",
+                JSONObject().put("p_limit", 20), "return=representation")
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                row.optString("group_id").takeIf {
+                    runCatching { UUID.fromString(it) }.isSuccess
+                }?.let { group ->
+                    DesktopPendingGroupInvite(
+                        groupId = group,
+                        groupTitle = row.optString("group_title"),
+                        inviterUsername = row.optString("inviter_username"),
+                    )
+                }
+            }
+        }
+
+    suspend fun respondToGroupInvitation(groupId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (runCatching { UUID.fromString(groupId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_respond_to_group_invite",
+                JSONObject().put("p_group_id", groupId).put("p_accept", accept)))
+        }
+
+    suspend fun referralLinkStats(): com.blinkng.shared.discovery.BlinkReferralLinkStats =
+        withContext(Dispatchers.IO) {
+            val row = postArray("/rest/v1/rpc/blink_referral_link_stats",
+                JSONObject(), "return=representation").optJSONObject(0)
+                ?: return@withContext com.blinkng.shared.discovery.BlinkReferralLinkStats()
+            com.blinkng.shared.discovery.BlinkReferralLinkStats(
+                estimatedUniqueOpens30Days = row.optLong("unique_link_opens_30d"),
+                confirmedSignups30Days = row.optLong("confirmed_referrals_30d"),
+            )
+        }
+
+    suspend fun recordReferralImpression(profileId: String, source: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (source !in setOf("search", "recommendations") ||
+                runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_record_referral_impression",
+                JSONObject().put("p_profile", profileId).put("p_source", source)))
+        }
+
+    suspend fun referralImpressionStats(): com.blinkng.shared.discovery.BlinkReferralImpressionStats =
+        withContext(Dispatchers.IO) {
+            val row = postArray("/rest/v1/rpc/blink_referral_impression_stats", JSONObject(),
+                "return=representation").optJSONObject(0)
+                ?: return@withContext com.blinkng.shared.discovery.BlinkReferralImpressionStats()
+            com.blinkng.shared.discovery.BlinkReferralImpressionStats(
+                searchImpressions7d = row.optLong("search_impressions_7d"),
+                recommendationImpressions7d = row.optLong("recommendation_impressions_7d"),
+            )
+        }
+
+    suspend fun referralSourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_source_analytics", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
+        BlinkReferralSourceStats(
+            searchProfileOpens = row.optLong("search_profile_opens"),
+            recommendationProfileOpens = row.optLong("recommendation_profile_opens"),
+        )
+    }
+
+    suspend fun referralGrowthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_growth_stats",
+            JSONObject(), "return=representation").optJSONObject(0)
+            ?: return@withContext BlinkReferralGrowthStats()
+        BlinkReferralGrowthStats(
+            profileViewsThisWeek = row.optLong("profile_views_this_week"),
+            followersGainedThisWeek = row.optLong("followers_gained_this_week"),
+            shareActions = row.optLong("share_actions"),
+        )
+    }
+
+    suspend fun referralLeaderboard(): List<BlinkReferralLeaderboardEntry> = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_leaderboard",
+            JSONObject().put("p_days", 7).put("p_limit", 20), "return=representation")
+        (0 until rows.length()).map { i ->
+            val row = rows.getJSONObject(i)
+            BlinkReferralLeaderboardEntry(
+                position = row.optLong("rank_position"), id = row.getString("id"),
+                username = row.getString("username"), fullName = row.optString("full_name"),
+                avatarUrl = row.optString("avatar_url").takeIf(String::isNotBlank),
+                university = row.optString("university").takeIf(String::isNotBlank),
+                confirmedReferrals = row.optLong("successful_referrals"),
+            )
+        }
+    }
+
+    suspend fun recordReferralShare(channel: String): Boolean = withContext(Dispatchers.IO) {
+        if (channel !in setOf("copy", "share", "desktop", "web")) return@withContext false
+        val result = postObject("/rest/v1/rpc/blink_record_referral_share",
+            JSONObject().put("p_channel", channel))
+        (result as? JSONObject)?.optString("value")?.trim()?.equals("true", ignoreCase = true) == true
+    }
+
+    suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_dashboard", JSONObject(), "return=representation")
+        val row = rows.optJSONObject(0) ?: return@withContext BlinkReferralStats()
+        BlinkReferralStats(
+            total = row.optLong("total_referrals"),
+            activeLast30Days = row.optLong("active_referrals"),
+            visibilityPoints = row.optInt("visibility_points"),
+            visibilityLabel = row.optString("visibility_label", "Normal discovery"),
+            achievementTier = row.optString("achievement_tier", "New member"),
+            nextAchievementTarget = if (row.isNull("achievement_next_target"))
+                null else row.optInt("achievement_next_target", 1),
+        )
+    }
+
+    /**
+     * Follow a suggested student via the established desktop follow workflow.
+     * Use local UUID validation rather than an optional notification policy class.
+     */
+    suspend fun followBack(profileId: String) {
+        val id = profileId.trim()
+        require(id.matches(Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"))) {
+            "Invalid profile identifier."
+        }
+        require(id != requireSession().userId) { "You cannot follow yourself." }
+        setFollowing(id, true)
+    }
+
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
@@ -302,7 +581,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -619,15 +898,45 @@ class DesktopSupabaseClient(
         true
     }
 
-    suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1, 50))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                val rows = postArray("/rest/v1/rpc/blink_trending_tags", body, prefer = "return=representation")
+                (0 until rows.length()).mapNotNull { i ->
+                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
+                }.distinct()
+            }.getOrDefault(emptyList())
+        }
+
+    private fun recordTagSearch(query: String) {
+        val tag = if (query.startsWith("#")) BlinkSmartTags.normalize(query) else null
+        if (tag != null) runCatching {
+            postArray("/rest/v1/rpc/blink_record_tag_search", JSONObject().put("p_tag", tag), prefer = "return=minimal")
+        }
+    }
+
+    suspend fun fetchFeed(
+        reelsOnly: Boolean = false,
+        search: String? = null,
+        offset: Int = 0,
+        limit: Int = 60,
+    ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
-                append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
+                val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
+                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
+                else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
             }
-            append("&order=created_at.desc&limit=60")
+            // Stable secondary ordering is required for paged discovery when
+            // multiple posts have the same creation timestamp.
+            append("&order=created_at.desc,id.desc")
+            append("&limit=${limit.coerceIn(1, 60)}&offset=${offset.coerceAtLeast(0)}")
         }
         val rows = getArray(filter)
         val likedIds = fetchMyLikedPostIds()
@@ -652,6 +961,7 @@ class DesktopSupabaseClient(
         text: String,
         isReel: Boolean = false,
         videoUrl: String? = null,
+        tags: List<String> = emptyList(),
         audience: String = "Everyone",
         category: String = "Campus Life",
         location: String? = null,
@@ -663,6 +973,8 @@ class DesktopSupabaseClient(
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
+        val effectiveTags = BlinkSmartTags.allTags(clean, tags)
+        require(effectiveTags.size in 1..BlinkSmartTags.MAX_TAGS) { "Include 1–5 relevant hashtags." }
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
 
         val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
@@ -687,6 +999,8 @@ class DesktopSupabaseClient(
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("tags", JSONArray(effectiveTags))
+            .put("hashtags", JSONArray(effectiveTags))
             .put("audience", audience)
             .put("category", category)
             .put("allow_comments", allowComments)
@@ -698,7 +1012,11 @@ class DesktopSupabaseClient(
 
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
-        parseFeedPost(created, fetchProfile(active.userId), false)
+        // A follow-up author refresh is optional. Once the server returns the
+        // inserted row, a temporary profile timeout must not turn this into a
+        // false "post failed" message on Windows either.
+        val author = runCatching { fetchProfile(active.userId) }.getOrNull()
+        parseFeedPost(created, author, false)
     }
 
     suspend fun toggleLike(postId: String): Boolean = withContext(Dispatchers.IO) {
@@ -803,6 +1121,7 @@ class DesktopSupabaseClient(
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
+        recordTagSearch(clean)
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
 
         val response = postObject(
@@ -968,6 +1287,8 @@ class DesktopSupabaseClient(
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
                         unreadCount = row.optLong("unread_count"),
+                        lastMessage = row.optString("last_message").takeIf { it != "null" }.orEmpty(),
+                        partnerUsername = row.optString("partner_username").takeIf { it.isNotBlank() && it != "null" },
                     )
                 }
             })
@@ -1000,10 +1321,30 @@ class DesktopSupabaseClient(
         }
         val inbox = rows("get_chat_inbox_state")
         val notifications = rows("get_conversation_notification_settings")
-        return conversations.map { conversation ->
+        // The summaries RPC returns partner metadata, not is_group. Relying on
+        // optBoolean("is_group", false) silently turns groups into direct chats.
+        // Fetch the conversation kind via a participant-visible RLS query.
+        val ids = conversations.mapNotNull {
+            it.id.takeIf { id -> runCatching { UUID.fromString(id) }.isSuccess }
+        }.distinct()
+        val conversationMetadata = if (ids.isEmpty()) emptyMap() else runCatching {
+            val path = "/rest/v1/conversations?select=id,is_group,title&id=in.(${ids.joinToString(",")})"
+            val rows = getArray(path)
+            (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+                .associateBy { it.optString("id") }
+        }.getOrElse { emptyMap() }
+        // Group summaries may contain one partner row per group member. Display
+        // a single inbox conversation card per conversation ID, not one per member.
+        return conversations.distinctBy { it.id }.map { conversation ->
             val entry = inbox[conversation.id]
             val preference = notifications[conversation.id]
+            val metadata = conversationMetadata[conversation.id]
+            val isGroup = metadata?.optBoolean("is_group") ?: conversation.isGroup
             conversation.copy(
+                isGroup = isGroup,
+                title = if (isGroup && !metadata?.optString("title").isNullOrBlank()) {
+                    metadata!!.optString("title")
+                } else conversation.title,
                 isArchived = entry?.optBoolean("is_archived") ?: false,
                 isPinned = entry?.optBoolean("is_pinned") ?: false,
                 markedUnread = entry?.optBoolean("marked_unread") ?: false,
@@ -1043,43 +1384,420 @@ class DesktopSupabaseClient(
         Unit
     }
 
-    suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
+    /** One latest message per visible inbox conversation; existing participant RPC enforces membership. */
+    suspend fun fetchLatestMessage(conversationId: String): DesktopMessage? = withContext(Dispatchers.IO) {
+        if (!conversationId.matches(Regex("^[0-9a-fA-F-]{36}$"))) return@withContext null
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_limit", 1).put("p_before", JSONObject.NULL)
+                .put("p_before_id", JSONObject.NULL)
         )
-        (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+        (result as? JSONArray)?.optJSONObject(0)?.let(::parseMessage)
     }
 
-    suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
+    suspend fun acknowledgePendingMessageDeliveries(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { postObject("/rest/v1/rpc/ack_pending_message_deliveries", JSONObject()); true }
+            .getOrDefault(false)
+    }
+
+    suspend fun markVisibleConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        val username = partnerUsername.trim()
+        if (username.isBlank()) return@withContext false
+        runCatching {
+            postObject("/rest/v1/rpc/mark_conversation_read",
+                JSONObject().put("p_partner_username", username))
+            true
+        }.getOrDefault(false)
+    }
+
+    suspend fun fetchMessages(
+        conversationId: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 100
+    ): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        // The same participant-authorized cursor RPC used by Android. Fetch the
+        // LATEST page, not the first 300 oldest rows of an unbounded conversation.
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_limit", limit.coerceIn(1, 100))
+                .put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+                .put("p_before_id", beforeId ?: JSONObject.NULL)
+        )
+        val rows = result as? JSONArray
+            ?: throw IllegalStateException("Invalid message page returned by BLINK server.")
+        val messages = (rows.length() - 1 downTo 0).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeUnless { it.optBoolean("deleted_for_everyone", false) }?.let(::parseMessage)
+        }
+        if (messages.isEmpty()) return@withContext messages
+        // Same server-authoritative action-state RPC used by Android. Only participants
+        // can access the message state; never fabricate reactions or show hidden rows.
+        val actionRows = runCatching {
+            postObject(
+                "/rest/v1/rpc/get_message_action_state",
+                JSONObject().put("p_message_ids", JSONArray(messages.map { it.id }))
+            ) as? JSONArray
+        }.getOrNull()
+        val actions = actionRows?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+                .associateBy { it.optString("message_id") }
+        }.orEmpty()
+        messages.mapNotNull { message ->
+            val action = actions[message.id] ?: return@mapNotNull message
+            if (action.optBoolean("is_hidden", false)) return@mapNotNull null
+            val reactionJson = action.optJSONObject("reactions") ?: JSONObject()
+            val counts = buildMap {
+                for (emoji in reactionJson.keys()) {
+                    reactionJson.optInt(emoji).takeIf { it > 0 }?.let { put(emoji, it) }
+                }
+            }
+            val myReactions = action.optJSONArray("my_reactions")?.let { mine ->
+                (0 until mine.length()).mapNotNull { mine.optString(it).takeIf(String::isNotBlank) }.toSet()
+            }.orEmpty()
+            message.copy(
+                reactionCounts = counts,
+                myReactions = myReactions,
+                isStarred = action.optBoolean("is_starred", false),
+                isPinned = action.optBoolean("is_pinned", false)
+            )
+        }
+    }
+
+    suspend fun setChatMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_message_reaction", JSONObject()
+                .put("p_message_id", messageId).put("p_emoji", emoji).put("p_active", active)))
+        }
+
+    suspend fun editChatMessage(messageId: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = content.trim()
+        require(clean.isNotEmpty()) { "Message cannot be empty." }
+        rpcBoolean(postObject("/rest/v1/rpc/edit_message", JSONObject()
+            .put("p_message_id", messageId).put("p_content", clean)))
+    }
+
+    suspend fun deleteChatMessageForEveryone(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/delete_message_for_everyone", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun hideChatMessageForMe(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/hide_message_for_me", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun reportChatMessage(messageId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = reason.trim().take(500)
+        require(clean.isNotEmpty()) { "Report reason is required." }
+        rpcBoolean(postObject("/rest/v1/rpc/report_message", JSONObject()
+            .put("p_message_id", messageId).put("p_reason", clean)))
+    }
+
+    suspend fun setChatMessageReply(messageId: String, replyToMessageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/set_message_reply", JSONObject()
+            .put("p_message_id", messageId).put("p_reply_to_message_id", replyToMessageId)))
+    }
+
+    /**
+     * Always use the same server-authoritative send RPCs as Android. Direct inserts
+     * bypass recipient block/privacy checks and the group rate limit, so they must
+     * not be used from the desktop client.
+     *
+     * Once the RPC confirms an ID, a failed follow-up fetch is not a failed send:
+     * do not encourage blind retrying of an already committed message.
+     */
+    suspend fun sendMessage(
+        conversationId: String,
+        content: String,
+        partnerUsername: String? = null,
+        isGroup: Boolean = false
+    ): DesktopMessage = withContext(Dispatchers.IO) {
         val clean = content.trim()
         require(clean.isNotBlank()) { "Message cannot be empty." }
-        val created = postArray(
-            "/rest/v1/messages",
-            JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", requireSession().userId)
-                .put("content", clean),
-            prefer = "return=representation",
-        ).optJSONObject(0) ?: throw IllegalStateException("Message was not returned by the server.")
-        parseMessage(created)
+        require(clean.length <= 5000) { "Message is too long (maximum 5,000 characters)." }
+        val sender = requireSession().userId
+
+        // Validate conversation kind from the server for every send, rather than
+        // trusting cached UI data; prevents sending a group reply as a DM.
+        val conversationRows = getArray(
+            "/rest/v1/conversations?select=id,is_group&id=eq.${encode(conversationId)}&limit=1"
+        )
+        val actualKind = conversationRows.optJSONObject(0)
+            ?: throw IllegalStateException("Conversation is no longer accessible. Refresh Messages.")
+        val actualIsGroup = actualKind.optBoolean("is_group")
+        if (actualIsGroup != isGroup) {
+            throw IllegalStateException("Chat details changed. Refresh Messages before sending.")
+        }
+
+        val messageId: String
+        val confirmedConversationId: String
+        val confirmedTime: String?
+        if (isGroup) {
+            val result = postObject(
+                "/rest/v1/rpc/send_group_message",
+                JSONObject().put("p_conversation_id", conversationId).put("p_content", clean)
+            ) as? JSONObject ?: error("Invalid group send confirmation.")
+            messageId = result.optString("value").trim().removeSurrounding("\"")
+            confirmedConversationId = conversationId
+            confirmedTime = null
+        } else {
+            val username = partnerUsername?.trim()?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException(
+                    "Recipient account was not available. Refresh Messages and try again."
+                )
+            val rows = postObject(
+                "/rest/v1/rpc/send_message_v2",
+                JSONObject().put("p_receiver_username", username).put("p_content", clean)
+            ) as? JSONArray ?: error("Invalid direct message send confirmation.")
+            val row = rows.optJSONObject(0)
+                ?: throw IllegalStateException("Server did not confirm the message.")
+            messageId = row.optString("message_id")
+            confirmedConversationId = row.optString("conversation_id")
+            confirmedTime = row.optNullableString("created_at")
+        }
+        require(messageId.isNotBlank() && confirmedConversationId.isNotBlank()) {
+            "Server returned an incomplete message confirmation."
+        }
+
+        // Read back server state, but never turn a successful send into a retryable error.
+        runCatching {
+            getArray(
+                "/rest/v1/messages?id=eq.${encode(messageId)}&select=" +
+                    "id,conversation_id,sender_id,content,media_url,message_type,is_read," +
+                    "delivered_at,read_at,created_at,reply_to_message_id&limit=1"
+            ).optJSONObject(0)?.let(::parseMessage)
+        }.getOrNull() ?: DesktopMessage(
+            id = messageId,
+            conversationId = confirmedConversationId,
+            senderId = sender,
+            content = clean,
+            mediaUrl = null,
+            messageType = "text",
+            isRead = false,
+            deliveredAt = null,
+            readAt = null,
+            createdAt = confirmedTime ?: Instant.now().toString()
+        )
     }
 
-    suspend fun fetchMarketplace(): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/market_items?status=eq.active&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at&order=is_featured.desc,created_at.desc&limit=100",
-        )
+    suspend fun fetchMarketplace(
+        query: String = "",
+        category: String? = null,
+        sort: String = "newest",
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+        savedOnly: Boolean = false,
+        verifiedOnly: Boolean = false,
+        university: String? = null,
+    ): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
+        require(com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)) {
+            "Invalid price range."
+        }
+        if (sort == "recommended" && !savedOnly && !verifiedOnly) {
+            val payload = JSONObject()
+                .put("p_query",query.trim().take(80))
+                .put("p_university",university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                .put("p_category",category?.takeUnless { it=="All Categories" } ?: JSONObject.NULL)
+                .put("p_limit",60)
+                .put("p_offset",0)
+                .put("p_min_price",minPrice ?: JSONObject.NULL)
+                .put("p_max_price",maxPrice ?: JSONObject.NULL)
+            val rows = postArray("/rest/v1/rpc/discover_market_items_v2",payload,"return=representation")
+            return@withContext (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let(::parseMarketItem)
+            }
+        }
+        val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
+        val url = buildString {
+            append("/rest/v1/market_items?status=eq.active&is_sold=eq.false&seller_id=not.is.null")
+            append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,video_url,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
+            if (savedOnly) append(",marketplace_wishlist!inner(user_id)")
+            if (verifiedOnly) append("&seller_is_verified=eq.true")
+            if (savedOnly) {
+                append("&marketplace_wishlist.user_id=eq.").append(encode(requireSession().userId))
+            }
+            query.trim().take(80).takeIf { it.isNotBlank() }?.let {
+                append("&or=").append(encode("(title.ilike.*$it*,description.ilike.*$it*,category.ilike.*$it*,seller_name.ilike.*$it*,university.ilike.*$it*)"))
+            }
+            university?.trim()?.takeIf(String::isNotBlank)?.let { append("&university=eq.").append(encode(it)) }
+            category?.takeIf { it.isNotBlank() && it != "All Categories" }?.let {
+                append("&category=eq.").append(encode(it))
+            }
+            minPrice?.takeIf { it > 0 }?.let { append("&price=gte.").append(it) }
+            maxPrice?.takeIf { it >= 0 }?.let { append("&price=lte.").append(it) }
+            append("&order=").append(encode(order))
+            append("&limit=100")
+        }
+        val rows = getArray(url)
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMarketItem) }
     }
 
-    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String): DesktopMarketItem = withContext(Dispatchers.IO) {
+    suspend fun canPublishMarketItems(): Boolean = withContext(Dispatchers.IO) {
+        val myId = requireSession().userId
+        rpcBoolean(postObject(
+            "/rest/v1/rpc/market_seller_has_approval",
+            JSONObject().put("p_user", myId)
+        ))
+    }
+
+    suspend fun registerVerifiedMarketSeller(
+        storeName: String,
+        phone: String,
+        whatsapp: String,
+        stateName: String,
+        city: String,
+        university: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(storeName.trim().length in 2..80)
+        require(university.trim().length >= 3)
+        val payload = JSONObject()
+            .put("p_store_name", storeName.trim())
+            .put("p_phone", phone.trim())
+            .put("p_whatsapp", whatsapp.trim())
+            .put("p_state", stateName.trim())
+            .put("p_city", city.trim())
+            .put("p_university", university.trim())
+        rpcBoolean(postObject("/rest/v1/rpc/register_verified_market_seller", payload))
+    }
+
+    suspend fun completeMarketSellerProfile(
+        kind: String, description: String, category: String,
+        delivery: Boolean, pickup: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("p_kind", kind).put("p_description", description)
+            .put("p_categories", JSONArray().put(category))
+            .put("p_delivery", delivery).put("p_pickup", pickup)
+        rpcBoolean(postObject("/rest/v1/rpc/complete_market_seller_profile", payload))
+    }
+
+    suspend fun getMyMarketDashboard(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/get_my_market_dashboard", JSONObject()) as JSONObject
+    }
+
+    suspend fun getMarketSellerCard(id: String): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/get_market_public_seller_card",
+            JSONObject().put("p_user", id)) as JSONObject
+    }
+
+    suspend fun fetchMyMarketOrders(): List<JSONObject> = withContext(Dispatchers.IO) {
+        val uid=requireSession().userId
+        val items=getArray(
+            "/rest/v1/marketplace_orders?select=id,item_id,buyer_id,seller_id,status,quantity,total_price,created_at&or=(buyer_id.eq.$uid,seller_id.eq.$uid)&order=created_at.desc&limit=60"
+        )
+        (0 until items.length()).mapNotNull(items::optJSONObject)
+    }
+
+    suspend fun openMarketDispute(orderId: String, reason: String, details: String): Boolean =
+        withContext(Dispatchers.IO) {
+            require(reason.trim().length in 8..200)
+            val response=postObject("/rest/v1/rpc/open_market_dispute",
+                JSONObject().put("p_order",orderId)
+                    .put("p_reason",reason.trim())
+                    .put("p_details",details.trim().take(2000)))
+            response.toString().isNotBlank()
+        }
+
+    suspend fun fetchMarketOffers(): List<JSONObject> = withContext(Dispatchers.IO) {
+        val userId=requireSession().userId
+        val rows=getArray(
+            "/rest/v1/market_offers?select=id,item_id,buyer_id,seller_id,asking_price,proposed_price,status,message,created_at&or=(buyer_id.eq.$userId,seller_id.eq.$userId)&order=created_at.desc&limit=100"
+        )
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+    }
+
+    suspend fun respondMarketOffer(
+        id: String, action: String, counter: Long? = null,
+        note: String = ""
+    ): Boolean = withContext(Dispatchers.IO) {
+        val params=JSONObject().put("p_offer",id)
+            .put("p_action",action)
+            .put("p_counter_amount",counter ?: JSONObject.NULL)
+            .put("p_note",note.take(500))
+        rpcBoolean(postObject("/rest/v1/rpc/respond_market_offer",params))
+    }
+
+    suspend fun makeMarketOffer(id: String, amount: Long, note: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val result=postObject("/rest/v1/rpc/make_market_offer",
+                JSONObject().put("p_item",id).put("p_amount",amount).put("p_note",note))
+            result.toString().isNotBlank()
+        }
+
+    suspend fun confirmMarketAvailability(id: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/confirm_market_listing_availability",
+            JSONObject().put("p_item",id)))
+    }
+
+    suspend fun marketPhotoFingerprint(path: String): String = withContext(Dispatchers.IO) {
+        val file = java.nio.file.Path.of(path)
+        require(java.nio.file.Files.isRegularFile(file)) { "Choose a product image." }
+        require(java.nio.file.Files.size(file) in 1..(10L * 1024 * 1024)) {
+            "Product cover photo exceeds the allowed limit."
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        java.nio.file.Files.newInputStream(file).use { input ->
+            val buffer=ByteArray(64*1024)
+            while(true) {
+                val length=input.read(buffer)
+                if(length<0) break
+                digest.update(buffer,0,length)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    suspend fun uploadMarketAttachment(path: String, video: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val file = java.nio.file.Path.of(path)
+            require(java.nio.file.Files.isRegularFile(file)) { "Select a valid media file." }
+            val ext = file.fileName.toString().substringAfterLast('.', "").lowercase()
+            val mime = if (video) when(ext) {
+                "mp4" -> "video/mp4"
+                "webm" -> "video/webm"
+                else -> throw IllegalArgumentException("Video must be MP4 or WebM.")
+            } else when(ext) {
+                "jpg","jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                else -> throw IllegalArgumentException("Photo must be JPEG, PNG or WebP.")
+            }
+            val size = java.nio.file.Files.size(file)
+            require(size in 1..(if (video) 25L * 1024 * 1024 else 10L * 1024 * 1024)) {
+                "Selected media exceeds the allowed upload size."
+            }
+            val bucket=if (video) "market-video" else "market-media"
+            val id=requireSession().userId
+            val key="users/$id/listings/${UUID.randomUUID()}.$ext"
+            val req=authenticatedRequest("/storage/v1/object/$bucket/$key")
+                .header("Content-Type",mime)
+                .header("x-upsert","false")
+                .post(java.nio.file.Files.readAllBytes(file).toRequestBody(mime.toMediaType()))
+                .build()
+            execute(req)
+            "$baseUrl/storage/v1/object/public/$bucket/$key"
+        }
+
+    suspend fun createMarketplaceItem(title: String, description: String, price: Long, category: String, imageUrl: String, videoUrl: String? = null, mediaDigest: String): DesktopMarketItem = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
-        require(price >= 0) { "Price cannot be negative." }
+        require(price > 0) { "Price must be greater than zero." }
+        require(description.trim().length >= 10) { "Describe the product accurately." }
+        require(imageUrl.startsWith("https://")) { "A product photo is required." }
+        require(canPublishMarketItems()) { "Renew your verification and register as a seller before posting." }
         val profile = fetchProfile()
         val body = JSONObject()
             .put("title", title.trim())
             .put("description", description.trim())
             .put("price", price)
             .put("category", category.ifBlank { "Other" })
+            .put("image_url", imageUrl)
+            .put("image_urls", JSONArray().put(imageUrl))
+            .put("video_url", videoUrl ?: JSONObject.NULL)
+            .put("media_digest",mediaDigest)
             .put("seller_id", profile.id)
             .put("seller_name", profile.fullName)
             .put("seller_username", profile.username)
@@ -1093,23 +1811,57 @@ class DesktopSupabaseClient(
 
     suspend fun fetchConnectListings(): List<DesktopConnectListing> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at&order=created_at.desc&limit=100",
+            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at,category_slug&order=created_at.desc&limit=100",
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseConnectListing) }
     }
 
-    suspend fun createConnectListing(type: String, title: String, description: String): DesktopConnectListing = withContext(Dispatchers.IO) {
+    suspend fun createConnectListing(type: String, title: String, description: String, categorySlug: String? = null): DesktopConnectListing = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         val profile = fetchProfile()
         val body = JSONObject()
-            .put("listing_type", type.ifBlank { "community" })
+            .put("listing_type", type.ifBlank { "campus_guide" })
             .put("title", title.trim())
             .put("description", description.trim())
+            .put("category_slug", categorySlug ?: JSONObject.NULL)
             .put("university", profile.university ?: JSONObject.NULL)
             .put("department", profile.department ?: JSONObject.NULL)
         val created = postArray("/rest/v1/connect_listings", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Connect listing was not returned.")
         parseConnectListing(created)
+    }
+
+    suspend fun applyConnectListing(listingId: String, message: String) = withContext(Dispatchers.IO) {
+        postArray(
+            "/rest/v1/connect_applications",
+            JSONObject().put("listing_id", listingId).put("message", message.take(500)),
+            prefer = "return=minimal",
+        )
+        Unit
+    }
+
+    suspend fun fetchConnectApplications(listingIds: List<String>): List<DesktopConnectApplication> = withContext(Dispatchers.IO) {
+        if (listingIds.isEmpty()) return@withContext emptyList()
+        val rows = getArray(
+            "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
+                "&listing_id=in.(${listingIds.joinToString(",")})&order=created_at.desc&limit=80",
+        )
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            DesktopConnectApplication(
+                id = row.optString("id"),
+                listingId = row.optString("listing_id"),
+                applicantId = row.optString("applicant_id"),
+                message = row.optString("message"),
+                status = row.optString("status"),
+            )
+        }
+    }
+
+    suspend fun respondConnectApplication(applicationId: String, accept: Boolean) = withContext(Dispatchers.IO) {
+        patch(
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}",
+            JSONObject().put("status", if (accept) "accepted" else "declined"),
+        )
     }
 
     suspend fun fetchConnectInbox(): DesktopConnectInbox = withContext(Dispatchers.IO) {
@@ -1251,6 +2003,44 @@ class DesktopSupabaseClient(
         ) as JSONObject
     }
 
+    suspend fun initializePaystackMarketCheckout(listingId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(listingId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "Choose a valid Market listing." }
+        postObject(
+            "/functions/v1/paystack-checkout",
+            JSONObject().put("kind","marketplace").put("itemCode","MARKET_ITEM")
+                .put("listingId",listingId).put("months",1),
+        ) as JSONObject
+    }
+
+    suspend fun initializePaystackGiftCheckout(
+        recipientUsername: String, packId: String, note: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(recipientUsername.matches(Regex("^[a-zA-Z0-9_.]{2,40}$")))
+        require(packId.matches(Regex("^coins_[0-9]+$")))
+        require(note.length<=160)
+        postObject(
+            "/functions/v1/paystack-checkout",
+            JSONObject().put("kind","gift").put("itemCode","GIFT_COINS")
+                .put("recipientUsername",recipientUsername).put("packId",packId)
+                .put("message",note).put("months",1),
+        ) as JSONObject
+    }
+
+    suspend fun verifyPaystackV2Checkout(reference: String): JSONObject = withContext(Dispatchers.IO) {
+        require(reference.matches(Regex("^blink-ps-[0-9a-f]{32}$")))
+        postObject(
+            "/functions/v1/paystack-confirm",
+            JSONObject().put("reference",reference),
+        ) as JSONObject
+    }
+
+    // Shared receipt semantics with Android, but without changing existing
+    // call sites that consume Paystack's complete JSON response.
+    suspend fun paystackV2ReceiptState(reference: String): com.blinkng.shared.BlinkCheckoutVerificationState =
+        com.blinkng.shared.BlinkCheckoutStatusPolicy.parse(
+            verifyPaystackV2Checkout(reference).optString("status")
+        )
+
     suspend fun verifyPaystackCashOrder(orderId: String): JSONObject = withContext(Dispatchers.IO) {
         require(orderId.isNotBlank()) { "Payment order is missing." }
         postObject(
@@ -1269,19 +2059,19 @@ class DesktopSupabaseClient(
 
     suspend fun fetchLeaderboard(): List<DesktopLeaderboardEntry> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/leaderboard_snapshots?select=user_id,name,handle,university,verification_tier,world_score,world_rank,campus_score,campus_rank&order=world_rank.asc.nullslast&limit=200",
+            "/rest/v1/game_leaderboard?select=user_id,name,username,university,verification_badge,score,world_rank,campus_rank&order=world_rank.asc&limit=200",
         )
         (0 until rows.length()).mapNotNull { i ->
             rows.optJSONObject(i)?.let { row ->
                 DesktopLeaderboardEntry(
                     userId = row.optString("user_id"),
                     name = row.optString("name"),
-                    handle = row.optString("handle"),
+                    handle = row.optString("username"),
                     university = row.optNullableString("university"),
-                    verificationTier = row.optString("verification_tier"),
-                    worldScore = row.optLong("world_score"),
+                    verificationTier = row.optString("verification_badge"),
+                    worldScore = row.optLong("score"),
                     worldRank = row.optNullableInt("world_rank"),
-                    campusScore = row.optLong("campus_score"),
+                    campusScore = row.optLong("score"),
                     campusRank = row.optNullableInt("campus_rank"),
                 )
             }
@@ -1393,6 +2183,9 @@ class DesktopSupabaseClient(
         fullName = row.optString("full_name").ifBlank { row.optString("name").ifBlank { row.optString("username") } },
         username = row.optString("username").ifBlank { row.optString("handle") },
         avatarUrl = row.optNullableString("avatar_url"),
+        coverPhotoUrl = row.optNullableString("cover_photo_url"),
+        professionalHeadline = row.optNullableString("professional_headline"),
+        dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),
@@ -1471,6 +2264,7 @@ class DesktopSupabaseClient(
         deliveredAt = row.optNullableString("delivered_at"),
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
+        replyToMessageId = row.optNullableString("reply_to_message_id"),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
@@ -1490,6 +2284,7 @@ class DesktopSupabaseClient(
         location = row.optString("location"),
         isFeatured = row.optBoolean("is_featured"),
         isSold = row.optBoolean("is_sold"),
+        videoUrl = row.optNullableString("video_url"),
         imageUrls = row.optStringList("image_urls").ifEmpty {
             row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
         },
@@ -1508,6 +2303,7 @@ class DesktopSupabaseClient(
         location = row.optNullableString("location"),
         tags = row.optStringList("tags"),
         createdAt = row.optString("created_at"),
+        categorySlug = row.optNullableString("category_slug"),
     )
 
     private fun parseTimestampMillis(rawTimestamp: String?): Long {

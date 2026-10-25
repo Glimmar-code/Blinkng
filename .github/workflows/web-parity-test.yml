@@ -7,10 +7,33 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
+      - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/normalize_public_html.mjs'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+      - 'scripts/test_mobile_web_performance.mjs'
+      - 'scripts/test_web_local_analytics.mjs'
+      - 'scripts/test_site_aggregate_analytics.mjs'
   pull_request:
     paths:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
+      - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/normalize_public_html.mjs'
+      - 'scripts/test_domain_auth_links.mjs'
+      - 'scripts/test_landing_phase1.mjs'
+      - 'scripts/test_discovery_phase2.mjs'
+      - 'scripts/test_web_production_phase3.mjs'
+      - 'scripts/test_web_production_phase3_authseo.mjs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -22,6 +45,36 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: BLINK official domain, SEO, routes and APK alias
+        run: python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
+
+      - name: Verify secure canonical OAuth and recovery redirects
+        run: node scripts/test_domain_auth_links.mjs
+
+      - name: Guard sitewide analytics disabled defaults and no visitor data
+        run: node scripts/test_site_aggregate_analytics.mjs
+
+      - name: Check no-tracking opt-in analytics and anonymous funnel counts
+        run: node scripts/test_web_local_analytics.mjs
+
+      - name: Check mobile asset budgets and locally opt-in Core Web Vitals
+        run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Test Phase 3 resilient authentication and private-route SEO
+        run: node scripts/test_web_production_phase3_authseo.mjs
+
+      - name: Test Phase 3 private-safe cache, offline loading and fresh website updates
+        run: node scripts/test_web_production_phase3.mjs
+
+      - name: Check Phase 2 university catalogue, public discovery and release metadata
+        run: node scripts/test_discovery_phase2.mjs
+
+      - name: Check Phase 1 BLINK homepage design, mobile usability and route wiring
+        run: node scripts/test_landing_phase1.mjs
 
       - name: JavaScript syntax
         run: |

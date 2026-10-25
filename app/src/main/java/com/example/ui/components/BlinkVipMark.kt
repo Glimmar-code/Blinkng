@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -118,7 +120,7 @@ fun BlinkVipMark(isVip: Boolean, modifier: Modifier = Modifier, horizontalPaddin
     Box(
         modifier = modifier
             .background(
-                Brush.horizontalGradient(listOf(Color(0xFF6D28D9), Color(0xFFDB2777), Color(0xFFF59E0B))),
+                Brush.horizontalGradient(listOf(Color(BlinkDesignTokens.Brand.PrimaryDeep), Color(0xFFDB2777), Color(BlinkDesignTokens.Semantic.Warning))),
                 RoundedCornerShape(100.dp)
             )
             .padding(horizontal = horizontalPadding, vertical = 2.dp)
@@ -144,11 +146,11 @@ private fun BlinkPremiumIdentityMark(catalogId: String, label: String, motion: S
         label = "blinkPremiumIdentityAlpha"
     )
     val colors = when {
-        catalogId == "creator_badge" || catalogId == "limited_edition_badge" -> listOf(Color(0xFFF59E0B), Color(0xFFEF4444))
-        catalogId.contains("spotlight") -> listOf(Color(0xFFF59E0B), Color(0xFFEC4899))
+        catalogId == "creator_badge" || catalogId == "limited_edition_badge" -> listOf(Color(BlinkDesignTokens.Semantic.Warning), Color(0xFFEF4444))
+        catalogId.contains("spotlight") -> listOf(Color(BlinkDesignTokens.Semantic.Warning), Color(0xFFEC4899))
         catalogId.contains("ring") || catalogId.contains("frame") || catalogId == "avatar_decoration" -> listOf(Color(0xFF2563EB), Color(0xFF7C3AED))
         catalogId.contains("glow") || catalogId.contains("name") -> listOf(Color(0xFF7C3AED), Color(0xFFEC4899))
-        catalogId.contains("theme") || catalogId.contains("background") || catalogId == "profile_banner" -> listOf(Color(0xFF4F46E5), Color(0xFF06B6D4))
+        catalogId.contains("theme") || catalogId.contains("background") || catalogId == "profile_banner" -> listOf(Color(0xFF4F46E5), Color(BlinkDesignTokens.Brand.Cyan))
         else -> listOf(Color(0xFF7C3AED), Color(0xFFDB2777))
     }
     Box(
@@ -220,7 +222,7 @@ private fun BlinkCollectionDialog(username: String, onDismiss: () -> Unit) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 if (row.optBoolean("limited_edition", false)) "◆" else "✦",
-                                color = if (row.optBoolean("limited_edition", false)) Color(0xFFF59E0B) else Color(0xFF7C3AED),
+                                color = if (row.optBoolean("limited_edition", false)) Color(BlinkDesignTokens.Semantic.Warning) else Color(0xFF7C3AED),
                                 fontWeight = FontWeight.Black,
                                 modifier = Modifier.width(24.dp)
                             )

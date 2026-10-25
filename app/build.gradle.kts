@@ -120,7 +120,7 @@ val resolvedShareBaseUrl = configuredShareBaseUrl
   ?.trim()
   ?.trimEnd('/')
   ?.takeIf { it.startsWith("https://") }
-  ?: "https://www.blink.com.ng"
+  ?: "https://blink.com.ng"
 val resolvedShareUri = URI(resolvedShareBaseUrl)
 val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
@@ -162,7 +162,10 @@ if (releaseTaskRequested) {
   }
 }
 
+
 android {
+  // Game code, engine and scene assets are delivered after an explicit Play tap.
+  dynamicFeatures.add(":blinkLifeFeature")
   namespace = "com.example"
   compileSdk { version = release(37) }
   defaultConfig {
@@ -182,6 +185,8 @@ android {
     // Enable only after call_quality_reporting.sql is validated/deployed through a real migration.
     buildConfigField("boolean", "BLINK_CALL_QUALITY_REPORTING_ENABLED", "false")
     buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
+    // The signed release pins the optional WASM game archive; debug installs have no pack by default.
+    buildConfigField("String", "BLINK_LIFE_WEB_SHA256", buildConfigString(providers.environmentVariable("BLINK_LIFE_WEB_SHA256").orNull.orEmpty().lowercase()))
     buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
     buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/9024145134"))
     buildConfigField("String", "ADMOB_REELS_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4949168751"))
@@ -248,6 +253,8 @@ dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation("androidx.fragment:fragment-ktx:1.8.5")
+  implementation("com.google.android.play:feature-delivery:2.1.0")
+  implementation("androidx.webkit:webkit:1.14.0")
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)

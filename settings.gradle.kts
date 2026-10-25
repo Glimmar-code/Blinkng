@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Blink"
 
-include(":app")
+include(":app", ":blinkLifeFeature")

@@ -159,5 +159,25 @@ data class ConnectHubSnapshot(
     val gameChallenges: List<GameChallenge> = emptyList(),
     val smartMatches: List<SmartMatchCandidate> = emptyList(),
     val requests: List<ConnectRequestItem> = emptyList(),
-    val gameStats: GameProfileStats = GameProfileStats()
+    val gameStats: GameProfileStats = GameProfileStats(),
+    /** Names of backend sections that failed; never present a network error as an empty directory. */
+    val failedSections: List<String> = emptyList()
 )
+
+
+/** Keep last-known data only for sections which genuinely failed to load.
+ * Successful empty server responses remain authoritative; warning state stays visible.
+ */
+fun ConnectHubSnapshot.retainFailedSectionsFrom(previous: ConnectHubSnapshot): ConnectHubSnapshot {
+    val failures = failedSections.toSet()
+    return copy(
+        roommates = if ("Roommates" in failures) previous.roommates else roommates,
+        mentors = if ("Mentors" in failures) previous.mentors else mentors,
+        readingMates = if ("Reading mates" in failures) previous.readingMates else readingMates,
+        housingAgents = if ("Housing agents" in failures) previous.housingAgents else housingAgents,
+        housingRequests = if ("Housing" in failures) previous.housingRequests else housingRequests,
+        gameChallenges = if ("Challenges" in failures) previous.gameChallenges else gameChallenges,
+        smartMatches = if ("Student matches" in failures) previous.smartMatches else smartMatches,
+        requests = if ("Connect inbox" in failures) previous.requests else requests
+    )
+}

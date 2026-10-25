@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.components.BlinkSkeletonList
+
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -203,19 +205,11 @@ fun CommentSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             when {
-                isLoading -> {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = BlinkPink,
-                            modifier = Modifier.size(28.dp),
-                            strokeWidth = 2.5.dp
-                        )
-                    }
+                isLoading && comments.isEmpty() -> {
+                    BlinkSkeletonList(
+                        modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp),
+                        rows = 5
+                    )
                 }
 
                 comments.isEmpty() -> {
@@ -437,7 +431,7 @@ fun CommentSheet(
 }
 
 @Composable
-private fun CommentRow(
+internal fun CommentRow(
     username: String,
     displayName: String,
     avatar: String,
@@ -703,7 +697,7 @@ private fun MentionSuggestionRow(
 }
 
 @Composable
-private fun CommentReportDialog(
+internal fun CommentReportDialog(
     onDismiss: () -> Unit,
     onReasonSelected: (String) -> Unit
 ) {

@@ -43,6 +43,9 @@ data class DesktopProfile(
     val phone: String? = null,
     val whatsapp: String? = null,
     val presenceVisibility: String = "PUBLIC",
+    val coverPhotoUrl: String? = null,
+    val professionalHeadline: String? = null,
+    val dailyStreak: Int = 0,
 )
 
 data class DesktopProfileFollowerPoint(
@@ -111,6 +114,9 @@ data class DesktopConversation(
     val markedUnread: Boolean = false,
     val unreadCount: Long = 0,
     val requestStatus: String = "accepted",
+    val lastMessage: String = "",
+    // Authenticated server summary username; never infer recipient identity from display title.
+    val partnerUsername: String? = null,
     val notificationMode: String = "all",
     val muteUntil: String? = null,
     val controlsAvailable: Boolean = false,
@@ -127,6 +133,11 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val reactionCounts: Map<String, Int> = emptyMap(),
+    val myReactions: Set<String> = emptySet(),
+    val isStarred: Boolean = false,
+    val isPinned: Boolean = false,
+    val replyToMessageId: String? = null,
 )
 
 data class DesktopNotification(
@@ -162,6 +173,7 @@ data class DesktopMarketItem(
     val isFeatured: Boolean,
     val isSold: Boolean,
     val imageUrls: List<String> = emptyList(),
+    val videoUrl: String? = null,
     val createdAt: String = "",
 )
 
@@ -177,6 +189,15 @@ data class DesktopConnectListing(
     val location: String?,
     val tags: List<String>,
     val createdAt: String,
+    val categorySlug: String? = null,
+)
+
+data class DesktopConnectApplication(
+    val id: String,
+    val listingId: String,
+    val applicantId: String,
+    val message: String,
+    val status: String,
 )
 
 data class DesktopConnectRequestItem(

@@ -1,0 +1,112 @@
+name: Owner Login Security
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/username-login/**'
+      - 'app/src/main/java/com/example/data/repository/AuthRepository.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt'
+      - 'web/app.js'
+      - '.github/workflows/owner-login-security.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/username-login/**'
+      - 'app/src/main/java/com/example/data/repository/AuthRepository.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt'
+      - 'web/app.js'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  auth-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Supabase owner login
+        run: deno check supabase/functions/username-login/index.ts
+      - name: Test owner alias rules and full mocked authentication flow
+        run: deno test --allow-env supabase/functions/username-login/owner-identity_test.ts supabase/functions/username-login/handler_integration_test.ts
+      - name: Check website JavaScript
+        run: node --check web/app.js
+      - name: Ensure owner IDs and secret configuration are not baked into clients
+        shell: bash
+        run: |
+          if grep -En 'BLINK_OWNER_LOGIN_IDENTIFIER_MAP|BLINK_OWNER_AUTH_USER_ID' web/app.js; then
+            echo "Owner alias private configuration must not appear in the web client." >&2
+            exit 1
+          fi
+
+  local-gotrue-real-auth:
+    name: real-local-gotrue-login
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Prepare a disposable Supabase project with no production data
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/blink-owner-auth"
+          mkdir -p "$ROOT/supabase"
+          cat > "$ROOT/supabase/config.toml" <<'TOML'
+          project_id = "blink-owner-ci"
+          [db]
+          major_version = 17
+          [db.seed]
+          enabled = true
+          sql_paths = ["./seed.sql"]
+          [auth]
+          enabled = true
+          [auth.email]
+          enable_confirmations = false
+          TOML
+          cat > "$ROOT/supabase/seed.sql" <<'SQL'
+          create table if not exists public.profiles (
+            id uuid primary key references auth.users(id),
+            email text not null,
+            username text not null unique
+          );
+          alter table public.profiles enable row level security;
+          grant select, insert, update, delete on public.profiles to service_role;
+          SQL
+      - name: Start local Supabase Auth and PostgREST
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/blink-owner-auth"
+          supabase start
+          supabase status -o env > "$RUNNER_TEMP/blink-owner-local.env"
+          chmod 600 "$RUNNER_TEMP/blink-owner-local.env"
+      - name: Test real password grant, aliases, identity, and collisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          . "$RUNNER_TEMP/blink-owner-local.env"
+          set +a
+          export SUPABASE_URL="$API_URL"
+          export SUPABASE_ANON_KEY="$ANON_KEY"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          deno test --allow-env --allow-net supabase/tests/owner_login_local_real_auth_test.ts
+      - name: Clean up local Supabase
+        if: always()
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/blink-owner-auth" && supabase stop || true

@@ -1,8 +1,11 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.ConnectDiscoveryPolicy
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
@@ -25,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -62,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +82,7 @@ import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.ui.components.BlinkSkeletonPersonCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
@@ -83,8 +90,10 @@ import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseTrend
 import com.blinkng.shared.campusActivityLabel
-import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.pulseTrend
+import org.json.JSONArray
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class LivePeopleFilter(val label: String) {
@@ -106,6 +115,7 @@ private enum class LivePeopleSort(val label: String) {
 @Composable
 fun ConnectSection(
     profiles: List<UserProfile>,
+    currentProfile: UserProfile? = null,
     currentUsername: String,
     userAvatar: String,
     isDark: Boolean,
@@ -116,6 +126,7 @@ fun ConnectSection(
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isProfilesLoading: Boolean = false,
     isLiveDataAvailable: Boolean = true,
     activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
@@ -126,15 +137,42 @@ fun ConnectSection(
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
+    var query by rememberPersistentTextState(key = "connect:students:query:${currentUsername.trim().lowercase()}")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     var sort by rememberSaveable { mutableStateOf(LivePeopleSort.RECOMMENDED) }
+    // Account-isolated durable "Not interested" suggestions; server still enforces blocks.
+    val localContext = LocalContext.current
+    val hiddenProfilesStore = remember(localContext) {
+        localContext.applicationContext.getSharedPreferences("blink_connect_hidden_profiles", 0)
+    }
+    val hiddenProfileKey = remember(currentUsername) {
+        "hidden:${currentUsername.trim().lowercase()}"
+    }
+    var dismissedIds by remember(currentUsername) {
+        mutableStateOf(
+            runCatching {
+                val serialized = hiddenProfilesStore.getString(hiddenProfileKey, "[]").orEmpty()
+                val stored = JSONArray(serialized)
+                (0 until stored.length()).mapNotNull {
+                    stored.optString(it).takeIf { key -> key.isNotBlank() }
+                }.distinct().takeLast(200)
+            }.getOrDefault(emptyList())
+        )
+    }
+    LaunchedEffect(dismissedIds, hiddenProfileKey) {
+        if (currentUsername.isNotBlank()) {
+            val serialized = JSONArray()
+            dismissedIds.forEach { serialized.put(it) }
+            hiddenProfilesStore.edit().putString(hiddenProfileKey, serialized.toString()).apply()
+        }
+    }
     val pullToRefreshState = rememberPullToRefreshState()
     val followScope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
-    val current = remember(profiles, currentUsername) {
-        profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
+    val current = remember(profiles, currentUsername, currentProfile) {
+        currentProfile?.takeIf { it.username.equals(currentUsername, ignoreCase = true) }
+            ?: profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
     }
 
     val liveProfiles = remember(profiles, currentUsername) {
@@ -153,13 +191,18 @@ fun ConnectSection(
         sort,
         current?.university,
         current?.department,
-        followingIds
+        followingIds,
+        current?.interests,
+        dismissedIds,
+        isLiveDataAvailable
     ) {
         val clean = query.trim()
         val myCampus = current?.university.orEmpty()
         val myDepartment = current?.department.orEmpty()
 
         val filtered = liveProfiles.filter { profile ->
+            val key = profile.id.ifBlank { profile.username }
+            if (dismissedIds.any { it.equals(key, ignoreCase = true) }) return@filter false
             val matchesQuery = clean.isBlank() ||
                 profile.fullName.contains(clean, ignoreCase = true) ||
                 profile.username.contains(clean, ignoreCase = true) ||
@@ -170,7 +213,7 @@ fun ConnectSection(
 
             val matchesFilter = when (filter) {
                 LivePeopleFilter.ALL -> true
-                LivePeopleFilter.ONLINE -> profile.onlineNow
+                LivePeopleFilter.ONLINE -> isLiveDataAvailable && profile.onlineNow
                 LivePeopleFilter.VERIFIED -> profile.verificationBadge != VerificationBadge.NONE
                 LivePeopleFilter.SAME_CAMPUS -> myCampus.isNotBlank() &&
                     !myCampus.equals("null", ignoreCase = true) &&
@@ -184,21 +227,24 @@ fun ConnectSection(
         }
 
         when (sort) {
-            LivePeopleSort.RECOMMENDED -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
-            )
+            LivePeopleSort.RECOMMENDED -> ConnectDiscoveryPolicy.rank(
+                candidates = filtered,
+                campus = myCampus,
+                department = myDepartment,
+                myInterests = current?.interests.orEmpty()
+            ) { profile ->
+                ConnectDiscoverySignals(
+                    id = profile.id.ifBlank { profile.username },
+                    displayName = profile.fullName.ifBlank { profile.username },
+                    university = profile.university,
+                    department = profile.department,
+                    interests = profile.interests,
+                    online = isLiveDataAvailable && profile.onlineNow,
+                    following = profile.id in followingIds
+                )
+            }
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
+                compareByDescending<UserProfile> { isLiveDataAvailable && it.onlineNow }
                     .thenByDescending { it.lastSeenAt }
                     .thenBy { it.fullName.lowercase() }
             )
@@ -206,7 +252,7 @@ fun ConnectSection(
                 compareByDescending<UserProfile> {
                     myCampus.isNotBlank() &&
                         it.university.equals(myCampus, ignoreCase = true)
-                }.thenByDescending { it.onlineNow }
+                }.thenByDescending { isLiveDataAvailable && it.onlineNow }
                     .thenBy { it.fullName.lowercase() }
             )
             LivePeopleSort.NAME -> filtered.sortedBy {
@@ -216,21 +262,30 @@ fun ConnectSection(
     }
 
     val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
-    val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
-    // The current viewer is actively using Connect, so the pulse always has at least one real active unit.
-    val realOnlineCount = remember(liveProfiles) { 1 + liveProfiles.count { it.onlineNow } }
-    val reduceMotion = rememberReducedMotionEnabled()
     val windowActive = rememberWindowActive()
-    val communityPulse = rememberManagedPulse(
-        key = "connect:" + currentUsername.trim().lowercase(),
-        range = communityActivityRange(realOnlineCount, policy),
+    val activeNowCount = remember(liveProfiles, isLiveDataAvailable) {
+        if (isLiveDataAvailable) liveProfiles.count { it.onlineNow } else 0
+    }
+    // The signed-in, foreground Connect session counts as one actual active session.
+    // Other people are counted only when their profile reports online presence.
+    val isCurrentSessionActive = isLiveDataAvailable && currentUsername.isNotBlank() && windowActive
+    val realOnlineCount = activeNowCount + if (isCurrentSessionActive) 1 else 0
+    val reduceMotion = rememberReducedMotionEnabled()
+    val activityScoreRange = remember(realOnlineCount) { connectActivityScoreRange(realOnlineCount) }
+    val activityScoreState = rememberManagedPulse(
+        key = "connect_activity_score_${currentUsername.lowercase()}",
+        range = activityScoreRange,
         tickMillis = policy.connectTickMillis,
         policy = policy,
         liveDataAvailable = isLiveDataAvailable,
         windowActive = windowActive,
         reduceMotion = reduceMotion,
     )
-
+    // Always show values from the current band (even when an older session has a
+    // cached pulse value). This score is never shown as a count of people.
+    val activityScore = if (isLiveDataAvailable) {
+        (activityScoreState.value ?: activityScoreRange.first).coerceIn(activityScoreRange)
+    } else null
     var previousRealOnline by rememberSaveable(currentUsername) { mutableStateOf(realOnlineCount) }
     var activityTrend by rememberSaveable(currentUsername) { mutableStateOf(BlinkPulseTrend.STABLE) }
     LaunchedEffect(realOnlineCount) {
@@ -238,29 +293,40 @@ fun ConnectSection(
         previousRealOnline = realOnlineCount
     }
 
+    val displayedOnlineCount by animateIntAsState(
+        targetValue = realOnlineCount,
+        animationSpec = tween(durationMillis = 720),
+        label = "connectLiveActiveCount"
+    )
     val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
-    val realCampusOnline = remember(liveProfiles, campusName) {
-        val others = liveProfiles.count {
+    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive, isLiveDataAvailable) {
+        val others = if (!isLiveDataAvailable) 0 else liveProfiles.count {
             it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
         }
-        others + if (campusName.isNotBlank()) 1 else 0
+        others + if (isCurrentSessionActive && campusName.isNotBlank()) 1 else 0
     }
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
     }
-    val onlinePreview = remember(liveProfiles, policy.onlinePreviewLimit) {
-        liveProfiles.filter { it.onlineNow }.take(policy.onlinePreviewLimit)
+    val onlinePreview = remember(liveProfiles, policy.onlinePreviewLimit, isLiveDataAvailable, dismissedIds) {
+        if (!isLiveDataAvailable) emptyList() else liveProfiles
+            .filter { it.onlineNow && dismissedIds.none { hidden -> hidden.equals(it.id.ifBlank { it.username }, ignoreCase = true) } }
+            .take(policy.onlinePreviewLimit)
     }
 
-    LaunchedEffect(communityPulse.value != null, currentUsername, isLiveDataAvailable) {
-        val shown = communityPulse.value
-        if (shown != null && isLiveDataAvailable) {
+    LaunchedEffect(realOnlineCount, currentUsername, isLiveDataAvailable) {
+        if (isLiveDataAvailable) {
             onActivityPulseEvent(
                 "connect",
                 "impression",
                 realOnlineCount,
-                shown,
-                mapOf("trend" to activityTrend.label)
+                activityScore,
+                mapOf(
+                    "trend" to activityTrend.label,
+                    "metric" to "estimated_activity_points",
+                    "min" to activityScoreRange.first.toString(),
+                    "max" to activityScoreRange.last.toString(),
+                ),
             )
         }
     }
@@ -269,6 +335,14 @@ fun ConnectSection(
         FollowStateStore.refresh()
     }
 
+    LaunchedEffect(query, currentUsername) {
+        val search = query.trim()
+        if (search.length >= 2) delay(350)
+        // Even a cleared query invalidates any older in-flight search.
+        connectHubActions.searchStudents(search)
+    }
+
+    val connectListState = rememberLazyListState()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -276,7 +350,10 @@ fun ConnectSection(
     ) {
         PullToRefreshBox(
             isRefreshing = isConnectHubLoading,
-            onRefresh = connectHubActions.refresh,
+            onRefresh = {
+                connectHubActions.refresh()
+                connectHubActions.refreshStudents()
+            },
             state = pullToRefreshState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             indicator = {
@@ -289,6 +366,7 @@ fun ConnectSection(
             }
         ) {
             LazyColumn(
+                state = connectListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
@@ -314,14 +392,14 @@ fun ConnectSection(
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         Text(
-                                            "Community Activity",
+                                            "Community activity",
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Black
                                         )
                                         Text(
                                             when {
-                                                communityPulse.isStale -> "Last known activity • offline"
-                                                else -> "Activity Pulse • ${activityTrend.label}"
+                                                !isLiveDataAvailable -> "Online status temporarily unavailable"
+                                                else -> "Estimated activity points • not people"
                                             },
                                             fontSize = 10.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -334,7 +412,7 @@ fun ConnectSection(
                                     ) {
                                         if (reduceMotion) {
                                             Text(
-                                                communityPulse.value?.toString() ?: "—",
+                                                activityScore?.toString() ?: "—",
                                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                                 color = BlinkOnlineGreen,
                                                 fontSize = 13.sp,
@@ -342,7 +420,7 @@ fun ConnectSection(
                                             )
                                         } else {
                                             Crossfade(
-                                                targetState = communityPulse.value,
+                                                targetState = activityScore,
                                                 label = "communityActivityPulse"
                                             ) { pulseValue ->
                                                 Text(
@@ -358,14 +436,14 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Online among loaded profiles (including yours): $realOnlineCount" else "Online count unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
                                 if (campusName.isNotBlank()) {
                                     Text(
-                                        "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
+                                        if (isLiveDataAvailable) "$campusName activity: $campusLabel • $realCampusOnline online among loaded profiles" else "$campusName activity is temporarily unavailable",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -374,16 +452,16 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        "Actually online",
+                                        "Other students online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Row(
+                                    LazyRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        onlinePreview.forEach { profile ->
+                                        items(onlinePreview, key = { it.id.ifBlank { it.username } }) { profile ->
                                             Column(
                                                 modifier = Modifier
                                                     .width(58.dp)
@@ -392,7 +470,7 @@ fun ConnectSection(
                                                             "connect",
                                                             "online_preview_open",
                                                             realOnlineCount,
-                                                            communityPulse.value,
+                                                            if (isLiveDataAvailable) realOnlineCount else null,
                                                             mapOf("username" to profile.username)
                                                         )
                                                         onProfileClick(profile.username)
@@ -461,7 +539,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "$activeNowCount active",
+                                        "${if (isLiveDataAvailable) "Online here" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) realOnlineCount else displayedOnlineCount) else "—"}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
@@ -512,28 +590,48 @@ fun ConnectSection(
                                 }
                             }
 
-                            if (visible.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
+                            if (dismissedIds.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { dismissedIds = emptyList() },
+                                    modifier = Modifier.align(Alignment.End)
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        LivePeopleEmptyState(
-                                            hasProfiles = liveProfiles.isNotEmpty(),
-                                            query = query,
-                                            filter = filter
-                                        )
-                                        if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
-                                            TextButton(
-                                                onClick = {
-                                                    query = ""
-                                                    filter = LivePeopleFilter.ALL
-                                                    sort = LivePeopleSort.RECOMMENDED
+                                    Text("Restore hidden suggestions (${dismissedIds.size})")
+                                }
+                            }
+
+                            if (visible.isEmpty()) {
+                                if ((isConnectHubLoading || isProfilesLoading) && liveProfiles.isEmpty() &&
+                                    query.isBlank() && filter == LivePeopleFilter.ALL
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        repeat(4) {
+                                            BlinkSkeletonPersonCard()
+                                        }
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            LivePeopleEmptyState(
+                                                hasProfiles = liveProfiles.isNotEmpty(),
+                                                query = query,
+                                                filter = filter
+                                            )
+                                            if (query.isNotBlank() || filter != LivePeopleFilter.ALL) {
+                                                TextButton(
+                                                    onClick = {
+                                                        query = ""
+                                                        filter = LivePeopleFilter.ALL
+                                                        sort = LivePeopleSort.RECOMMENDED
+                                                    }
+                                                ) {
+                                                    Text("Clear filters")
                                                 }
-                                            ) {
-                                                Text("Clear filters")
                                             }
                                         }
                                     }
@@ -554,6 +652,25 @@ fun ConnectSection(
                                         LiveProfileCard(
                                             profile = profile,
                                             isFollowing = isFollowing,
+                                            presenceFresh = isLiveDataAvailable,
+                                            recommendation = if (sort == LivePeopleSort.RECOMMENDED) {
+                                                ConnectDiscoveryPolicy.reasons(
+                                                    ConnectDiscoverySignals(
+                                                        id = profile.id.ifBlank { profile.username },
+                                                        displayName = profile.fullName,
+                                                        university = profile.university,
+                                                        department = profile.department,
+                                                        interests = profile.interests,
+                                                        online = isLiveDataAvailable && profile.onlineNow
+                                                    ),
+                                                    current?.university.orEmpty(),
+                                                    current?.department.orEmpty(),
+                                                    current?.interests.orEmpty()
+                                                ).take(2).joinToString(" • ").takeIf { it.isNotBlank() }
+                                            } else null,
+                                            onNotInterested = {
+                                                dismissedIds = (dismissedIds + profile.id.ifBlank { profile.username }).distinct().takeLast(200)
+                                            },
                                             onFollow = {
                                                 if (profileId.isNotBlank()) {
                                                     followScope.launch {
@@ -599,7 +716,7 @@ private fun ConnectHeader(
             .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreHoriz, contentDescription = "Menu")
         }
 
@@ -613,13 +730,13 @@ private fun ConnectHeader(
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
         }
 
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center
@@ -694,7 +811,7 @@ private fun ConnectTopTab(
         label = "connectTopTabText"
     )
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(onClick = onClick).height(48.dp),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {
@@ -703,7 +820,7 @@ private fun ConnectTopTab(
             color = foreground,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
     }
 }
@@ -712,6 +829,9 @@ private fun ConnectTopTab(
 private fun LiveProfileCard(
     profile: UserProfile,
     isFollowing: Boolean,
+    presenceFresh: Boolean,
+    recommendation: String?,
+    onNotInterested: () -> Unit,
     onFollow: () -> Unit,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
@@ -758,7 +878,7 @@ private fun LiveProfileCard(
                         )
                     }
 
-                    if (profile.onlineNow) {
+                    if (presenceFresh && profile.onlineNow) {
                         Box(
                             Modifier
                                 .size(13.dp)
@@ -810,12 +930,26 @@ private fun LiveProfileCard(
                     }
 
                     Text(
-                        text = presenceLabel(profile),
+                        text = if (presenceFresh) presenceLabel(profile) else "Presence not current",
                         fontSize = 10.sp,
-                        color = if (profile.onlineNow) BlinkOnlineGreen
+                        color = if (presenceFresh && profile.onlineNow) BlinkOnlineGreen
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            if (!recommendation.isNullOrBlank()) {
+                Text(
+                    "Why suggested: $recommendation",
+                    modifier = Modifier.padding(top = 8.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            TextButton(onClick = onNotInterested) {
+                Text("Not interested", fontSize = 11.sp)
             }
 
             if (profile.bio.isNotBlank() && !profile.bio.equals("null", true)) {
@@ -931,7 +1065,7 @@ private fun LivePeopleEmptyState(
         Spacer(Modifier.height(6.dp))
 
         Text(
-            "This screen only shows profiles returned by Supabase. No sample users are inserted.",
+            "Try adjusting your filters or check back for new people.",
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

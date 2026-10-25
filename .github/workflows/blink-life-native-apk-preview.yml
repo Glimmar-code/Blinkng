@@ -1,0 +1,105 @@
+name: BLINK LIFE on-demand feature bundle verification
+
+on:
+  pull_request:
+    branches: [main, Testlab]
+    paths:
+      - 'game3d/**'
+      - 'blinkLifeFeature/**'
+      - 'settings.gradle.kts'
+      - 'gradle/libs.versions.toml'
+      - 'app/src/main/java/com/example/game/**'
+      - 'app/src/test/java/com/example/game/**'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/blink-life-native-apk-preview.yml'
+  push:
+    branches: [main, Testlab]
+    paths:
+      - 'game3d/**'
+      - 'blinkLifeFeature/**'
+      - 'settings.gradle.kts'
+      - 'gradle/libs.versions.toml'
+      - 'app/src/main/java/com/example/game/**'
+      - 'app/src/test/java/com/example/game/**'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/blink-life-native-apk-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blink-life-native-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify native 3D does not load at BLINK app startup
+        run: python3 scripts/check_blink_life_isolation.py
+
+      - name: Android unit tests, base debug APK and on-demand App Bundle
+        run: gradle :app:testDebugUnitTest :app:assembleDebug :app:bundleDebug --stacktrace --no-daemon
+
+      - name: Verify downloadable Godot split, and no engine in base APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=app/build/outputs/apk/debug/app-debug.apk
+          BUNDLE=app/build/outputs/bundle/debug/app-debug.aab
+          test -s "$BASE"
+          test -s "$BUNDLE"
+          unzip -Z1 "$BASE" > "$RUNNER_TEMP/blink-base-files.txt"
+          unzip -Z1 "$BUNDLE" > "$RUNNER_TEMP/blink-bundle-files.txt"
+          for absent in \
+            assets/project.godot \
+            assets/scenes/main.tscn \
+            lib/arm64-v8a/libgodot_android.so; do
+            if grep -Fxq "$absent" "$RUNNER_TEMP/blink-base-files.txt"; then
+              echo "::error::On-demand Godot payload leaked into BLINK base APK: $absent"
+              exit 1
+            fi
+          done
+          for required in \
+            blinkLifeFeature/manifest/AndroidManifest.xml \
+            blinkLifeFeature/assets/project.godot \
+            blinkLifeFeature/assets/scenes/main.tscn \
+            blinkLifeFeature/lib/arm64-v8a/libgodot_android.so; do
+            grep -Fxq "$required" "$RUNNER_TEMP/blink-bundle-files.txt" || {
+              echo "::error::On-demand AAB feature is missing: $required"
+              exit 1
+            }
+          done
+          echo "Validated: base APK excludes the Godot engine; optional AAB split includes it."
+          du -h "$BASE" "$BUNDLE"
+
+      - name: Upload on-demand debug App Bundle (for bundletool testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-life-play-on-demand-aab-${{ github.sha }}
+          path: app/build/outputs/bundle/debug/app-debug.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload smaller BASE-ONLY debug APK (no game; website cannot deliver split)
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-life-base-only-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

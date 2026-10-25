@@ -1,0 +1,87 @@
+-- Test-only schema for disposable PostgreSQL. Never run against Supabase project.
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin;
+create schema if not exists auth;
+create schema if not exists private;
+create table auth.users(id uuid primary key);
+
+insert into auth.users(id) values
+ ('00000000-0000-4000-8000-000000000001'),
+ ('00000000-0000-4000-8000-000000000002'),
+ ('00000000-0000-4000-8000-000000000003'),
+ ('00000000-0000-4000-8000-000000000004');
+
+create table public.profiles (
+ id uuid primary key references auth.users(id),
+ university text,
+ is_verified boolean default false,
+ verification_badge text
+);
+insert into public.profiles(id,university,is_verified,verification_badge) values
+ ('00000000-0000-4000-8000-000000000001','FUTA',true,'GOLD'),
+ ('00000000-0000-4000-8000-000000000002','FUTA',true,'BLUE'),
+ ('00000000-0000-4000-8000-000000000003','UNILAG',false,'NONE'),
+ ('00000000-0000-4000-8000-000000000004','FUTA',false,'NONE');
+
+create table private.admin_roles (
+ user_id uuid primary key references auth.users(id),
+ role text not null,
+ expires_at timestamptz
+);
+insert into private.admin_roles(user_id,role) values
+ ('00000000-0000-4000-8000-000000000001','owner'),
+ ('00000000-0000-4000-8000-000000000002','admin');
+
+create or replace function auth.uid() returns uuid
+language sql stable as $$
+ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;
+$$;
+revoke execute on function auth.uid() from public;
+grant execute on function auth.uid() to anon,authenticated;
+
+create or replace function private.active_blink_admin_role(p_user_id uuid)
+returns text language sql stable security definer set search_path='' as $$
+ select r.role from private.admin_roles r
+ where r.user_id=p_user_id and (r.expires_at is null or r.expires_at>now())
+ limit 1;
+$$;
+create or replace function private.require_blink_admin()
+returns uuid language plpgsql stable security definer set search_path='' as $$
+declare v_uid uuid:=auth.uid();
+begin
+ if v_uid is null or private.active_blink_admin_role(v_uid) is null then
+   raise exception 'ADMIN_REQUIRED' using errcode='42501';
+ end if;
+ return v_uid;
+end; $$;
+create or replace function private.require_blink_owner()
+returns uuid language plpgsql stable security definer set search_path='' as $$
+declare v_uid uuid:=auth.uid();
+begin
+ if v_uid is null or private.active_blink_admin_role(v_uid)<>'owner' then
+   raise exception 'OWNER_REQUIRED' using errcode='42501';
+ end if;
+ return v_uid;
+end; $$;
+
+grant usage on schema public to anon,authenticated;
+grant usage on schema auth to anon,authenticated;
+
+-- Minimal fake Storage metadata: only within disposable CI, never a production insert.
+create schema storage;
+create table storage.buckets (
+ id text primary key,
+ name text not null,
+ public boolean not null,
+ file_size_limit bigint,
+ allowed_mime_types text[]
+);
+create table storage.objects (
+ id uuid primary key default gen_random_uuid(),
+ bucket_id text not null references storage.buckets(id),
+ name text not null
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated;
+grant insert on storage.objects to authenticated;

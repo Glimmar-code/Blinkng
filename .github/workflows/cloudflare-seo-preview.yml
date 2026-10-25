@@ -1,0 +1,34 @@
+name: BLINK Cloudflare SEO preview smoke
+
+on:
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - 'scripts/verify_cloudflare_seo_preview.mjs'
+      - '.github/workflows/cloudflare-seo-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout staged SEO candidate
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect matching Cloudflare Pages preview without accessing private data
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cloudflare Pages uses a normalized 28-character branch alias.
+          BRANCH_SLUG="$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28 | sed 's/-*$//')"
+          test -n "$BRANCH_SLUG"
+          export BLINK_SEO_PREVIEW_URL="https://${BRANCH_SLUG}.blinkng.pages.dev"
+          node scripts/verify_cloudflare_seo_preview.mjs

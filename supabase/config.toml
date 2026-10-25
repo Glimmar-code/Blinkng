@@ -23,6 +23,10 @@ enabled = true
 
 # Keep Edge Function authentication behavior source-controlled so a fallback
 # deployment cannot silently change which endpoints require a JWT.
+# BLINK LIFE: authenticated short-lived server tickets, no public anonymous joins.
+[functions.blink-life-session]
+verify_jwt = true
+
 [functions.game-rewards]
 verify_jwt = true
 
@@ -76,6 +80,12 @@ verify_jwt = false
 [functions.blink-web]
 verify_jwt = false
 
+# Anonymous browser metric aggregation is disabled by default in Edge.
+# It is additionally gated by BLINK_SITE_ANALYTICS_ENABLED=true and a
+# server-only service key; PostgreSQL enforces global anti-spam caps.
+[functions.blink-site-analytics]
+verify_jwt = false
+
 # AdMob authenticates this public webhook with Google's ECDSA signature, not a
 # Supabase user JWT. The handler rejects invalid signatures before any write.
 [functions.admob-reward-ssv]
@@ -85,3 +95,31 @@ verify_jwt = false
 # third-party secret values must be configured through Supabase/secrets
 # management and documented as required configuration in RECOVERY.md.
 # Secret values must never be committed to Git.
+
+
+# NEW Paystack v2 routes: all financial functions remain disabled by server
+# flags until independent TEST-mode merchant and provider checks succeed.
+[functions.paystack-checkout]
+verify_jwt = true
+
+[functions.paystack-confirm]
+verify_jwt = true
+
+[functions.paystack-history]
+verify_jwt = true
+
+[functions.paystack-autorenew]
+verify_jwt = true
+
+# Paystack verifies webhook payload signatures; no BLINK session expected.
+# This v2 endpoint does not replace the legacy live Paystack webhook.
+[functions.paystack-webhook-v2]
+verify_jwt = false
+
+# Internal worker, requires long service-only x-blink-email-worker-secret.
+[functions.paystack-payment-email]
+verify_jwt = false
+
+# Authenticated users may request delivery/refund; owner-only financial actions are checked server-side.
+[functions.paystack-market-ops]
+verify_jwt = true

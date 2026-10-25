@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -84,7 +86,7 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                     }
                 }
             }
-            OutlinedTextField(value=caption,onValueChange={caption=it.take(500)},modifier=Modifier.fillMaxWidth().padding(16.dp),placeholder={Text("Add a caption…")},enabled=!isUploading,minLines=2,maxLines=4,shape=RoundedCornerShape(20.dp))
+            OutlinedTextField(value=caption,onValueChange={caption=it.take(500)},keyboardOptions=KeyboardOptions(capitalization=KeyboardCapitalization.Sentences),modifier=Modifier.fillMaxWidth().padding(16.dp),placeholder={Text("Add a caption…")},enabled=!isUploading,minLines=2,maxLines=4,shape=RoundedCornerShape(20.dp))
         }
     }
 }

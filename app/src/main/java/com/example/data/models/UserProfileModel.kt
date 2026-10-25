@@ -90,6 +90,7 @@ data class UserProfile(
     var relationshipStatus: String = "Single",
     var lastSeenAt: String = "",
     var verifiedAtMillis: Long = 0L,
+    var verificationExpiresAtMillis: Long = 0L,
     var createdAt: String = "",
     var joinedLabel: String = "",
     var isSellerActive: Boolean = false,
@@ -98,4 +99,10 @@ data class UserProfile(
     var totalXp: Long = 0L,
     var xpLevel: Int = 1,
     var badges: List<AchievementBadge> = listOf()
-)
+) {
+    fun hasActiveMarketVerification(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        verificationBadge != VerificationBadge.NONE &&
+            (verificationExpiresAtMillis > nowMillis ||
+                (verificationBadge == VerificationBadge.GOLD && verificationExpiresAtMillis == 0L))
+}
+

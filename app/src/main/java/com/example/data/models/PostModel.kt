@@ -65,6 +65,8 @@ data class FeedPost(
     val repostedById: String? = null,
     val repostedByUsername: String? = null,
     var viewsCount: Int = 0,
+    /** Public aggregate supplied by the authenticated backend; null when unavailable. */
+    var savesCount: Int? = null,
     var isBookmarked: Boolean = false,
     val isReel: Boolean = false,
     val videoDuration: String = "0:00",
@@ -87,6 +89,8 @@ data class FeedPost(
     val adCta: String? = null,
     val createdAt: String = "",
     val authorUsername: String = "",
+    /** Public author UUID from the server; needed for Follow when the profile list is partial. */
+    val authorProfileId: String = "",
     val textStyle: String? = null
 )
 
@@ -196,7 +200,11 @@ data class MarketItem(
     val viewsCount: Long = 0L,
     val savesCount: Long = 0L,
     val isSaved: Boolean = false,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val sellerId: String = "",
+    val videoUrl: String = "",
+    val mediaDigest: String = "",
+    val moderationState: String = "approved"
 )
 
 data class LeaderboardUser(
@@ -329,7 +337,9 @@ data class ChatConversation(
     val inboxCategory: String = "primary",
     val notificationMode: String = "all",
     val muteUntil: String? = null,
-    val presenceLabel: String = ""
+    val presenceLabel: String = "",
+    val lastOutgoingStatus: MessageStatus? = null,
+    val lastReceiptMessageId: String = ""
 )
 
 data class ChatPrivacySettings(

@@ -45,10 +45,65 @@ try {
   await behaviorTests(db);
   await (await import('./ranked-profile-tests.mjs')).rankedProfileTests(db);
   await (await import('./legacy-hardening-tests.mjs')).legacyHardeningTests(db);
+  await (await import('./feed-recovery-tests.mjs')).feedRecoveryTests(db);
+  await (await import('./discovery-exhaustion-tests.mjs')).discoveryExhaustionTests(db);
+  await (await import('./tag-search-interest-tests.mjs')).tagSearchInterestTests(db);
   for (const name of migrations) {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS reapply:', name);
   }
+  // Independent disposable DB validates marketplace order contracts against
+  // the actual tracked SQL migration; no production credentials are used.
+  await (await import('./marketplace-order-tests.mjs')).marketplaceOrderTests();
+  // PGlite has no Supabase-managed storage schema. Provide only the storage
+  // interfaces used by this migration, then apply the COMPLETE migration on
+  // the disposable fixture. Never target the production project here.
+  await db.exec(`reset role;
+    create schema if not exists storage;
+    create table if not exists storage.buckets (
+      id text primary key, name text not null, public boolean not null default false,
+      file_size_limit bigint, allowed_mime_types text[]
+    );
+    create table if not exists storage.objects (
+      id uuid primary key default gen_random_uuid(), bucket_id text not null,
+      name text not null
+    );
+    alter table storage.objects enable row level security;
+    create or replace function storage.foldername(p_path text)
+      returns text[] language sql immutable
+      as $$select (string_to_array(p_path, '/'))[1:array_length(string_to_array(p_path, '/'),1)-1]$$;
+  `);
+  const marketHardeningSql = fs.readFileSync(
+    new URL('../migrations/20261007005000_market_professional_hardening.sql', import.meta.url), 'utf8');
+  await db.exec(marketHardeningSql);
+  console.log('PASS full Market hardening migration against disposable fixture');
+  await db.exec(marketHardeningSql);
+  console.log('PASS reapply full Market hardening migration');
+
+  const marketTrustSql = fs.readFileSync(
+    new URL('../migrations/20261017153000_market_verified_sellers_and_listing_limits.sql', import.meta.url), 'utf8');
+  await db.exec(marketTrustSql);
+  console.log('PASS full verified-seller Market migration against disposable fixture');
+  await db.exec(marketTrustSql);
+  console.log('PASS reapply verified-seller Market migration');
+  await (await import('./market-seller-trust-tests.mjs')).marketSellerTrustTests(db);
+  for (const migration of [
+    '20261017180000_market_seller_trust_lifecycle.sql',
+    '20261017181500_market_offers_disputes_moderation.sql',
+    '20261017183000_market_admin_discovery_v2.sql',
+    '20261017184500_market_qualified_promotions.sql',
+    '20261017190000_market_buyer_notifications.sql',
+    '20261017191500_market_merchant_approval_gate.sql',
+    '20261017193000_market_media_integrity_and_inventory.sql',
+  ]) {
+    const sql = fs.readFileSync(new URL('../migrations/' + migration, import.meta.url), 'utf8');
+    await db.exec(sql);
+    console.log('PASS professional Market migration:', migration);
+    await db.exec(sql);
+    console.log('PASS professional Market migration reapply:', migration);
+  }
+  await (await import('./market-professional-tests.mjs')).marketProfessionalTests(db);
+
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);
   process.exitCode = 1;

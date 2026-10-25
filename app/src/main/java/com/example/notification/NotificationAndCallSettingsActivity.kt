@@ -74,7 +74,6 @@ import com.example.call.CallHistoryActivity
 import com.example.call.CallSoundPreferences
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
-import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import com.example.util.startActivitySafely
 import kotlinx.coroutines.delay
@@ -121,6 +120,9 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
     var voiceToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)) }
     var videoToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)) }
     var notificationDeliveryEnabled by remember { mutableStateOf(BlinkNotificationHelper.areNotificationsEnabled(context)) }
+    var deviceTokenRegistered by remember {
+        mutableStateOf(BlinkFirebaseMessagingService.isRegisteredForCurrentAccount(context))
+    }
     var fullScreenCallAllowed by remember {
         mutableStateOf(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
@@ -173,6 +175,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         voiceToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)
         videoToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)
         notificationDeliveryEnabled = BlinkNotificationHelper.areNotificationsEnabled(context)
+        deviceTokenRegistered = BlinkFirebaseMessagingService.isRegisteredForCurrentAccount(context)
         fullScreenCallAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
             notificationManager.canUseFullScreenIntent()
         notificationMasterEnabled = NotificationPreferenceStore.isMasterEnabled(context)
@@ -363,6 +366,36 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
 
             item {
                 StatusCard(
+                    title = "Push registration",
+                    value = if (deviceTokenRegistered) "Registered" else "Check registration",
+                    detail = if (deviceTokenRegistered) {
+                        "Supabase accepted this device's current Firebase token for your BLINK account."
+                    } else {
+                        "BLINK has not confirmed a current Firebase token registration for this account."
+                    },
+                    healthy = deviceTokenRegistered
+                )
+            }
+
+            item {
+                SettingsAction(
+                    icon = Icons.Default.Restore,
+                    title = "Repair push registration",
+                    subtitle = "Re-register this device with Firebase and BLINK. This cannot override Android notification permissions."
+                ) {
+                    BlinkFirebaseMessagingService.syncCurrentToken(context)
+                    scope.launch {
+                        repeat(6) {
+                            delay(2_000)
+                            deviceTokenRegistered =
+                                BlinkFirebaseMessagingService.isRegisteredForCurrentAccount(context)
+                        }
+                    }
+                }
+            }
+
+            item {
+                StatusCard(
                     title = "Full-screen incoming calls",
                     value = if (fullScreenCallAllowed) "Available" else "Permission off",
                     detail = if (fullScreenCallAllowed) {
@@ -498,7 +531,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Vibration, contentDescription = null, tint = BlinkPink)
+                        Icon(Icons.Default.Vibration, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.size(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Call vibration", fontWeight = FontWeight.SemiBold)
@@ -655,7 +688,7 @@ private fun CallToneCard(
     ) {
         Column(Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = BlinkPink)
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.size(11.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, fontWeight = FontWeight.SemiBold)
@@ -793,12 +826,12 @@ private fun StatusCard(
                 Icon(
                     if (healthy) Icons.Default.CheckCircle else Icons.Default.Notifications,
                     contentDescription = null,
-                    tint = if (healthy) BlinkPink else MaterialTheme.colorScheme.error
+                    tint = if (healthy) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
                 )
                 Spacer(Modifier.size(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, fontWeight = FontWeight.SemiBold)
-                    Text(value, fontSize = 12.sp, color = if (healthy) BlinkPink else MaterialTheme.colorScheme.error)
+                    Text(value, fontSize = 12.sp, color = if (healthy) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -825,7 +858,7 @@ private fun SettingsAction(
             modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = BlinkPink)
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.size(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold)

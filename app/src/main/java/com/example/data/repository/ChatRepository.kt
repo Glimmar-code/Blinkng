@@ -17,6 +17,17 @@ import org.json.JSONObject
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
+/**
+ * A direction-sensitive receipt for the actual latest server message. If status is null
+ * the latest message was incoming; do not display the sender's ticks in that inbox row.
+ */
+data class LatestConversationReceipt(
+    val conversationId: String,
+    val messageId: String,
+    val createdAt: String,
+    val outgoingStatus: MessageStatus?
+)
+
 class ChatRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
@@ -96,13 +107,16 @@ class ChatRepository(
                 .put("p_notification_preview", settings.notificationPreview)
         )
 
-    suspend fun fetchConversations(): List<ChatConversation> = withContext(Dispatchers.IO) {
+    suspend fun fetchConversations(
+        onFirstPage: suspend (List<ChatConversation>) -> Unit = {}
+    ): List<ChatConversation> = withContext(Dispatchers.IO) {
         // Conversation summaries are account data, not cache data. Walk the full server
         // history so clearing local storage or returning years later can rebuild the list.
         val merged = LinkedHashMap<String, ChatConversation>()
         var beforeAt: String? = null
         var beforeId: String? = null
         var pageNumber = 0
+        var firstPage: List<ChatConversation>? = null
 
         while (pageNumber < MAX_CONVERSATION_PAGES) {
             val page = fetchConversationPage(beforeAt, beforeId)
@@ -110,6 +124,12 @@ class ChatRepository(
                 if (conversation.id.isNotBlank()) merged[conversation.id] = conversation
             }
             pageNumber += 1
+            if (pageNumber == 1) {
+                // Display the first 100 conversations without waiting for years
+                // of history to finish paging. Account-scoped cache remains intact.
+                firstPage = applyConversationState(merged.values.toList())
+                onFirstPage(firstPage!!)
+            }
 
             val nextAt = page.nextBeforeAt
             val nextId = page.nextBeforeId
@@ -119,7 +139,8 @@ class ChatRepository(
             beforeId = nextId
         }
 
-        applyConversationState(merged.values.toList())
+        if (pageNumber == 1) firstPage.orEmpty()
+        else applyConversationState(merged.values.toList())
     }
 
     private suspend fun fetchConversationPage(beforeAt: String?, beforeId: String?): ConversationPage {
@@ -167,6 +188,45 @@ class ChatRepository(
             hasMore = array.length() >= CONVERSATION_PAGE_SIZE
         )
     }
+
+    /**
+     * Read just the newest message using the existing authenticated, membership-protected
+     * pagination RPC. This is intentionally lightweight: no media downloads, message
+     * action enrichment or full conversation hydration when browsing the inbox.
+     *
+     * Called lazily for visible inbox rows, never for every conversation at launch.
+     */
+    suspend fun fetchLatestConversationReceipt(conversationId: String): LatestConversationReceipt? =
+        withContext(Dispatchers.IO) {
+            if (!isServerUuid(conversationId)) return@withContext null
+            val owner = supabaseService.getCurrentUserId().orEmpty()
+            if (owner.isBlank()) return@withContext null
+            val raw = postAuthenticatedRpc(
+                "get_conversation_messages_page",
+                JSONObject()
+                    .put("p_conversation_id", conversationId)
+                    .put("p_limit", 1)
+                    .put("p_before", JSONObject.NULL)
+                    .put("p_before_id", JSONObject.NULL)
+            )
+            val rows = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
+            val latest = rows.optJSONObject(0) ?: return@withContext null
+            val mine = latest.optString("sender_id") == owner
+            val hasRead = latest.optBoolean("is_read", false) ||
+                latest.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) }
+            val hasDelivered = latest.optString("delivered_at")
+                .let { it.isNotBlank() && !it.equals("null", true) }
+            LatestConversationReceipt(
+                conversationId = conversationId,
+                messageId = latest.optString("id"),
+                createdAt = latest.optString("created_at"),
+                outgoingStatus = if (!mine) null else when {
+                    hasRead -> MessageStatus.READ
+                    hasDelivered -> MessageStatus.DELIVERED
+                    else -> MessageStatus.SENT
+                }
+            )
+        }
 
     suspend fun fetchMessagePage(
         conversationId: String,

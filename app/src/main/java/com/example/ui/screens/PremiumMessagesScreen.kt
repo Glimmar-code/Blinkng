@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
+import com.example.ui.components.BlinkSkeletonChatHistory
+
 import android.Manifest
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
@@ -62,6 +66,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -71,6 +76,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -161,6 +168,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
+import com.blinkng.shared.BlinkMessageDatePolicy
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
@@ -237,10 +245,13 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
+    onMyProfileClick: () -> Unit = {},
+    onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -257,7 +268,7 @@ fun PremiumMessagesScreen(
     val liveActiveConversation = activePartner?.let { partner ->
         conversations.firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
     }
-    var retainedActiveConversation by remember(activePartner) {
+    var retainedActiveConversation by remember {
         mutableStateOf<ChatConversation?>(liveActiveConversation)
     }
     LaunchedEffect(liveActiveConversation) {
@@ -265,13 +276,20 @@ fun PremiumMessagesScreen(
     }
     val activeConversation = activePartner?.let { partner ->
         liveActiveConversation
-            ?: retainedActiveConversation
+            ?: retainedActiveConversation?.takeIf { it.partnerUsername.equals(partner, ignoreCase = true) }
             ?: ChatConversation(
                 id = "local_$partner",
                 partnerUsername = partner,
                 partnerName = partner.replace("_", " ").replace(".", " "),
                 partnerAvatar = ""
             )
+    }
+
+    // Keep the old partner rendered until the closing slide completes.
+    var chatSlideVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(activePartner) {
+        if (activeConversation != null) retainedActiveConversation = activeConversation
+        chatSlideVisible = activeConversation != null
     }
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
@@ -297,17 +315,11 @@ fun PremiumMessagesScreen(
                         launchSecureCall(context, call.conversation, call.kind)
                     }
                 )
-            } else if (activeConversation != null) {
-                // PREMIUM_CHAT_DIRECT_RETURN_V2
+            } else {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(if (isConversationFullScreen) 5.dp else 10.dp)
-                            .graphicsLayer {
-                                alpha = if (isConversationFullScreen) .84f else .74f
-                            }
-                    ) {
+                    // The inbox remains available for the entrance/exit transition.
+                    // Do not keep a blurred offscreen inbox alive during full-screen chat.
+                    if (activeConversation == null || !isConversationFullScreen) {
                         PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
@@ -320,54 +332,59 @@ fun PremiumMessagesScreen(
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
                             onComposeMessage = onComposeMessage,
+                            onMyProfileClick = onMyProfileClick,
+                            onGameClick = onGameClick,
+                            onNotificationsClick = onOpenActivity,
+                            hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
-                            isLoading = isLoading
+                            isLoading = isLoading,
+                            isDark = isDark,
+                            onVisibleInboxReceipt = onVisibleInboxReceipt
                         )
                     }
 
-                    PremiumMessagesMasterDetail(
-                        conversations = conversations,
-                        activeConversation = activeConversation,
-                        palette = palette,
-                        isFullScreen = isConversationFullScreen,
-                        onFullScreenChange = onConversationFullScreenChange,
-                        onOpenConversation = onOpenConversation,
-                        onCloseConversation = onCloseConversation,
-                        onSendMessage = onSendMessage,
-                        onForwardMessage = onForwardMessage,
-                        onSendVideo = onSendVideo,
-                        onSendAttachment = onSendAttachment,
-                        onPresenceChange = onPresenceChange,
-                        allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
-                        onRetryMessage = onRetryMessage,
-                        hasMoreMessages = hasMoreMessages,
-                        isLoadingOlder = isLoadingOlder,
-                        onLoadOlder = onLoadOlder,
-                        isLoadingMessages = isLoadingMessages,
-                        interactionActions = interactionActions,
-                        onProfileClick = onProfileClick,
-                        onStartCall = { conversation, kind ->
-                            launchSecureCall(context, conversation, kind)
-                        },
-                        isConnected = isConnected
-                    )
+                    AnimatedVisibility(
+                        visible = chatSlideVisible && activeConversation != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = tween(420, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(260)),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = tween(390, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(240))
+                    ) {
+                        val displayedConversation = activeConversation ?: retainedActiveConversation
+                        if (displayedConversation != null) {
+                            PremiumMessagesMasterDetail(
+                                conversations = conversations,
+                                activeConversation = displayedConversation,
+                                palette = palette,
+                                isFullScreen = isConversationFullScreen,
+                                onFullScreenChange = onConversationFullScreenChange,
+                                onOpenConversation = onOpenConversation,
+                                onCloseConversation = onCloseConversation,
+                                onSendMessage = onSendMessage,
+                                onForwardMessage = onForwardMessage,
+                                onSendVideo = onSendVideo,
+                                onSendAttachment = onSendAttachment,
+                                onPresenceChange = onPresenceChange,
+                                allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
+                                onRetryMessage = onRetryMessage,
+                                hasMoreMessages = hasMoreMessages,
+                                isLoadingOlder = isLoadingOlder,
+                                onLoadOlder = onLoadOlder,
+                                isLoadingMessages = isLoadingMessages,
+                                interactionActions = interactionActions,
+                                onProfileClick = onProfileClick,
+                                onStartCall = { conversation, kind ->
+                                    launchSecureCall(context, conversation, kind)
+                                },
+                                isConnected = isConnected
+                            )
+                        }
+                    }
                 }
-            } else {
-                PremiumMessagesHome(
-                    conversations = conversations,
-                    stories = stories,
-                    myAvatar = myAvatar,
-                    myName = myName,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onProfileClick = onProfileClick,
-                    onStoryClick = onStoryClick,
-                    onAddStoryClick = onAddStoryClick,
-                    onOpenAppearance = { showAppearanceSheet = true },
-                    onComposeMessage = onComposeMessage,
-                    isConnected = isConnected,
-                    isLoading = isLoading
-                )
             }
         }
 
@@ -405,10 +422,10 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeRightSwipeToClose(
+private fun Modifier.observeLeftSwipeToClose(
     thresholdPx: Float,
-    onSwipeRight: () -> Unit
-): Modifier = pointerInput(thresholdPx, onSwipeRight) {
+    onSwipeLeft: () -> Unit
+): Modifier = pointerInput(thresholdPx, onSwipeLeft) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         var horizontal = 0f
@@ -426,11 +443,11 @@ private fun Modifier.observeRightSwipeToClose(
 
             if (
                 !fired &&
-                horizontal >= thresholdPx &&
-                horizontal > abs(vertical) * 1.25f
+                horizontal <= -thresholdPx &&
+                -horizontal > abs(vertical) * 1.25f
             ) {
                 fired = true
-                onSwipeRight()
+                onSwipeLeft()
                 break
             }
 
@@ -471,20 +488,20 @@ private fun PremiumMessagesMasterDetail(
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = "Chat" }
-            .observeRightSwipeToClose(
+            .observeLeftSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeRight = onCloseConversation
+                onSwipeLeft = onCloseConversation
             )
     ) {
         AnimatedContent(
             targetState = activeConversation.partnerUsername,
             transitionSpec = {
                 (slideInHorizontally(
-                    initialOffsetX = { it / 6 },
+                    initialOffsetX = { -it / 6 },
                     animationSpec = tween(240, easing = FastOutSlowInEasing)
                 ) + fadeIn(tween(180))) togetherWith
                     (slideOutHorizontally(
-                        targetOffsetX = { -it / 8 },
+                        targetOffsetX = { -it / 6 },
                         animationSpec = tween(180, easing = FastOutSlowInEasing)
                     ) + fadeOut(tween(120)))
             },
@@ -575,7 +592,7 @@ private fun ConversationSwitchRail(
             Text(
                 text = "Chats",
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             )
@@ -617,7 +634,7 @@ private fun ConversationSwitchRail(
                             ) {
                                 Text(
                                     conversation.unreadCount.coerceAtMost(99).toString(),
-                                    fontSize = 8.sp
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -637,128 +654,93 @@ private fun PremiumMessagesHome(
     palette: MessagePalette,
     onOpenConversation: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onMyProfileClick: () -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenAppearance: () -> Unit,
     onComposeMessage: () -> Unit,
+    onGameClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     isConnected: Boolean,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isDark: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
+    val startVoiceSearch = rememberSpeechInput { result -> query = result }
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val unreadCount = conversations.count {
+        !it.isArchived && it.inboxCategory != "requests" && (it.unreadCount > 0 || it.isMarkedUnread)
+    }
     val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
     val archivedCount = conversations.count { it.isArchived }
     val sortedConversations = remember(conversations, inboxTab) {
-        conversations
-            .filter { conversation ->
-                com.blinkng.shared.BlinkChatInboxPolicy.matches(
-                    inboxTab, conversation.isArchived, conversation.inboxCategory
-                )
-            }
-            .sortedWith(
-                compareByDescending<ChatConversation> { it.isConversationPinned }
-                    .thenByDescending { it.lastMessageRawTime }
-                    .thenByDescending { it.id }
+        conversations.filter { conversation ->
+            com.blinkng.shared.BlinkChatInboxPolicy.matches(
+                inboxTab, conversation.isArchived, conversation.inboxCategory,
+                conversation.unreadCount > 0 || conversation.isMarkedUnread
             )
+        }.sortedWith(
+            compareByDescending<ChatConversation> { it.isConversationPinned }
+                .thenByDescending { it.lastMessageRawTime }
+                .thenByDescending { it.id }
+        )
     }
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
         else sortedConversations.filter {
-            it.partnerName.contains(query, ignoreCase = true) ||
-                it.partnerUsername.contains(query, ignoreCase = true) ||
-                it.lastMessage.contains(query, ignoreCase = true)
+            com.blinkng.shared.BlinkConversationSearchPolicy.matches(
+                query, it.partnerName, it.partnerUsername, it.lastMessage
+            )
         }
     }
-    val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { entered = true }
-
-    MessageBackground(palette) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            MessagesHeader(
-                palette = palette,
-                onMenu = onOpenAppearance,
-                onCompose = onComposeMessage
-            )
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 320)) + slideInVertically(
-                    initialOffsetY = { -it / 4 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                )
-            ) {
-                SearchMatchesField(
-                    value = query,
-                    onValueChange = { query = it },
-                    onVoiceSearch = startVoiceSearch,
-                    palette = palette
-                )
-            }
-
-            AnimatedVisibility(
-                visible = entered,
-                enter = fadeIn(tween(durationMillis = 380, delayMillis = 45)) + slideInVertically(
-                    initialOffsetY = { it / 5 },
-                    animationSpec = tween(
-                        durationMillis = 380,
-                        delayMillis = 45,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                ImportantContactsRail(
-                    conversations = conversations,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation
-                )
-            }
-
+    BlinkReferenceInbox(
+        conversations = filteredConversations,
+        stories = stories,
+        myAvatar = myAvatar,
+        myName = myName,
+        isDark = isDark,
+        query = query,
+        onQueryChange = { query = it },
+        onVoiceSearch = startVoiceSearch,
+        showSearch = showSearch,
+        onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
+        showAll = showAll,
+        onToggleAll = { showAll = !showAll; inboxTab = if (showAll) MessageInboxTab.ALL else MessageInboxTab.PRIMARY },
+        onOpenConversation = onOpenConversation,
+        onProfileClick = onProfileClick,
+        onMyProfileClick = onMyProfileClick,
+        onStoryClick = onStoryClick,
+        onAddStoryClick = onAddStoryClick,
+        onGameClick = onGameClick,
+        onNotificationsClick = onNotificationsClick,
+        hasUnreadNotifications = hasUnreadNotifications,
+        onComposeMessage = onComposeMessage,
+        onOpenSettings = onOpenAppearance,
+        isConnected = isConnected,
+        isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
+        onVisibleInboxReceipt = onVisibleInboxReceipt,
+        filterContent = {
             MessageInboxTabs(
                 selected = inboxTab,
                 requestCount = requestCount,
+                unreadCount = unreadCount,
                 archivedCount = archivedCount,
-                palette = palette,
+                palette = messagePalette(if (isDark) MessageThemeMode.DARK else MessageThemeMode.LIGHT),
                 onSelect = { inboxTab = it }
             )
-
-            if (!isConnected) {
-                OfflineNotice(palette)
-            }
-
-            AnimatedVisibility(
-                visible = entered,
-                modifier = Modifier.weight(1f),
-                enter = fadeIn(tween(durationMillis = 420, delayMillis = 90)) + slideInVertically(
-                    initialOffsetY = { it / 8 },
-                    animationSpec = tween(
-                        durationMillis = 420,
-                        delayMillis = 90,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
-                ConversationList(
-                    conversations = filteredConversations,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onProfileClick = onProfileClick,
-                    isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
         }
-    }
+    )
 }
 
 @Composable
 private fun MessageInboxTabs(
     selected: MessageInboxTab,
     requestCount: Int,
+    unreadCount: Int,
     archivedCount: Int,
     palette: MessagePalette,
     onSelect: (MessageInboxTab) -> Unit
@@ -769,11 +751,29 @@ private fun MessageInboxTabs(
     ) {
         item {
             MessageInboxTabChip(
+                label = "All",
+                selected = selected == MessageInboxTab.ALL,
+                count = null,
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.ALL) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
                 label = "Primary",
                 selected = selected == MessageInboxTab.PRIMARY,
                 count = null,
                 palette = palette,
                 onClick = { onSelect(MessageInboxTab.PRIMARY) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Unread",
+                selected = selected == MessageInboxTab.UNREAD,
+                count = unreadCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.UNREAD) }
             )
         }
         item {
@@ -823,7 +823,7 @@ private fun MessageInboxTabChip(
                     containerColor = if (selected) palette.backgroundMiddle else palette.accent,
                     contentColor = if (selected) palette.textPrimary else Color.White
                 ) {
-                    Text(count.coerceAtMost(99).toString(), fontSize = 8.sp)
+                    Text(count.coerceAtMost(99).toString(), fontSize = 11.sp)
                 }
             }
         }
@@ -1001,7 +1001,7 @@ private fun ImportantContactsRail(
                 Text(
                     "Quick access",
                     color = palette.textMuted,
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             }
         }
@@ -1217,12 +1217,14 @@ private fun ConversationList(
         return
     }
 
+    val conversationsListState = rememberLazyListState()
     LazyColumn(
+        state = conversationsListState,
         modifier = modifier,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(conversations, key = { index, conversation -> "conversation:$index:${conversation.id}" }) { _, conversation ->
+        items(conversations, key = { conversation -> "conversation:${conversation.id}" }) { conversation ->
             ConversationCard(
                 conversation = conversation,
                 palette = palette,
@@ -1325,7 +1327,7 @@ private fun ConversationCard(
                 Text(
                     conversation.lastMessageTime,
                     color = palette.textMuted,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     maxLines = 1
                 )
                 if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
@@ -1337,7 +1339,7 @@ private fun ConversationCard(
                             } else {
                                 "•"
                             },
-                            fontSize = 9.sp
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -1454,7 +1456,7 @@ private fun PremiumChatDetail(
     )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
@@ -1505,12 +1507,27 @@ private fun PremiumChatDetail(
         }
     }
 
-    val visibleMessages = conversation.messages.filter { message ->
-        val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
-        val matchesPinned = !pinnedOnly || message.isPinned
-        val matchesStarred = !starredOnly || message.isStarred
-        matchesSearch && matchesPinned && matchesStarred
+    // Avoid repeatedly filtering and linearly scanning the entire history for every row.
+    val visibleMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
+        conversation.messages.filter { message ->
+            val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
+            val matchesPinned = !pinnedOnly || message.isPinned
+            val matchesStarred = !starredOnly || message.isStarred
+            matchesSearch && matchesPinned && matchesStarred
+        }
     }
+    val messagesById = remember(conversation.messages) {
+        conversation.messages.associateBy { it.id }
+    }
+    val visibleMessageIndexes = remember(visibleMessages) {
+        visibleMessages.withIndex().associate { (index, message) -> message.id to index }
+    }
+    val messageDateLabels = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.rawTimestamp)
+        })
+    }
+    val historyHeaderCount = if (isLoadingOlder) 1 else 0
 
     fun submitMessage(value: String = text) {
         val clean = value.trim()
@@ -1527,19 +1544,36 @@ private fun PremiumChatDetail(
         showEmojiRail = false
     }
 
-    val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    val latestVisibleMessageId = conversation.messages.lastOrNull()?.id
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
-        if (visibleMessages.isEmpty()) return@LaunchedEffect
-        val changed = previousLatestVisibleMessageId != null &&
-            previousLatestVisibleMessageId != latestVisibleMessageId
-        if (!userHasScrolled || isNearLatest || previousLatestVisibleMessageId == null) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
-            newMessagesBelow = 0
-        } else if (changed) {
-            newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+    LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
+        val previous = previousLatestVisibleMessageId
+        val action = com.blinkng.shared.BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = searchQuery.isNotBlank() || pinnedOnly || starredOnly,
+            hasSeenLatest = previous != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = isNearLatest,
+            latestChanged = previous != null && previous != latestVisibleMessageId
+        )
+        val lastIndex = visibleMessages.lastIndex + historyHeaderCount
+        when (action) {
+            com.blinkng.shared.BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                // Large initial histories must jump directly; animating thousands of rows stutters.
+                listState.scrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                listState.animateScrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.SHOW_NEW_MESSAGE ->
+                newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+            com.blinkng.shared.BlinkMessageScrollAction.KEEP -> Unit
         }
-        previousLatestVisibleMessageId = latestVisibleMessageId
+        if (visibleMessages.isNotEmpty() && searchQuery.isBlank() && !pinnedOnly && !starredOnly) {
+            previousLatestVisibleMessageId = latestVisibleMessageId
+        }
     }
     LaunchedEffect(isNearLatest) {
         if (isNearLatest) newMessagesBelow = 0
@@ -1547,7 +1581,11 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -1696,11 +1734,19 @@ private fun PremiumChatDetail(
             }
 
             if (visibleMessages.isEmpty()) {
-                EmptyConversation(
-                    conversation = conversation,
-                    palette = palette,
-                    modifier = Modifier.weight(1f)
-                )
+                if (isLoadingMessages) {
+                    BlinkSkeletonChatHistory(modifier = Modifier.weight(1f), rows = 6)
+                } else if (conversation.messages.isNotEmpty()) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No messages match your filters", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    EmptyConversation(
+                        conversation = conversation,
+                        palette = palette,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             } else {
                 LazyColumn(
                     state = listState,
@@ -1708,23 +1754,35 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    if (isLoadingOlder || (isLoadingMessages && visibleMessages.isEmpty())) {
+                    if (isLoadingOlder) {
                         item(key = "message_history_loading") {
-                            Text(
-                                if (isLoadingOlder) "Loading earlier messages…" else "Loading messages…",
-                                color = palette.textSecondary,
-                                fontSize = 10.sp,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                textAlign = TextAlign.Center
-                            )
+                            BlinkSkeletonChatHistory(modifier = Modifier.fillMaxWidth(), rows = 2)
                         }
                     }
 
                     items(visibleMessages, key = { it.id }) { message ->
-                        val replyTarget = message.replyToMessageId?.let { replyId ->
-                            conversation.messages.firstOrNull { it.id == replyId }
-                        }
-                        MessageBubble(
+                        val replyTarget = message.replyToMessageId?.let(messagesById::get)
+                        Column {
+                            messageDateLabels[message.id]?.let { label ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        color = palette.glassElevated,
+                                        shape = RoundedCornerShape(100.dp),
+                                        border = BorderStroke(1.dp, palette.border)
+                                    ) {
+                                        Text(
+                                            label,
+                                            color = palette.textSecondary,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
@@ -1736,15 +1794,16 @@ private fun PremiumChatDetail(
                             },
                             onReplyTargetClick = {
                                 val targetId = message.replyToMessageId
-                                val targetIndex = visibleMessages.indexOfFirst { it.id == targetId }
-                                if (targetIndex >= 0) {
-                                    scrollScope.launch { listState.animateScrollToItem(targetIndex) }
+                                val targetIndex = visibleMessageIndexes[targetId]
+                                if (targetIndex != null) {
+                                    scrollScope.launch { listState.animateScrollToItem(targetIndex + historyHeaderCount) }
                                 }
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
                             allowLinkPreviews = allowLinkPreviews
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -1767,7 +1826,7 @@ private fun PremiumChatDetail(
                         modifier = Modifier.clickable {
                             scrollScope.launch {
                                 if (visibleMessages.isNotEmpty()) {
-                                    listState.animateScrollToItem(visibleMessages.lastIndex)
+                                    listState.animateScrollToItem(visibleMessages.lastIndex + historyHeaderCount)
                                     newMessagesBelow = 0
                                 }
                             }
@@ -1822,6 +1881,18 @@ private fun PremiumChatDetail(
 
             AnimatedVisibility(visible = showEmojiRail) {
                 EmojiRail(palette = palette, onEmoji = { text += it })
+            }
+
+            // Shared @username completion is used by referral, mention and invite flows.
+            com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy.trailingMention(text)?.let { needle ->
+                BlinkUsernameSearchSuggestions(
+                    query = needle,
+                    onSelected = { person ->
+                        text = com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy
+                            .insertMention(text, person.username)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             MessageComposer(
@@ -2038,7 +2109,20 @@ private fun PremiumChatDetail(
         SharedChatContentSheet(
             conversation = conversation,
             palette = palette,
-            onDismiss = { showSharedContent = false }
+            onDismiss = { showSharedContent = false },
+            onJumpToMessage = { messageId ->
+                showSharedContent = false
+                searchQuery = ""
+                pinnedOnly = false
+                starredOnly = false
+                val targetIndex = conversation.messages.indexOfFirst { it.id == messageId }
+                if (targetIndex >= 0) {
+                    scrollScope.launch {
+                        delay(120)
+                        listState.animateScrollToItem(targetIndex + if (isLoadingOlder) 1 else 0)
+                    }
+                }
+            }
         )
     }
 
@@ -2168,7 +2252,7 @@ private fun ChatHeader(
                     if (conversation.isOnline) "Active now" else conversation.lastSeen
                 },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2416,7 +2500,7 @@ private fun ChatContactAction(
             Text(
                 label,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2472,7 +2556,7 @@ private fun DayDivider(label: String, palette: MessagePalette) {
             Text(
                 label,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
             )
@@ -2504,12 +2588,12 @@ private fun MessageBubble(
     )
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        if (displayOffset < -10f) {
+        if (displayOffset > 10f) {
             Icon(
                 Icons.Default.Reply,
                 contentDescription = null,
-                tint = palette.accent.copy(alpha = ((-displayOffset) / threshold).coerceIn(.25f, 1f)),
-                modifier = Modifier.align(Alignment.CenterEnd).padding(horizontal = 6.dp).size(20.dp)
+                tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
+                modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
             )
         }
         Row(
@@ -2519,10 +2603,10 @@ private fun MessageBubble(
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(-threshold * 1.35f, 0f)
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
                         },
                         onDragEnd = {
-                            if (dragOffset <= -threshold) onReply()
+                            if (dragOffset >= threshold) onReply()
                             dragOffset = 0f
                         },
                         onDragCancel = { dragOffset = 0f }
@@ -2559,7 +2643,7 @@ private fun MessageBubble(
                         Text(
                             "Forwarded",
                             color = palette.textSecondary,
-                            fontSize = 8.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 7.dp)
                         )
@@ -2578,13 +2662,13 @@ private fun MessageBubble(
                                 Text(
                                     if (replyTarget?.isFromMe == true) "You" else partnerName,
                                     color = palette.accent,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     replyTarget?.text?.ifBlank { "Media message" } ?: "Original message unavailable",
                                     color = palette.textSecondary,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -2610,7 +2694,7 @@ private fun MessageBubble(
                                 shape = RoundedCornerShape(100.dp),
                                 border = BorderStroke(1.dp, if (entry.key in message.myReactions) palette.accent.copy(alpha = .55f) else palette.border)
                             ) {
-                                Text("${entry.key} ${entry.value}", fontSize = 9.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                                Text("${entry.key} ${entry.value}", fontSize = 11.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                             }
                         }
                     }
@@ -2628,19 +2712,19 @@ private fun MessageBubble(
                     else -> ""
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (message.isPinned) Text("📌 ", fontSize = 8.sp)
-                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 8.sp)
+                    if (message.isPinned) Text("📌 ", fontSize = 11.sp)
+                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 11.sp)
                     Text(
                         metadata,
                         color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                        fontSize = 8.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                     if (receipt.isNotBlank()) {
                         Spacer(Modifier.width(4.dp))
                         Text(
                             receipt,
-                            color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
+                            color = if (message.status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -2693,40 +2777,14 @@ private fun MessageContent(
                 }
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
-                Surface(
-                    color = Color.Transparent,
-                    contentColor = contentColor,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .widthIn(min = 190.dp)
-                        .clickable { openExternalUri(context, Uri.parse(message.attachedAudioUrl)) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (message.isVoiceNote) Icons.Default.Mic else Icons.Default.MusicNote,
-                            contentDescription = if (message.isVoiceNote) "Play voice message" else "Play audio",
-                            tint = contentColor,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            Modifier
-                                .width(104.dp)
-                                .height(3.dp)
-                                .clip(CircleShape)
-                                .background(contentColor.copy(alpha = .55f))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
-                            color = contentColor,
-                            fontSize = 9.sp
-                        )
-                    }
-                }
+                BlinkChatVoicePlayer(
+                    url = message.attachedAudioUrl,
+                    durationLabel = if (message.isVoiceNote) {
+                        message.voiceDuration.ifBlank { "Voice note" }
+                    } else "Audio",
+                    tint = contentColor,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
                 Surface(
@@ -2753,7 +2811,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 9.sp)
+                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
                         }
                     }
                 }
@@ -2797,7 +2855,7 @@ private fun MessageContent(
                             Text(
                                 url,
                                 color = contentColor.copy(alpha = .72f),
-                                fontSize = 8.sp,
+                                fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -2853,7 +2911,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .98f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .98f)
+                    palette.glassElevated.copy(alpha = .98f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
@@ -2887,7 +2945,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .99f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .99f)
+                    palette.glassElevated.copy(alpha = .99f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
@@ -3051,8 +3109,10 @@ private fun MessageComposer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            // The chat root consumes overlapping IME/navigation-bar insets.
+            // Applying navigationBarsPadding here would create a second gap.
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("chat_message_composer")
     ) {
         Surface(
             color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),
@@ -3109,7 +3169,7 @@ private fun MessageComposer(
                             Text(
                                 formatCallDuration(recordingSeconds),
                                 color = palette.textSecondary,
-                                fontSize = 9.sp
+                                fontSize = 11.sp
                             )
                         }
                     }
@@ -3129,7 +3189,7 @@ private fun MessageComposer(
                             }
                         },
                         maxLines = 4,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
                         shape = RoundedCornerShape(24.dp),
                         colors = TextFieldDefaults.colors(
@@ -3224,7 +3284,8 @@ private fun firstHttpUrl(text: String): String? =
 private fun SharedChatContentSheet(
     conversation: ChatConversation,
     palette: MessagePalette,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onJumpToMessage: (String) -> Unit
 ) {
     val context = LocalContext.current
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
@@ -3366,7 +3427,7 @@ private fun SharedChatContentSheet(
                                 },
                                 subtitle = message.timestamp,
                                 palette = palette,
-                                onClick = {}
+                                onClick = { onJumpToMessage(message.id) }
                             )
                         }
                     }
@@ -3402,7 +3463,7 @@ private fun SharedContentRow(
             Text(
                 subtitle,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)
@@ -3970,7 +4031,7 @@ private fun ChatPrivacyScopeSection(
                 ) {
                     Text(
                         label,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                     )
@@ -4008,7 +4069,7 @@ private fun ChatPrivacyToggleRow(
                 Text(
                     subtitle,
                     color = palette.textSecondary,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
@@ -4238,7 +4299,7 @@ private fun ThemePreviewCard(
             Spacer(Modifier.height(8.dp))
             Text(mode.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             if (mode == MessageThemeMode.DARK) {
-                Text("Default", color = preview.textSecondary, fontSize = 8.sp)
+                Text("Default", color = preview.textSecondary, fontSize = 11.sp)
             }
         }
     }
@@ -4287,7 +4348,7 @@ private fun RingAvatar(
                 .fillMaxSize()
                 .background(
                     brush = if (emphasizeRing) {
-                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, Color(0xFF8B5CF6)))
+                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, palette.accent))
                     } else {
                         Brush.linearGradient(listOf(palette.border, palette.border))
                     },

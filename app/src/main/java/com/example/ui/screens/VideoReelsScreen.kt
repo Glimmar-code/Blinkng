@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.R
 import com.example.BuildConfig
+import com.example.ads.BlinkAdsRuntime
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -9,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
@@ -20,7 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +41,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +83,7 @@ import com.example.ui.components.rememberDelayedContentViewCount
 import com.example.ui.components.trackContentExposure
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkPink
+import com.blinkng.shared.BlinkDesignTokens
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.delay
@@ -91,7 +97,7 @@ import kotlinx.coroutines.launch
  *  - Animated skeleton loading state, cross-faded against the empty and content states
  *  - Subtle scale + fade page transitions while swiping between reels
  *  - Double-tap-to-like with a floating multi-heart burst animation
- *  - Tap-to-mute with a fading volume hint overlay
+ *  - Tap-to-pause, hold-to-fast-forward, separate sound control
  *  - Live buffering spinner and a bottom video progress bar
  *  - Animated action counts, an expandable caption, and an animated tab indicator
  *
@@ -122,7 +128,9 @@ fun VideoReelsScreen(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
+    isRefreshingFollowing: Boolean = isRefreshing,
     onRefresh: () -> Unit = {},
+    onRefreshFollowing: () -> Unit = onRefresh,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -130,6 +138,7 @@ fun VideoReelsScreen(
     isLoadingMoreFollowing: Boolean = false,
     onLoadMoreFollowing: () -> Unit = {},
     isInteractionOverlayOpen: Boolean = false,
+    isScreenActive: Boolean = true,
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
@@ -137,20 +146,25 @@ fun VideoReelsScreen(
     initialReelPositionMs: Long = 0L
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
+    var firstPageVisible by remember(currentUsername) { mutableStateOf(true) }
+    var followingSelected by remember(currentUsername) { mutableStateOf(false) }
+    val activeRefreshing = if (followingSelected) isRefreshingFollowing else isRefreshing
+    val refreshSelected = {
+        if (followingSelected) onRefreshFollowing() else onRefresh()
+    }
 
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        state = pullToRefreshState,
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-        indicator = {
-            PremiumPullRefreshIndicator(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pullToRefresh(
+                isRefreshing = activeRefreshing,
+                onRefresh = refreshSelected,
                 state = pullToRefreshState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
-                darkSurface = true
+                // Pager swipes must not refresh or interrupt a playing reel.
+                enabled = firstPageVisible && !isInteractionOverlayOpen && !activeRefreshing,
+                threshold = 96.dp
             )
-        }
     ) {
         val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
@@ -166,7 +180,7 @@ fun VideoReelsScreen(
         ) { state ->
             when (state) {
                 ReelsUiState.Loading -> ReelsLoadingSkeleton()
-                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts)
+                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts, refreshSelected, activeRefreshing)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -191,17 +205,32 @@ fun VideoReelsScreen(
                     isLoadingMoreFollowing = isLoadingMoreFollowing,
                     onLoadMoreFollowing = onLoadMoreFollowing,
                     isInteractionOverlayOpen = isInteractionOverlayOpen,
+                    isScreenActive = isScreenActive,
+                    isRefreshing = activeRefreshing,
+                    onRefreshSelected = refreshSelected,
+                    onFirstPageChanged = { firstPageVisible = it },
+                    onFollowingSelectionChanged = { followingSelected = it },
                     initialReelId = initialReelId,
                     initialReelPositionMs = initialReelPositionMs
                 )
             }
         }
+        PremiumPullRefreshIndicator(
+            state = pullToRefreshState,
+            isRefreshing = activeRefreshing,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            darkSurface = true
+        )
     }
 }
 
 private enum class ReelsUiState { Loading, Empty, Content }
 
 private const val REELS_SPONSORED_INTERVAL = 7
+
+/** Ads follow completed organic items; an exact seven-reel page is still eligible. */
+internal fun shouldInsertSponsoredAfter(organicPosition: Int, interval: Int): Boolean =
+    organicPosition > 0 && interval > 0 && organicPosition % interval == 0
 
 private sealed interface ReelPagerItem {
     data class ReelItem(val reel: FeedPost, val sourceIndex: Int) : ReelPagerItem
@@ -215,12 +244,16 @@ internal fun selectReelsForTab(
     selectedTab: String
 ): List<FeedPost> = if (selectedTab == "Following") followingReels else reels
 
+// Keep only the active decoder and the next video warm. Recreating the previous
+// decoder on every swipe can triple hardware surface/memory pressure.
 internal fun shouldPreloadReelPage(index: Int, currentPage: Int): Boolean =
-    abs(index - currentPage) <= 1
+    index == currentPage || index == currentPage + 1
 
 private fun buildReelPagerItems(
     reels: List<FeedPost>,
     promotedReels: List<BlinkPromotedDiscoveryPlacement>,
+    includeSponsored: Boolean,
+    unavailableSlots: Set<Int>,
 ): List<ReelPagerItem> {
     if (reels.isEmpty()) return emptyList()
 
@@ -245,11 +278,11 @@ private fun buildReelPagerItems(
                 slot = promotedSlot,
             )
             promotedSlot += 1
-        } else if (
-            organicPosition % REELS_SPONSORED_INTERVAL == 0 &&
-            index < reels.lastIndex
-        ) {
-            result += ReelPagerItem.Sponsored(slot = sponsoredSlot++)
+        } else if (includeSponsored && shouldInsertSponsoredAfter(organicPosition, REELS_SPONSORED_INTERVAL)) {
+            val slot = sponsoredSlot++
+            if (slot !in unavailableSlots) {
+                result += ReelPagerItem.Sponsored(slot = slot)
+            }
         }
     }
     return result
@@ -288,10 +321,16 @@ private fun ReelsContent(
     isLoadingMoreFollowing: Boolean,
     onLoadMoreFollowing: () -> Unit,
     isInteractionOverlayOpen: Boolean,
+    isScreenActive: Boolean,
+    isRefreshing: Boolean,
+    onRefreshSelected: () -> Unit,
+    onFirstPageChanged: (Boolean) -> Unit,
+    onFollowingSelectionChanged: (Boolean) -> Unit,
     initialReelId: String?,
     initialReelPositionMs: Long
 ) {
     val context = LocalContext.current
+    val refreshScope = rememberCoroutineScope()
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -303,6 +342,21 @@ private fun ReelsContent(
         mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
     }
     var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("For You") }
+    val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
+    // A no-fill response must not strand a viewer on an empty full-screen ad page.
+    var unavailableSponsoredSlots by remember(resumeUserKey, selectedTab) {
+        mutableStateOf(emptySet<Int>())
+    }
+    var sponsoredRequestRevision by remember(resumeUserKey, selectedTab) { mutableIntStateOf(0) }
+    // Retry exhausted native ad inventory only after an intentional Reel refresh.
+    // Do not reinsert a failed black page while the user is scrolling.
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            unavailableSponsoredSlots = emptySet()
+            sponsoredRequestRevision++
+        }
+    }
+    LaunchedEffect(selectedTab) { onFollowingSelectionChanged(selectedTab == "Following") }
     var reelsMuted by rememberSaveable(resumeUserKey) {
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
     }
@@ -322,10 +376,12 @@ private fun ReelsContent(
             .onFailure { promotedReels = emptyList() }
     }
 
-    val pagerItems = remember(activeReels, promotedReels, selectedTab) {
+    val pagerItems = remember(activeReels, promotedReels, selectedTab, canRequestAds, unavailableSponsoredSlots) {
         buildReelPagerItems(
             reels = activeReels,
-            promotedReels = if (selectedTab == "For You") promotedReels else emptyList()
+            promotedReels = if (selectedTab == "For You") promotedReels else emptyList(),
+            includeSponsored = canRequestAds,
+            unavailableSlots = unavailableSponsoredSlots
         )
     }
     val initialPage = remember(pagerItems, activeReels, resumeUserKey, initialReelId, selectedTab) {
@@ -346,12 +402,18 @@ private fun ReelsContent(
         initialPage = initialPage,
         pageCount = { pagerItems.size }
     )
+    LaunchedEffect(pager.currentPage, selectedTab, pagerItems.size) {
+        onFirstPageChanged(pager.currentPage == 0)
+    }
 
-    LaunchedEffect(initialReelId, pagerItems) {
-        val targetPage = reelPageIndex(pagerItems, initialReelId) ?: return@LaunchedEffect
-        if (pager.currentPage != targetPage) {
-            pager.scrollToPage(targetPage)
-        }
+    // A deep-link is fulfilled once; a later refresh or pagination must not jump the
+    // user back to the originally linked video.
+    var unconsumedLaunchId by remember(initialReelId) { mutableStateOf(initialReelId) }
+    LaunchedEffect(unconsumedLaunchId, pagerItems) {
+        val launchId = unconsumedLaunchId ?: return@LaunchedEffect
+        val targetPage = reelPageIndex(pagerItems, launchId) ?: return@LaunchedEffect
+        if (pager.currentPage != targetPage) pager.scrollToPage(targetPage)
+        unconsumedLaunchId = null
     }
 
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
@@ -466,8 +528,8 @@ private fun ReelsContent(
                     ReelPage(
                         reel = reel,
                         pageOffset = pageOffset,
-                        isActive = index == pager.currentPage,
-                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
+                        isActive = isScreenActive && index == pager.currentPage,
+                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -489,9 +551,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = {
-                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
-                        },
+                        onSwipeToProfile = onOpenConnectHub,
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
                         onInitialPositionConsumed = {
                             if (pendingLaunchReelId == reel.id) {
@@ -505,20 +565,25 @@ private fun ReelsContent(
                 is ReelPagerItem.Boosted -> {
                     val placement = item.placement
                     val reel = placement.post ?: return@VerticalPager
-                    LaunchedEffect(index == pager.currentPage, placement.campaignId) {
-                        if (index == pager.currentPage) {
-                            boostGrowthService.recordBoostDelivery(
-                                placement.campaignId,
-                                "IMPRESSION",
-                                "REELS"
-                            )
+                    LaunchedEffect(isScreenActive, index == pager.currentPage, pager.isScrollInProgress, placement.campaignId) {
+                        if (isScreenActive && index == pager.currentPage && !pager.isScrollInProgress) {
+                            // Ignore fly-through pages: a boosted video should only
+                            // count after being visibly settled for half a second.
+                            delay(500)
+                            if (isScreenActive && index == pager.currentPage && !pager.isScrollInProgress) {
+                                boostGrowthService.recordBoostDelivery(
+                                    placement.campaignId,
+                                    "IMPRESSION",
+                                    "REELS"
+                                )
+                            }
                         }
                     }
                     ReelPage(
                         reel = reel,
                         pageOffset = pageOffset,
-                        isActive = index == pager.currentPage,
-                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
+                        isActive = isScreenActive && index == pager.currentPage,
+                        shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -539,9 +604,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = {
-                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
-                        },
+                        onSwipeToProfile = onOpenConnectHub,
                         initialPositionMs = 0L,
                         onInitialPositionConsumed = {},
                         trackExposure = false,
@@ -562,6 +625,10 @@ private fun ReelsContent(
                         BlinkSponsoredNativeAd(
                             adUnitId = BuildConfig.ADMOB_REELS_NATIVE_AD_UNIT_ID,
                             placement = BlinkNativeAdPlacement.REEL,
+                            requestKey = sponsoredRequestRevision,
+                            onUnavailable = {
+                                unavailableSponsoredSlots = unavailableSponsoredSlots + item.slot
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -587,6 +654,35 @@ private fun ReelsContent(
                 .padding(4.dp)
         ) {
             Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+        }
+
+        IconButton(
+            onClick = {
+                if (!isRefreshing && !isInteractionOverlayOpen) {
+                    // Explicit refresh is deliberate: go to the first Reel before replacing
+                    // ranked recommendations so current playback isn't interrupted mid-swipe.
+                    refreshScope.launch {
+                        if (pager.currentPage != 0) pager.scrollToPage(0)
+                        onRefreshSelected()
+                    }
+                }
+            },
+            enabled = !isRefreshing && !isInteractionOverlayOpen,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(4.dp)
+                .semantics { contentDescription = "Refresh reels" }
+        ) {
+            if (isRefreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+            } else {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+            }
         }
 
         AnimatedVisibility(
@@ -654,8 +750,8 @@ private fun ReelsTopTabs(
 
 @Composable
 private fun ReelsLoadingSkeleton() {
-    val base = Color(0xFF171717)
-    val highlight = Color(0xFF343434)
+    val base = Color(BlinkDesignTokens.Dark.Surface)
+    val highlight = Color(BlinkDesignTokens.Dark.SurfaceHighest)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Box(
@@ -711,7 +807,11 @@ private fun ReelsLoadingSkeleton() {
 }
 
 @Composable
-private fun EmptyReelsState(onBackToPosts: () -> Unit) {
+private fun EmptyReelsState(
+    onBackToPosts: () -> Unit,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean
+) {
     val visibleState = remember { MutableTransitionState(false) }.apply { targetState = true }
     AnimatedVisibility(
         visibleState = visibleState,
@@ -738,6 +838,12 @@ private fun EmptyReelsState(onBackToPosts: () -> Unit) {
                     color = Color.White.copy(alpha = .65f),
                     fontSize = 11.sp
                 )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onRefresh, enabled = !isRefreshing) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isRefreshing) "Refreshing" else "Refresh reels", color = Color.White)
+                }
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = onBackToPosts) { Text("Back to Home") }
             }
@@ -779,29 +885,33 @@ private fun ReelPage(
     val reelUsername = reel.authorUsername.trim().removePrefix("@").ifBlank {
         reel.author.trim().removePrefix("@")
     }
-    val authorProfile = remember(reel.id, profiles) {
-        profiles.firstOrNull { it.username.trim().removePrefix("@").equals(reelUsername, true) }
-            ?: profiles.firstOrNull { it.fullName.trim().equals(reel.author.trim(), true) }
+    val profilesById = remember(profiles) {
+        profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
     }
-    val authorId = authorProfile?.id.orEmpty()
+    val profilesByHandle = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }.associateBy {
+            it.username.trim().removePrefix("@").lowercase()
+        }
+    }
+    val authorProfile = remember(reel.id, profilesById, profilesByHandle) {
+        findFeedAuthorProfile(reel, profilesById, profilesByHandle)
+    }
+    val authorId = resolvedFeedAuthorId(reel, authorProfile)
     val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
-    val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
-    val authorVerificationBadge = when {
-        authorProfile?.verificationBadge != null && authorProfile.verificationBadge != VerificationBadge.NONE -> authorProfile.verificationBadge
-        reel.verificationBadge != VerificationBadge.NONE -> reel.verificationBadge
-        reel.isVerified -> VerificationBadge.BLUE
-        else -> VerificationBadge.NONE
-    }
+    val authorAvatar = resolvedFeedAuthorAvatar(reel, authorProfile)
+    val authorVerificationBadge = resolvedFeedAuthorBadge(reel, authorProfile)
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val interactionRepository = remember { UserInteractionRepository() }
     val reelRecommendationService = remember { ReelRecommendationService() }
     val interactionScope = rememberCoroutineScope()
+    val pendingGiftRequests = remember(authorId) { mutableStateMapOf<Int, String>() }
     val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
     val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
     val readingListingId = connectHub.readingMates.firstOrNull { it.userId == authorId }?.id
 
     var burstTrigger by remember(reel.id) { mutableStateOf(0) }
     var isPausedByUser by remember(reel.id) { mutableStateOf(false) }
+    var isFastForwarding by remember(reel.id) { mutableStateOf(false) }
     var showPlaybackHint by remember(reel.id) { mutableStateOf(false) }
     var showMuteHint by remember(reel.id) { mutableStateOf(false) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
@@ -826,6 +936,7 @@ private fun ReelPage(
     LaunchedEffect(isActive) {
         if (!isActive) {
             isPausedByUser = false
+            isFastForwarding = false
             showPlaybackHint = false
         }
     }
@@ -853,6 +964,15 @@ private fun ReelPage(
             }
             .pointerInput(reel.id) {
                 detectTapGestures(
+                    onPress = {
+                        tryAwaitRelease()
+                        isFastForwarding = false
+                    },
+                    onLongPress = {
+                        if (isActive && !isPausedByUser && !isInteractionOverlayOpen) {
+                            isFastForwarding = true
+                        }
+                    },
                     onDoubleTap = {
                         if (!reel.isLiked) onLike(reel.id)
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -870,7 +990,8 @@ private fun ReelPage(
                 val swipeThreshold = 84.dp.toPx()
                 detectHorizontalDragGestures(
                     onDragStart = { horizontalDrag = 0f },
-                    onHorizontalDrag = { _, dragAmount ->
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume() // prevent shell from handling this swipe twice
                         horizontalDrag += dragAmount
                     },
                     onDragEnd = {
@@ -888,8 +1009,14 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
-                isActive = isActive && !isPausedByUser && !isInteractionOverlayOpen,
+                isActive = shouldPlayReel(
+                    selected = isActive,
+                    foreground = true,
+                    pausedByUser = isPausedByUser,
+                    overlayOpen = isInteractionOverlayOpen
+                ),
                 isMuted = isMuted,
+                fastForward = isFastForwarding,
                 initialPositionMs = initialPositionMs,
                 seekToFraction = seekToFraction,
                 onSeekConsumed = { seekToFraction = null },
@@ -986,47 +1113,42 @@ private fun ReelPage(
             isPaused = isPausedByUser,
             modifier = Modifier.align(Alignment.Center)
         )
+        AnimatedVisibility(
+            visible = isFastForwarding && isActive,
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(120)),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Surface(color = Color.Black.copy(alpha = .6f), shape = RoundedCornerShape(16.dp)) {
+                Text("2× Fast forward", color = Color.White, modifier = Modifier.padding(12.dp))
+            }
+        }
 
         Column(
             Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 10.dp, bottom = 34.dp)
+                // Main tab bar is 56dp plus the Android gesture inset.
+                // Keep all four actions out of the navigation tap region.
+                .padding(end = 10.dp, bottom = 92.dp)
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            ReelAction(
-                icon = Icons.Default.Visibility,
-                text = formatNumber(displayedViewsCount),
-                tint = Color.White.copy(alpha = .9f),
-                contentDescription = "Views"
-            ) {}
-            ReelAction(
-                icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                text = if (isMuted) "Muted" else "Sound",
-                tint = Color.White,
-                contentDescription = if (isMuted) "Unmute reel" else "Mute reel"
-            ) {
-                onToggleMuted()
-                showMuteHint = true
-            }
             ReelAction(
                 icon = if (reel.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 text = if (reel.hideLikes && !isAuthor) "Like" else formatNumber(reel.likes),
                 tint = if (reel.isLiked) BlinkPink else Color.White,
                 contentDescription = if (reel.isLiked) "Unlike" else "Like"
             ) { onLike(reel.id) }
-            if (reel.allowComments) {
-                ReelAction(
-                    icon = Icons.Default.ChatBubble,
-                    text = formatNumber(reel.commentsCount),
-                    tint = Color.White,
-                    contentDescription = "Comments"
-                ) { onComment(reel.id) }
-            }
+            ReelAction(
+                icon = Icons.Default.ChatBubble,
+                text = if (reel.allowComments) formatNumber(reel.commentsCount) else "Off",
+                tint = if (reel.allowComments) Color.White else Color.White.copy(alpha = .5f),
+                contentDescription = if (reel.allowComments) "Comments" else "Comments disabled"
+            ) { if (reel.allowComments) onComment(reel.id) }
             ReelAction(
                 icon = if (reel.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                text = "Save",
+                text = if (reel.isBookmarked) "Saved" else "Save",
                 tint = Color.White,
                 contentDescription = if (reel.isBookmarked) "Remove from saved" else "Save"
             ) { onBookmark(reel.id) }
@@ -1036,14 +1158,30 @@ private fun ReelPage(
                 tint = Color.White,
                 contentDescription = "Share"
             ) { onShare(reel.id) }
-            ReelAction(
-                icon = Icons.Default.MoreHoriz,
-                text = "More",
-                tint = Color.White,
-                contentDescription = "More reel actions"
-            ) { onOpenOptions(reel) }
-            Spacer(Modifier.height(10.dp))
-            StaticDisc(authorAvatar)
+        }
+
+        // Sound and moderation options remain accessible in the top toolbar,
+        // separately from the four requested right-side engagement actions.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 56.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = {
+                onToggleMuted()
+                showMuteHint = true
+            }) {
+                Icon(
+                    if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute reel" else "Mute reel",
+                    tint = Color.White
+                )
+            }
+            IconButton(onClick = { onOpenOptions(reel) }) {
+                Icon(Icons.Default.MoreHoriz, contentDescription = "More reel actions", tint = Color.White)
+            }
         }
 
         Column(
@@ -1051,7 +1189,7 @@ private fun ReelPage(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(start = 15.dp, end = 88.dp, bottom = 22.dp)
+                .padding(start = 15.dp, end = 88.dp, bottom = 108.dp)
                 .entranceEffect(delayMillis = 120)
         ) {
             Row(
@@ -1075,8 +1213,10 @@ private fun ReelPage(
                     color = Color.White,
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
-                    maxLines = 1,
-                    modifier = Modifier.clickable { onProfileClick(reelUsername) }
+                    maxLines = 2,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clickable { onProfileClick(reelUsername) }
                 )
                 if (authorVerificationBadge != VerificationBadge.NONE) {
                     Spacer(Modifier.width(4.dp))
@@ -1096,8 +1236,22 @@ private fun ReelPage(
                             interactionScope.launch { FollowStateStore.setFollowing(authorId, false) }
                         },
                         onMessage = { onDirectMessage(reelUsername, authorName, authorAvatar) },
-                        onGiftCoins = {
-                            interactionScope.launch { interactionRepository.giftCoins(authorId, 10) }
+                        onGiftCoins = { amount ->
+                            val requestId = pendingGiftRequests.getOrPut(amount) {
+                                java.util.UUID.randomUUID().toString()
+                            }
+                            interactionScope.launch {
+                                val sent = interactionRepository.giftCoinsOnce(
+                                    authorId, amount, requestId
+                                )
+                                if (sent) pendingGiftRequests.remove(amount)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (sent) "Sent $amount BLINK Coins"
+                                    else "Coin gift not confirmed. No transfer shown.",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         },
                         onGameChallenge = {
                             connectHubActions.challengeUser(authorId, ChallengeGameType.GENERAL_KNOWLEDGE.apiName)
@@ -1140,7 +1294,10 @@ private fun ReelPage(
         VideoProgressBar(
             progress = progress,
             onSeek = { fraction -> seekToFraction = fraction },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 62.dp, start = 10.dp, end = 10.dp)
         )
     }
 }
@@ -1326,7 +1483,11 @@ private fun ExpandableCaption(text: String) {
             text = if (expanded) text else text.take(collapsedThreshold).trimEnd() + "…",
             color = Color.White,
             fontSize = 13.sp,
-            maxLines = if (expanded) Int.MAX_VALUE else 4
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            // Expanded captions cannot take over the entire video. Keep the
+            // seek rail, navigation and engagement actions reachable.
+            modifier = if (expanded) Modifier.heightIn(max = 180.dp)
+                .verticalScroll(rememberScrollState()) else Modifier
         )
         Text(
             text = if (expanded) "Show less" else "more",
@@ -1351,32 +1512,44 @@ private fun VideoProgressBar(
         animationSpec = tween(120, easing = LinearEasing),
         label = "videoProgress"
     )
+    val latestOnSeek by rememberUpdatedState(onSeek)
     var widthPx by remember { mutableIntStateOf(1) }
+    fun seekAt(x: Float) = latestOnSeek(reelSeekFraction(x, widthPx))
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(12.dp)
+            .height(28.dp)
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(widthPx) {
-                detectTapGestures { offset ->
-                    onSeek((offset.x / widthPx.toFloat()).coerceIn(0f, 1f))
-                }
-            },
+                detectDragGestures(
+                    onDragStart = { seekAt(it.x) },
+                    onDrag = { change, _ ->
+                        seekAt(change.position.x)
+                        change.consume()
+                    }
+                )
+            }
+            .pointerInput(widthPx) {
+                detectTapGestures { seekAt(it.x) }
+            }
+            .semantics { contentDescription = "Video seek bar. Tap or drag to seek." },
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
-            Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(Color.White.copy(alpha = .25f))
+            Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                .background(Color.White.copy(alpha = .4f))
         ) {
             Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animatedProgress)
+                Modifier.fillMaxHeight().fillMaxWidth(animatedProgress)
                     .background(Color.White)
             )
+        }
+        Box(
+            Modifier.fillMaxWidth(animatedProgress).height(16.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Box(Modifier.size(12.dp).background(Color.White, CircleShape))
         }
     }
 }
@@ -1405,7 +1578,7 @@ private fun ReelAction(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(vertical = 6.dp)
+        modifier = Modifier.widthIn(min = 58.dp).padding(vertical = 6.dp)
     ) {
         IconButton(
             onClick = { pressed = true; onClick() },
@@ -1432,7 +1605,7 @@ private fun ReelAction(
 private fun StaticDisc(avatar: String) {
     Surface(
         shape = CircleShape,
-        color = Color(0xFF202020),
+        color = Color(BlinkDesignTokens.Dark.SurfaceHighest),
         modifier = Modifier.size(42.dp)
     ) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) {
@@ -1649,6 +1822,7 @@ private fun ReelVideo(
     url: String,
     isActive: Boolean,
     isMuted: Boolean,
+    fastForward: Boolean = false,
     initialPositionMs: Long = 0L,
     seekToFraction: Float? = null,
     onSeekConsumed: () -> Unit = {},
@@ -1659,6 +1833,23 @@ private fun ReelVideo(
     onSessionEnd: (ReelPlaybackSession) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val listener = LifecycleEventObserver { _, _ ->
+            appForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(listener)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(listener) }
+    }
+    val playbackAllowed = shouldPlayReel(
+        selected = isActive,
+        foreground = appForeground,
+        pausedByUser = false,
+        overlayOpen = false
+    )
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
@@ -1734,9 +1925,9 @@ private fun ReelVideo(
         sessionWasActive = false
     }
 
-    LaunchedEffect(isActive, player, initialPositionMs) {
-        player.playWhenReady = isActive
-        if (isActive) {
+    LaunchedEffect(playbackAllowed, player, initialPositionMs) {
+        player.playWhenReady = playbackAllowed
+        if (playbackAllowed) {
             sessionWasActive = true
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
@@ -1752,18 +1943,31 @@ private fun ReelVideo(
     LaunchedEffect(isMuted, player) {
         player.volume = if (isMuted) 0f else 1f
     }
+    LaunchedEffect(fastForward, playbackAllowed, player) {
+        player.setPlaybackSpeed(reelSpeedForHold(fastForward, playbackAllowed))
+    }
 
     LaunchedEffect(seekToFraction, player) {
         val fraction = seekToFraction ?: return@LaunchedEffect
-        val duration = player.duration
-        if (duration > 0L) {
-            player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+        // The duration may arrive after the seek gesture; do not discard it immediately.
+        repeat(40) {
+            val duration = player.duration
+            if (duration > 0L) {
+                player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            if (error != null) {
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            delay(100)
         }
         currentOnSeekConsumed()
     }
 
-    LaunchedEffect(error, isActive, player) {
-        if (error != null && isActive && autoRetryCount < 2) {
+    LaunchedEffect(error, playbackAllowed, player) {
+        if (error != null && playbackAllowed && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -1772,9 +1976,9 @@ private fun ReelVideo(
         }
     }
 
-    LaunchedEffect(player, isActive) {
+    LaunchedEffect(player, playbackAllowed) {
         var lastTickMs = android.os.SystemClock.elapsedRealtime()
-        while (isActive) {
+        while (playbackAllowed) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             if (player.isPlaying) {
                 watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)
@@ -1817,11 +2021,14 @@ private fun ReelVideo(
                 PlayerView(ctx).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+                    keepScreenOn = playbackAllowed
                     this.player = player
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.keepScreenOn = playbackAllowed
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (error != null) {

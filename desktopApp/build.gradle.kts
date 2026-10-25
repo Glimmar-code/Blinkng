@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Sync
 
 plugins {
     kotlin("jvm") version "2.4.10"
@@ -30,6 +31,7 @@ dependencies {
     // Desktop networking uses the same Supabase REST/Auth endpoints as Android.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20250517")
+    testImplementation("junit:junit:4.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
 
     // Cached network media for avatars, posts, marketplace and reel thumbnails.
@@ -48,12 +50,23 @@ val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION
     .orElse(providers.gradleProperty("BLINK_DESKTOP_VERSION"))
     .orElse("1.0.0")
 
+
+val stageBlinkLifeWindowsAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("../game3d")) {
+        include("project.godot", "scenes/**", "scripts/**")
+    }
+    into(layout.buildDirectory.dir("nativeResources/windows/blink-life/game"))
+}
+tasks.matching { it.name.startsWith("prepareAppResources") }
+    .configureEach { dependsOn(stageBlinkLifeWindowsAssets) }
+
 compose.desktop {
     application {
         mainClass = "com.blinkng.desktop.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
+            appResourcesRootDir.set(layout.buildDirectory.dir("nativeResources"))
             packageName = "Blinkng"
             packageVersion = desktopPackageVersion.get()
             description = "Blinkng social platform for Windows"

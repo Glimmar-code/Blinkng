@@ -16,6 +16,7 @@ import com.example.data.models.MatchSpinResult
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -41,45 +42,62 @@ class ConnectHubRepository(
         // Keep Connect useful when one backend surface is temporarily unavailable.
         // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
         // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
-        val roommates = runCatching {
-            getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+        // Fan requests out concurrently so one slow Supabase endpoint does not serialize the whole screen.
+        val roommatesDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseRoommate)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val mentors = runCatching {
-            getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
+        val mentorsDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc")
                 .mapObjects(::parseMentor)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val reading = runCatching {
-            getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+        val readingDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc")
                 .mapObjects(::parseReadingMate)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val agents = runCatching {
-            getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
+        val agentsDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc")
                 .mapObjects(::parseHousingAgent)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val housingRequests = runCatching {
-            getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+        val housingRequestsDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc")
                 .mapObjects(::parseHousingRequest)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val challenges = runCatching {
-            getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
+        val challengesDeferred = async {
+            runCatching {
+            getPagedArray("/rest/v1/game_challenges?select=*&order=created_at.desc")
                 .mapObjects(::parseChallenge)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val smartMatches = runCatching {
+        val smartMatchesDeferred = async {
+            runCatching {
             JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
                 .mapObjects(::parseSmartMatch)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val requests = runCatching {
-            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
+        val requestsDeferred = async {
+            runCatching {
+            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 200)))
                 .mapObjects(::parseConnectRequest)
-        }.getOrDefault(emptyList())
+            }
+        }
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
         val gameStats = if (uid.isBlank()) {
@@ -93,16 +111,36 @@ class ConnectHubRepository(
             }.getOrDefault(GameProfileStats())
         }
 
+        val roommatesResult = roommatesDeferred.await()
+        val mentorsResult = mentorsDeferred.await()
+        val readingResult = readingDeferred.await()
+        val agentsResult = agentsDeferred.await()
+        val housingRequestsResult = housingRequestsDeferred.await()
+        val challengesResult = challengesDeferred.await()
+        val smartMatchesResult = smartMatchesDeferred.await()
+        val requestsResult = requestsDeferred.await()
+        val failedSections = listOfNotNull(
+            roommatesResult.exceptionOrNull()?.let { "Roommates" },
+            mentorsResult.exceptionOrNull()?.let { "Mentors" },
+            readingResult.exceptionOrNull()?.let { "Reading mates" },
+            agentsResult.exceptionOrNull()?.let { "Housing agents" },
+            housingRequestsResult.exceptionOrNull()?.let { "Housing" },
+            challengesResult.exceptionOrNull()?.let { "Challenges" },
+            smartMatchesResult.exceptionOrNull()?.let { "Student matches" },
+            requestsResult.exceptionOrNull()?.let { "Connect inbox" }
+        )
+
         ConnectHubSnapshot(
-            roommates = roommates,
-            mentors = mentors,
-            readingMates = reading,
-            housingAgents = agents,
-            housingRequests = housingRequests,
-            gameChallenges = challenges,
-            smartMatches = smartMatches,
-            requests = requests,
-            gameStats = gameStats
+            roommates = roommatesResult.getOrDefault(emptyList()),
+            mentors = mentorsResult.getOrDefault(emptyList()),
+            readingMates = readingResult.getOrDefault(emptyList()),
+            housingAgents = agentsResult.getOrDefault(emptyList()),
+            housingRequests = housingRequestsResult.getOrDefault(emptyList()),
+            gameChallenges = challengesResult.getOrDefault(emptyList()),
+            smartMatches = smartMatchesResult.getOrDefault(emptyList()),
+            requests = requestsResult.getOrDefault(emptyList()),
+            gameStats = gameStats,
+            failedSections = failedSections
         )
     }
 
@@ -330,6 +368,20 @@ class ConnectHubRepository(
             ).isNotBlank()
         }
 
+    /** Bounded offset pagination prevents the former 30-item directory ceiling. */
+    private fun getPagedArray(path: String, pageSize: Int = 80, maxRows: Int = 240): JSONArray {
+        val all = JSONArray()
+        var offset = 0
+        while (offset < maxRows) {
+            val limit = minOf(pageSize, maxRows - offset)
+            val next = getArray("$path&limit=$limit&offset=$offset")
+            for (index in 0 until next.length()) all.put(next.get(index))
+            if (next.length() < limit) break
+            offset += next.length()
+        }
+        return all
+    }
+
     private fun getArray(path: String): JSONArray {
         val request = baseRequest(path).get().build()
         client.newCall(request).execute().use { response ->
@@ -502,9 +554,15 @@ class ConnectHubRepository(
     private fun JSONObject.optNullableInt(key: String): Int? =
         if (isNull(key) || !has(key)) null else optInt(key)
 
-    private fun errorMessage(raw: String, code: Int): String =
-        runCatching { JSONObject(raw).optString("message") }.getOrNull()
-            .orEmpty().ifBlank { "Connect Hub request failed ($code)." }
+    private fun errorMessage(raw: String, code: Int): String {
+        val payload = runCatching { JSONObject(raw) }.getOrNull()
+        return when (payload?.optString("code")) {
+            "42501" -> "Request not permitted. You can only request someone else's active listing. Please sign in again if the problem persists."
+            "23505" -> "You've already sent a request to this person."
+            else -> payload?.optString("message").orEmpty()
+                .ifBlank { "Unable to complete your Connect request ($code). Please retry." }
+        }
+    }
 
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8")

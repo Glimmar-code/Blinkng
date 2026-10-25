@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
@@ -68,7 +70,8 @@ fun LeaderboardScreen(
     isLiveDataAvailable: Boolean = true,
     activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    isLoading: Boolean = false
 ) {
     val context = LocalContext.current
     var scope by remember { mutableStateOf(LeaderboardScope.WORLD) }
@@ -245,257 +248,117 @@ fun LeaderboardScreen(
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 110.dp)
-    ) {
-        item(key = "leaderboard_header", contentType = "header") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = BlinkGold.copy(alpha = .14f)) {
-                    Icon(
-                        Icons.Default.EmojiEvents,
-                        null,
-                        tint = BlinkGold,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Leaderboard", fontSize = 24.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        "Top 20 from live Blink activity",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { showInfo = true }) {
-                    Icon(Icons.Default.Info, "How leaderboard works")
-                }
-                IconButton(
-                    onClick = {
-                        onActivityPulseEvent(
-                            "leaderboard",
-                            "manual_refresh",
-                            rankUpsInWindow,
-                            rankPulse.value,
-                            mapOf("scope" to scope.label)
-                        )
-                        onRefresh()
-                    }
-                ) {
-                    Icon(Icons.Default.Refresh, "Refresh live leaderboard")
-                }
-            }
-        }
 
-        if (policy.enabled) {
-            item(key = "leaderboard_rank_pulse", contentType = "activity_pulse") {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    BlinkReferenceLeaderboard(
+        visibleRankings = visibleTopTwenty,
+        campusPodiumUsers = if (campusName.isBlank()) emptyList() else {
+            world.filter { it.university.equals(campusName, ignoreCase = true) }
+                .take(3).mapIndexed { index, user -> user.copy(rank = index + 1) }
+        },
+        userProfile = userProfile,
+        currentUser = currentUser,
+        currentWorldRank = world.firstOrNull {
+            it.username.equals(userProfile.username, ignoreCase = true)
+        }?.rank,
+        scope = scope.label,
+        campusEnabled = campusName.isNotBlank(),
+        facultyEnabled = facultyName.isNotBlank(),
+        levelEnabled = levelName.isNotBlank(),
+        verifiedOnly = verifiedOnly,
+        searchQuery = searchQuery,
+        worldRankMovement = worldRankMovement,
+        isDark = isDark,
+        isLoading = isLoading,
+        showRankPulse = policy.enabled,
+        rankPulseContent = {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .40f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Rank Pulse", fontSize = 14.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                if (rankPulse.isStale) "Last known activity • offline"
+                                else (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(30.dp),
+                            color = BlinkGold.copy(alpha = 0.13f)
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Rank Pulse", fontSize = 15.sp, fontWeight = FontWeight.Black)
+                            if (reduceMotion) {
                                 Text(
-                                    when {
-                                        rankPulse.isStale -> "Last known rank activity • offline"
-                                        else -> (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus
-                                    },
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    rankPulse.value?.toString() ?: "—",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    color = BlinkGold, fontWeight = FontWeight.Black
                                 )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = BlinkGold.copy(alpha = .14f)
-                            ) {
-                                if (reduceMotion) {
+                            } else {
+                                Crossfade(targetState = rankPulse.value, label = "leaderboardRankPulse") { value ->
                                     Text(
-                                        rankPulse.value?.toString() ?: "—",
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                        color = BlinkGold,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Black
+                                        value?.toString() ?: "—",
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        color = BlinkGold, fontWeight = FontWeight.Black
                                     )
-                                } else {
-                                    Crossfade(
-                                        targetState = rankPulse.value,
-                                        label = "leaderboardRankPulse"
-                                    ) { pulseValue ->
-                                        Text(
-                                            pulseValue?.toString() ?: "—",
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                            color = BlinkGold,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black
-                                        )
-                                    }
                                 }
                             }
                         }
-
-                        Text(
-                            "Confirmed rank-ups in this window: " + rankUpsInWindow,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (recentMovers.isNotEmpty()) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            recentMovers.forEach { (mover, places) ->
-                                Text(
-                                    "@" + mover.username + " moved up " + places + " place" + if (places == 1) "" else "s",
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
                     }
-                }
-            }
-        }
-
-        item(key = "leaderboard_scope", contentType = "filters") {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                LeaderboardScope.entries.forEach { option ->
-                    val enabled = when (option) {
-                        LeaderboardScope.WORLD -> true
-                        LeaderboardScope.CAMPUS -> campusName.isNotBlank()
-                        LeaderboardScope.FACULTY -> facultyName.isNotBlank()
-                        LeaderboardScope.LEVEL -> levelName.isNotBlank()
-                    }
-                    FilterChip(
-                        selected = scope == option,
-                        enabled = enabled,
-                        onClick = { scope = option },
-                        label = { Text(option.label) }
+                    Text(
+                        "Confirmed rank-ups in this window: " + rankUpsInWindow,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                FilterChip(
-                    selected = verifiedOnly,
-                    onClick = { verifiedOnly = !verifiedOnly },
-                    leadingIcon = {
-                        Icon(Icons.Default.Verified, null, modifier = Modifier.size(16.dp))
-                    },
-                    label = { Text("Verified") }
-                )
-            }
-        }
-
-        item(key = "leaderboard_search", contentType = "search") {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                placeholder = { Text("Search the Top 20") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                shape = RoundedCornerShape(18.dp)
-            )
-        }
-
-        item(key = "leaderboard_summary", contentType = "summary") {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SummaryPill("Top 20", "${topTwenty.size}/20", Modifier.weight(1f))
-                SummaryPill("Scope", scope.label, Modifier.weight(1f))
-                SummaryPill(
-                    "Leader",
-                    topTwenty.firstOrNull()?.points?.let { "$it pts" } ?: "—",
-                    Modifier.weight(1f)
-                )
-            }
-        }
-
-        item(key = "my_rank", contentType = "my_rank") {
-            MyRankCard(
-                currentUser = currentUser,
-                nextUser = nextUser,
-                pointsToNext = pointsToNext,
-                onProfileClick = onProfileClick
-            )
-        }
-
-        if (visibleTopTwenty.isEmpty()) {
-            item(key = "leaderboard_empty", contentType = "empty") {
-                Box(
-                    Modifier.fillMaxWidth().padding(50.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No Top 20 result matches this view.", fontWeight = FontWeight.Bold)
+                    recentMovers.forEach { (student, places) ->
                         Text(
-                            "Try another scope or clear the search.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "@" + student.username + " moved up " + places + if (places == 1) " place" else " places",
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = {
-                            searchQuery = ""
-                            verifiedOnly = false
-                            scope = LeaderboardScope.WORLD
-                        }) { Text("Reset filters") }
                     }
                 }
             }
-        } else {
-            itemsIndexed(
-                items = visibleTopTwenty,
-                key = { _, user -> user.username },
-                contentType = { _, _ -> "leaderboard_user" }
-            ) { _, user ->
-                Box(modifier = if (reduceMotion) Modifier else Modifier.animateItem()) {
-                LeaderboardRow(
-                    user = user,
-                    isCurrentUser = user.username.equals(userProfile.username, ignoreCase = true),
-                    movement = if (scope == LeaderboardScope.WORLD) {
-                        worldRankMovement[user.username.lowercase()] ?: 0
-                    } else {
-                        0
-                    },
-                    onProfileClick = { username ->
-                        onActivityPulseEvent(
-                            "leaderboard",
-                            "profile_open",
-                            rankUpsInWindow,
-                            rankPulse.value,
-                            mapOf("username" to username, "scope" to scope.label)
-                        )
-                        onProfileClick(username)
-                    },
-                    onShare = { shareLeaderboardUser(context, it) }
-                )
-                }
-            }
+        },
+        onScopeChange = { requested ->
+            LeaderboardScope.entries.firstOrNull { it.label == requested }?.let { scope = it }
+        },
+        onVerifiedChange = { verifiedOnly = !verifiedOnly },
+        onSearchChange = { searchQuery = it },
+        onResetFilters = {
+            scope = LeaderboardScope.WORLD
+            verifiedOnly = false
+            searchQuery = ""
+        },
+        onProfileClick = { username ->
+            onActivityPulseEvent(
+                "leaderboard",
+                "profile_open",
+                rankUpsInWindow,
+                rankPulse.value,
+                mapOf("username" to username, "scope" to scope.label)
+            )
+            onProfileClick(username)
+        },
+        onShare = { shareLeaderboardUser(context, it) },
+        onInfo = { showInfo = true },
+        onRefresh = {
+            onActivityPulseEvent(
+                "leaderboard",
+                "manual_refresh",
+                rankUpsInWindow,
+                rankPulse.value,
+                mapOf("scope" to scope.label)
+            )
+            onRefresh()
         }
-    }
+    )
 }
 
 @Composable

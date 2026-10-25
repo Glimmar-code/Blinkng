@@ -6,6 +6,7 @@ import com.example.data.models.Comment
 import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,22 +16,65 @@ internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
+/** SQLSTATE 57014 can be an explicit cancellation as well as a timeout.
+ * Only the server's actual statement-timeout text permits one safe fallback.
+ */
+internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }
+        .any { cause -> cause.message.orEmpty().contains("statement timeout", ignoreCase = true) }
+
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
-    private val likeMutationMutexGuard = Mutex()
-    private val likeMutationMutexes = mutableMapOf<String, Mutex>()
+    // Only retain per-post locks while operations are active or queued.
+    private val likeMutationLocks = PerKeyMutationLocks()
+    // Guard the expensive discovery RPC against simultaneous Home/Reels/realtime pulls.
+    private val rankedFeedMutex = Mutex()
+    private val chronologicalFallbackTypes = mutableSetOf<String>()
+
+    /**
+     * One chronological first-page fallback after a genuine statement timeout.
+     * Keep the same pagination mode for the rest of that lane: no ranked-offset/
+     * chronological-cursor mixing or unbounded rerunning of costly ranked queries.
+     * Never swallow cancellation, authentication failures or secondary failures.
+     */
+    private suspend fun fetchRankedFeedWithTimeoutFallback(
+        limit: Int,
+        feedType: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null
+    ): List<FeedPost> = rankedFeedMutex.withLock {
+        val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+        if (!firstPage && feedType in chronologicalFallbackTypes) {
+            return@withLock supabaseService.fetchFeedPage(
+                limit = limit, beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId, feedType = feedType
+            )
+        }
+        try {
+            val page = supabaseService.fetchFeedPage(
+                limit = limit, beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId, feedType = "ranked_$feedType"
+            )
+            if (firstPage) chronologicalFallbackTypes.remove(feedType)
+            page
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (!firstPage || !isRecoverableRankedFeedTimeout(error)) throw error
+            Log.w("PostRepository", "Ranked $feedType timed out; trying one authenticated chronological page", error)
+            val page = supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+            chronologicalFallbackTypes.add(feedType)
+            page
+        }
+    }
 
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
-        try {
-            when (isReel) {
-                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
-                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
-                null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFeed error: ${e.message}")
-            emptyList()
+        // Propagate failures if BOTH ranking and fallback fail: never fake an empty feed.
+        when (isReel) {
+            true -> fetchRankedFeedWithTimeoutFallback(30, "reels")
+            false -> fetchRankedFeedWithTimeoutFallback(30, "posts")
+            null -> fetchRankedFeedWithTimeoutFallback(60, "all")
         }
     }
 
@@ -39,12 +83,7 @@ class PostRepository(
     }
 
     suspend fun fetchFollowingFeed(limit: Int = 30): List<FeedPost> = withContext(Dispatchers.IO) {
-        try {
-            supabaseService.fetchFeedPage(limit = limit, feedType = "following")
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFollowingFeed error: ${e.message}")
-            emptyList()
-        }
+        supabaseService.fetchFeedPage(limit = limit, feedType = "following")
     }
 
     suspend fun fetchFollowingFeedPage(
@@ -66,11 +105,11 @@ class PostRepository(
         beforeId: String? = null,
         limit: Int = 30
     ): List<FeedPost> = withContext(Dispatchers.IO) {
-        supabaseService.fetchFeedPage(
+        fetchRankedFeedWithTimeoutFallback(
             limit = limit,
             beforeCreatedAt = beforeCreatedAt,
             beforeId = beforeId,
-            feedType = if (isReel) "ranked_reels" else "ranked_posts"
+            feedType = if (isReel) "reels" else "posts"
         )
     }
 
@@ -201,11 +240,7 @@ class PostRepository(
         liked: Boolean,
         newLikeCount: Int
     ): Boolean = withContext(Dispatchers.IO) {
-        val postMutex = likeMutationMutexGuard.withLock {
-            likeMutationMutexes.getOrPut(postId) { Mutex() }
-        }
-
-        postMutex.withLock {
+        likeMutationLocks.withKey(postId) {
             try {
                 supabaseService.togglePostLike(
                     postId = postId,

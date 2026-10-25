@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Only used for explicit website APK updates with Android installer approval. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -25,6 +30,32 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
+        <!-- Expose ONLY already-verified APKs from private cache to Android's installer. -->
+        <!-- WorkManager foreground dataSync service for visible user-approved downloads. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.update.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_apk_provider_paths" />
+        </provider>
+        <!-- Isolated WebGL game viewer: optional files never load when BLINK starts. -->
+        <activity android:name=".game.BlinkLifeWebActivity"
+            android:exported="false"
+            android:process=":blink_life_web"
+            android:screenOrientation="sensorLandscape" />
+        <receiver android:name=".game.BlinkLifeGameDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
@@ -58,6 +89,22 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.MyApplication" />
+        <receiver
+            android:name=".items.BlinkStepNotificationBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".items.BlinkStepNotificationControlsReceiver"
+            android:exported="false" />
+        <service
+            android:name=".items.BlinkStepNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
         <service
             android:name=".items.BlinkLiveLocationService"
             android:exported="false"
@@ -113,8 +160,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/@" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/invite/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+            </intent-filter>
+
+            <!-- Referral links work from both the canonical domain and www. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
             </intent-filter>
 
             <!-- Supabase password-recovery redirect. Add blink://reset-password

@@ -1,5 +1,17 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -46,7 +59,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +78,10 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.shared.BlinkChatInboxPolicy
+import com.blinkng.shared.BlinkConversationSearchPolicy
+import com.blinkng.shared.BlinkMessageScrollAction
+import com.blinkng.shared.BlinkMessageDatePolicy
+import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
@@ -74,31 +93,54 @@ fun MessagesScreen(state: DesktopAppState) {
     var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
-    var draft by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
+    var inboxShowSearch by remember { mutableStateOf(false) }
+    var inboxShowAll by remember { mutableStateOf(false) }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var olderLoading by remember { mutableStateOf(false) }
+    var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
     var controlsBusy by remember { mutableStateOf(false) }
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
+    var editingMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var editDraft by remember { mutableStateOf("") }
+    var deleteMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var deleteForEveryone by remember { mutableStateOf(false) }
+    var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var reportReason by remember { mutableStateOf("") }
+    var showGroupInvitations by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
+    var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
+    // Drafts must never cross conversations or accounts, including after switching chats.
+    val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
+    val sendingConversations = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
 
     suspend fun loadConversations() {
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         loading = true
         runCatching { state.client.fetchConversations() }
             .onSuccess {
-                conversations = it
-                selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
-                error = null
+                if (state.session?.userId == owner) {
+                    conversations = it
+                    receiptRefreshEpoch++
+                    selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
+                    error = null
+                    // Recipient acknowledged device delivery, not chat read.
+                    scope.launch { runCatching { state.client.acknowledgePendingMessageDeliveries() } }
+                }
             }
-            .onFailure { error = it.message }
-        loading = false
+            .onFailure { if (state.session?.userId == owner) error = it.message }
+        if (state.session?.userId == owner) loading = false
     }
 
     fun changeControl(action: suspend () -> Boolean) {
@@ -116,188 +158,192 @@ fun MessagesScreen(state: DesktopAppState) {
             messages = emptyList()
             return
         }
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         runCatching { state.client.fetchMessages(target.id) }
-            .onSuccess { messages = it; error = null }
-            .onFailure { error = it.message }
+            .onSuccess {
+                // A slow response from chat A must never repaint chat B (or another account).
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    messages = it
+                    hasMoreOlder = it.size >= 100
+                    error = null
+                    if (!target.isGroup && state.settings?.readReceipts == true &&
+                        !target.partnerUsername.isNullOrBlank()) {
+                        scope.launch {
+                            runCatching {
+                                state.client.markVisibleConversationRead(target.partnerUsername!!)
+                            }
+                        }
+                    }
+                }
+            }
+            .onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
     }
 
-    LaunchedEffect(Unit) { loadConversations() }
+    fun loadOlderMessages() {
+        if (olderLoading || !hasMoreOlder || messages.isEmpty() || chatQuery.isNotBlank()) return
+        val target = selected ?: return
+        val owner = state.session?.userId ?: return
+        val earliest = messages.first()
+        olderLoading = true
+        scope.launch {
+            runCatching {
+                state.client.fetchMessages(target.id, earliest.createdAt, earliest.id)
+            }.onSuccess { older ->
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    // Keep server ordering and deduplicate rows replayed at a cursor boundary.
+                    val knownIds = messages.map { it.id }.toHashSet()
+                    messages = older.filterNot { it.id in knownIds } + messages
+                    hasMoreOlder = older.size >= 100
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
+            olderLoading = false
+        }
+    }
+
+    fun changeMessageControl(conversationId: String, action: suspend () -> Boolean) {
+        if (controlsBusy) return
+        controlsBusy = true
+        val owner = state.session?.userId
+        scope.launch {
+            runCatching {
+                check(action()) { "The message action could not be saved." }
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    loadMessages(selected)
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    error = it.message
+                }
+            }
+            controlsBusy = false
+        }
+    }
+
+    LaunchedEffect(myUserId) {
+        // A reused desktop window must never show the previous account's chats.
+        selected = null
+        messages = emptyList()
+        conversations = emptyList()
+        latestInboxReceipts = emptyMap()
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
+        replyingTo = null
+        olderLoading = false
+        hasMoreOlder = false
+        error = null
+        if (myUserId.isNotBlank()) loadConversations()
+    }
     LaunchedEffect(selected?.id) {
         showContactCard = false
         chatSearchVisible = false
         chatQuery = ""
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
+        replyingTo = null
+        olderLoading = false
+        hasMoreOlder = false
+        // Never display the previous contact's private history while the next chat loads.
+        messages = emptyList()
         loadMessages(selected)
     }
 
-    val active = selected
+    AnimatedContent(
+        targetState = selected,
+        transitionSpec = {
+            (slideInHorizontally(
+                initialOffsetX = { -it },
+                animationSpec = tween(420, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(260))) togetherWith
+                (slideOutHorizontally(
+                    targetOffsetX = { -it },
+                    animationSpec = tween(390, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(220)))
+        },
+        label = "desktop_chat_slide"
+    ) { active ->
     if (active == null) {
-        val filtered = remember(conversations, query, inbox) {
-            conversations.filter {
-                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary") &&
-                    (query.isBlank() || it.title.contains(query, ignoreCase = true))
-            }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
-        }
-        val important = remember(conversations) {
-            conversations.filter { !it.isArchived && it.requestStatus != "pending" }.sortedWith(
-                compareByDescending<DesktopConversation> { it.isOnline }
-                    .thenByDescending { it.lastMessageAt.orEmpty() }
-            ).take(6)
-        }
-
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
-            ) {
-                Text(
-                    "Messages",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 22.sp,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                IconButton(
-                    onClick = { scope.launch { loadConversations() } },
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
-                }
-            }
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                placeholder = { Text("Search by name or conversation") },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp)
-            )
-
-            Text(
-                "Important",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 8.dp)
-            )
-
-            if (important.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 18.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(important, key = { "important_${it.id}" }) { conversation ->
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(76.dp).clickable {
-                                error = null
-                                selected = conversation
-                            }
-                        ) {
-                            PresenceAvatar(
-                                name = conversation.title,
-                                isOnline = if (conversation.isGroup) null else conversation.isOnline,
-                                size = 48.dp
-                            )
-                            Text(
-                                conversation.title,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 5.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Text(
-                "Inbox",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 17.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 8.dp)
-            )
-            HorizontalDivider()
-
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BlinkMessageInbox.entries.forEach { tab ->
-                    FilterChip(selected = inbox == tab, onClick = { inbox = tab },
-                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
-                }
-            }
-
-            error?.let {
-                Text(
-                    it,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp
-                )
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                if (loading) {
-                    item {
-                        Text(
-                            "Loading conversations…",
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (!loading && filtered.isEmpty()) {
-                    item {
-                        Text(
-                            if (query.isBlank()) "No conversations yet." else "No conversations found.",
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                items(filtered, key = { it.id }) { conversation ->
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            error = null
-                            selected = conversation
-                        },
-                        shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(13.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PresenceAvatar(
-                                name = conversation.title,
-                                isOnline = if (conversation.isGroup) null else conversation.isOnline,
-                                size = 46.dp
-                            )
-                            Spacer(Modifier.width(11.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
-                                    fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
-                                    maxLines = 1)
-                                Text(
-                                    if (conversation.isGroup) "Group conversation"
-                                    else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
-                                    fontSize = 11.sp,
-                                    color = if (!conversation.isGroup && conversation.isOnline) Color(0xFF22C55E)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return
+        DesktopInboxPanel(
+            state = state,
+            conversations = conversations,
+            query = query,
+            inbox = inbox,
+            inboxShowSearch = inboxShowSearch,
+            inboxShowAll = inboxShowAll,
+            loading = loading,
+            error = error,
+            myUserId = myUserId,
+            receiptRefreshEpoch = receiptRefreshEpoch,
+            latestInboxReceipts = latestInboxReceipts,
+            onReceiptsChange = { latestInboxReceipts = it },
+            onSelect = { conversation -> error = null; selected = conversation },
+            onQueryChange = { query = it },
+            onSearchVisibleChange = { inboxShowSearch = it },
+            onShowAllChange = { inboxShowAll = it },
+            onInboxChange = { inbox = it },
+            onRefresh = { scope.launch { loadConversations() } },
+            onGroupInvitations = { showGroupInvitations = true },
+        )
+        return@AnimatedContent
     }
 
+    val draft = draftsByConversation[active.id].orEmpty()
+    val replyLookup = remember(messages) { messages.associateBy { it.id } }
     val visibleMessages = remember(messages, chatQuery) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
+    }
+    val messageDates = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.createdAt)
+        })
+    }
+    val chatListState = remember(active.id) { LazyListState() }
+    var userHasScrolled by remember(active.id) { mutableStateOf(false) }
+    var previousLatestId by remember(active.id) { mutableStateOf<String?>(null) }
+    var hasNewMessages by remember(active.id) { mutableStateOf(false) }
+    val nearLatest by remember(active.id) {
+        derivedStateOf {
+            val layout = chatListState.layoutInfo
+            layout.totalItemsCount == 0 ||
+                (layout.visibleItemsInfo.lastOrNull()?.index ?: 0) >= layout.totalItemsCount - 2
+        }
+    }
+    LaunchedEffect(chatListState.isScrollInProgress) {
+        if (chatListState.isScrollInProgress) userHasScrolled = true
+    }
+    val latestId = messages.lastOrNull()?.id
+    LaunchedEffect(active.id, latestId, chatQuery) {
+        val action = BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = chatQuery.isNotBlank(),
+            hasSeenLatest = previousLatestId != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = nearLatest,
+            latestChanged = previousLatestId != null && previousLatestId != latestId
+        )
+        when (action) {
+            BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                chatListState.scrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.SHOW_NEW_MESSAGE -> hasNewMessages = true
+            BlinkMessageScrollAction.KEEP -> Unit
+        }
+        if (visibleMessages.isNotEmpty() && chatQuery.isBlank()) previousLatestId = latestId
+    }
+    LaunchedEffect(nearLatest) {
+        if (nearLatest) hasNewMessages = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -324,7 +370,7 @@ fun MessagesScreen(state: DesktopAppState) {
                     Text(
                         if (active.isGroup) "Group chat" else desktopPresenceStatus(active.isOnline, active.lastSeenAt),
                         fontSize = 11.sp,
-                        color = if (!active.isGroup && active.isOnline) Color(0xFF22C55E)
+                        color = if (!active.isGroup && active.isOnline) Color(BlinkDesignTokens.Semantic.Success)
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
                     )
@@ -369,14 +415,43 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
 
+            if (hasMoreOlder && chatQuery.isBlank() && chatListState.firstVisibleItemIndex <= 2) {
+                TextButton(
+                    onClick = { loadOlderMessages() },
+                    enabled = !olderLoading,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(if (olderLoading) "Loading earlier messages…" else "Load earlier messages")
+                }
+            }
             LazyColumn(
+                state = chatListState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(visibleMessages, key = { it.id }) { message ->
                     val mine = message.senderId == myUserId
-                    Row(
+                    Column {
+                        messageDates[message.id]?.let { date ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        date,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                     ) {
@@ -389,18 +464,50 @@ fun MessagesScreen(state: DesktopAppState) {
                                 color = if (mine) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
+                                    message.replyToMessageId?.let { reference ->
+                                        val quoted = replyLookup[reference]?.content?.take(100) ?: "Earlier message"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        ) {
+                                            Text(
+                                                "↳ $quoted",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
                                     Text(message.content)
+                                    if (message.reactionCounts.isNotEmpty()) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            message.reactionCounts.forEach { (emoji, count) ->
+                                                Text(
+                                                    "$emoji $count",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (emoji in message.myReactions) FontWeight.Bold else FontWeight.Normal,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
                                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                        Text(
-                                            when {
-                                                message.readAt != null -> "Read"
-                                                message.deliveredAt != null -> "Delivered"
-                                                else -> "Sent"
-                                            },
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        if (mine) {
+                                            val receipt = when {
+                                                message.readAt != null || message.isRead -> "READ"
+                                                message.deliveredAt != null -> "DELIVERED"
+                                                else -> "SENT"
+                                            }
+                                            Text(
+                                                com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
+                                                fontSize = 11.sp,
+                                                color = if (receipt == "READ") Color(0xFF3B82F6)
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
                                     }
                                 }
@@ -418,9 +525,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                         Text(
                                             emoji,
                                             fontSize = 18.sp,
-                                            modifier = Modifier.clickable {
+                                            modifier = Modifier.clickable(enabled = !controlsBusy) {
                                                 actionMessageId = null
-                                                error = "Reaction ${emoji} selected. Desktop reaction sync is pending."
+                                                changeMessageControl(active.id) {
+                                                    state.client.setChatMessageReaction(
+                                                        message.id, emoji, emoji !in message.myReactions
+                                                    )
+                                                }
                                             }
                                         )
                                     }
@@ -429,7 +540,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 DropdownMenuItem(
                                     text = { Text("Reply") },
                                     onClick = {
-                                        draft = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                        replyingTo = message
                                         actionMessageId = null
                                     }
                                 )
@@ -452,13 +563,81 @@ fun MessagesScreen(state: DesktopAppState) {
                                         actionMessageId = null
                                     }
                                 )
+                                if (mine && message.messageType == "text") {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            editingMessage = message
+                                            editDraft = message.content
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Delete for me") },
+                                    enabled = !controlsBusy,
+                                    onClick = {
+                                        deleteForEveryone = false
+                                        deleteMessage = message
+                                        actionMessageId = null
+                                    }
+                                )
+                                if (mine) {
+                                    DropdownMenuItem(
+                                        text = { Text("Unsend for everyone") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            deleteForEveryone = true
+                                            deleteMessage = message
+                                            actionMessageId = null
+                                        }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("Report message") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            reportMessage = message
+                                            reportReason = ""
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
                             }
                         }
+                    }
                     }
                 }
             }
 
+            if (hasNewMessages && visibleMessages.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                            hasNewMessages = false
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("↓ New messages") }
+            }
             HorizontalDivider()
+            replyingTo?.let { target ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Replying to: " + target.content.take(100),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    TextButton(onClick = { replyingTo = null }) { Text("Cancel") }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -466,7 +645,8 @@ fun MessagesScreen(state: DesktopAppState) {
             ) {
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = { draftsByConversation[active.id] = it },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Message") },
                     maxLines = 5,
@@ -479,15 +659,69 @@ fun MessagesScreen(state: DesktopAppState) {
                 ) {
                     IconButton(
                         onClick = {
-                            val text = draft
-                            draft = ""
-                            scope.launch {
-                                runCatching { state.client.sendMessage(active.id, text) }
-                                    .onSuccess { messages = messages + it }
-                                    .onFailure { error = it.message; draft = text }
+                            val conversationId = active.id
+                            val accountId = myUserId
+                            val text = draft.trim()
+                            if (accountId.isNotBlank() && text.isNotBlank() && sendingConversations[conversationId] != true) {
+                                val replyId = replyingTo?.takeIf { it.conversationId == conversationId }?.id
+                                sendingConversations[conversationId] = true
+                                draftsByConversation[conversationId] = ""
+                                replyingTo = null
+                                scope.launch {
+                                    try {
+                                        val result = runCatching {
+                                            state.client.sendMessage(
+                                                conversationId = conversationId,
+                                                content = text,
+                                                partnerUsername = active.partnerUsername,
+                                                isGroup = active.isGroup
+                                            )
+                                        }
+                                        result.onSuccess { sent ->
+                                            // The authorized server may resolve an older duplicate direct
+                                            // thread to a different conversation: do not append across chats.
+                                            if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                if (sent.conversationId == conversationId) {
+                                                    messages = messages.filterNot { it.id == sent.id } + sent
+                                                } else {
+                                                    error = "Sent to your existing chat. Refresh Messages to view it."
+                                                    scope.launch { loadConversations() }
+                                                }
+                                            }
+                                            if (replyId != null) {
+                                                val linked = runCatching {
+                                                    state.client.setChatMessageReply(sent.id, replyId)
+                                                }.getOrDefault(false)
+                                                if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                    if (linked) {
+                                                        messages = messages.map {
+                                                            if (it.id == sent.id) it.copy(replyToMessageId = replyId) else it
+                                                        }
+                                                    } else {
+                                                        error = "Message sent, but its reply link could not be saved."
+                                                    }
+                                                }
+                                            }
+                                        }.onFailure { failure ->
+                                            if (state.session?.userId == accountId) {
+                                                if (selected?.id == conversationId) {
+                                                    error = failure.message
+                                                    if (replyId != null && replyingTo == null) {
+                                                        replyingTo = messages.firstOrNull { it.id == replyId }
+                                                    }
+                                                }
+                                                if (draftsByConversation[conversationId].isNullOrEmpty()) {
+                                                    draftsByConversation[conversationId] = text
+                                                }
+                                            }
+                                        }
+                                    } finally {
+                                        sendingConversations[conversationId] = false
+                                    }
+                                }
                             }
                         },
-                        enabled = draft.isNotBlank()
+                        enabled = draft.isNotBlank() && sendingConversations[active.id] != true && myUserId.isNotBlank()
                     ) {
                         Icon(Icons.Rounded.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary)
                     }
@@ -613,6 +847,98 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    editingMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) editingMessage = null },
+            title = { Text("Edit message") },
+            text = {
+                OutlinedTextField(
+                    value = editDraft,
+                    onValueChange = { editDraft = it },
+                    label = { Text("Message") },
+                    maxLines = 7
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && editDraft.trim().isNotEmpty(),
+                    onClick = {
+                        val updatedText = editDraft
+                        changeMessageControl(target.conversationId) {
+                            state.client.editChatMessage(target.id, updatedText)
+                        }
+                        editingMessage = null
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { editingMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    deleteMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) deleteMessage = null },
+            title = { Text(if (deleteForEveryone) "Unsend message?" else "Delete message for you?") },
+            text = {
+                Text(
+                    if (deleteForEveryone) "This removes the message for all conversation participants."
+                    else "This hides the message from your own account."
+                )
+            },
+            confirmButton = {
+                Button(enabled = !controlsBusy, onClick = {
+                    val unsend = deleteForEveryone
+                    changeMessageControl(target.conversationId) {
+                        if (unsend) state.client.deleteChatMessageForEveryone(target.id)
+                        else state.client.hideChatMessageForMe(target.id)
+                    }
+                    deleteMessage = null
+                }) { Text(if (deleteForEveryone) "Unsend" else "Delete") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { deleteMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    reportMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) reportMessage = null },
+            title = { Text("Report message") },
+            text = {
+                OutlinedTextField(
+                    value = reportReason,
+                    onValueChange = { reportReason = it },
+                    label = { Text("Reason") },
+                    maxLines = 4
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && reportReason.trim().isNotEmpty(),
+                    onClick = {
+                        val reason = reportReason
+                        changeMessageControl(target.conversationId) {
+                            state.client.reportChatMessage(target.id, reason)
+                        }
+                        reportMessage = null
+                    }
+                ) { Text("Submit report") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { reportMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     forwardMessageId?.let { messageId ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) forwardMessageId = null },
@@ -633,6 +959,257 @@ fun MessagesScreen(state: DesktopAppState) {
             dismissButton = { TextButton(enabled = !controlsBusy, onClick = { forwardMessageId = null }) { Text("Cancel") } },
         )
     }
+    }
+    if (showGroupInvitations) {
+        DesktopGroupInvitationsDialog(
+            state = state,
+            onDismiss = { showGroupInvitations = false },
+            onRefreshMessages = { scope.launch { loadConversations() } },
+        )
+    }
+}
+
+/**
+ * Separate the inbox from the full chat surface to prevent the Windows Kotlin
+ * compiler from transforming one enormous Compose lambda. State and network
+ * ownership remain with MessagesScreen and are passed via callbacks.
+ */
+@Composable
+private fun DesktopInboxPanel(
+    state: DesktopAppState,
+    conversations: List<DesktopConversation>,
+    query: String,
+    inbox: BlinkMessageInbox,
+    inboxShowSearch: Boolean,
+    inboxShowAll: Boolean,
+    loading: Boolean,
+    error: String?,
+    myUserId: String,
+    receiptRefreshEpoch: Int,
+    latestInboxReceipts: Map<String, DesktopMessage>,
+    onReceiptsChange: (Map<String, DesktopMessage>) -> Unit,
+    onSelect: (DesktopConversation) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSearchVisibleChange: (Boolean) -> Unit,
+    onShowAllChange: (Boolean) -> Unit,
+    onInboxChange: (BlinkMessageInbox) -> Unit,
+    onRefresh: () -> Unit,
+    onGroupInvitations: () -> Unit,
+) {
+    val filtered = remember(conversations, query, inbox) {
+        conversations.filter {
+            BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
+                BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
+        }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
+    }
+    val important = remember(conversations) {
+        conversations.filter { !it.isArchived && it.requestStatus != "pending" }.sortedWith(
+            compareByDescending<DesktopConversation> { it.isOnline }
+                .thenByDescending { it.lastMessageAt.orEmpty() }
+        ).take(6)
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)
+        ) {
+            Text(
+                "B L I N K",
+                fontWeight = FontWeight.Black,
+                fontSize = 22.sp,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+            Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "Search messages")
+                }
+                IconButton(onClick = { onRefresh() }) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh messages")
+                }
+            }
+        }
+
+        if (inboxShowSearch) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                placeholder = { Text("Search messages") },
+                singleLine = true,
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 12.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Messages", modifier = Modifier.weight(1f), fontSize = 27.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onGroupInvitations) { Text("Groups & invitations") }
+            TextButton(onClick = {
+                onShowAllChange(!inboxShowAll)
+                onInboxChange(if (!inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY)
+            }) {
+                Text(if (inboxShowAll) "Close" else "See all")
+            }
+        }
+
+        if (important.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(important, key = { "important_${it.id}" }) { conversation ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(76.dp).clickable {
+                            onSelect(conversation)
+                        }
+                    ) {
+                        PresenceAvatar(
+                            name = conversation.title,
+                            isOnline = if (conversation.isGroup) null else conversation.isOnline,
+                            size = 48.dp
+                        )
+                        Text(
+                            conversation.title,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 5.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider()
+        if (inboxShowAll) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BlinkMessageInbox.entries.forEach { tab ->
+                    FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
+                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                }
+            }
+        }
+
+        error?.let {
+            Text(
+                it,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            if (loading) {
+                item {
+                    Text(
+                        "Loading conversations…",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (!loading && filtered.isEmpty()) {
+                item {
+                    Text(
+                        if (query.isBlank()) "No conversations yet." else "No conversations found.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            items(filtered, key = { it.id }) { conversation ->
+                LaunchedEffect(conversation.id, conversation.lastMessageAt, myUserId, receiptRefreshEpoch) {
+                    val owner = myUserId
+                    if (owner.isNotBlank()) {
+                        val last = runCatching { state.client.fetchLatestMessage(conversation.id) }
+                            .getOrNull()
+                        if (state.session?.userId == owner) {
+                            onReceiptsChange(
+                                if (last == null) latestInboxReceipts - conversation.id
+                                else latestInboxReceipts + (conversation.id to last)
+                            )
+                        }
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onSelect(conversation)
+                    },
+                    shape = RoundedCornerShape(0.dp),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PresenceAvatar(
+                            name = conversation.title,
+                            isOnline = if (conversation.isGroup) null else conversation.isOnline,
+                            size = 46.dp
+                        )
+                        Spacer(Modifier.width(11.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
+                                fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
+                                maxLines = 1)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val latest = latestInboxReceipts[conversation.id]
+                                if (!conversation.isGroup && latest != null && latest.senderId == myUserId) {
+                                    val receipt = when {
+                                        latest.readAt != null || latest.isRead -> "READ"
+                                        latest.deliveredAt != null -> "DELIVERED"
+                                        else -> "SENT"
+                                    }
+                                    Text(
+                                        com.blinkng.shared.BlinkDeliveryReceipt.ticks(receipt),
+                                        fontSize = 12.sp,
+                                        color = if (receipt == "READ") Color(0xFF3B82F6)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(end = 5.dp)
+                                    )
+                                }
+                                Text(
+                                    conversation.lastMessage.ifBlank {
+                                        if (conversation.isGroup) "Group conversation"
+                                        else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
+                                    },
+                                    fontSize = 13.sp, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (conversation.unreadCount > 0 || conversation.markedUnread) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.onBackground
+                            ) {
+                                Text(
+                                    if (conversation.unreadCount > 0) conversation.unreadCount.coerceAtMost(99).toString() else "•",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.background,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(start = 77.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        }
+    }
+
 }
 
 @Composable

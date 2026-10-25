@@ -56,6 +56,37 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_quantity", quantity.coerceAtLeast(1))
             .put("p_boost_multiplier", boostMultiplier ?: JSONObject.NULL))
 
+    // Reporting and rewards are controlled by the same RLS/RPC policies as Android.
+    suspend fun submitBugReport(description: String): JSONObject =
+        rpc("submit_blink_bug_report", JSONObject()
+            .put("p_description", description.trim())
+            .put("p_surface", "windows-desktop")
+            .put("p_app_version", "desktop")
+            .put("p_screenshot", false))
+
+    suspend fun myBugReports(): JSONArray =
+        when (val rows = rpcAny("get_my_blink_bug_reports", JSONObject())) {
+            is JSONArray -> rows
+            else -> JSONArray()
+        }
+
+    suspend fun adminBugReports(): JSONArray {
+        requireAdmin()
+        return when (val rows = rpcAny("admin_list_blink_bug_reports", JSONObject())) {
+            is JSONArray -> rows
+            else -> JSONArray()
+        }
+    }
+
+    suspend fun reviewBugReport(id: String, status: String, rewardCoins: Int, note: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_bug_report", JSONObject()
+            .put("p_report_id", id)
+            .put("p_status", status)
+            .put("p_reward_coins", rewardCoins)
+            .put("p_note", note.take(600)))
+    }
+
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
 
     suspend fun getEconomyStatus(): JSONObject = rpc("get_blink_economy_status", JSONObject())
@@ -84,6 +115,30 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun createCoinPurchaseOrder(packId: String): JSONObject =
         rpc("create_blink_coin_purchase_order", JSONObject().put("p_pack_id", packId.trim()))
+
+    /**
+     * Only starts provider-hosted checkout for server-configured fixed-price packs.
+     * The provider webhook/server verification, never this client, fulfills coins.
+     */
+    suspend fun initializePaystackCoinCheckout(packId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(packId.matches(Regex("coins_[0-9]+"))) { "Choose a valid coin pack." }
+        requireSessionUserId()
+        val body = JSONObject().put("kind", "COIN_PACK").put("pack_id", packId)
+        val request = requestBuilder("/functions/v1/paystack-initialize")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
+
+    suspend fun verifyPaystackCoinCheckout(orderId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        requireSessionUserId()
+        val body = JSONObject().put("order_id", orderId.trim())
+        val request = requestBuilder("/functions/v1/paystack-verify")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
 
     suspend fun activateStoreItem(inventoryId: String, targetId: String? = null): JSONObject =
         rpc("activate_blink_item", JSONObject()
@@ -245,6 +300,116 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             else -> JSONArray()
         }
         return AdminDashboardSnapshot(stats, sections)
+    }
+
+    suspend fun adminSearchAnnouncementUsers(query: String): JSONArray {
+        requireAdmin()
+        return rpcAny(
+            "admin_search_users_v2",
+            JSONObject().put("p_query", query.take(100)).put("p_limit", 20),
+        ) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminSendInAppAnnouncement(
+        message: String,
+        userId: String? = null,
+        university: String? = null,
+    ): Int {
+        requireAdmin()
+        require(message.isNotBlank() && message.length <= 2_000)
+        val result = rpc("admin_send_announcement", JSONObject()
+            .put("p_message", message.trim())
+            .put("p_target_user_id", userId ?: JSONObject.NULL)
+            .put("p_target_university", university ?: JSONObject.NULL)
+            .put("p_verification_filter", "all"))
+        return result.optInt("delivered", 0)
+    }
+
+    /** Read-only unpublished content for the existing Admin dashboard. */
+    suspend fun adminReadLiveConfig(): JSONArray {
+        requireAdmin()
+        return rpc("admin_read_blink_live_config", JSONObject()).optJSONArray("items") ?: JSONArray()
+    }
+
+    /** Only owner authorization in the RPC can publish, regardless of UI state. */
+    suspend fun adminPublishLiveConfig(
+        key: String, value: JSONObject, enabled: Boolean, revision: Long,
+    ): JSONObject {
+        requireAdmin()
+        require(key in setOf("announcement", "promotion", "display", "feature_visibility"))
+        return rpc("admin_publish_blink_live_config", JSONObject()
+            .put("p_key", key).put("p_value", value)
+            .put("p_enabled", enabled).put("p_expected_revision", revision))
+    }
+
+    /** Public-facing campaigns are filtered by Supabase role and server schedule. */
+    suspend fun liveCampaigns(placement: String): JSONArray {
+        if (placement !in com.blinkng.shared.live.BlinkLiveCampaignPolicy.placements) return JSONArray()
+        val result = rpcAny("get_blink_live_campaigns",
+            JSONObject().put("p_placement", placement).put("p_app_version", 0))
+        return result as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun recordLiveCampaignEvent(placement: String, id: String, kind: String): Boolean {
+        if (kind !in setOf("impression", "click", "dismiss")) return false
+        val result = rpcAny("record_blink_live_campaign_event",
+            JSONObject().put("p_id", id).put("p_placement", placement)
+                .put("p_app_version", 0).put("p_event", kind))
+        return result == true
+    }
+
+    suspend fun adminLiveCampaigns(): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_list_blink_live_campaigns", JSONObject()) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminLiveCampaignAnalytics(days: Int): JSONObject {
+        requireAdmin()
+        require(days in setOf(7, 30, 90)) { "Choose a 7, 30, or 90-day reporting window." }
+        return rpc("admin_blink_live_campaign_analytics", JSONObject().put("p_days", days))
+    }
+
+    suspend fun adminSaveLiveCampaign(id: String?, draft: JSONObject, revision: Long?): JSONObject {
+        requireAdmin()
+        return rpc("admin_save_blink_live_campaign", JSONObject()
+            .put("p_id", id ?: JSONObject.NULL)
+            .put("p_data", draft)
+            .put("p_expected_revision", revision ?: JSONObject.NULL))
+    }
+
+    suspend fun adminTransitionLiveCampaign(id: String, revision: Long, action: String): JSONObject {
+        requireAdmin()
+        require(action in setOf("submit","approve","pause","archive"))
+        return rpc("admin_transition_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", revision).put("p_action", action))
+    }
+
+    suspend fun adminLiveCampaignHistory(id: String): JSONArray {
+        requireAdmin()
+        return rpcAny("admin_blink_live_campaign_history",
+            JSONObject().put("p_id", id)) as? JSONArray ?: JSONArray()
+    }
+
+    suspend fun adminRestoreLiveCampaign(id: String, current: Long, past: Long): JSONObject {
+        requireAdmin()
+        return rpc("admin_restore_blink_live_campaign", JSONObject()
+            .put("p_id", id).put("p_expected_revision", current)
+            .put("p_history_revision", past))
+    }
+
+    /** Locally compresss large artwork; RLS still restricts uploads to the owner. */
+    suspend fun uploadLiveBanner(file: java.io.File): String = withContext(Dispatchers.IO) {
+        requireAdmin()
+        val image = DesktopLiveBannerCompressor.prepare(file)
+        // Server-side Storage validation enforces the MIME and 2 MB limits again.
+        requireSessionUserId()
+        val path = "banners/${java.util.UUID.randomUUID()}.${image.extension}"
+        val bucket = "blink-live-banners"
+        execute(requestBuilder("/storage/v1/object/$bucket/$path")
+            .header("x-upsert", "false")
+            .post(image.bytes.toRequestBody(image.mime.toMediaType()))
+            .build())
+        "$baseUrl/storage/v1/object/public/$bucket/$path"
     }
 
     suspend fun adminGlobalSearch(query: String): JSONObject {

@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.BuildConfig
+import com.example.update.BlinkWebsiteReleaseAlerts
 import com.example.call.CallTimeoutWorker
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
@@ -35,6 +36,25 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         private const val TAG = "BlinkFCM"
         private const val PUSH_PREFS = "blink_push"
         private const val TOKEN_KEY = "fcm_token"
+        private const val REGISTERED_TOKEN = "registered_token"
+        private const val REGISTERED_ACCOUNT = "registered_account"
+
+        /**
+         * True only when Supabase most recently accepted this token for this account.
+         * This is not proof the phone can currently receive packets through its OS settings.
+         */
+        fun isRegisteredForCurrentAccount(context: Context): Boolean {
+            val prefs = context.applicationContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+            val token = prefs.safeString(TOKEN_KEY, "").orEmpty()
+            val account = runCatching {
+                SupabaseService.initialize(context.applicationContext)
+                SupabaseService().getCurrentUserId().orEmpty()
+            }.getOrDefault("")
+            return token.isNotBlank() &&
+                account.isNotBlank() &&
+                prefs.safeString(REGISTERED_TOKEN, "").orEmpty() == token &&
+                prefs.safeString(REGISTERED_ACCOUNT, "").orEmpty() == account
+        }
 
         /**
          * Fetches the current FCM token, stores it locally, registers it with Supabase,
@@ -112,6 +132,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 response.use {
                     if (!it.isSuccessful) {
                         Log.w(TAG, "FCM token unregister failed: ${it.code}")
+                    } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit().remove(REGISTERED_TOKEN).remove(REGISTERED_ACCOUNT).apply()
                     }
                     it.isSuccessful
                 }
@@ -145,7 +168,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 // FCM callbacks can arrive hours after the last foreground session check.
                 // Restore/rotate the Supabase JWT before registering the device token.
                 if (!service.restoreSession()) return
-                service.getCurrentUserId() ?: return
+                val currentUid = service.getCurrentUserId() ?: return
                 var accessToken = SupabaseService.accessToken() ?: return
 
                 val client = OkHttpClient.Builder()
@@ -179,6 +202,11 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     if (!it.isSuccessful) {
                         Log.w(TAG, "FCM token sync failed: ${it.code} ${responseBody.take(240)}")
                     } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit()
+                            .putString(REGISTERED_TOKEN, token)
+                            .putString(REGISTERED_ACCOUNT, currentUid)
+                            .apply()
                         Log.d(TAG, "FCM token registered with Supabase.")
                         NotificationPreferenceStore.refreshFromServerAsync(appContext)
                     }
@@ -220,16 +248,19 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
 
         val data = message.data
+        // Public website-release alerts are device/topic scoped, not private account messages.
+        // Handle before recipient_id enforcement; all other messages keep that protection.
+        if (BlinkWebsiteReleaseAlerts.handleReleasePush(this, data)) return
         val type = BlinkNotificationType.fromWire(data["type"])
         Log.d(
             TAG,
             "FCM message received from=${message.from} type=$type dataKeys=${data.keys.joinToString()} hasNotification=${message.notification != null}"
         )
 
-        // A token can have a pending FCM packet while the phone signs out of account A and
-        // signs into account B. New server payloads include recipient_id so such a packet can
-        // never surface in the wrong account. Old payloads remain backward compatible.
-        if (!NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
+        // Modern BLINK dispatchers always specify recipient_id. Without it a delayed
+        // packet could expose account A's private alert after switching to account B.
+        if (data["recipient_id"].isNullOrBlank() ||
+            !NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
             Log.w(TAG, "Ignored push intended for a different Blink account.")
             return
         }
@@ -274,6 +305,22 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             SupabaseService.initialize(applicationContext)
             SupabaseService().getCurrentUserId().orEmpty()
         }.getOrDefault("")
+
+        // Cache only official, recipient-matched previews, never direct-message data.
+        if ((type == BlinkNotificationType.ADMIN || type == BlinkNotificationType.SYSTEM) &&
+            currentUid.isNotBlank() &&
+            data["recipient_id"] == currentUid &&
+            notificationId.isNotBlank()
+        ) {
+            BlinkOfflineAnnouncementCache.record(
+                context = applicationContext,
+                userId = currentUid,
+                id = notificationId,
+                title = title,
+                message = body,
+                publishedAt = data["created_at"].orEmpty(),
+            )
+        }
 
         // Social/admin pushes can arrive from both realtime recovery and FCM. Claim their
         // server id before rendering so only one path can alert on this installation.
