@@ -7,6 +7,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.content.Intent
+import androidx.core.content.FileProvider
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
@@ -1271,7 +1273,12 @@ private fun PremiumChatDetail(
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     // Confirm a selected image before sending; no backend row exists until Send.
-    var selectedImageUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
+    var selectedImageUris by remember(conversation.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    var selectedImageCaption by remember(conversation.id) { mutableStateOf("") }
+    var selectedImageQuality by remember(conversation.id) { mutableStateOf(BlinkChatImageQuality.STANDARD) }
+    var showMediaGallery by remember(conversation.id) { mutableStateOf(false) }
+    var galleryPreviewUri by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var pendingCameraFile by remember(conversation.id) { mutableStateOf<File?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1367,14 +1374,39 @@ private fun PremiumChatDetail(
             PackageManager.PERMISSION_GRANTED) beginRecording()
         else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
     }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        selectedImageUri = uri
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.size > 10) {
+            Toast.makeText(context, "You can send up to 10 pictures.", Toast.LENGTH_SHORT).show()
+        }
+        selectedImageUris = uris.take(10)
+        selectedImageCaption = ""
+    }
+    val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val file = pendingCameraFile
+        pendingCameraFile = null
+        if (saved && file != null && file.length() > 0) {
+            selectedImageUris = listOf(Uri.fromFile(file))
+            selectedImageCaption = ""
+        } else file?.delete()
+    }
+    fun openChatCamera() {
+        val targetFolder = File(context.cacheDir, "blink-camera").apply { mkdirs() }
+        val file = File.createTempFile("blink-camera-", ".jpg", targetFolder)
+        val output = FileProvider.getUriForFile(context, "${context.packageName}.chatfiles", file)
+        pendingCameraFile = file
+        cameraPicker.launch(output)
+    }
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) openChatCamera()
+        else Toast.makeText(context, "Camera permission is needed to take a photo.", Toast.LENGTH_SHORT).show()
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L)
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L, "", BlinkChatImageQuality.STANDARD)
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L)
+        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.DOCUMENT, 0L, "", BlinkChatImageQuality.STANDARD)
     }
     LaunchedEffect(recording) {
         while (recording != null) {
@@ -1643,7 +1675,7 @@ private fun PremiumChatDetail(
                             IconButton(onClick = {
                                 recordedFile?.let { file ->
                                     recordedFile = null
-                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration)
+                                    onSendAttachment(Uri.fromFile(file), BlinkChatAttachmentKind.VOICE, readyDuration, "", BlinkChatImageQuality.STANDARD)
                                 }
                             }) {
                                 Icon(Icons.Default.Send, contentDescription = "Send voice note", tint = palette.accent)
@@ -1781,36 +1813,124 @@ private fun PremiumChatDetail(
         )
     }
 
-    selectedImageUri?.let { selected ->
-        Dialog(onDismissRequest = { selectedImageUri = null }) {
+    if (selectedImageUris.isNotEmpty()) {
+        Dialog(onDismissRequest = { selectedImageUris = emptyList() }) {
             Column(
-                modifier = Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(palette.incomingBubble)
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                    .background(palette.incomingBubble).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Send picture", color = palette.textPrimary, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(12.dp))
-                AsyncImage(
-                    model = selected,
-                    contentDescription = "Selected picture preview",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().height(250.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .testTag("chat_image_before_send_preview")
+                Text(
+                    "Send ${selectedImageUris.size} picture${if (selectedImageUris.size == 1) "" else "s"}",
+                    color = palette.textPrimary, fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(12.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(selectedImageUris) { selected ->
+                        AsyncImage(
+                            model = selected,
+                            contentDescription = "Selected picture preview",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.width(205.dp).height(190.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .testTag("chat_image_before_send_preview")
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                TextField(
+                    value = selectedImageCaption,
+                    onValueChange = { selectedImageCaption = it.take(1024) },
+                    label = { Text("Caption (optional, first picture)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedImageQuality == BlinkChatImageQuality.STANDARD,
+                        onClick = { selectedImageQuality = BlinkChatImageQuality.STANDARD },
+                        label = { Text("Standard") }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedImageQuality == BlinkChatImageQuality.ORIGINAL,
+                        onClick = { selectedImageQuality = BlinkChatImageQuality.ORIGINAL },
+                        label = { Text("Original / HD") }
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    androidx.compose.material3.TextButton(onClick = { selectedImageUri = null }) {
-                        Text("Cancel", color = palette.textSecondary)
-                    }
+                    androidx.compose.material3.TextButton(onClick = {
+                        selectedImageUris = emptyList()
+                    }) { Text("Cancel", color = palette.textSecondary) }
                     androidx.compose.material3.Button(onClick = {
-                        selectedImageUri = null
-                        onSendAttachment(selected, BlinkChatAttachmentKind.IMAGE, 0L)
-                    }) {
-                        Text("Send picture")
+                        val photos = selectedImageUris.toList()
+                        val caption = selectedImageCaption
+                        val quality = selectedImageQuality
+                        selectedImageUris = emptyList()
+                        photos.forEachIndexed { index, uri ->
+                            onSendAttachment(
+                                uri, BlinkChatAttachmentKind.IMAGE, 0L,
+                                if (index == 0) caption else "", quality
+                            )
+                        }
+                    }) { Text("Send") }
+                }
+            }
+        }
+    }
+
+    if (showMediaGallery) {
+        Dialog(onDismissRequest = { showMediaGallery = false }) {
+            val pictures = conversation.messages
+                .filter { !it.deletedForEveryone && !it.attachedImageUrl.isNullOrBlank() }
+                .mapNotNull { it.attachedImageUrl }
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(palette.incomingBubble).padding(14.dp)
+            ) {
+                Text("Shared photos", fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                Spacer(Modifier.height(10.dp))
+                if (pictures.isEmpty()) {
+                    Text("No photos loaded in this chat.", color = palette.textSecondary)
+                } else LazyColumn(modifier = Modifier.heightIn(max = 410.dp)) {
+                    items(pictures.chunked(3)) { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { url ->
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "Open shared photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.width(88.dp).height(88.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { galleryPreviewUri = url }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
+                }
+                androidx.compose.material3.TextButton(onClick = { showMediaGallery = false }) {
+                    Text("Close")
+                }
+            }
+        }
+    }
+    galleryPreviewUri?.let { url ->
+        Dialog(
+            onDismissRequest = { galleryPreviewUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                AsyncImage(
+                    model = url, contentDescription = "Shared full-screen photo",
+                    contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
+                )
+                IconButton(
+                    onClick = { galleryPreviewUri = null },
+                    modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close full-screen photo", tint = Color.White)
                 }
             }
         }
@@ -1822,6 +1942,16 @@ private fun PremiumChatDetail(
             onImage = {
                 showAttachmentSheet = false
                 imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"))
+            },
+            onCamera = {
+                showAttachmentSheet = false
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED) openChatCamera()
+                else cameraPermission.launch(Manifest.permission.CAMERA)
+            },
+            onGallery = {
+                showAttachmentSheet = false
+                showMediaGallery = true
             },
             onVideo = {
                 showAttachmentSheet = false
@@ -2642,6 +2772,8 @@ private fun MessageComposer(
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
     onVideo: () -> Unit,
     onVoice: () -> Unit,
     onDocument: () -> Unit,
@@ -2663,7 +2795,9 @@ private fun AttachmentSheet(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
             listOf(
-                Triple("Photo", "Choose a picture", Icons.Default.Image),
+                Triple("Photo", "Choose up to 10 pictures", Icons.Default.Image),
+                Triple("Camera", "Take a new photo", Icons.Default.Image),
+                Triple("Shared photos", "Browse pictures loaded in this chat", Icons.Default.Image),
                 Triple("Video", "Share a video clip", Icons.Default.VideoLibrary),
                 Triple("Voice note", "Record with your microphone", Icons.Default.Mic),
                 Triple("Document", "PDF, Word, spreadsheet or presentation", Icons.Default.Description),
@@ -2677,9 +2811,11 @@ private fun AttachmentSheet(
                         .clickable {
                             when (index) {
                                 0 -> onImage()
-                                1 -> onVideo()
-                                2 -> onVoice()
-                                3 -> onDocument()
+                                1 -> onCamera()
+                                2 -> onGallery()
+                                3 -> onVideo()
+                                4 -> onVoice()
+                                5 -> onDocument()
                                 else -> onDictation()
                             }
                         }.testTag("chat_attachment_$index")
