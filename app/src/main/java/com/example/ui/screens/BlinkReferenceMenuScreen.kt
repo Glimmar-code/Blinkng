@@ -23,6 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import com.example.performance.HighRefreshRateController
+import com.blinkng.shared.BlinkPerformanceMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -94,6 +97,10 @@ fun BlinkReferenceMenuScreen(
     val muted = if (isDark) Color(0xFFAAAAAA) else Color(0xFF7F7F7F)
     val border = if (isDark) Color(0xFF333333) else Color(0xFFECECEC)
     val surface = if (isDark) Color(0xFF181818) else Color.White
+    val context = LocalContext.current
+    var performanceMode by remember(context) {
+        mutableStateOf(HighRefreshRateController.mode(context))
+    }
     val compact = LocalConfiguration.current.screenWidthDp < 350 ||
         LocalDensity.current.fontScale >= 1.5f
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
@@ -343,6 +350,22 @@ fun BlinkReferenceMenuScreen(
                     DetailCard("Appearance", "Switch between BLINK's light and dark themes.", surface, border, foreground, muted)
                     OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth()) {
                         Text(if (isDark) "Switch to light theme" else "Switch to dark theme")
+                    }
+                    DetailCard("Performance", "Automatic lets Android choose the refresh rate. Balanced limits the request to 90Hz; Power Saving targets 60Hz and reduces decorative motion.", surface, border, foreground, muted)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BlinkPerformanceMode.entries.forEach { option ->
+                            FilterChip(
+                                selected = performanceMode == option,
+                                onClick = {
+                                    HighRefreshRateController.setMode(context, option)
+                                    performanceMode = option
+                                },
+                                label = { Text(option.label) }
+                            )
+                        }
                     }
                     DetailCard("Privacy & account", "Manage private messaging, safety, blocked users, account settings, and data controls.", surface, border, foreground, muted)
                     OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
