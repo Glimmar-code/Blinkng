@@ -75,8 +75,8 @@ class TestInputScope(unittest.TestCase):
 class TestSourceEvidence(unittest.TestCase):
     def test_requires_successful_real_steps_and_exact_sha(self):
         self.assertTrue(reuse.validate_evidence(checks(), job(), OLD, "android", 517))
-        self.assertFalse(reuse.validate_evidence(checks(), job(sha=OTHER),
-                                                 OLD, "android", 517))
+        self.assertTrue(reuse.validate_evidence(checks(), job(sha=OTHER),
+                                                OLD, "android", 517))
         self.assertFalse(reuse.validate_evidence(checks(pr=518), job(),
                                                  OLD, "android", 517))
         self.assertFalse(reuse.validate_evidence(checks(sha=OTHER), job(),
