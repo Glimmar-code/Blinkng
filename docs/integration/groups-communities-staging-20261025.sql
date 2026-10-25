@@ -31,7 +31,7 @@ create table if not exists public.blink_community_members (
     community_id uuid not null references public.blink_communities(id) on delete cascade,
     user_id uuid not null references auth.users(id) on delete cascade,
     role text not null default 'member' check (role in ('member','moderator')),
-    status text not null default 'pending' check (status in ('pending','active','banned')),
+    status text not null default 'pending' check (status in ('invited','pending','active','banned')),
     joined_at timestamptz not null default now(),
     primary key (community_id,user_id)
 );
@@ -44,58 +44,168 @@ create index if not exists blink_community_members_user
 alter table public.blink_communities enable row level security;
 alter table public.blink_community_members enable row level security;
 
--- Existing SELECT policies are deliberately not dropped here. This draft
--- is for a NEW schema, and must not be applied over an unknown existing state.
-create policy blink_communities_select on public.blink_communities
-    for select to authenticated
-    using (visibility = 'public' or owner_id = (select auth.uid()));
-create policy blink_communities_insert on public.blink_communities
-    for insert to authenticated
-    with check (owner_id = (select auth.uid()));
-create policy blink_communities_update on public.blink_communities
-    for update to authenticated
-    using (owner_id = (select auth.uid()))
-    with check (owner_id = (select auth.uid()));
-create policy blink_communities_delete on public.blink_communities
-    for delete to authenticated
-    using (owner_id = (select auth.uid()));
+-- Private members can read their own community without exposing private
+-- communities to general discovery. SECURITY DEFINER avoids recursive member
+-- and community RLS lookups; it never returns member identities or private data.
+create or replace function public.blink_community_member_active(p_community_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select (select auth.uid()) is not null and exists (
+    select 1 from public.blink_community_members cm
+    where cm.community_id = p_community_id
+      and cm.user_id = (select auth.uid())
+      and cm.status = 'active'
+  )
+$$;
+revoke all on function public.blink_community_member_active(uuid) from public,anon;
+grant execute on function public.blink_community_member_active(uuid) to authenticated;
 
+create policy blink_communities_select on public.blink_communities
+  for select to authenticated
+  using (
+    visibility='public' or owner_id=(select auth.uid())
+    or public.blink_community_member_active(id)
+  );
+create policy blink_communities_insert on public.blink_communities
+  for insert to authenticated with check (owner_id=(select auth.uid()));
+create policy blink_communities_update on public.blink_communities
+  for update to authenticated using (owner_id=(select auth.uid()))
+  with check (owner_id=(select auth.uid()));
+create policy blink_communities_delete on public.blink_communities
+  for delete to authenticated using (owner_id=(select auth.uid()));
+
+-- Members may see their own membership; owners may see join requests.
+-- Raw user writes are deliberately denied: all join/invite/moderation actions
+-- below run server-side and check caller privileges and state transitions.
 create policy blink_community_members_read on public.blink_community_members
-    for select to authenticated
-    using (
-        user_id = (select auth.uid()) or exists (
-            select 1 from public.blink_communities c
-            where c.id = community_id and c.owner_id = (select auth.uid())
-        )
-    );
-create policy blink_community_members_insert on public.blink_community_members
-    for insert to authenticated
-    with check (
-        user_id = (select auth.uid()) and role = 'member' and
-        (status = 'pending' or (status = 'active' and exists (
-            select 1 from public.blink_communities c
-            where c.id = community_id and c.visibility = 'public'
-        )))
-    );
-create policy blink_community_members_owner_moderate on public.blink_community_members
-    for update to authenticated
-    using (exists (
-        select 1 from public.blink_communities c
-        where c.id = community_id and c.owner_id = (select auth.uid())
-    ))
-    with check (exists (
-        select 1 from public.blink_communities c
-        where c.id = community_id and c.owner_id = (select auth.uid())
-    ));
-create policy blink_community_members_leave on public.blink_community_members
-    for delete to authenticated
-    using (user_id = (select auth.uid()) or exists (
-        select 1 from public.blink_communities c
-        where c.id = community_id and c.owner_id = (select auth.uid())
-    ));
+  for select to authenticated
+  using (
+    user_id=(select auth.uid()) or exists (
+      select 1 from public.blink_communities c
+      where c.id=community_id and c.owner_id=(select auth.uid())
+    )
+  );
 
 grant select,insert,update,delete on public.blink_communities to authenticated;
-grant select,insert,update,delete on public.blink_community_members to authenticated;
+grant select on public.blink_community_members to authenticated;
+revoke insert,update,delete on public.blink_community_members from anon,authenticated;
+
+-- A public community accepts immediate joins. Private communities require an
+-- invitation; nobody can bypass a ban with a fresh self-join.
+create or replace function public.blink_community_join(p_community_id uuid)
+returns text language plpgsql security definer set search_path = ''
+as $$
+declare v_user uuid := auth.uid(); v_visibility text; v_status text;
+begin
+  if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select visibility into v_visibility from public.blink_communities
+    where id=p_community_id;
+  if v_visibility is null then raise exception 'COMMUNITY_NOT_FOUND'; end if;
+  select status into v_status from public.blink_community_members
+    where community_id=p_community_id and user_id=v_user for update;
+  if v_status='banned' then raise exception 'COMMUNITY_MEMBERSHIP_BANNED'; end if;
+  if v_status='active' then return 'active'; end if;
+  if v_visibility='private' and v_status <> 'invited' then
+    raise exception 'COMMUNITY_INVITE_REQUIRED';
+  end if;
+  insert into public.blink_community_members(community_id,user_id,role,status)
+  values (p_community_id,v_user,'member','active')
+  on conflict (community_id,user_id) do update set status='active';
+  return 'active';
+end $$;
+revoke all on function public.blink_community_join(uuid) from public,anon;
+grant execute on function public.blink_community_join(uuid) to authenticated;
+
+create or replace function public.blink_community_invite(p_community_id uuid,p_user_id uuid)
+returns text language plpgsql security definer set search_path = ''
+as $$
+declare v_user uuid:=auth.uid(); v_owner uuid; v_allowed boolean; v_status text;
+begin
+  if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if p_user_id is null or p_user_id=v_user then raise exception 'INVALID_INVITEE'; end if;
+  select owner_id into v_owner from public.blink_communities where id=p_community_id;
+  if v_owner is null then raise exception 'COMMUNITY_NOT_FOUND'; end if;
+  select v_owner=v_user or exists (
+    select 1 from public.blink_community_members cm
+    where cm.community_id=p_community_id and cm.user_id=v_user
+      and cm.status='active' and cm.role='moderator'
+  ) into v_allowed;
+  if not v_allowed then raise exception 'COMMUNITY_ADMIN_REQUIRED'; end if;
+  if not exists(select 1 from public.profiles p where p.id=p_user_id) then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+  if exists(select 1 from public.blocks b where
+    (b.blocker_id=v_user and b.blocked_id=p_user_id)
+    or (b.blocker_id=p_user_id and b.blocked_id=v_user)
+  ) then raise exception 'COMMUNITY_INVITATION_BLOCKED'; end if;
+  select status into v_status from public.blink_community_members
+   where community_id=p_community_id and user_id=p_user_id for update;
+  if v_status='banned' then raise exception 'COMMUNITY_MEMBERSHIP_BANNED'; end if;
+  if v_status='active' then return 'active'; end if;
+  insert into public.blink_community_members(community_id,user_id,role,status)
+  values (p_community_id,p_user_id,'member','invited')
+  on conflict(community_id,user_id) do update set status='invited';
+  return 'invited';
+end $$;
+revoke all on function public.blink_community_invite(uuid,uuid) from public,anon;
+grant execute on function public.blink_community_invite(uuid,uuid) to authenticated;
+
+create or replace function public.blink_community_leave(p_community_id uuid)
+returns boolean language plpgsql security definer set search_path = ''
+as $$
+declare v_user uuid:=auth.uid(); v_owner uuid;
+begin
+  if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select owner_id into v_owner from public.blink_communities where id=p_community_id;
+  if v_owner=v_user then raise exception 'OWNER_MUST_TRANSFER_OR_DELETE_COMMUNITY'; end if;
+  delete from public.blink_community_members
+    where community_id=p_community_id and user_id=v_user;
+  return found;
+end $$;
+revoke all on function public.blink_community_leave(uuid) from public,anon;
+grant execute on function public.blink_community_leave(uuid) to authenticated;
+
+create or replace function public.blink_community_moderate(
+  p_community_id uuid, p_target uuid, p_action text
+) returns boolean language plpgsql security definer set search_path = ''
+as $$
+declare v_actor uuid:=auth.uid(); v_owner uuid; v_admin boolean;
+begin
+  if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select owner_id into v_owner from public.blink_communities where id=p_community_id;
+  if v_owner is null then raise exception 'COMMUNITY_NOT_FOUND'; end if;
+  v_admin := v_owner=v_actor or exists(
+    select 1 from public.blink_community_members cm
+    where cm.community_id=p_community_id and cm.user_id=v_actor
+      and cm.status='active' and cm.role='moderator'
+  );
+  if not v_admin then raise exception 'COMMUNITY_ADMIN_REQUIRED'; end if;
+  if p_target=v_owner or p_target=v_actor then raise exception 'CANNOT_MODERATE_OWNER_OR_SELF'; end if;
+  if p_action not in ('approve','ban','remove','promote','demote') then
+    raise exception 'INVALID_MODERATION_ACTION'; end if;
+  if p_action in ('promote','demote') and v_actor<>v_owner then
+    raise exception 'COMMUNITY_OWNER_REQUIRED'; end if;
+  if p_action='approve' then
+    update public.blink_community_members set status='active'
+      where community_id=p_community_id and user_id=p_target
+        and status in ('pending','invited');
+  elsif p_action='ban' then
+    update public.blink_community_members set status='banned',role='member'
+      where community_id=p_community_id and user_id=p_target;
+  elsif p_action='remove' then
+    delete from public.blink_community_members
+      where community_id=p_community_id and user_id=p_target;
+  elsif p_action='promote' then
+    update public.blink_community_members set role='moderator'
+      where community_id=p_community_id and user_id=p_target and status='active';
+  else
+    update public.blink_community_members set role='member'
+      where community_id=p_community_id and user_id=p_target and status='active';
+  end if;
+  return found;
+end $$;
+revoke all on function public.blink_community_moderate(uuid,uuid,text) from public,anon;
+grant execute on function public.blink_community_moderate(uuid,uuid,text) to authenticated;
 
 -- Isolated server-backed group listing; never modify existing DM summary RPC
 -- until Android/Windows consumers support group titles and member counts.
