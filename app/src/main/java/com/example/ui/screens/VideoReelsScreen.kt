@@ -572,7 +572,13 @@ private fun ReelsContent(
 
                 override suspend fun onPreFling(available: Velocity): Velocity {
                     if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
-                        expanded = shouldKeepReelFullscreen(expansion.value)
+                        val target = shouldKeepReelFullscreen(expansion.value)
+                        if (target == expanded) {
+                            animationScope.launch {
+                                expansion.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
+                            }
+                        }
+                        expanded = target
                         return available
                     }
                     return Velocity.Zero
@@ -598,11 +604,21 @@ private fun ReelsContent(
                                 }
                             },
                             onDragEnd = {
-                                expanded = shouldExpandReelPreview(
+                                val target = shouldExpandReelPreview(
                                     expansion.value, distance, 65.dp.toPx()
                                 )
+                                if (target == expanded) animationScope.launch {
+                                    expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
+                                }
+                                expanded = target
                             },
-                            onDragCancel = { expanded = expansion.value >= 0.5f }
+                            onDragCancel = {
+                                val target = expansion.value >= 0.5f
+                                if (target == expanded) animationScope.launch {
+                                    expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
+                                }
+                                expanded = target
+                            }
                         )
                     }
                 }
