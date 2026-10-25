@@ -65,4 +65,44 @@ internal object BlinkChatImagePreparer {
             throw e
         }
     }
+    /** Create a tiny independent JPEG preview; the original remains unmodified. */
+    fun thumbnail(context: Context, staged: File): File? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(staged.path, bounds)
+        if (bounds.outWidth !in 1..20000 || bounds.outHeight !in 1..20000) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 384) sample *= 2
+        val bitmap = BitmapFactory.decodeFile(
+            staged.path, BitmapFactory.Options().apply { inSampleSize = sample }
+        ) ?: return null
+        val target = File.createTempFile("blink-preview-", ".jpg", context.cacheDir)
+        return try {
+            val scale = minOf(1f, 320f / maxOf(bitmap.width, bitmap.height))
+            val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+            val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+            val downsized = Bitmap.createScaledBitmap(bitmap, width, height, true)
+            val opaque = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            try {
+                Canvas(opaque).apply {
+                    drawColor(Color.WHITE)
+                    drawBitmap(downsized, 0f, 0f, null)
+                }
+                FileOutputStream(target).use {
+                    check(opaque.compress(Bitmap.CompressFormat.JPEG, 65, it))
+                }
+                if (target.length() !in 1..180000) {
+                    target.delete()
+                    null
+                } else target
+            } finally {
+                opaque.recycle()
+                if (downsized !== bitmap) downsized.recycle()
+                bitmap.recycle()
+            }
+        } catch (_: Exception) {
+            bitmap.recycle()
+            target.delete()
+            null
+        }
+    }
 }
