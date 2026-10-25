@@ -45,7 +45,15 @@ internal class BoundedMessageAttachment(
     companion object {
         fun open(context: Context, uri: Uri, kind: BlinkChatAttachmentKind): BoundedMessageAttachment {
             val mime = if (uri.scheme == "file" && kind == BlinkChatAttachmentKind.IMAGE) {
-                "image/jpeg"
+                when (File(uri.path.orEmpty()).extension.lowercase()) {
+                    "jpg", "jpeg" -> "image/jpeg"
+                    "png" -> "image/png"
+                    "webp" -> "image/webp"
+                    "gif" -> "image/gif"
+                    "heic" -> "image/heic"
+                    "heif" -> "image/heif"
+                    else -> throw IllegalArgumentException("Unsupported queued picture format.")
+                }
             } else if (kind == BlinkChatAttachmentKind.VOICE && uri.scheme == "file") {
                 "audio/mp4"
             } else context.contentResolver.getType(uri)?.lowercase()
