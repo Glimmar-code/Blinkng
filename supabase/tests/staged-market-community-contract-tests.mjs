@@ -297,8 +297,8 @@ export async function stagedMarketCommunityContractTests() {
       insert into public.conversation_participants(conversation_id,user_id)
         values ('${privateGroup}','${owner}'),
                ('${unrelatedDm}','${owner}');
-      insert into public.messages(conversation_id,sender_id,content)
-        values ('${group}','${owner}','Group history');
+      insert into public.messages(id,conversation_id,sender_id,content)
+        values ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','${group}','${owner}','Group history');
     `);
     await db.exec('set role authenticated');
     await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
@@ -329,6 +329,16 @@ export async function stagedMarketCommunityContractTests() {
     const messageView = await db.query(`
       select id from public.messages where conversation_id='${group}'`);
     assert.equal(messageView.rows.length, 0, 'Departed user cannot read old group messages');
+    const departedUnread = await db.query(`
+      select message_id from public.get_my_unread_message_notifications(20)`);
+    assert.equal(departedUnread.rows.length,0,'Departed member cannot read unread content via definer RPC');
+    const departedAck = await db.query(`
+      select public.ack_message_delivered(
+        'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') as ok`);
+    assert.equal(departedAck.rows[0].ok,false,'Departed member cannot acknowledge group message');
+    const departedBatch = await db.query(
+      'select public.ack_pending_message_deliveries() as n');
+    assert.equal(Number(departedBatch.rows[0].n),0,'Departed member must not mark group deliveries');
     await rejects(() => db.exec(`
       insert into public.messages(conversation_id,sender_id,content)
       values ('${group}','${other}','Unauthorized after leaving')`),
