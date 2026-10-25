@@ -14,7 +14,6 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.OutputStream
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
 import java.util.UUID
