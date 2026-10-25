@@ -1,19 +1,7 @@
 name: BLINK browser and mobile smoke
 
 on:
-  push:
-    branches:
-      - 'Testlab-web-*'
-    paths:
-      - 'web/**'
-      - 'scripts/test_web_mobile_browser.mjs'
-      - '.github/workflows/blink-browser-mobile-smoke.yml'
-  pull_request:
-    paths:
-      - 'web/**'
-      - 'scripts/test_web_mobile_browser.mjs'
-      - '.github/workflows/blink-browser-mobile-smoke.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 

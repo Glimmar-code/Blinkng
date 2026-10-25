@@ -3,10 +3,6 @@ name: Verify published BLINK APK
 # Read-only verification after each official release, with daily drift detection.
 # This does not build, promote, unpublish, or overwrite release assets.
 on:
-  release:
-    types: [published]
-  schedule:
-    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:

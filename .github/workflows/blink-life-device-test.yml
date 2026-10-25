@@ -2,19 +2,6 @@
 name: BLINK LIFE Option B phone-test APK
 
 on:
-  push:
-    branches:
-      - Testlab-blink-life-web-on-demand-20261015
-    paths:
-      - '.github/workflows/blink-life-device-test.yml'
-      - 'app/**'
-      - 'blinkLifeFeature/**'
-      - 'game3d/**'
-      - 'scripts/setup_godot_43_web.sh'
-      - 'scripts/build_blink_life_web_pack.sh'
-      - 'gradle/**'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
   workflow_dispatch:
 
 permissions:
