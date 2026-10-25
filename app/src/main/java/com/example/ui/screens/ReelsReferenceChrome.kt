@@ -131,29 +131,21 @@ internal fun ReelsReferenceChrome(
         ) {
             item(key = "add_story") {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(contentAlignment = Alignment.BottomEnd) {
-                        AsyncImage(
-                            model = userAvatar,
-                            fallback = painterResource(R.drawable.ic_default_profile),
-                            error = painterResource(R.drawable.ic_default_profile),
-                            contentScale = ContentScale.Crop,
+                    Box(
+                        modifier = Modifier.size(66.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, foreground.copy(alpha = .14f), CircleShape)
+                            .clickable(onClick = onAddStory),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
                             contentDescription = "Add to your story",
-                            modifier = Modifier.size(60.dp).clip(CircleShape)
-                                .border(1.dp, foreground.copy(alpha = .13f), CircleShape)
-                                .clickable(onClick = onAddStory)
+                            tint = foreground,
+                            modifier = Modifier.size(31.dp)
                         )
-                        Box(
-                            Modifier.size(23.dp).clip(CircleShape).background(background)
-                                .padding(2.dp).clip(CircleShape)
-                                .background(foreground)
-                                .clickable(onClick = onAddStory),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add story", tint = background,
-                                modifier = Modifier.size(16.dp))
-                        }
                     }
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text("Your Story", color = foreground, fontSize = 11.sp, maxLines = 1)
                 }
             }
