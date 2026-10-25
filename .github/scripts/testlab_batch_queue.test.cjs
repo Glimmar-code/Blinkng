@@ -129,3 +129,21 @@ test('empty queue cannot create branches or merge', async () => {
     core: {info: s => { message = s; }}});
   assert.match(message, /No recent/);
 });
+
+test('the scheduled scanner evaluates unlabeled PRs rather than treating array index as time', async () => {
+  const p = {...base, updated_at: new Date().toISOString(), changed_files: 1,
+    head: {...base.head, sha: 'e'.repeat(40)}};
+  const logs = [];
+  const github = {rest: {
+    pulls: {
+      list: async () => [p],
+      get: async () => ({data: p}),
+      listFiles: async () => [{filename: 'README.md'}],
+    },
+    checks: {listForRef: async () => []},
+  }, paginate: async (fn, args) => fn(args)};
+  await queue({github, context: {eventName: 'schedule', runId: 100},
+    core: {info: message => logs.push(message)}});
+  assert.ok(logs.some(m => m.includes('Skipping #' + p.number) &&
+    m.includes('No verifiable current-head CI checks')));
+});
