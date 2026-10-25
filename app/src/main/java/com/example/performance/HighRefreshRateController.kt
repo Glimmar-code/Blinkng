@@ -2,55 +2,69 @@ package com.example.performance
 
 import android.app.Activity
 import android.app.Application
-import android.os.Build
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Bundle
+import androidx.compose.runtime.mutableStateOf
+import com.blinkng.shared.BlinkPerformanceMode
+import com.blinkng.shared.BlinkPerformancePolicy
 import kotlin.math.abs
 
 /**
- * Requests a 120 Hz-class display refresh rate for every Blink activity.
- *
- * The Android scheduler can still lower the actual refresh rate when the device does not
- * support 120 Hz, Battery Saver is active, thermal limits are reached, or another surface
- * has a higher-priority frame-rate requirement. On Android 14+ the platform can match the
- * requested 120 Hz intent to the closest supported render rate. Older Android versions are
- * given the supported rate closest to 120 Hz so the request is always valid.
+ * Respect display hardware, Android dynamic scheduling and user performance preference.
+ * Automatic (default) explicitly clears any forced 120Hz override.
  */
 object HighRefreshRateController : Application.ActivityLifecycleCallbacks {
-    private const val TARGET_REFRESH_RATE_HZ = 120f
+    private const val PREF_NAME = "blink_performance_settings"
+    private const val PREF_KEY = "preferred_mode"
     private const val RATE_EPSILON = 0.1f
+
+    val currentModeState = mutableStateOf(BlinkPerformanceMode.AUTOMATIC)
+
+    fun mode(context: Context): BlinkPerformanceMode =
+        BlinkPerformanceMode.fromStorage(
+            context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_KEY, null)
+        )
+
+    fun setMode(context: Context, selected: BlinkPerformanceMode) {
+        context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().putString(PREF_KEY, selected.name).apply()
+        currentModeState.value = selected
+        var current: Context? = context
+        while (current is ContextWrapper && current !is Activity) current = current.baseContext
+        (current as? Activity)?.let(::applyPreferredRefreshRate)
+    }
 
     fun install(application: Application) {
         application.registerActivityLifecycleCallbacks(this)
+        currentModeState.value = mode(application)
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+        currentModeState.value = mode(activity)
         applyPreferredRefreshRate(activity)
     }
 
     override fun onActivityResumed(activity: Activity) {
-        // Re-apply after returning from another app or a system screen because OEM display
-        // policies can reset the window preference while Blink is not in the foreground.
+        currentModeState.value = mode(activity)
         applyPreferredRefreshRate(activity)
     }
 
     @Suppress("DEPRECATION")
     private fun applyPreferredRefreshRate(activity: Activity) {
-        val targetRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // API 34+ accepts an arbitrary intended rate and lets Android choose the best match.
-            TARGET_REFRESH_RATE_HZ
-        } else {
-            // Before API 34 preferredRefreshRate must be one of the display's supported rates.
+        val available = runCatching {
             activity.windowManager.defaultDisplay.supportedModes
-                .asSequence()
                 .map { it.refreshRate }
                 .filter { it > 0f }
-                .minByOrNull { abs(it - TARGET_REFRESH_RATE_HZ) }
-                ?: activity.windowManager.defaultDisplay.refreshRate
-        }
+        }.getOrDefault(emptyList())
 
+        val rate = BlinkPerformancePolicy.targetRefreshRate(
+            currentModeState.value, available
+        )
         val attributes = activity.window.attributes
-        if (abs(attributes.preferredRefreshRate - targetRate) > RATE_EPSILON) {
-            attributes.preferredRefreshRate = targetRate
+        if (abs(attributes.preferredRefreshRate - rate) > RATE_EPSILON) {
+            attributes.preferredRefreshRate = rate
             activity.window.attributes = attributes
         }
     }
