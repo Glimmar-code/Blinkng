@@ -252,6 +252,7 @@ fun PremiumMessagesScreen(
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
     onSearchUsers: suspend (String, Int, String?, String?) -> List<UserProfile> = { _, _, _, _ -> emptyList() },
+    onCreateGroup: () -> Unit = {},
     onMyProfileClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
@@ -435,6 +436,10 @@ fun PremiumMessagesScreen(
             onSelectUser = { user ->
                 showUserPicker = false
                 onOpenConversation(user.username)
+            },
+            onCreateGroup = {
+                showUserPicker = false
+                onCreateGroup()
             }
         )
     }
