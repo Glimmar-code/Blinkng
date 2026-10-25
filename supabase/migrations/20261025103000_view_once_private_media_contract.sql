@@ -56,7 +56,64 @@ as $$
 begin
     if p_storage_path !~ (
          '^conversations/' || p_conversation_id::text || '/users/' ||
-         p_sender_id::text || '/[a-f0-9-]{36}[.](jpg|png|webp|heic|heif)$'
+         p_sender_id::text || '/' || p_message_id::text || '[.](jpg|png|webp|heic|heif)
+    ) then
+        raise exception 'Unexpected private picture path';
+    end if;
+    if not exists (
+        select 1 from public.messages m
+        where m.id=p_message_id and m.conversation_id=p_conversation_id
+            and m.sender_id=p_sender_id and m.image_view_once=true
+            and m.message_type='image' and m.media_url is null
+    ) then
+        raise exception 'Message was not authorized';
+    end if;
+    insert into blink_chat_internal.view_once_images(
+        message_id,conversation_id,sender_id,storage_path,mime_type
+    ) values(p_message_id,p_conversation_id,p_sender_id,p_storage_path,p_mime_type);
+    return true;
+end;
+$$;
+revoke all on function public.blink_register_view_once_image(
+    uuid,uuid,uuid,text,text) from public,anon,authenticated;
+grant execute on function public.blink_register_view_once_image(
+    uuid,uuid,uuid,text,text) to service_role;
+
+create or replace function public.blink_claim_view_once_image(
+    p_message_id uuid, p_viewer_id uuid
+) returns table(path text,mime_type text) language plpgsql security definer
+set search_path = pg_catalog, public, blink_chat_internal
+as $$
+begin
+    return query
+    update blink_chat_internal.view_once_images v
+    set consumed_by=p_viewer_id,consumed_at=now()
+    where v.message_id=p_message_id
+      and v.consumed_at is null
+      and v.sender_id <> p_viewer_id
+      and exists (
+          select 1 from public.messages m
+          where m.id = v.message_id
+            and m.conversation_id = v.conversation_id
+            and m.image_view_once = true
+            and m.deleted_for_everyone = false
+      )
+      and exists (
+          select 1 from public.conversation_participants cp
+          where cp.conversation_id=v.conversation_id
+            and cp.user_id=p_viewer_id
+      )
+    returning v.storage_path,v.mime_type;
+end;
+$$;
+revoke all on function public.blink_claim_view_once_image(uuid,uuid)
+    from public,anon,authenticated;
+grant execute on function public.blink_claim_view_once_image(uuid,uuid)
+    to service_role;
+
+-- Edge Function must validate the user's JWT against Auth on every request,
+-- then call these service_role-only RPCs. It must never return signed URLs.
+
     ) then
         raise exception 'Unexpected private picture path';
     end if;
