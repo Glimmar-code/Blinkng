@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -68,7 +70,14 @@ class BlinkMainAdaptiveVisualTest {
 
     private fun renderHome(widthDp: Int, scale: Float, dark: Boolean = true) {
         rule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
+            val configuration = Configuration(LocalConfiguration.current).apply {
+                screenWidthDp = widthDp
+                fontScale = scale
+            }
+            CompositionLocalProvider(
+                LocalConfiguration provides configuration,
+                LocalDensity provides Density(1f, scale)
+            ) {
                 BlinkTheme(darkTheme=dark) {
                     Box(Modifier.width(widthDp.dp).height(630.dp).background(if (dark) Color.Black else Color.White)
                         .testTag("main_home_capture")) {
@@ -117,7 +126,14 @@ class BlinkMainAdaptiveVisualTest {
     }
     private fun renderNotifications(widthDp: Int, scale: Float, dark: Boolean = true) {
         rule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
+            val configuration = Configuration(LocalConfiguration.current).apply {
+                screenWidthDp = widthDp
+                fontScale = scale
+            }
+            CompositionLocalProvider(
+                LocalConfiguration provides configuration,
+                LocalDensity provides Density(1f, scale)
+            ) {
                 BlinkTheme(darkTheme=dark) {
                     Box(Modifier.width(widthDp.dp).height(950.dp)
                         .background(if (dark) Color.Black else Color.White).testTag("main_notifications_capture")) {
