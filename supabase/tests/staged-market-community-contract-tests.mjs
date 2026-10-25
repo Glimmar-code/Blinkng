@@ -157,6 +157,47 @@ export async function stagedMarketCommunityContractTests() {
       where id='33333333-3333-4333-8333-333333333333'`);
     assert.equal(bannedView.rows.length, 0, 'Banned member has no private read access');
     await db.exec('reset role');
+    // Independent owner-approved private request, including real roster rows.
+    const applicant = '99999999-9999-4999-8999-999999999999';
+    const requestClub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await db.exec(`
+      insert into auth.users(id,email) values
+        ('${applicant}','applicant@example.test');
+      insert into public.profiles(id,username,full_name) values
+        ('${applicant}','requestedstudent','Requested Student');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await db.exec(`
+      insert into public.blink_communities(id,owner_id,name,university,category,visibility)
+      values('${requestClub}','${owner}','Requests Club','FUTA','Academic','private')`);
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    const requestStatus = await db.query(`
+      select public.blink_community_request_join('${requestClub}') as status`);
+    assert.equal(requestStatus.rows[0].status,'pending');
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const pendingRows = await db.query(`
+      select user_id,status from public.blink_community_members_page('${requestClub}',50)`);
+    assert.equal(pendingRows.rows.length,1);
+    assert.equal(pendingRows.rows[0].status,'pending');
+    const approved = await db.query(`
+      select public.blink_community_moderate('${requestClub}','${applicant}','approve') as accepted`);
+    assert.equal(approved.rows[0].accepted,true);
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    const approvedView = await db.query(`
+      select id from public.blink_communities where id='${requestClub}'`);
+    assert.equal(approvedView.rows.length,1,'Approved applicant can view private community');
+    await rejects(() => db.exec(`
+      select * from public.blink_community_members_page('${requestClub}',50)`),
+      'COMMUNITY_ADMIN_REQUIRED');
+    await db.exec('reset role');
+    console.log('PASS staged requests, owner-only pending roster, approval and private visibility');
     console.log('PASS staged invite/join/private read/moderation/ban RLS');
 
     // A group is listed exactly once for an active member even when 2+
