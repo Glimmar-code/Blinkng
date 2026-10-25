@@ -301,3 +301,9 @@ Whenever an AI agent or developer completes a task that changed Supabase, the fi
 10. Whether recovery of this version would require any secret values/data backups that are intentionally kept outside Git.
 
 Do not claim a Supabase-related feature or recovery is fully complete if any required app integration, migration capture, recovery baseline, security verification, testing, or release preparation remains outstanding.
+
+## Permanent non-destructive PR preservation and consolidation
+
+Do not create overlapping PRs when the failed original can be fixed in place. Never auto-close a failed, stale or duplicate-looking PR merely because another PR is newer or has a similar title. First audit the original PR's exact head revision, file-level diff and intended feature semantics; verify the replacement actually contains those changes and passes relevant latest-head checks. Preserve work in a Testlab branch while resolving conflicts; promote to main only after verification.
+
+The default-branch `BLINK preserve unmerged pull requests` workflow reopens a closed-but-unmerged PR lacking owner-attested, file-verified preservation or owner-approved intentional abandonment. It is **not** a pre-close GitHub ruleset. See `.github/PR_PRESERVATION_POLICY.md` for required labels/comments and strict SHA-bound audit. Do not bypass that guard or delete old source branches to hide unfinished work.
