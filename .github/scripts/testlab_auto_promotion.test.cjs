@@ -50,6 +50,7 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     'app/proguard-rules.pro',
     '.github/workflows/signed-release.yml',
     '.github/workflows/auto-promote-testlab.yml',
+    '.github/workflows/retire-testlab-branch.yml',
     '.github/scripts/install_release_smoke_apk.sh',
   ]) {
     assert.match(policy.preflight(ready(), [filename]), /Staging/, filename);
