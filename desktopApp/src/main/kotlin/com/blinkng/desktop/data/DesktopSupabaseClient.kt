@@ -13,6 +13,7 @@ import java.io.File
 import okio.BufferedSink
 import java.io.ByteArrayOutputStream
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import com.blinkng.shared.BlinkChatUploadProgress
 import com.blinkng.shared.BlinkChatAttachmentKind
