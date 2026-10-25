@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -101,6 +103,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.BlinkPostGrowthTips
 import com.blinkng.shared.ConnectDiscoveryPolicy
 import com.blinkng.shared.ConnectDiscoverySignals
 import com.blinkng.shared.BlinkActivityPulseDefaults
@@ -113,6 +116,8 @@ import com.blinkng.shared.nextPulseValue
 import com.blinkng.shared.pulseTrend
 import com.blinkng.shared.rankPulseRange
 import com.blinkng.shared.BlinkPostFormat
+import com.blinkng.shared.BlinkMentionTokenPolicy
+import com.blinkng.shared.BlinkUserSuggestionPolicy
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -159,8 +164,31 @@ fun HomeScreen(
     var consumedPostRows by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
+    var postDetailsId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    val mentionToken = remember(composer) { BlinkMentionTokenPolicy.active(composer) }
+    var mentionProfiles by remember(mentionToken?.query) {
+        mutableStateOf<List<DesktopProfile>>(emptyList())
+    }
+    var mentionVisible by remember(mentionToken?.query) { mutableIntStateOf(10) }
+    var mentionHasMore by remember(mentionToken?.query) { mutableStateOf(false) }
+    var mentionLoading by remember(mentionToken?.query) { mutableStateOf(false) }
+    LaunchedEffect(mentionToken?.query) {
+        val query = mentionToken?.query.orEmpty()
+        if (query.isBlank()) return@LaunchedEffect
+        delay(220)
+        mentionLoading = true
+        try {
+            val matches = state.client.searchMentionProfiles(query)
+            mentionProfiles = matches.distinctBy { it.id }
+            mentionHasMore = matches.size >= 60
+        } catch (_: Exception) {
+            mentionProfiles = emptyList()
+            mentionHasMore = false
+        } finally { mentionLoading = false }
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -292,6 +320,69 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    val rankedMentions = if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.rank(
+                        mentionProfiles, mentionToken.query,
+                        username = { it.username }, displayName = { it.fullName }
+                    )
+                    if (rankedMentions.isNotEmpty()) {
+                        Text("Mention a BLINK student", style = MaterialTheme.typography.labelMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(rankedMentions.take(mentionVisible), key = { "mention_" + it.id }) { person ->
+                                AssistChip(
+                                    onClick = {
+                                        val active = BlinkMentionTokenPolicy.active(composer)
+                                        if (active != null) composer = BlinkMentionTokenPolicy.replace(
+                                            composer, active, person.username
+                                        )
+                                    },
+                                    label = {
+                                        Column {
+                                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
+                                            Text("@" + person.username, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                )
+                            }
+                            if (rankedMentions.size > mentionVisible || mentionHasMore) {
+                                item(key = "more_mentions") {
+                                    TextButton(
+                                        enabled = !mentionLoading,
+                                        onClick = {
+                                            if (rankedMentions.size > mentionVisible) {
+                                                mentionVisible += 10
+                                            } else {
+                                                val last = mentionProfiles.lastOrNull()
+                                                if (last != null && mentionToken != null) {
+                                                    scope.launch {
+                                                        mentionLoading = true
+                                                        try {
+                                                            val more = state.client.searchMentionProfiles(
+                                                                mentionToken.query, 60,
+                                                                last.username, last.id
+                                                            )
+                                                            mentionProfiles = (mentionProfiles + more).distinctBy { it.id }
+                                                            mentionHasMore = more.size >= 60
+                                                            mentionVisible += 10
+                                                        } catch (_: Exception) {
+                                                            mentionHasMore = false
+                                                        } finally { mentionLoading = false }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) { Text("See more") }
+                                }
+                            }
+                        }
+                    }
+                    Text("✨ Make your post stand out", style = MaterialTheme.typography.titleSmall)
+                    Text(BlinkPostGrowthTips.suggestion(
+                        hasImages = false, hasVideo = false, hasPoll = false),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(BlinkPostGrowthTips.marketHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
                     val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
                         BlinkSmartTags.suggest(
@@ -389,7 +480,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment", "Marketplace").forEach { item ->
+                        BlinkPostGrowthTips.feedCategories.forEach { item ->
                             FilterChip(
                                 selected = composerCategory == item,
                                 onClick = { composerCategory = item },
@@ -458,6 +549,10 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    if (BlinkPostGrowthTips.disallowedFeedCategory(composerCategory)) {
+                                        error = BlinkPostGrowthTips.marketHint
+                                        return@launch
+                                    }
                                     if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(composer)) {
                                         error = "This is a product ad. List it in BLINK Market, or request a review."
                                         return@launch
@@ -611,6 +706,7 @@ fun HomeScreen(
                     }
                 },
                 onComments = { commentsFor = if (commentsFor == post.id) null else post.id },
+                onOpenPost = { postDetailsId = post.id },
                 onCopyLink = {
                     DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
                 },
@@ -629,6 +725,50 @@ fun HomeScreen(
             }
         }
     }
+    posts.firstOrNull { it.id == postDetailsId }?.let { selected ->
+        DesktopPostDetailsDialog(
+            state = state,
+            post = selected,
+            onClose = { postDetailsId = null },
+            onLike = { scope.launch { runCatching { state.client.toggleLike(selected.id) }; reload() } },
+            onBookmark = { scope.launch { runCatching { state.client.toggleBookmark(selected.id) }; reload() } },
+            onRepost = { scope.launch { runCatching { state.client.toggleRepost(selected.id) }; reload() } },
+        )
+    }
+}
+
+/** Desktop equivalent of the full-post destination; Home list scroll remains unchanged. */
+@Composable
+private fun DesktopPostDetailsDialog(
+    state: DesktopAppState,
+    post: DesktopFeedPost,
+    onClose: () -> Unit,
+    onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onRepost: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Post", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.width(680.dp).heightIn(max = 720.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DesktopFeedPostCard(
+                    post = post,
+                    onLike = onLike,
+                    onBookmark = onBookmark,
+                    onRepost = onRepost,
+                    onComments = {},
+                    onCopyLink = { DesktopShareLinkManager.copyToClipboard(post.id, post.isReel) },
+                    xFeedStyle = false,
+                )
+                DesktopCommentsPanel(state, post.id)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -3666,6 +3806,7 @@ internal fun DesktopFeedPostCard(
     onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
+    onOpenPost: (() -> Unit)? = null,
     xFeedStyle: Boolean = false,
 ) {
     var expandedText by remember(post.id) { mutableStateOf(false) }
@@ -3682,7 +3823,7 @@ internal fun DesktopFeedPostCard(
     Surface(
         shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
         tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
-        color = if (xFeedStyle) Color.Black else MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(
@@ -3695,7 +3836,11 @@ internal fun DesktopFeedPostCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                     Spacer(Modifier.width(7.dp))
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f)
+                            .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             post.authorName,
                             fontWeight = FontWeight.Bold,
@@ -3768,9 +3913,10 @@ internal fun DesktopFeedPostCard(
             if (body.isNotBlank()) {
                 Text(
                     text = body,
-                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp),
+                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                     fontSize = 15.sp,
-                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                    maxLines = if (expandedText) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { result ->
                         if (!expandedText && result.hasVisualOverflow) textCanExpand = true
@@ -3856,14 +4002,13 @@ internal fun DesktopFeedPostCard(
             }
 
             if (xFeedStyle) {
-                // Identical metric priority to Android: views, likes, reposts,
-                // comments, saved, then sharing.
+                // Five social actions first; views remain a subtle read-only
+                // metric beneath them, matching Android's feed hierarchy.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(BlinkPostFormat.count(post.viewCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onLike) {
                             Icon(
@@ -3875,6 +4020,12 @@ internal fun DesktopFeedPostCard(
                         Text(BlinkPostFormat.count(post.likeCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onComments) {
+                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                        }
+                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onRepost) {
                             Icon(
                                 Icons.Rounded.Repeat,
@@ -3884,12 +4035,6 @@ internal fun DesktopFeedPostCard(
                         }
                         Text(BlinkPostFormat.count(post.repostCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onComments) {
-                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
-                        }
-                        Text(BlinkPostFormat.count(post.commentCount), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                     IconButton(onClick = onBookmark) {
                         Icon(
                             if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
@@ -3898,6 +4043,14 @@ internal fun DesktopFeedPostCard(
                     }
                     TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
+                Text(
+                    text = "${BlinkPostFormat.count(post.viewCount)} views",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                    modifier = Modifier.padding(start = 58.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() }
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
                 val primaryMetrics = buildList {

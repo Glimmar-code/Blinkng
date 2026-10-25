@@ -67,6 +67,19 @@ def main() -> None:
            "Color(0xFF101014)", "Color(0xFF171521)")
     require("app/src/main/java/com/example/ui/theme/MessageTheme.kt",
             "Color(BlinkDesignTokens.Dark.Background)", "Color(BlinkDesignTokens.Brand.Primary)")
+    # Items hosts multiple utility pages. Every semantic surface, border and
+    # text token must follow the active user theme, not the legacy dark feed.
+    items = "app/src/main/java/com/example/ui/screens/BlinkItemsScreen.kt"
+    require(items, "MaterialTheme.colorScheme.background",
+            "MaterialTheme.colorScheme.surfaceContainer",
+            "MaterialTheme.colorScheme.onSurface",
+            "MaterialTheme.colorScheme.onSurfaceVariant",
+            "MaterialTheme.colorScheme.outlineVariant")
+    forbid(items, "import com.example.ui.theme.FeedBackground",
+           "import com.example.ui.theme.FeedBorder",
+           "import com.example.ui.theme.FeedElevatedSurface",
+           "import com.example.ui.theme.FeedTextPrimary",
+           "import com.example.ui.theme.FeedTextSecondary")
     print("PASS: BLINK Auth-inspired dark surface/brand contracts hold across Android and Windows.")
 
 

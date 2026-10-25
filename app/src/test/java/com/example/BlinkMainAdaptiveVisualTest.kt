@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -45,22 +47,39 @@ class BlinkMainAdaptiveVisualTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun homeNormal320() = renderHome(320, 1f)
+    @Test fun homeNormal360() = renderHome(360, 1f)
+    @Test fun homeNormal390() = renderHome(390, 1f)
+    @Test fun homeNormal412() = renderHome(412, 1f)
+    @Test fun homeLight360() = renderHome(360, 1f, dark = false)
+    @Test fun homeLight412LargeFont() = renderHome(412, 1.5f, dark = false)
     @Test fun home130Compact() = renderHome(320, 1.3f)
     @Test fun home150Compact() = renderHome(320, 1.5f)
     @Test fun home200Compact() = renderHome(320, 2f)
     @Test fun home200Standard() = renderHome(412, 2f)
 
     @Test fun notificationsNormal320() = renderNotifications(320, 1f)
+    @Test fun notificationsNormal360() = renderNotifications(360, 1f)
+    @Test fun notificationsNormal390() = renderNotifications(390, 1f)
+    @Test fun notificationsNormal412() = renderNotifications(412, 1f)
+    @Test fun notificationsLight360() = renderNotifications(360, 1f, dark = false)
+    @Test fun notificationsLight412LargeFont() = renderNotifications(412, 1.5f, dark = false)
     @Test fun notifications130Compact() = renderNotifications(320, 1.3f)
     @Test fun notifications150Compact() = renderNotifications(320, 1.5f)
     @Test fun notifications200Compact() = renderNotifications(320, 2f)
     @Test fun notifications200Standard() = renderNotifications(412, 2f)
 
-    private fun renderHome(widthDp: Int,scale: Float) {
+    private fun renderHome(widthDp: Int, scale: Float, dark: Boolean = true) {
         rule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
-                BlinkTheme(darkTheme=true) {
-                    Box(Modifier.width(widthDp.dp).height(630.dp).background(Color.Black)
+            val configuration = Configuration(LocalConfiguration.current).apply {
+                screenWidthDp = widthDp
+                fontScale = scale
+            }
+            CompositionLocalProvider(
+                LocalConfiguration provides configuration,
+                LocalDensity provides Density(1f, scale)
+            ) {
+                BlinkTheme(darkTheme=dark) {
+                    Box(Modifier.width(widthDp.dp).height(630.dp).background(if (dark) Color.Black else Color.White)
                         .testTag("main_home_capture")) {
                         Column {
                             FeedTopBar(
@@ -90,7 +109,7 @@ class BlinkMainAdaptiveVisualTest {
                             feedSubTab = 0,
                             onHomeClick = {}, onReelsClick = {},
                             onMarketClick = {}, onConnectClick = {},
-                            onMessageClick = {}, isDark = true,
+                            onMessageClick = {}, isDark = dark,
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
@@ -102,15 +121,22 @@ class BlinkMainAdaptiveVisualTest {
         rule.onNodeWithTag("feed_tab_for_you").assertExists()
         rule.onNodeWithTag("feed_add_coins").assertExists()
         rule.activity.window.decorView.captureRoboImage(
-            filePath = "src/test/screenshots/main_home_w${widthDp}_font${scale.toString().replace('.', '_')}.png"
+            filePath = "src/test/screenshots/main_home_w${widthDp}_font${scale.toString().replace('.', '_')}_${if (dark) "dark" else "light"}.png"
         )
     }
-    private fun renderNotifications(widthDp: Int,scale: Float) {
+    private fun renderNotifications(widthDp: Int, scale: Float, dark: Boolean = true) {
         rule.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
-                BlinkTheme(darkTheme=true) {
+            val configuration = Configuration(LocalConfiguration.current).apply {
+                screenWidthDp = widthDp
+                fontScale = scale
+            }
+            CompositionLocalProvider(
+                LocalConfiguration provides configuration,
+                LocalDensity provides Density(1f, scale)
+            ) {
+                BlinkTheme(darkTheme=dark) {
                     Box(Modifier.width(widthDp.dp).height(950.dp)
-                        .background(Color.Black).testTag("main_notifications_capture")) {
+                        .background(if (dark) Color.Black else Color.White).testTag("main_notifications_capture")) {
                         ActivityScreen(
                             activities = listOf(
                                 ActivityItem(
@@ -120,7 +146,7 @@ class BlinkMainAdaptiveVisualTest {
                                 )
                             ),
                             onBack = {}, onProfileClick = {}, onNotificationClick = {},
-                            isDark = true, isConnected = false
+                            isDark = dark, isConnected = false
                         )
                     }
                 }
@@ -128,7 +154,7 @@ class BlinkMainAdaptiveVisualTest {
         }
         rule.onNodeWithText("Notifications").assertExists()
         rule.activity.window.decorView.captureRoboImage(
-            filePath = "src/test/screenshots/main_notifications_w${widthDp}_font${scale.toString().replace('.', '_')}.png"
+            filePath = "src/test/screenshots/main_notifications_w${widthDp}_font${scale.toString().replace('.', '_')}_${if (dark) "dark" else "light"}.png"
         )
     }
 }

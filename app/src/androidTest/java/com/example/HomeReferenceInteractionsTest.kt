@@ -33,11 +33,57 @@ class HomeReferenceInteractionsTest {
                 CreatePostFab(expanded = true, onClick = { createCount++ })
             }
         }
+        // The Create button is a single action, never a speed-dial menu.
         composeRule.onNodeWithTag("create_post_fab").assertIsDisplayed().performClick()
-        composeRule.onNodeWithTag("create_post_action").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(1, createCount) }
+        composeRule.onNodeWithTag("create_post_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("blink_ai_fab").assertDoesNotExist()
         composeRule.onNodeWithTag("create_post_fab").performClick()
-        composeRule.onNodeWithTag("blink_ai_fab").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(2, createCount) }
+    }
+
+    @Test fun imagePostKeepsLikeAndPostMetadataOpensDetails() {
+        var liked = 0
+        var opened = 0
+        composeRule.setContent {
+            BlinkTheme(darkTheme = false) {
+                Box(Modifier.width(393.dp)) {
+                    PostCard(
+                        post = FeedPost(
+                            id = "image-interaction-audit",
+                            author = "Test Creator",
+                            authorUsername = "testcreator",
+                            authorAvatar = "",
+                            timeAgo = "2h",
+                            text = "An image post still needs an accessible Like action.",
+                            images = listOf("android.resource://com.example/nonexistent_fixture"),
+                            viewsCount = 21,
+                            likes = 4,
+                            commentsCount = 0,
+                            sharesCount = 0
+                        ),
+                        isDark = false,
+                        xFeedStyle = true,
+                        trackExposure = false,
+                        authorUniversity = "University of Lagos",
+                        onLike = { liked++ },
+                        onComment = {},
+                        onBookmark = {},
+                        onRepost = {},
+                        onShare = {},
+                        onOptionsClick = {},
+                        onProfileClick = {},
+                        onOpenPost = { opened++ }
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("Like post").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("University of Lagos").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, liked)
+            assertEquals(1, opened)
+        }
     }
 
     @Test fun realPostActionsRemainClickableWithReferenceFooter() {

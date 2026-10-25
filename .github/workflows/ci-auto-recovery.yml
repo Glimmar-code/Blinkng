@@ -1,0 +1,46 @@
+# GitHub can retry transient failures, but arbitrary source fixes need a coding agent.
+# Trust boundary: execute ONLY default-branch code; never run PR checkout with write access.
+name: BLINK CI automatic recovery
+
+on:
+  workflow_run:
+    workflows:
+      - Android quality gate
+      - Android runtime smoke
+      - Android release smoke test
+      - Windows desktop quality gate
+      - APK delivery integrity
+      - Web Parity Testlab Gate
+      - Supabase safety gate
+      - Secret leak guard
+      - Signed Android release
+      - Publish latest APK
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: blink-ci-recovery-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose-and-retry:
+    if: github.repository == 'Glimmar-code/Blinkng'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted recovery controller from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Diagnose latest failed steps and retry safely
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const recovery = require('./.github/scripts/ci_auto_recovery.cjs');
+            await recovery({ github, context, core });

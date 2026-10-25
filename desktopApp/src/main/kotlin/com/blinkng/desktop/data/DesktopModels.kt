@@ -101,6 +101,40 @@ data class DesktopComment(
     val premiumStyleSource: String? = null,
 )
 
+data class DesktopGroupInvitation(
+    val conversationId: String,
+    val title: String,
+    val inviterUsername: String,
+    val invitedAt: String,
+)
+
+data class DesktopGroupMember(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val isAdmin: Boolean,
+)
+
+data class DesktopProfileMembership(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val role: String,
+    val status: String,
+)
+
+data class DesktopCommunity(
+    val id: String,
+    val ownerId: String,
+    val name: String,
+    val description: String,
+    val university: String,
+    val category: String,
+    val visibility: String,
+    val coverUrl: String?,
+    val rules: List<String>,
+)
+
 data class DesktopConversation(
     val id: String,
     val title: String,
@@ -133,6 +167,11 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false,
     val reactionCounts: Map<String, Int> = emptyMap(),
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
