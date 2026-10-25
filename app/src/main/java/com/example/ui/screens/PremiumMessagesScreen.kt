@@ -561,6 +561,10 @@ private fun PremiumMessagesMasterDetail(
                 },
                 onForward = { target, message ->
                     when {
+                        message.imageViewOnce -> Toast.makeText(
+                            context, "View-once pictures cannot be forwarded.",
+                            Toast.LENGTH_SHORT
+                        ).show()
                         !message.attachedImageUrl.isNullOrBlank() ->
                             onForwardPicture(target, message)
                         message.isVoiceNote ||
@@ -1894,7 +1898,10 @@ private fun PremiumChatDetail(
                 selectedMessage = null
             },
             onShare = {
-                shareChatMessage(context, message)
+                if (message.imageViewOnce) {
+                    Toast.makeText(context, "View-once pictures cannot be shared.",
+                        Toast.LENGTH_SHORT).show()
+                } else shareChatMessage(context, message)
                 selectedMessage = null
             },
             onTogglePin = {
