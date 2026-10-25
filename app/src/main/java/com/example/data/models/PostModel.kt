@@ -251,6 +251,8 @@ data class ChatMessage(
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
     val attachedImageUrl: String? = null,
+    // Transient UI percentage; never written as a server delivery receipt.
+    val uploadProgress: Int? = null,
     val attachedVideoUrl: String? = null,
     val voiceAudioUrl: String? = null,
     val attachedDocumentUrl: String? = null,
