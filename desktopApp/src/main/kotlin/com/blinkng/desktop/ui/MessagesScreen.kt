@@ -104,9 +104,10 @@ import java.time.Instant
 
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
-    var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
-    var selected by remember { mutableStateOf<DesktopConversation?>(null) }
-    var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
+    val myUserId = state.session?.userId.orEmpty()
+    var conversations by remember(myUserId) { mutableStateOf<List<DesktopConversation>>(emptyList()) }
+    var selected by remember(myUserId) { mutableStateOf<DesktopConversation?>(null) }
+    var messages by remember(myUserId) { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var inboxShowSearch by remember { mutableStateOf(false) }
     var inboxShowAll by remember { mutableStateOf(false) }
@@ -129,12 +130,11 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
-    var privatePicture by remember { mutableStateOf<SkiaImage?>(null) }
+    var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var outboxPending by remember { mutableStateOf(0) }
     var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    val myUserId = state.session?.userId.orEmpty()
     val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
     var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
