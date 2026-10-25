@@ -5,7 +5,6 @@ import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.content.Intent
 import androidx.core.content.FileProvider
