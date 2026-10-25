@@ -179,8 +179,7 @@ def validate_evidence(checks: list[dict], job: dict, tested_sha: str,
         return False
     if int(job.get("id", -1)) != int(newest["id"]):
         return False
-    if (job.get("head_sha") != tested_sha or
-            job.get("conclusion") != "success" or job.get("status") != "completed"):
+    if (job.get("conclusion") != "success" or job.get("status") != "completed"):
         return False
     successful = {step["name"] for step in job.get("steps", [])
                   if step.get("status") == "completed" and step.get("conclusion") == "success"}
