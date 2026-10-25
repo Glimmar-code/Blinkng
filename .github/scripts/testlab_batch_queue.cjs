@@ -49,7 +49,7 @@ function isCandidate(pr, now = Date.now()) {
     !/^Testlab-batch-/.test(pr.head?.ref || '') &&
     Number.isFinite(age) && age >= 0 && age <= ACTIVE_DAYS * 86400000 &&
     !/^\s*\[(?:draft|wip|superseded(?:\s+[^\]]+)?|hold|blocked|do not merge)\]/i.test(title) &&
-    !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge)\b/i.test(body) &&
+    !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge|must not be merged|should not be merged|this is draft|keep this draft|keep (?:it|the pr) (?:as )?draft|not ready for (?:production|merge))\b/i.test(body) &&
     !/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body) &&
     ![...tags].some(name => BLOCKED_LABELS.has(name.toLowerCase()));
 }

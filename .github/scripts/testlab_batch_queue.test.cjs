@@ -15,6 +15,8 @@ test('automatically discovers safe recent ready PRs WITHOUT any labels', () => {
   assert.equal(queue.isCandidate({...base, draft: true}, NOW), false);
   assert.equal(queue.isCandidate({...base, base: {ref: 'Testlab'}}, NOW), false);
   assert.equal(queue.isCandidate({...base, body: 'do not auto-merge'}, NOW), false);
+  assert.equal(queue.isCandidate({...base, body: 'This is draft and must not be merged'}, NOW), false);
+  assert.equal(queue.isCandidate({...base, body: 'Release: keep this draft until testing'}, NOW), false);
   assert.equal(queue.isCandidate({...base, title: '[DRAFT] unfinished'}, NOW), false);
   assert.equal(queue.isCandidate({...base, title: '[Superseded by #541] old'}, NOW), false);
   assert.equal(queue.isCandidate({...base, labels: [{name: 'do-not-merge'}]}, NOW), false);
