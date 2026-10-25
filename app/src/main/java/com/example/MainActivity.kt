@@ -1295,8 +1295,8 @@ fun MainAppContent(
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
-                        onSendAttachment = { partner, uri, kind, duration ->
-                            viewModel.sendAttachmentMessage(partner, uri, kind, duration)
+                        onSendAttachment = { partner, uri, kind, duration, caption, quality ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality)
                         },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
@@ -1764,8 +1764,8 @@ fun MainAppContent(
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
-                    onSendAttachment = { uri, kind, duration ->
-                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration)
+                    onSendAttachment = { uri, kind, duration, caption, quality ->
+                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality)
                     },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
