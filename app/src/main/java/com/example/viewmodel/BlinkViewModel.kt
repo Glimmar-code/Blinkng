@@ -2610,21 +2610,31 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun refreshConnectHub() {
+        // Reserve the loading state before launching to coalesce rapid taps/onResume refreshes.
+        if (_uiState.value.isConnectHubLoading) return
+        val accountId = _uiState.value.myProfile.id
+        _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
-            runCatching { connectHubRepository.fetchSnapshot() }
-                .onSuccess { snapshot ->
-                    _uiState.value = _uiState.value.copy(
-                        connectHub = snapshot.retainFailedSectionsFrom(_uiState.value.connectHub),
-                        isConnectHubLoading = false
-                    )
-                    persistExtendedCache()
-                }
-                .onFailure {
-                    Log.e(TAG, "Connect Hub refresh failed", it)
-                    _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
+            try {
+                val snapshot = connectHubRepository.fetchSnapshot()
+                // A previous account's delayed request must never replace a newly signed-in user's data.
+                if (_uiState.value.myProfile.id != accountId) return@launch
+                _uiState.value = _uiState.value.copy(
+                    connectHub = snapshot.retainFailedSectionsFrom(_uiState.value.connectHub)
+                )
+                persistExtendedCache()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (_uiState.value.myProfile.id == accountId) {
+                    Log.e(TAG, "Connect Hub refresh failed", error)
                     showToast("Couldn't refresh Connect. Please try again.")
                 }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
+                }
+            }
         }
     }
 
