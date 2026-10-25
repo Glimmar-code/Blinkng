@@ -1,6 +1,17 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatUploadProgress
+import okhttp3.RequestBody
+import okio.BufferedSink
+import java.io.File
+import java.io.FileInputStream
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
+import java.awt.image.BufferedImage
+import java.util.UUID
 import com.blinkng.shared.discovery.BlinkCampusAccountType
 import com.blinkng.shared.discovery.BlinkUniversitySearch
 import com.sun.net.httpserver.HttpServer
@@ -613,6 +624,111 @@ class DesktopSupabaseClient(
             "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+            .map { item ->
+                if (item.messageType == "image" && item.mediaUrl != null)
+                    item.copy(mediaUrl = signedChatImageUrl(item.mediaUrl, conversationId))
+                else item
+            }
+    }
+
+    /** Never expose a private storage key as a public URL. */
+    private fun signedChatImageUrl(reference: String, conversationId: String): String? {
+        val expectedPrefix = "message-media:conversations/$conversationId/users/"
+        if (!reference.startsWith(expectedPrefix)) return null
+        val objectPath = reference.removePrefix("message-media:")
+        val encoded = objectPath.split('/').joinToString("/") { encode(it) }
+        val response = postObject(
+            "/storage/v1/object/sign/message-media/$encoded",
+            JSONObject().put("expiresIn", 3600)
+        )
+        val url = (response as? JSONObject)?.optString("signedURL").orEmpty()
+            .ifBlank { (response as? JSONObject)?.optString("signedUrl").orEmpty() }
+        return when {
+            url.startsWith("/storage/v1/") -> baseUrl + url
+            url.startsWith("/object/") -> baseUrl + "/storage/v1" + url
+            url.startsWith("$baseUrl/storage/v1/") -> url
+            else -> null
+        }
+    }
+
+    /** Desktop uses the same user-owned private bucket and messages RLS as Android. */
+    suspend fun sendChatImage(
+        conversationId: String, file: File, caption: String,
+        quality: BlinkChatImageQuality,
+        onProgress: (Int) -> Unit = {}
+    ): DesktopMessage = withContext(Dispatchers.IO) {
+        require(UUID.fromString(conversationId).toString() == conversationId) { "Invalid conversation." }
+        val userId = requireSession().userId
+        val mime = when (file.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            else -> throw IllegalArgumentException("Choose a JPEG, PNG, GIF or WebP photo.")
+        }
+        BlinkChatAttachmentKind.IMAGE.verify(mime, file.length())
+        var prepared = file
+        var uploadMime = mime
+        var extension = file.extension.lowercase().let { if (it == "jpeg") "jpg" else it }
+        try {
+            if (quality == BlinkChatImageQuality.STANDARD && mime != "image/gif" &&
+                mime != "image/webp") {
+                val original = ImageIO.read(file)
+                    ?: throw IllegalArgumentException("This picture cannot be decoded.")
+                val factor = minOf(1.0, 1600.0 / maxOf(original.width, original.height))
+                val w = (original.width * factor).toInt().coerceAtLeast(1)
+                val h = (original.height * factor).toInt().coerceAtLeast(1)
+                val scaled = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+                val painter = scaled.createGraphics()
+                try {
+                    painter.color = java.awt.Color.WHITE
+                    painter.fillRect(0, 0, w, h)
+                    painter.drawImage(original, 0, 0, w, h, null)
+                } finally { painter.dispose() }
+                prepared = File.createTempFile("blink-chat-standard-", ".jpg")
+                check(ImageIO.write(scaled, "jpg", prepared)) { "Could not prepare picture." }
+                uploadMime = "image/jpeg"
+                extension = "jpg"
+                BlinkChatAttachmentKind.IMAGE.verify(uploadMime, prepared.length())
+            }
+            val messageId = UUID.randomUUID().toString()
+            val objectPath = "conversations/$conversationId/users/$userId/image/$messageId.$extension"
+            val encoded = objectPath.split('/').joinToString("/") { encode(it) }
+            val inputFile = prepared
+            val body = object : RequestBody() {
+                override fun contentType() = uploadMime.toMediaType()
+                override fun contentLength() = inputFile.length()
+                override fun writeTo(sink: BufferedSink) {
+                    FileInputStream(inputFile).use { input ->
+                        var sent = 0L
+                        val block = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(block)
+                            if (n < 0) break
+                            sink.write(block, 0, n)
+                            sent += n
+                            onProgress(BlinkChatUploadProgress.percent(sent, contentLength()))
+                        }
+                    }
+                }
+            }
+            execute(authenticatedRequest("/storage/v1/object/message-media/$encoded")
+                .header("x-upsert", "false").post(body).build())
+            val row = postArray(
+                "/rest/v1/messages",
+                JSONObject().put("id", messageId)
+                    .put("conversation_id", conversationId)
+                    .put("sender_id", userId)
+                    .put("content", caption.trim().take(1024).ifBlank { "Image" })
+                    .put("message_type", "image")
+                    .put("media_url", "message-media:$objectPath")
+                    .put("is_read", false),
+                prefer = "return=representation"
+            ).optJSONObject(0) ?: throw IllegalStateException("Picture not confirmed by server.")
+            parseMessage(row).copy(mediaUrl = signedChatImageUrl("message-media:$objectPath", conversationId))
+        } finally {
+            if (prepared != file) prepared.delete()
+        }
     }
 
     suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
