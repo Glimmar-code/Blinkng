@@ -262,7 +262,9 @@ class DesktopSupabaseClient(
     }
 
     fun signOut() {
+        val owner = session?.userId
         clearSession()
+        owner?.let { DesktopChatImageOutbox.discardOwner(it) }
     }
 
     suspend fun fetchActivityPulsePolicy(): BlinkActivityPulsePolicy = withContext(Dispatchers.IO) {
@@ -1575,10 +1577,44 @@ class DesktopSupabaseClient(
         )
         val rows = result as? JSONArray
             ?: throw IllegalStateException("Invalid message page returned by BLINK server.")
-        val messages = (rows.length() - 1 downTo 0).mapNotNull { i ->
+        val parsedMessages = (rows.length() - 1 downTo 0).mapNotNull { i ->
             rows.optJSONObject(i)?.takeUnless { it.optBoolean("deleted_for_everyone", false) }?.let(::parseMessage)
         }
-        if (messages.isEmpty()) return@withContext messages
+        if (parsedMessages.isEmpty()) return@withContext parsedMessages
+        // The current pagination RPC predates image album/view-once columns.
+        // Fetch privacy flags separately through the viewer's own messages RLS.
+        val photoFields = if (supportsPhotoSchema()) {
+            ",image_album_id,image_album_position,image_album_size,image_preview_url"
+        } else ""
+        val viewOnceField = if (supportsViewOnceSchema()) ",image_view_once" else ""
+        val privateMetadata = if (photoFields.isNotEmpty() || viewOnceField.isNotEmpty()) {
+            runCatching {
+                val ids = parsedMessages.map { UUID.fromString(it.id).toString() }
+                val details = getArray(
+                    "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}" +
+                        "&id=in.(${ids.joinToString(",")})&select=id${viewOnceField}${photoFields}&limit=100"
+                )
+                (0 until details.length()).mapNotNull { details.optJSONObject(it) }
+                    .associateBy { it.optString("id") }
+            }.getOrDefault(emptyMap())
+        } else emptyMap()
+        val messages = parsedMessages.map { item ->
+            val flags = privateMetadata[item.id]
+            val once = flags?.optBoolean("image_view_once", false) == true
+            item.copy(
+                imageViewOnce = once,
+                imageAlbumId = flags?.optNullableString("image_album_id"),
+                imageAlbumPosition = flags?.optInt("image_album_position", 0) ?: 0,
+                imageAlbumSize = flags?.optInt("image_album_size", 1) ?: 1,
+                imagePreviewUrl = flags?.optNullableString("image_preview_url")?.let {
+                    signedChatImageUrl(it, conversationId)
+                },
+                mediaUrl = if (once) null
+                    else item.mediaUrl?.takeIf { item.messageType == "image" }
+                        ?.let { signedChatImageUrl(it, conversationId) }
+                        ?: item.mediaUrl
+            )
+        }
         // Same server-authoritative action-state RPC used by Android. Only participants
         // can access the message state; never fabricate reactions or show hidden rows.
         val actionRows = runCatching {
@@ -2411,6 +2447,11 @@ class DesktopSupabaseClient(
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
         replyToMessageId = row.optNullableString("reply_to_message_id"),
+        imageAlbumId = row.optNullableString("image_album_id"),
+        imageAlbumPosition = row.optInt("image_album_position", 0),
+        imageAlbumSize = row.optInt("image_album_size", 1),
+        imagePreviewUrl = row.optNullableString("image_preview_url"),
+        imageViewOnce = row.optBoolean("image_view_once", false),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
