@@ -462,3 +462,70 @@ as $$
 $$;
 revoke all on function public.blink_referral_leaderboard(integer,integer) from public, anon;
 grant execute on function public.blink_referral_leaderboard(integer,integer) to authenticated;
+
+-- Relevant user Search: exact match always outranks boosted people. A referral
+-- advantage only breaks ties within a relevance class, capped at 30 points.
+create or replace function public.blink_referral_profile_search(
+  p_query text, p_limit integer default 20
+)
+returns table(id uuid, username text, full_name text, avatar_url text,
+              university text, is_verified boolean, verification_badge text,
+              visibility_points integer)
+language sql stable security definer set search_path = ''
+as $$
+  with term as (
+    select lower(regexp_replace(trim(coalesce(p_query,'')), '^@', '')) as q
+  ),
+  viewer as (
+    select p.id, p.university from public.profiles p where p.id = (select auth.uid())
+  ),
+  boost as (
+    select referrer_user_id,
+           least(30, sum(case
+             when confirmed_at > now() then 0
+             when confirmed_at > now()-interval '10 days' then 3
+             when confirmed_at > now()-interval '20 days' then 2
+             when confirmed_at > now()-interval '30 days' then 1
+             else 0 end))::integer as points
+    from public.blink_referrals
+    where status = 'confirmed' and confirmed_at > now()-interval '30 days'
+    group by referrer_user_id
+  ),
+  relevant as (
+    select p.id,p.username,p.full_name,p.avatar_url,p.university,
+           coalesce(p.is_verified,false) as is_verified,
+           coalesce(p.verification_badge,'') as verification_badge,
+           coalesce(b.points,0) as visibility_points,
+           case
+             when lower(p.username) = t.q then 0
+             when lower(p.username) like t.q || '%' then 1
+             when lower(p.full_name) like t.q || '%' then 2
+             when lower(p.username) like '%' || t.q || '%' then 3
+             else 4 end as relevance,
+           case when p.university=v.university then 0 else 1 end as campus_tie
+    from public.profiles p
+    cross join term t
+    cross join viewer v
+    left join boost b on b.referrer_user_id=p.id
+    where length(t.q) between 1 and 40 and p.onboarding_completed is true
+      and p.id <> v.id
+      and (lower(p.username) like '%'||t.q||'%' or
+           lower(coalesce(p.full_name,'')) like '%'||t.q||'%')
+      and not exists (
+        select 1 from public.user_settings st
+        where st.user_id=p.id and st.private_account is true
+      )
+      and not exists (
+        select 1 from public.blocks bl
+        where (bl.blocker_id=v.id and bl.blocked_id=p.id)
+           or (bl.blocked_id=v.id and bl.blocker_id=p.id)
+      )
+  )
+  select id,username,full_name,avatar_url,university,is_verified,
+         verification_badge,visibility_points
+    from relevant
+   order by relevance,campus_tie,visibility_points desc,lower(username),id
+   limit greatest(1,least(coalesce(p_limit,20),20));
+$$;
+revoke all on function public.blink_referral_profile_search(text,integer) from public, anon;
+grant execute on function public.blink_referral_profile_search(text,integer) to authenticated;
