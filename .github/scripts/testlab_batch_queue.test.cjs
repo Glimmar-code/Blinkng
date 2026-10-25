@@ -249,3 +249,95 @@ test('status report on excluded PR #517 produces one useful sticky notice', asyn
   assert.ok(summaryRows.some(row=>row[0]==='#517'));
   assert.ok(logs.some(s=>s.includes('#517:')));
 });
+
+test('same SHA naturally triggered CI is not dispatched a second time', async () => {
+  const sha='a'.repeat(40), pr={
+    number:557,head:{ref:'Testlab-batch-123',sha},body:'Batch input'
+  };
+  const workflows=queue.relevantWorkflows(['README.md']);
+  let dispatched=[],updated=[];
+  const gh={rest:{
+    actions:{
+      listWorkflowRuns:async args=>({data:{
+        total_count:1,workflow_runs:[{
+          id:99,head_sha:sha,head_branch:pr.head.ref,
+          event:'pull_request',status:'in_progress',conclusion:null
+        }]
+      }}),
+      createWorkflowDispatch:async args=>{dispatched.push(args)}
+    },
+    pulls:{update:async args=>{updated.push(args)}}
+  }};
+  assert.equal(await queue.dispatch(gh,pr,['README.md'],{info:()=>{}}),true);
+  assert.deepEqual(dispatched,[]);
+  assert.equal(updated.length,1);
+  assert.ok(updated[0].body.includes('<!-- BLINK_BATCH_DISPATCH_SHA: '+sha+' -->'));
+  assert.equal(workflows.length>1,true);
+  // Marker for this SHA prevents even the API listing on the next scan.
+  const next={...pr,body:updated[0].body};
+  assert.equal(await queue.dispatch(gh,next,['README.md'],{info:()=>{}}),false);
+});
+
+test('previous failed current-SHA workflow is not blindly rerun', async()=>{
+  const sha='b'.repeat(40);
+  const gh={rest:{actions:{
+    listWorkflowRuns:async()=>({data:{total_count:1,workflow_runs:[{
+      id:987,head_sha:sha,head_branch:'Testlab-batch-82',
+      event:'workflow_dispatch',status:'completed',conclusion:'failure'
+    }]}})
+  }}};
+  const run=await queue.existingWorkflowRun(
+    gh,'android-build-check.yml','Testlab-batch-82',sha
+  );
+  assert.equal(run.conclusion,'failure');
+});
+
+test('no source run for the exact SHA dispatches only missing gates', async()=>{
+  const sha='c'.repeat(40);
+  const workflows=queue.relevantWorkflows(['README.md']);
+  const used=new Set(workflows.slice(0,2));
+  const called=[],messages=[];
+  const gh={rest:{
+    actions:{
+      listWorkflowRuns:async({workflow_id})=>({data:{
+        total_count:used.has(workflow_id)?1:0,
+        workflow_runs:used.has(workflow_id)?[{
+          id:11,head_sha:sha,head_branch:'Testlab-batch-123',
+          event:'push',status:'completed',conclusion:'success'
+        }]:[]
+      }}),
+      createWorkflowDispatch:async args=>called.push(args.workflow_id)
+    },
+    pulls:{update:async()=>{}}
+  }};
+  await queue.dispatch(gh,{
+    number:883,head:{ref:'Testlab-batch-123',sha},body:''
+  },['README.md'],{info:s=>messages.push(s)});
+  assert.deepEqual(called,workflows.filter(x=>!used.has(x)));
+  assert.ok(messages.some(s=>s.includes('Reusing existing')));
+});
+
+test('a run from another SHA or branch never counts as a current run',async()=>{
+  const sha='d'.repeat(40);
+  const gh={rest:{actions:{
+    listWorkflowRuns:async()=>({data:{total_count:2,workflow_runs:[
+      {id:1,head_sha:'f'.repeat(40),head_branch:'Testlab-batch-24',
+       event:'push',status:'completed',conclusion:'success'},
+      {id:2,head_sha:sha,head_branch:'Testlab-batch-25',
+       event:'push',status:'completed',conclusion:'success'}
+    ]}})
+  }}};
+  assert.equal(await queue.existingWorkflowRun(
+    gh,'android-build-check.yml','Testlab-batch-24',sha),undefined);
+});
+
+test('incomplete workflow history fails closed instead of duplicating builds',async()=>{
+  const gh={rest:{actions:{
+    listWorkflowRuns:async()=>({data:{total_count:150,workflow_runs:[]}})
+  }}};
+  await assert.rejects(
+    queue.existingWorkflowRun(
+      gh,'android-build-check.yml','Testlab-batch-24','d'.repeat(40)),
+    /complete existing runs/
+  );
+});
