@@ -31,6 +31,10 @@ on:
       - 'scripts/test_web_production_phase3.mjs'
       - 'scripts/test_web_production_phase3_authseo.mjs'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
