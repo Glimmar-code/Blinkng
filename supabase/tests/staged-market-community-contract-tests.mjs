@@ -96,8 +96,54 @@ export async function stagedMarketCommunityContractTests() {
       insert into public.blink_communities(owner_id,name,university,category)
       values ('${owner}','Fake Community','FUTA','Campus')`),
       'row-level security');
+    await rejects(() => db.exec(`
+      select public.blink_community_join('33333333-3333-4333-8333-333333333333')`),
+      'COMMUNITY_INVITE_REQUIRED');
     await db.exec('reset role');
-    console.log('PASS staged private-community RLS and non-owner creation denial');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_community_moderate(
+        '33333333-3333-4333-8333-333333333333',
+        '${owner}','ban')`), 'CANNOT_MODERATE_OWNER_OR_SELF');
+    const invitation = await db.query(`
+      select public.blink_community_invite(
+        '33333333-3333-4333-8333-333333333333','${other}') as status`);
+    assert.equal(invitation.rows[0].status, 'invited');
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const joined = await db.query(`
+      select public.blink_community_join('33333333-3333-4333-8333-333333333333') as status`);
+    assert.equal(joined.rows[0].status, 'active');
+    const memberView = await db.query(`
+      select id from public.blink_communities
+      where id='33333333-3333-4333-8333-333333333333'`);
+    assert.equal(memberView.rows.length, 1, 'Invited member can view private community');
+    await rejects(() => db.exec(`
+      select public.blink_community_moderate(
+        '33333333-3333-4333-8333-333333333333','${owner}','ban')`),
+      'COMMUNITY_ADMIN_REQUIRED');
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const banned = await db.query(`
+      select public.blink_community_moderate(
+        '33333333-3333-4333-8333-333333333333',
+        '${other}','ban') as applied`);
+    assert.equal(banned.rows[0].applied, true);
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_community_join('33333333-3333-4333-8333-333333333333')`),
+      'COMMUNITY_MEMBERSHIP_BANNED');
+    const bannedView = await db.query(`
+      select id from public.blink_communities
+      where id='33333333-3333-4333-8333-333333333333'`);
+    assert.equal(bannedView.rows.length, 0, 'Banned member has no private read access');
+    await db.exec('reset role');
+    console.log('PASS staged invite/join/private read/moderation/ban RLS');
 
     // A group is listed exactly once for an active member even when 2+
     // participants exist. Leaving removes it from that person's list.
