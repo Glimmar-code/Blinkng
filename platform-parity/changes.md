@@ -32,6 +32,13 @@
 
 ## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
 
+## 2026-10-24 — Feed viewport fills space while phone nav is hidden
+
+- **Android:** `MainActivity` passes the Home bottom-rail scroll visibility into `PremiumFeedScreen`. When the overlaid 64dp navigation bar scrolls away, the feed no longer reserves its invisible footprint; preserve Android's system-navigation inset so posts and gesture targets remain accessible. Move the create FAB toward the safe-area bottom while the nav is hidden and restore it smoothly when the bar reappears, respecting reduced motion.
+- **PARITY-EXCEPTION: android-feed-scroll-away-bottom-rail-20261024** — This corrects Android's phone-only scroll-away overlay navigation and gesture insets. **Windows equivalent:** `DesktopShell.kt` already uses desktop navigation with no vertically overlaid 64dp Android bar, so it needs no viewport-space adjustment and retains existing route behavior.
+- **Validation:** Regression contract asserts state is passed to viewport and FAB, Android compile and runtime smoke, screenshot comparison while scrolling on small phones, with both system gesture and button navigation. No backend, chat or release changes.
+
+
 - Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
 - Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
 - Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.

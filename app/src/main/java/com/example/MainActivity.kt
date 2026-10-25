@@ -1670,6 +1670,7 @@ fun MainAppContent(
                         onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
+                        isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         },
