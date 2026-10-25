@@ -3,9 +3,6 @@
 name: Retire legacy Testlab branch
 
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/retire-testlab-branch.yml']
   workflow_dispatch:
 
 permissions:

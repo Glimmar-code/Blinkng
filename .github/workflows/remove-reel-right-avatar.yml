@@ -1,10 +1,7 @@
 name: Remove reel right avatar
 
 on:
-  push:
-    paths:
-      - '.github/workflows/remove-reel-right-avatar.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

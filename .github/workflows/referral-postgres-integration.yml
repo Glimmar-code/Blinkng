@@ -1,17 +1,6 @@
 name: BLINK Referral PostgreSQL Integration
 
 on:
-  pull_request:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'supabase/tests/referral_postgres_*'
-      - '.github/workflows/referral-postgres-integration.yml'
-  push:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'supabase/tests/referral_postgres_*'
   workflow_dispatch:
 
 concurrency:

@@ -1,8 +1,6 @@
 name: BLINK Referral Push Outbox (opt-in)
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:

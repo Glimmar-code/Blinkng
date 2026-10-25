@@ -1,10 +1,6 @@
 name: Notify Bing IndexNow of changed public BLINK pages
 
 on:
-  workflow_run:
-    workflows: ["Deploy Blink web"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       bootstrap_all_public_urls:
