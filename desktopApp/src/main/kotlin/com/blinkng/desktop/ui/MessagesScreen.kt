@@ -93,6 +93,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var selectedPictures by remember { mutableStateOf<List<File>>(emptyList()) }
+    var selectedPictureIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var pictureCaption by remember { mutableStateOf("") }
     var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
     var pictureUploading by remember { mutableStateOf(false) }
@@ -480,6 +481,7 @@ fun MessagesScreen(state: DesktopAppState) {
                     if (files.size > 10) error = "Choose no more than 10 pictures."
                     else {
                         selectedPictures = files
+                        selectedPictureIds = files.map { java.util.UUID.randomUUID().toString() }
                         pictureCaption = ""
                     }
                 }
@@ -529,6 +531,7 @@ fun MessagesScreen(state: DesktopAppState) {
                         enabled = !pictureUploading,
                         onClick = {
                             val photos = selectedPictures
+                            val imageIds = selectedPictureIds
                             val quality = pictureQuality
                             val caption = pictureCaption
                             val conversationId = active.id
@@ -538,26 +541,30 @@ fun MessagesScreen(state: DesktopAppState) {
                                 try {
                                     photos.forEachIndexed { index, file ->
                                         val result = state.client.sendChatImage(
-                                            conversationId, file, if (index == 0) caption else "", quality
-                                        ) { percent ->
-                                            pictureProgress = ((index * 100 + percent) / photos.size)
-                                        }
+                                            conversationId, file, if (index == 0) caption else "", quality,
+                                            { percent ->
+                                                pictureProgress = ((index * 100 + percent) / photos.size)
+                                            }, clientMessageId = imageIds[index]
+                                        )
                                         if (selected?.id == conversationId) messages = messages + result
                                         count++
                                     }
                                     selectedPictures = emptyList()
+                                    selectedPictureIds = emptyList()
                                     pictureProgress = 0
                                 } catch (ex: Exception) {
                                     error = "Sent $count of ${photos.size} pictures. " +
                                         (ex.message ?: "Upload failed; retry remaining photos.")
                                     selectedPictures = photos.drop(count)
+                                    selectedPictureIds = imageIds.drop(count)
+                                    if (count > 0) pictureCaption = ""
                                 } finally { pictureUploading = false }
                             }
                         }
                     ) { Text("Send") }
                 },
                 dismissButton = {
-                    TextButton(enabled = !pictureUploading, onClick = { selectedPictures = emptyList() }) {
+                    TextButton(enabled = !pictureUploading, onClick = { selectedPictures = emptyList(); selectedPictureIds = emptyList() }) {
                         Text("Cancel")
                     }
                 }
