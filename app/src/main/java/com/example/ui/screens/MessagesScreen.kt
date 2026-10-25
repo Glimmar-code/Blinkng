@@ -70,6 +70,7 @@ fun MessagesScreen(
             }
         },
         onRetryMessage = onRetryMessage,
+        onCancelAttachment = onCancelAttachment,
         hasMoreMessages = hasMoreMessages,
         isLoadingOlder = isLoadingOlder,
         onLoadOlder = onLoadOlder,
@@ -144,6 +145,7 @@ fun ChatConversationView(
             }
         },
         onRetryMessage = onRetryMessage?.let { retry -> { _, message -> retry(message) } },
+        onCancelAttachment = onCancelAttachment?.let { cancel -> { _, message -> cancel(message) } },
         hasMoreMessages = { hasMoreMessages },
         isLoadingOlder = { isLoadingOlder },
         onLoadOlder = { onLoadOlder() },
