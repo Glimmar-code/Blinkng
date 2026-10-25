@@ -44,7 +44,9 @@ internal class BoundedMessageAttachment(
 
     companion object {
         fun open(context: Context, uri: Uri, kind: BlinkChatAttachmentKind): BoundedMessageAttachment {
-            val mime = if (kind == BlinkChatAttachmentKind.VOICE && uri.scheme == "file") {
+            val mime = if (uri.scheme == "file" && kind == BlinkChatAttachmentKind.IMAGE) {
+                "image/jpeg"
+            } else if (kind == BlinkChatAttachmentKind.VOICE && uri.scheme == "file") {
                 "audio/mp4"
             } else context.contentResolver.getType(uri)?.lowercase()
                 ?: throw IllegalArgumentException("File type could not be verified.")
