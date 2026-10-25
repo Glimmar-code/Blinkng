@@ -146,13 +146,14 @@ async function dispatch(github, pr, paths, core) {
   return true;
 }
 
-async function processBatch(github, pr, core) {
+async function processBatch(github, pr, core, onStatus = () => {}) {
   // A newer main always invalidates previous results; never reuse CI from
   // a different integration baseline.
   const comparison = (await github.rest.repos.compareCommits({
     ...repoArgs, base: 'main', head: pr.head.sha
   })).data;
   if (comparison.behind_by > 0) {
+    onStatus(pr, 'batch-refresh');
     // Remove stale opt-in *before* touching the code. A GITHUB_TOKEN update
     // will not fire a pull_request_target synchronize event.
     for (const name of ['auto-promote', 'staging-verified', 'device-verified']) {
@@ -174,6 +175,7 @@ async function processBatch(github, pr, core) {
     } catch (error) {
       if (error.status === 409) {
         core.warning('Batch #' + pr.number + ' conflicts with current main; no production merge');
+        onStatus(pr, 'conflict');
         return;
       }
       throw error;
@@ -184,11 +186,15 @@ async function processBatch(github, pr, core) {
   const files = await allFiles(github, pr.number);
   if (pr.changed_files > files.length || !files.length) {
     core.warning('Batch file list is incomplete; refusing promotion');
+    onStatus(pr, 'incomplete-files');
     return;
   }
   // Explicitly run workflow_dispatch checks (a PR made with GITHUB_TOKEN
   // cannot automatically trigger a pull_request build).
-  if (await dispatch(github, pr, files, core)) return;
+  if (await dispatch(github, pr, files, core)) {
+    onStatus(pr, 'batch-checks', 'New combined CI was dispatched');
+    return;
+  }
 
   const required = promo.requiredChecks(files);
   const checks = await github.paginate(github.rest.checks.listForRef, {
@@ -196,21 +202,28 @@ async function processBatch(github, pr, core) {
   });
   const result = promo.checkGate(checks, required, pr.number,
     pr.base.sha, pr.head.sha, {allowDispatchForBatch: true});
-  if (result) { core.info('Batch #' + pr.number + ': ' + result); return; }
+  if (result) {
+    core.info('Batch #' + pr.number + ': ' + result);
+    onStatus(pr, 'batch-checks', result);
+    return;
+  }
 
   if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
     core.warning('Batch #' + pr.number +
       ' needs genuine staging verification of the combined revision');
+    onStatus(pr, 'batch-staging');
     return;
   }
   if (promo.requiresDeviceVerification(files, labels(pr)) &&
       !labels(pr).has('device-verified')) {
     core.warning('Batch #' + pr.number +
       ' needs independent real-device evidence for combined revision');
+    onStatus(pr, 'batch-device');
     return;
   }
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') {
     core.warning('Batch #' + pr.number + ' not mergeable; leave main unchanged');
+    onStatus(pr, 'conflict');
     return;
   }
   // Confirm immutable SHA / base right before releasing the candidate.
@@ -220,6 +233,7 @@ async function processBatch(github, pr, core) {
     ...repoArgs, branch: 'main'})).data.commit.sha;
   if (fresh.head.sha !== pr.head.sha || fresh.base.sha !== current) {
     core.info('Batch changed after testing; waiting for latest revision');
+    onStatus(pr, 'changed-head');
     return;
   }
   const marker = '<!-- BLINK_AGENT_VERIFIED_SHA: ' + fresh.head.sha + ' -->';
@@ -239,6 +253,7 @@ async function processBatch(github, pr, core) {
     core.info('Batch #' + pr.number + ' green at ' + fresh.head.sha +
       '; enrolled in existing fail-closed Testlab -> main auto-promotion');
   }
+  onStatus(pr, 'batch-promoting');
 }
 
 async function selectVerified(github, candidates, core, onStatus = () => {}) {
@@ -407,7 +422,7 @@ async function run({github, context, core}) {
     // One batch at a time prevents overlapping rollouts and protects main.
     await processBatch(github, (await github.rest.pulls.get({
       ...repoArgs, pull_number: existing[0].number
-    })).data, core);
+    })).data, core, onStatus);
     await flush();
     return;
   }
