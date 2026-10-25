@@ -1302,6 +1302,40 @@ private fun PremiumChatDetail(
     var selectedImageQuality by remember(conversation.id) { mutableStateOf(BlinkChatImageQuality.STANDARD) }
     var showMediaGallery by remember(conversation.id) { mutableStateOf(false) }
     var galleryPreviewUri by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var galleryPreviewIndex by remember(conversation.id) { mutableIntStateOf(0) }
+    var galleryPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
+    var galleryOffset by remember(conversation.id) { mutableIntStateOf(0) }
+    var galleryHasMore by remember(conversation.id) { mutableStateOf(true) }
+    var galleryLoading by remember(conversation.id) { mutableStateOf(false) }
+    var galleryFailure by remember(conversation.id) { mutableStateOf<String?>(null) }
+    val galleryScope = rememberCoroutineScope()
+    fun fetchMoreGallery() {
+        if (galleryLoading || !galleryHasMore) return
+        galleryLoading = true
+        galleryScope.launch {
+            val currentOffset = galleryOffset
+            val page = MessageMediaService.fetchConversationPhotoPage(conversation.id, currentOffset, 36)
+            page.fold(
+                onSuccess = { photos ->
+                    galleryPhotos = (galleryPhotos + photos).distinctBy { it.id }
+                    galleryOffset += photos.size
+                    galleryHasMore = photos.size >= 36
+                    galleryFailure = null
+                },
+                onFailure = { failure -> galleryFailure = failure.message ?: "Couldn't load pictures." }
+            )
+            galleryLoading = false
+        }
+    }
+    LaunchedEffect(showMediaGallery, conversation.id) {
+        if (showMediaGallery) {
+            galleryPhotos = emptyList()
+            galleryOffset = 0
+            galleryHasMore = true
+            galleryFailure = null
+            fetchMoreGallery()
+        }
+    }
     var pendingCameraFile by remember(conversation.id) { mutableStateOf<File?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -2017,33 +2051,52 @@ private fun PremiumChatDetail(
 
     if (showMediaGallery) {
         Dialog(onDismissRequest = { showMediaGallery = false }) {
-            val pictures = conversation.messages
-                .filter { !it.deletedForEveryone && !it.attachedImageUrl.isNullOrBlank() }
-                .mapNotNull { it.attachedImageUrl }
             Column(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                     .background(palette.incomingBubble).padding(14.dp)
             ) {
                 Text("Shared photos", fontWeight = FontWeight.Bold, color = palette.textPrimary)
                 Spacer(Modifier.height(10.dp))
-                if (pictures.isEmpty()) {
-                    Text("No photos loaded in this chat.", color = palette.textSecondary)
-                } else LazyColumn(modifier = Modifier.heightIn(max = 410.dp)) {
-                    items(pictures.chunked(3)) { row ->
+                if (galleryPhotos.isEmpty() && !galleryLoading) {
+                    Text(
+                        galleryFailure ?: "No photos shared in this conversation.",
+                        color = palette.textSecondary
+                    )
+                }
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(galleryPhotos.chunked(3)) { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { url ->
+                            row.forEach { picture ->
                                 AsyncImage(
-                                    model = url,
+                                    model = picture.attachedImageUrl,
                                     contentDescription = "Open shared photo",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.width(88.dp).height(88.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable { galleryPreviewUri = url }
+                                        .clickable {
+                                            galleryPreviewIndex = galleryPhotos.indexOfFirst {
+                                                it.id == picture.id
+                                            }.coerceAtLeast(0)
+                                            galleryPreviewUri = picture.attachedImageUrl
+                                        }
                                 )
                             }
                         }
                         Spacer(Modifier.height(6.dp))
                     }
+                    if (galleryHasMore || galleryLoading) {
+                        item {
+                            androidx.compose.material3.TextButton(
+                                enabled = !galleryLoading,
+                                onClick = { fetchMoreGallery() }
+                            ) {
+                                Text(if (galleryLoading) "Loading pictures…" else "Load older photos")
+                            }
+                        }
+                    }
+                }
+                galleryFailure?.let {
+                    Text(it, color = palette.danger, fontSize = 11.sp)
                 }
                 androidx.compose.material3.TextButton(onClick = { showMediaGallery = false }) {
                     Text("Close")
@@ -2051,16 +2104,64 @@ private fun PremiumChatDetail(
             }
         }
     }
-    galleryPreviewUri?.let { url ->
+    galleryPreviewUri?.let { _ ->
+        val selected = galleryPhotos.getOrNull(galleryPreviewIndex)
+        val imageUrl = selected?.attachedImageUrl ?: galleryPreviewUri
         Dialog(
             onDismissRequest = { galleryPreviewUri = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            var swipeDistance by remember(galleryPreviewIndex) { mutableFloatStateOf(0f) }
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black)
+                    .pointerInput(galleryPhotos.size, galleryPreviewIndex) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { _, delta -> swipeDistance += delta },
+                            onDragEnd = {
+                                if (swipeDistance < -90f &&
+                                    galleryPreviewIndex < galleryPhotos.lastIndex) {
+                                    galleryPreviewIndex++
+                                } else if (swipeDistance > 90f && galleryPreviewIndex > 0) {
+                                    galleryPreviewIndex--
+                                }
+                                galleryPreviewUri = galleryPhotos.getOrNull(
+                                    galleryPreviewIndex
+                                )?.attachedImageUrl
+                                swipeDistance = 0f
+                            },
+                            onDragCancel = { swipeDistance = 0f }
+                        )
+                    }
+            ) {
                 AsyncImage(
-                    model = url, contentDescription = "Shared full-screen photo",
+                    model = imageUrl, contentDescription = "Shared full-screen photo",
                     contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
                 )
+                Row(
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                        .navigationBarsPadding().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.TextButton(
+                        enabled = galleryPreviewIndex > 0,
+                        onClick = {
+                            galleryPreviewIndex--
+                            galleryPreviewUri = galleryPhotos[galleryPreviewIndex].attachedImageUrl
+                        }
+                    ) { Text("← Previous", color = Color.White) }
+                    Text(
+                        "${galleryPreviewIndex + 1} / ${galleryPhotos.size}",
+                        color = Color.White
+                    )
+                    androidx.compose.material3.TextButton(
+                        enabled = galleryPreviewIndex < galleryPhotos.lastIndex,
+                        onClick = {
+                            galleryPreviewIndex++
+                            galleryPreviewUri = galleryPhotos[galleryPreviewIndex].attachedImageUrl
+                        }
+                    ) { Text("Next →", color = Color.White) }
+                }
                 IconButton(
                     onClick = { galleryPreviewUri = null },
                     modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
