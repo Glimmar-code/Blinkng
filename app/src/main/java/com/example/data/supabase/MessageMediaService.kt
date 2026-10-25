@@ -14,6 +14,7 @@ import com.example.data.models.MessageStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -129,9 +130,9 @@ object MessageMediaService {
         runCatching {
             val url = freshImageUrl(messageId, conversationId)
                 ?: throw SecurityException("Picture access was not authorized.")
-            val host = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(SupabaseConfig.url)
+            val host = SupabaseConfig.url.toHttpUrlOrNull()
                 ?: throw SecurityException("Invalid storage configuration.")
-            val signed = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(url)
+            val signed = url.toHttpUrlOrNull()
                 ?: throw SecurityException("Invalid picture link.")
             require(signed.scheme == "https" && signed.host == host.host &&
                 signed.port == host.port) { "Private picture host did not match." }
