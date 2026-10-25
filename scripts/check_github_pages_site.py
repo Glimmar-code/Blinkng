@@ -67,6 +67,7 @@ sitemap = ET.fromstring(read("sitemap.xml"))
 locs = [x.text for x in sitemap.iter() if x.tag.endswith("loc")]
 check(locs == [SITE + "/" + path for path in ("", "about/", "features/", "download/", "faq/", "privacy/", "students/", "marketplace/", "safety/")], "sitemap lists only approved public canonical pages")
 check(len(locs) == len(set(locs)), "sitemap has no duplicate URLs")
+check((WEB / "c7a33ad1df24b04816761dc5dae7fbfa.txt").read_text(encoding="utf-8").strip() == "c7a33ad1df24b04816761dc5dae7fbfa", "IndexNow host-ownership key is published as exact UTF-8 text")
 for slug in ("features", "download", "faq", "students", "marketplace", "safety"):
     page = read(f"{slug}/index.html")
     check(f'<link rel="canonical" href="{SITE}/{slug}/">' in page, f"{slug} canonical URL")
