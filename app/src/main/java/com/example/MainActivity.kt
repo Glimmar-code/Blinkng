@@ -1781,6 +1781,9 @@ fun MainAppContent(
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
+                        },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
                         },
