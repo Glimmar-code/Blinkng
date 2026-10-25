@@ -224,7 +224,9 @@ class ChatRepository(
             }
         }
         val visibleMessages = filterClearedMessages(conversationId, baseMessages)
-        val enrichedMessages = enrichMessageActions(visibleMessages)
+        val viewOnceMessages = com.example.data.supabase.MessageMediaService
+            .hydrateViewOnceFlags(visibleMessages, conversationId)
+        val enrichedMessages = enrichMessageActions(viewOnceMessages)
         com.example.data.supabase.MessageMediaService.hydrateMediaPage(enrichedMessages, conversationId)
     }
 
