@@ -350,7 +350,7 @@ do $$
 declare pending integer;
 begin
   select count(*) into pending from private.blink_referral_push_outbox;
-  if pending <> 2 then raise exception 'Expected two confirmed referral pushes queued; got %', pending; end if;
+  if pending <> 1 then raise exception 'Deleted newcomer must cascade outbox; expected one live push, got %', pending; end if;
 end $$;
 -- Link metrics are per browser+referrer+UTC day and do not mint points or Coins.
 select set_config('request.jwt.claim.sub','',false);
@@ -412,7 +412,7 @@ begin
       raise exception 'Trusted service role could not acknowledge a queued push';
     end if;
   end loop;
-  if total <> 2 then raise exception 'Worker should claim two pushes, got %',total; end if;
+  if total <> 1 then raise exception 'Worker should claim one surviving push, got %',total; end if;
   if exists(select 1 from public.blink_claim_referral_pushes(10)) then
     raise exception 'Delivered push was dispatched more than once';
   end if;
