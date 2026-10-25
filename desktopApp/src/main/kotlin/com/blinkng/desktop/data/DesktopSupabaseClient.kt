@@ -236,10 +236,17 @@ class DesktopSupabaseClient(
         )
     }
 
-    suspend fun followBack(profileId: String) = withContext(Dispatchers.IO) {
-        require(com.blinkng.shared.notification.BlinkNotificationQuickActionPolicy.isId(profileId))
-        require(profileId != requireSession().userId) { "You cannot follow yourself." }
-        postObject("/rest/v1/rpc/follow_user", JSONObject().put("p_following_id", profileId))
+    /**
+     * Follow a suggested student via the established desktop follow workflow.
+     * Use local UUID validation rather than an optional notification policy class.
+     */
+    suspend fun followBack(profileId: String) {
+        val id = profileId.trim()
+        require(id.matches(Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"))) {
+            "Invalid profile identifier."
+        }
+        require(id != requireSession().userId) { "You cannot follow yourself." }
+        setFollowing(id, true)
     }
 
 
