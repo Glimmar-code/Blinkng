@@ -241,6 +241,7 @@ fun PremiumMessagesScreen(
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
     onLoadOlder: (String) -> Unit = {},
@@ -379,6 +380,7 @@ fun PremiumMessagesScreen(
                                 onPresenceChange = onPresenceChange,
                                 allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
                                 onRetryMessage = onRetryMessage,
+                                onCancelAttachment = onCancelAttachment,
                                 hasMoreMessages = hasMoreMessages,
                                 isLoadingOlder = isLoadingOlder,
                                 onLoadOlder = onLoadOlder,
@@ -482,6 +484,7 @@ private fun PremiumMessagesMasterDetail(
     onPresenceChange: (String, String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
     onLoadOlder: (String) -> Unit,
@@ -555,6 +558,9 @@ private fun PremiumMessagesMasterDetail(
                 allowLinkPreviews = allowLinkPreviews,
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
+                },
+                onCancelAttachment = { message ->
+                    onCancelAttachment?.invoke(displayedConversation.partnerUsername, message)
                 },
                 onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
                 onAudioCall = {
@@ -1387,6 +1393,7 @@ private fun PremiumChatDetail(
     onPresenceChange: (String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
+    onCancelAttachment: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
@@ -1836,6 +1843,7 @@ private fun PremiumChatDetail(
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
+                            onCancelAttachment = { onCancelAttachment(message) },
                             allowLinkPreviews = allowLinkPreviews
                             )
                         }
@@ -2619,6 +2627,7 @@ private fun MessageBubble(
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
     onRetry: () -> Unit,
+    onCancelAttachment: () -> Unit,
     allowLinkPreviews: Boolean
 ) {
     val isMine = message.isFromMe
@@ -2723,7 +2732,8 @@ private fun MessageBubble(
                         message = message,
                         isMine = isMine,
                         palette = palette,
-                        allowLinkPreviews = allowLinkPreviews
+                        allowLinkPreviews = allowLinkPreviews,
+                        onCancelAttachment = onCancelAttachment
                     )
                 }
 
@@ -2784,7 +2794,8 @@ private fun MessageContent(
     message: ChatMessage,
     isMine: Boolean,
     palette: MessagePalette,
-    allowLinkPreviews: Boolean
+    allowLinkPreviews: Boolean,
+    onCancelAttachment: () -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -2797,6 +2808,21 @@ private fun MessageContent(
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
             )
         } else {
+            if (isMine && !message.imageViewOnce &&
+                message.id.startsWith("temp_attachment_") &&
+                message.status == MessageStatus.SENDING &&
+                message.uploadProgress != null) {
+                Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)) {
+                    Text(
+                        "Uploading photo · ${message.uploadProgress.coerceIn(0, 100)}%",
+                        color = contentColor,
+                        fontSize = 11.sp
+                    )
+                    androidx.compose.material3.TextButton(onClick = onCancelAttachment) {
+                        Text("Cancel upload", color = palette.danger)
+                    }
+                }
+            }
             if (message.imageViewOnce) {
                 var opening by remember(message.id) { mutableStateOf(false) }
                 var alreadyOpened by remember(message.id) { mutableStateOf(false) }
