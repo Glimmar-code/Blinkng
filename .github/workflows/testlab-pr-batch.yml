@@ -1,0 +1,40 @@
+# Trusted main-only queue. Never check out PR heads with write permission.
+name: BLINK multi-PR Testlab batch integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  pull_request_target:
+    branches: [main]
+    types: [labeled]
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: blink-safe-testlab-batch
+  cancel-in-progress: false
+
+jobs:
+  integrate-or-verify:
+    if: github.repository == 'Glimmar-code/Blinkng'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted controller on main, never a PR checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Combine owner-opted PRs into Testlab or verify existing batch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const queue = require('./.github/scripts/testlab_batch_queue.cjs');
+            await queue({github, context, core});
