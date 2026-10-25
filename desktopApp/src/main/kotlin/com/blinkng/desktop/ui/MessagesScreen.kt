@@ -94,7 +94,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var selectedPictures by remember { mutableStateOf<List<File>>(emptyList()) }
     var selectedPictureIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var pictureCaption by remember { mutableStateOf("") }
+    var pictureCaptions by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var pictureCaptionIndex by remember { mutableStateOf(0) }
     var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
     var pictureUploading by remember { mutableStateOf(false) }
     var pictureProgress by remember { mutableStateOf(0) }
@@ -482,7 +483,8 @@ fun MessagesScreen(state: DesktopAppState) {
                     else {
                         selectedPictures = files
                         selectedPictureIds = files.map { java.util.UUID.randomUUID().toString() }
-                        pictureCaption = ""
+                        pictureCaptions = emptyMap()
+                        pictureCaptionIndex = 0
                     }
                 }
             }) { Text("📷 Picture") }
@@ -510,10 +512,19 @@ fun MessagesScreen(state: DesktopAppState) {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(selectedPictures.joinToString(", ") { it.name }.take(250))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(selectedPictures.size) { index ->
+                                TextButton(onClick = { pictureCaptionIndex = index }) {
+                                    Text(if (pictureCaptionIndex == index) "✓ ${index + 1}" else "${index + 1}")
+                                }
+                            }
+                        }
                         OutlinedTextField(
-                            value = pictureCaption,
-                            onValueChange = { pictureCaption = it.take(1024) },
-                            label = { Text("Caption on first picture") }
+                            value = pictureCaptions[pictureCaptionIndex].orEmpty(),
+                            onValueChange = { value ->
+                                pictureCaptions = pictureCaptions + (pictureCaptionIndex to value.take(1024))
+                            },
+                            label = { Text("Caption for picture ${pictureCaptionIndex + 1}") }
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             TextButton(onClick = {
@@ -533,7 +544,7 @@ fun MessagesScreen(state: DesktopAppState) {
                             val photos = selectedPictures
                             val imageIds = selectedPictureIds
                             val quality = pictureQuality
-                            val caption = pictureCaption
+                            val captions = pictureCaptions
                             val conversationId = active.id
                             pictureUploading = true
                             scope.launch {
@@ -541,7 +552,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 try {
                                     photos.forEachIndexed { index, file ->
                                         val result = state.client.sendChatImage(
-                                            conversationId, file, if (index == 0) caption else "", quality,
+                                            conversationId, file, captions[index].orEmpty(), quality,
                                             { percent ->
                                                 pictureProgress = ((index * 100 + percent) / photos.size)
                                             }, clientMessageId = imageIds[index]
@@ -557,7 +568,12 @@ fun MessagesScreen(state: DesktopAppState) {
                                         (ex.message ?: "Upload failed; retry remaining photos.")
                                     selectedPictures = photos.drop(count)
                                     selectedPictureIds = imageIds.drop(count)
-                                    if (count > 0) pictureCaption = ""
+                                    if (count > 0) {
+                                        pictureCaptions = pictureCaptions
+                                            .filterKeys { it >= count }
+                                            .mapKeys { it.key - count }
+                                        pictureCaptionIndex = 0
+                                    }
                                 } finally { pictureUploading = false }
                             }
                         }
