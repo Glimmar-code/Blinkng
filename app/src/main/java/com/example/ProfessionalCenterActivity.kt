@@ -96,6 +96,7 @@ import com.example.data.supabase.SupabaseService
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkUserPickerSheet
 import com.example.ui.components.BlinkCommunitiesPanel
+import com.example.ui.components.BlinkGroupManagementPanel
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import com.example.ui.theme.BlinkTheme
@@ -656,6 +657,9 @@ private fun GroupsSection(
                     Text("Create group")
                 }
             }
+        }
+        item {
+            BlinkGroupManagementPanel(searchProfiles = searchProfiles)
         }
     }
     if (showMemberPicker) {
