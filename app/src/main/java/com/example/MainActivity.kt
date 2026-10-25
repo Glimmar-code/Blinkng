@@ -2945,7 +2945,10 @@ fun MainAppContent(
                     viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
-                isSubmitting = uiState.isCreatingPost
+                isSubmitting = uiState.isCreatingPost,
+                searchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                }
             )
         }
 
