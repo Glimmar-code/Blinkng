@@ -15,6 +15,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+data class BlinkGroupSummary(val id: String, val title: String, val ownerId: String)
+data class BlinkGroupMember(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val avatarUrl: String?,
+    val isAdmin: Boolean,
+)
+
 class ProfessionalRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
@@ -190,6 +199,63 @@ class ProfessionalRepository(
                     .put("p_member_ids", JSONArray(memberIds.filter { it.isNotBlank() }))
             ).trim().removeSurrounding("\"")
         }.filterCatching { it.isNotBlank() }
+
+    /** Member list is returned only by the server's membership-checked RPC. */
+    suspend fun fetchGroupMembers(conversationId: String): List<BlinkGroupMember> {
+        val raw = rpc(
+            "blink_group_members",
+            JSONObject().put("p_conversation_id", conversationId)
+        )
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let { person ->
+                BlinkGroupMember(
+                    id = person.optString("user_id"),
+                    username = person.optString("username"),
+                    displayName = person.optString("full_name")
+                        .ifBlank { person.optString("username") },
+                    avatarUrl = person.optString("avatar_url")
+                        .takeIf { it.isNotBlank() && it != "null" },
+                    isAdmin = person.optBoolean("is_admin")
+                )
+            }
+        }
+    }
+
+    suspend fun fetchMyGroups(): List<BlinkGroupSummary> = withContext(Dispatchers.IO) {
+        val owner = supabaseService.getCurrentUserId() ?: return@withContext emptyList()
+        val rows = getArray(
+            "/rest/v1/conversations?select=id,title,created_by" +
+                "&is_group=eq.true&order=updated_at.desc&limit=100"
+        )
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let { group ->
+                BlinkGroupSummary(
+                    group.optString("id"),
+                    group.optString("title").ifBlank { "Group chat" },
+                    group.optString("created_by")
+                )
+            }
+        }
+    }
+
+    suspend fun inviteGroupMember(conversationId: String, userId: String): Boolean =
+        rpc("blink_group_invite",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId)).trim().equals("true", ignoreCase = true)
+
+    suspend fun leaveGroup(conversationId: String): Boolean =
+        rpc("blink_group_leave",
+            JSONObject().put("p_conversation_id", conversationId))
+            .trim().equals("true", ignoreCase = true)
+
+    suspend fun moderateGroupMember(conversationId: String, userId: String, action: String): Boolean {
+        require(action in setOf("remove", "promote", "demote"))
+        return rpc("blink_group_manage_member",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId).put("p_action", action))
+            .trim().equals("true", ignoreCase = true)
+    }
 
     suspend fun sendGroupMessage(conversationId: String, content: String): Boolean =
         rpc(
