@@ -28,6 +28,11 @@ data class BlinkReferralCoinStatus(
     val nextRewardCoins: Int = 0,
 )
 
+data class BlinkReferralLinkStats(
+    val estimatedUniqueOpens30Days: Long = 0,
+    val confirmedSignups30Days: Long = 0,
+)
+
 data class BlinkReferralSourceStats(
     val searchProfileOpens: Long = 0,
     val recommendationProfileOpens: Long = 0,
