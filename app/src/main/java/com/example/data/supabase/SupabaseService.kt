@@ -2389,6 +2389,9 @@ fun getCurrentUserId(): String? {
         clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
+            require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+                "Item sales belong in BLINK Market."
+            }
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             val cleanClientRequestId = clientRequestId
                 ?.trim()
