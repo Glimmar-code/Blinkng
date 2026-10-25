@@ -489,3 +489,50 @@ begin
 end $$;
 reset role;
 select 'Group invitation consent, cross-account isolation and private-account restrictions passed' as result;
+
+
+-- Viewable-card impressions are NOT clicks, follows, Coin rewards or referrals.
+-- They require a signed-in viewer and deduplicate per viewer/profile/source/day.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+begin
+  if not public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'First Search impression should count'; end if;
+  if public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'Repeated same-day Search impression counted'; end if;
+  if not public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','recommendations')
+  then raise exception 'Recommendations must be attributed separately'; end if;
+  if public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000006','search')
+  then raise exception 'Self impressions must not count'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare from_search bigint; from_recommendations bigint;
+begin
+  select search_impressions_7d,recommendation_impressions_7d
+  into from_search,from_recommendations
+  from public.blink_referral_impression_stats();
+  if from_search<>1 or from_recommendations<>1
+  then raise exception 'Wrong source impression attribution: %, %',from_search,from_recommendations; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','',false);
+set role anon;
+do $$
+begin
+  begin
+    perform public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search');
+    raise exception 'Anonymous account forged a referral impression';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select 'Authenticated, deduplicated and privacy-limited referral impressions passed' as result;
