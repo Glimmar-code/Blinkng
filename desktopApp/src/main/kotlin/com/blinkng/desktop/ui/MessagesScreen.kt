@@ -17,6 +17,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import androidx.compose.material3.AlertDialog
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 import java.io.File
@@ -96,6 +97,9 @@ fun MessagesScreen(state: DesktopAppState) {
     var forwardPhoto by remember { mutableStateOf<DesktopMessage?>(null) }
     var selectedPictures by remember { mutableStateOf<List<File>>(emptyList()) }
     var selectedPictureIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedAlbumId by remember { mutableStateOf<String?>(null) }
+    var selectedAlbumSize by remember { mutableStateOf(1) }
+    var selectedAlbumPositions by remember { mutableStateOf<List<Int>>(emptyList()) }
     var pictureCaptions by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var pictureCaptionIndex by remember { mutableStateOf(0) }
     var pictureQuality by remember { mutableStateOf(BlinkChatImageQuality.STANDARD) }
@@ -561,6 +565,11 @@ fun MessagesScreen(state: DesktopAppState) {
                     else {
                         selectedPictures = files
                         selectedPictureIds = files.map { java.util.UUID.randomUUID().toString() }
+                        selectedAlbumId = java.util.UUID.randomUUID().toString().takeIf {
+                            files.size > 1
+                        }
+                        selectedAlbumSize = files.size
+                        selectedAlbumPositions = files.indices.toList()
                         pictureCaptions = emptyMap()
                         pictureCaptionIndex = 0
                     }
@@ -621,6 +630,9 @@ fun MessagesScreen(state: DesktopAppState) {
                         onClick = {
                             val photos = selectedPictures
                             val imageIds = selectedPictureIds
+                            val batchId = selectedAlbumId
+                            val batchSize = selectedAlbumSize
+                            val batchPositions = selectedAlbumPositions
                             val quality = pictureQuality
                             val captions = pictureCaptions
                             val conversationId = active.id
@@ -633,19 +645,27 @@ fun MessagesScreen(state: DesktopAppState) {
                                             conversationId, file, captions[index].orEmpty(), quality,
                                             { percent ->
                                                 pictureProgress = ((index * 100 + percent) / photos.size)
-                                            }, clientMessageId = imageIds[index]
+                                            }, clientMessageId = imageIds[index],
+                                            album = if (batchId != null && batchSize > 1)
+                                                BlinkChatPhotoAlbum.of(
+                                                    batchId, batchPositions[index], batchSize
+                                                )
+                                            else BlinkChatPhotoAlbum.single()
                                         )
                                         if (selected?.id == conversationId) messages = messages + result
                                         count++
                                     }
                                     selectedPictures = emptyList()
                                     selectedPictureIds = emptyList()
+                                    selectedAlbumId = null
+                                    selectedAlbumPositions = emptyList()
                                     pictureProgress = 0
                                 } catch (ex: Exception) {
                                     error = "Sent $count of ${photos.size} pictures. " +
                                         (ex.message ?: "Upload failed; retry remaining photos.")
                                     selectedPictures = photos.drop(count)
                                     selectedPictureIds = imageIds.drop(count)
+                                    selectedAlbumPositions = batchPositions.drop(count)
                                     if (count > 0) {
                                         pictureCaptions = pictureCaptions
                                             .filterKeys { it >= count }
