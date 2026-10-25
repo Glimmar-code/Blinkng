@@ -23,11 +23,10 @@ object BlinkUserSuggestionPolicy {
         }
     }
 
-    fun <T> page(
+    /** Sort the entire currently retrieved, server-visible candidate batch. */
+    fun <T> rank(
         visibleCandidates: List<T>,
         query: String,
-        offset: Int = 0,
-        pageSize: Int = DEFAULT_PAGE_SIZE,
         username: (T) -> String,
         displayName: (T) -> String,
     ): List<T> = visibleCandidates.asSequence()
@@ -38,7 +37,16 @@ object BlinkUserSuggestionPolicy {
             .thenBy { username(it.first).lowercase() })
         .map { it.first }
         .distinctBy { username(it).trim().removePrefix("@").lowercase() }
+        .toList()
+
+    fun <T> page(
+        visibleCandidates: List<T>,
+        query: String,
+        offset: Int = 0,
+        pageSize: Int = DEFAULT_PAGE_SIZE,
+        username: (T) -> String,
+        displayName: (T) -> String,
+    ): List<T> = rank(visibleCandidates, query, username, displayName)
         .drop(offset.coerceAtLeast(0))
         .take(pageSize.coerceIn(1, 100))
-        .toList()
 }
