@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 internal fun DesktopGroupInvitationsDialog(
     state: DesktopAppState,
     onDismiss: () -> Unit,
-    onRefreshMessages: () -> Unit,
+    onMembershipChanged: () -> Unit,
 ) {
     var title by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
@@ -127,7 +127,7 @@ internal fun DesktopGroupInvitationsDialog(
                                 title = ""
                                 query = ""
                                 selected = emptyList()
-                                onRefreshMessages()
+                                onMembershipChanged()
                             }.onFailure {
                                 error = it.message ?: "Unable to create invitation group."
                             }
@@ -158,7 +158,7 @@ internal fun DesktopGroupInvitationsDialog(
                                         if (ok) {
                                             pending = pending.filterNot { it.groupId == invite.groupId }
                                             notice = if (accept) "Group joined." else "Invitation declined."
-                                            if (accept) onRefreshMessages()
+                                            if (accept) onMembershipChanged()
                                         } else error = "This invitation is no longer available."
                                     }.onFailure { error = "Unable to respond to this invitation." }
                                     busy = false
