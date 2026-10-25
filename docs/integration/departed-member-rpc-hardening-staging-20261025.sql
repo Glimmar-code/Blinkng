@@ -16,7 +16,7 @@ as $$
    and other.user_id<>mine.user_id and other.left_at is null
   join public.conversations c on c.id=mine.conversation_id
   where mine.user_id=(select auth.uid()) and mine.left_at is null
-    and c.is_group is false
+    and coalesce(c.is_group,false)=false
 $$;
 revoke all on function public.get_my_conversation_partners() from public,anon;
 grant execute on function public.get_my_conversation_partners() to authenticated;
