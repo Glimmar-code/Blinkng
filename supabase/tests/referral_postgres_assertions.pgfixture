@@ -342,3 +342,80 @@ begin
 end $$;
 reset role;
 select 'Milestone Coin rewards and Search/recommendation source attribution passed' as result;
+
+
+-- Independent outbox delivery, authenticated link telemetry, and restricted roles.
+-- The outbox must not depend on the newly referred student reopening BLINK.
+do $$
+declare pending integer;
+begin
+  select count(*) into pending from private.blink_referral_push_outbox;
+  if pending <> 2 then raise exception 'Expected two confirmed referral pushes queued; got %', pending; end if;
+end $$;
+-- Link metrics are per browser+referrer+UTC day and do not mint points or Coins.
+select set_config('request.jwt.claim.sub','',false);
+set role anon;
+do $$
+declare
+  visitor uuid := '00000000-0000-0000-0000-000000000011';
+begin
+  if not public.blink_record_referral_link_open('alpha',visitor) then
+    raise exception 'First legitimate invite open should be tracked';
+  end if;
+  if public.blink_record_referral_link_open('alpha',visitor) then
+    raise exception 'Same-browser same-day invite opened twice';
+  end if;
+  if public.blink_record_referral_link_open('alphaprivate',visitor) then
+    raise exception 'A private referrer must not be exposed through invite links';
+  end if;
+  begin
+    insert into public.blink_referral_link_opens(referrer_id,visitor_key)
+    values('00000000-0000-0000-0000-000000000001',visitor);
+    raise exception 'Anonymous caller forged a link-open event';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.blink_claim_referral_pushes(10);
+    raise exception 'Anonymous caller claimed a server push';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare
+  clicks bigint;
+  conversions bigint;
+begin
+  select unique_link_opens_30d,confirmed_referrals_30d into clicks,conversions
+    from public.blink_referral_link_stats();
+  if clicks<>1 then raise exception 'Unique estimated invite browser opens should equal one: %',clicks; end if;
+  if conversions<>1 then raise exception 'Confirmed 30d referrals should be one: %',conversions; end if;
+  begin
+    perform public.blink_finish_referral_push(
+      '00000000-0000-0000-0000-000000000001',true,null);
+    raise exception 'User unexpectedly acknowledged a server push';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+set role service_role;
+do $$
+declare picked record; total integer := 0;
+begin
+  for picked in select * from public.blink_claim_referral_pushes(10)
+  loop
+    total := total+1;
+    if not public.blink_finish_referral_push(picked.notification_id,true,null) then
+      raise exception 'Trusted service role could not acknowledge a queued push';
+    end if;
+  end loop;
+  if total <> 2 then raise exception 'Worker should claim two pushes, got %',total; end if;
+  if exists(select 1 from public.blink_claim_referral_pushes(10)) then
+    raise exception 'Delivered push was dispatched more than once';
+  end if;
+end $$;
+reset role;
+select 'Referrals: durable server worker outbox, permissions and estimated link telemetry passed' as result;
