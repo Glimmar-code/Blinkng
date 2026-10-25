@@ -2,6 +2,7 @@
 
 - **Conflict resolution:** Preserve the newer 3.2 s single-B, blue-dot Canvas intro and its baseline alignment from Testlab. Do not restore the older 6.4 s glyphs/spacing from the original optimization branch.
 - **Android:** Move UMP consent gathering and subsequent consent-gated rewarded-ad loading until 300 ms after the intro completes. Keep the existing privacy gate and destruction check; no ad loads before consent allows it.
+- **PARITY-EXCEPTION: android-ump-consent-after-intro** — The change to `MainActivity.kt` schedules Android's UMP/WebView consent work after the splash to avoid blocking its first frames. UMP and rewarded-ad SDK initialization exist only in Android; Windows uses the same existing shared 3.2 s `BlinkBeyondLinkIntro` and has no UMP/Android Activity startup step. The Windows equivalent is already the unchanged shared animation, so introducing a Windows-specific ad consent delay would be incorrect. Keep both platform builds, intro visuals, and Android privacy gating in verification.
 - **Timeline verification:** Update introductory timing unit tests to the latest Testlab 3.2 s duration and five exit windows, rather than obsolete 6.4 s assertions.
 - **Release hold:** Android/Windows current-head compilation, timeline tests, real-device frame tracing, returning from background, consent/ad behavior, font-scale screenshots and startup/session restore must pass before any promotion into main or APK publication.
 
