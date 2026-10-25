@@ -500,6 +500,10 @@ fun CreatePostSheet(
     }
 
     fun scheduleAt(timeMillis: Long) {
+        if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+            Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
+            return
+        }
         if (!canSubmit) return
         if (!tagsValid) {
             showScheduleDialog = false
