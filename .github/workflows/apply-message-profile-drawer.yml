@@ -1,11 +1,6 @@
 name: Apply profile to chat drawer
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-message-profile-drawer.yml'
-      - '.github/scripts/apply_message_profile_drawer.py'
   workflow_dispatch:
 
 permissions:

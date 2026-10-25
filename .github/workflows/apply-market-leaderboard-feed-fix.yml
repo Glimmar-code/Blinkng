@@ -1,12 +1,7 @@
 name: Apply market leaderboard feed fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - tools/apply_market_leaderboard_feed_fix.py
-      - .github/workflows/apply-market-leaderboard-feed-fix.yml
-
+  workflow_dispatch:
 permissions:
   contents: write
 

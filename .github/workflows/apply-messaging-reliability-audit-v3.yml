@@ -1,11 +1,6 @@
 name: Apply messaging reliability audit v3
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_messaging_reliability_audit_v3.py'
-      - '.github/workflows/apply-messaging-reliability-audit-v3.yml'
   workflow_dispatch:
 
 permissions:

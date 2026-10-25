@@ -1,10 +1,6 @@
 name: Apply offline-first cache and restrained feed motion
 
 on:
-  push:
-    paths:
-      - '.github/scripts/apply_offline_first_cache_motion.py'
-      - '.github/workflows/apply-offline-first-cache-motion.yml'
   workflow_dispatch:
 
 permissions:

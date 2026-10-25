@@ -1,11 +1,6 @@
 name: Apply message delivery and reference UI fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_message_delivery_reference_ui_fix.py'
-      - '.github/workflows/apply-message-delivery-reference-ui-fix.yml'
   workflow_dispatch:
 
 permissions:
