@@ -1020,6 +1020,7 @@
       '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
       '<div id="referral-growth" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-sources" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-impressions" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-links" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-coins" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-top" class="muted" style="margin-top:9px"></div>' +
@@ -1047,8 +1048,16 @@
     void Promise.allSettled([
       rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5}),
       rpc('blink_referral_source_analytics'), rpc('blink_referral_coin_status'),
-      rpc('blink_referral_link_stats')
-    ]).then(([growthResult,leaderResult,sourceResult,coinResult,linkResult])=>{
+      rpc('blink_referral_link_stats'), rpc('blink_referral_impression_stats')
+    ]).then(([growthResult,leaderResult,sourceResult,coinResult,linkResult,impressionResult])=>{
+      const impressionSummary=document.getElementById('referral-impressions');
+      if(impressionSummary?.isConnected && impressionResult.status==='fulfilled'){
+        const item=Array.isArray(impressionResult.value)?impressionResult.value[0]:null;
+        if(item)impressionSummary.textContent='Estimated seen Search profiles (7 days): '+
+          fmt(item.search_impressions_7d)+' · Recommendations: '+
+          fmt(item.recommendation_impressions_7d)+
+          '. Impressions are visibility-qualified estimates, not verified human views.';
+      }
       const linkStats=document.getElementById('referral-links');
       if(linkStats?.isConnected && linkResult.status==='fulfilled'){
         const item=Array.isArray(linkResult.value)?linkResult.value[0]:null;
@@ -1146,6 +1155,33 @@
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
       out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
       bindPostCards();
+      // Count an actual visible profile card only after a sustained on-screen view.
+      // Counting DOM creation alone would artificially inflate impressions below the fold.
+      if(typeof IntersectionObserver==='function'){
+        const timers=new Map(),tracked=new Set();
+        const observer=new IntersectionObserver(entries=>{
+          for(const entry of entries){
+            const element=entry.target;
+            const eligible=entry.isIntersecting && entry.intersectionRatio>=0.6 &&
+              document.visibilityState==='visible' && element.isConnected;
+            if(!eligible){if(timers.has(element))clearTimeout(timers.get(element));timers.delete(element);continue;}
+            if(tracked.has(element)||timers.has(element))continue;
+            const timer=setTimeout(()=>{
+              timers.delete(element);
+              const rect=element.getBoundingClientRect();
+              if(!element.isConnected || document.visibilityState!=='visible' ||
+                 rect.height<=0 || rect.width<=0) return;
+              const visible=Math.max(0,Math.min(rect.bottom,innerHeight)-Math.max(0,rect.top));
+              if(visible/rect.height<0.6)return;
+              const id=element.getAttribute('data-ref-profile');
+              if(id){tracked.add(element);void rpc('blink_record_referral_impression',
+                {p_profile:id,p_source:'search'}).catch(()=>{});}
+            },750);
+            timers.set(element,timer);
+          }
+        },{threshold:[0,0.6,1]});
+        out.querySelectorAll('[data-ref-profile]').forEach(el=>observer.observe(el));
+      }
       out.querySelectorAll('[data-ref-profile]').forEach(button=>
         button.addEventListener('click',()=>{
           const id=button.getAttribute('data-ref-profile');
