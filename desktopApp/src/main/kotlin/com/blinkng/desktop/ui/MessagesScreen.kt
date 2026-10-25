@@ -672,8 +672,8 @@ fun MessagesScreen(state: DesktopAppState) {
             TextButton(onClick = {
                 val chooser = JFileChooser().apply {
                     isMultiSelectionEnabled = true
-                    fileFilter = FileNameExtensionFilter("Pictures (JPEG, PNG, GIF, WebP)",
-                        "jpg", "jpeg", "png", "gif", "webp")
+                    fileFilter = FileNameExtensionFilter("Pictures (JPEG, PNG, GIF, WebP, HEIC/HEIF)",
+                        "jpg", "jpeg", "png", "gif", "webp", "heic", "heif")
                     dialogTitle = "Choose up to 10 pictures"
                 }
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
