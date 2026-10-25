@@ -4740,6 +4740,70 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /**
+     * One-time images are posted ONLY to the verified private Edge Function.
+     * They must never fall back to an ordinary signed-url attachment.
+     */
+    fun sendViewOncePicture(
+        partnerUsername: String,
+        uri: Uri,
+        caption: String = "",
+        quality: com.blinkng.shared.BlinkChatImageQuality =
+            com.blinkng.shared.BlinkChatImageQuality.STANDARD
+    ) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        val owner = supabaseService.getCurrentUserId().orEmpty()
+        val conversationId = _uiState.value.conversations
+            .firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
+            ?.id?.takeUnless { it.startsWith("local_") }
+        if (partner.isBlank() || owner.isBlank() || conversationId.isNullOrBlank()) {
+            showToast("Open an existing conversation to send a private picture.")
+            return
+        }
+        val messageId = UUID.randomUUID().toString()
+        val tempId = "temp_view_once_$messageId"
+        appendMessageToState(
+            partner,
+            ChatMessage(
+                id = tempId,
+                conversationId = conversationId,
+                senderId = owner,
+                receiverUsername = partner,
+                text = caption.take(1024).ifBlank { "View once photo" },
+                timestamp = "Sending…",
+                rawTimestamp = java.time.Instant.now().toString(),
+                isFromMe = true,
+                isRead = false,
+                status = MessageStatus.SENDING,
+                messageType = "image",
+                imageViewOnce = true
+            )
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendViewOncePicture(
+                appContext, conversationId, uri, caption, quality, messageId
+            ).fold(
+                onSuccess = { message ->
+                    if (supabaseService.getCurrentUserId() != owner) return@fold
+                    withContext(Dispatchers.Main) {
+                        replaceMessageInState(
+                            partner, tempId, message.copy(receiverUsername = partner)
+                        )
+                    }
+                    persistConversationsNow()
+                    chatRepository.triggerMessagePushBestEffort(message.id)
+                },
+                onFailure = {
+                    if (supabaseService.getCurrentUserId() != owner) return@fold
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                        showToast("View-once photo couldn't be sent. No ordinary photo was shared.")
+                    }
+                }
+            )
+        }
+    }
+
     fun sendVideoMessage(partnerUsername: String, uri: Uri) {
         sendAttachmentMessage(partnerUsername, uri, "video")
     }
