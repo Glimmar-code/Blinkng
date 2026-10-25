@@ -327,6 +327,43 @@ end $$;
 revoke all on function public.blink_group_manage_member(uuid,uuid,text) from public,anon;
 grant execute on function public.blink_group_manage_member(uuid,uuid,text) to authenticated;
 
+-- A creator must transfer ownership to an already active member before
+-- leaving. This atomic RPC is the only supported ownership transition; raw
+-- client edits to created_by remain blocked by the metadata trigger.
+create or replace function public.blink_group_transfer_owner(
+  p_conversation_id uuid, p_new_owner_id uuid
+) returns boolean language plpgsql security definer set search_path=''
+as $
+declare v_actor uuid:=auth.uid(); v_owner uuid;
+begin
+  if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select c.created_by into v_owner from public.conversations c
+    where c.id=p_conversation_id and c.is_group=true for update;
+  if v_owner is null then raise exception 'GROUP_NOT_FOUND'; end if;
+  if v_owner<>v_actor then raise exception 'GROUP_OWNER_REQUIRED'; end if;
+  if p_new_owner_id is null or p_new_owner_id=v_actor then
+    raise exception 'INVALID_NEW_GROUP_OWNER';
+  end if;
+  if not exists (
+    select 1 from public.conversation_participants cp
+    where cp.conversation_id=p_conversation_id
+      and cp.user_id=p_new_owner_id and cp.left_at is null
+  ) then raise exception 'NEW_OWNER_MUST_BE_ACTIVE_MEMBER'; end if;
+  update public.conversation_participants
+    set is_admin=true
+    where conversation_id=p_conversation_id and user_id=p_new_owner_id
+      and left_at is null;
+  update public.conversations set created_by=p_new_owner_id
+    where id=p_conversation_id and created_by=v_actor and is_group=true;
+  if not found then raise exception 'GROUP_OWNER_CHANGED'; end if;
+  return true;
+end;
+$;
+revoke all on function public.blink_group_transfer_owner(uuid,uuid)
+  from public,anon;
+grant execute on function public.blink_group_transfer_owner(uuid,uuid)
+  to authenticated;
+
 commit;
 
 -- Required local tests:
