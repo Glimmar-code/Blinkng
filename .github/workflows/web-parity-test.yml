@@ -1,6 +1,7 @@
 name: Web Parity Testlab Gate
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'Testlab-web-*'

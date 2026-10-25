@@ -7,6 +7,7 @@ Unknown diffs and manual runs execute all suites rather than accidentally skippi
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 
@@ -58,10 +59,23 @@ def git(*args: str) -> str:
 
 def changed_files() -> list[str] | None:
     event = os.getenv("GITHUB_EVENT_NAME", "")
-    if event == "workflow_dispatch" or not event:
-        return None  # Always run all checks when manually dispatched or in doubt.
+    if not event:
+        return None
     try:
-        if event == "pull_request":
+        if event == "workflow_dispatch":
+            # Our trusted batch controller explicitly dispatches quality gates
+            # on a Testlab-batch SHA. Unlike arbitrary manual dispatches, its
+            # complete main...candidate diff can safely scope costly builds.
+            branch = os.getenv("GITHUB_REF_NAME", "")
+            if not re.fullmatch(r"Testlab-batch-[0-9]+", branch):
+                return None  # Manual/unknown dispatch: run every suite.
+            subprocess.run(
+                ["git", "fetch", "--no-tags", "origin",
+                 "refs/heads/main:refs/remotes/origin/main"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            diff_range = "origin/main...HEAD"
+        elif event == "pull_request":
             base = os.getenv("GITHUB_BASE_REF", "")
             if not base:
                 return None
