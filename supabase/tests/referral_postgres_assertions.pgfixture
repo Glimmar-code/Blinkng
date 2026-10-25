@@ -419,3 +419,73 @@ begin
 end $$;
 reset role;
 select 'Referrals: durable server worker outbox, permissions and estimated link telemetry passed' as result;
+
+
+-- Invitation-only group creation must not add people before they consent.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000007',now(),now()),
+       ('00000000-0000-0000-0000-000000000008',now(),now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000007','delta','Delta','FUTA',true),
+       ('00000000-0000-0000-0000-000000000008','epsilon','Epsilon','FUTA',true);
+update public.profiles set onboarding_completed=true where username='gamma';
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare group_id uuid;
+begin
+  group_id:=public.blink_create_invite_only_group('Physics classmates',
+    array['00000000-0000-0000-0000-000000000006'::uuid,'00000000-0000-0000-0000-000000000007'::uuid]);
+  if group_id is null then raise exception 'Owner could not create opt-in invite group'; end if;
+  if (select count(*) from public.conversation_participants where conversation_id=group_id)<>1
+  then raise exception 'Invited users were added without consent'; end if;
+  begin
+    perform public.blink_create_invite_only_group('Not allowed',
+      array['00000000-0000-0000-0000-000000000005'::uuid,
+            '00000000-0000-0000-0000-000000000007'::uuid]);
+    raise exception 'Private account was invited';
+  exception when others then
+    if SQLERRM='Private account was invited' then raise; end if;
+  end;
+end $$;
+reset role;
+-- Recipients may independently accept or decline; other students cannot mutate them.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000007',false);
+set role authenticated;
+do $$
+declare item record;
+begin
+  select * into item from public.blink_my_group_invitations(10) limit 1;
+  if item.group_id is null or item.inviter_username<>'alpha' then
+    raise exception 'Invitation not visible to its actual recipient'; end if;
+  if not public.blink_respond_to_group_invite(item.group_id,true)
+  then raise exception 'Recipient cannot accept'; end if;
+  if not exists(select 1 from public.conversation_participants
+     where conversation_id=item.group_id and user_id='00000000-0000-0000-0000-000000000007')
+  then raise exception 'Accepted member not inserted'; end if;
+  if public.blink_respond_to_group_invite(item.group_id,true)
+  then raise exception 'Duplicate acceptance incorrectly returned success'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000008',false);
+set role authenticated;
+do $$
+begin
+  if exists(select 1 from public.blink_my_group_invitations(10))
+  then raise exception 'Third-party invitations leaked'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+declare group_id uuid;
+begin
+  select i.group_id into group_id from public.blink_my_group_invitations(10) i limit 1;
+  if not public.blink_respond_to_group_invite(group_id,false)
+  then raise exception 'Recipient cannot decline'; end if;
+  if exists(select 1 from public.conversation_participants
+    where conversation_id=group_id and user_id='00000000-0000-0000-0000-000000000006')
+  then raise exception 'Declined member was added'; end if;
+end $$;
+reset role;
+select 'Group invitation consent, cross-account isolation and private-account restrictions passed' as result;
