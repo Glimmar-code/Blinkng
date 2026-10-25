@@ -1250,6 +1250,24 @@ class DesktopSupabaseClient(
      * Once the RPC confirms an ID, a failed follow-up fetch is not a failed send:
      * do not encourage blind retrying of an already committed message.
      */
+    /** Backend-authorized group creation; shared member validation with Android. */
+    suspend fun createGroupConversation(title: String, invitedUserIds: List<String>): String =
+        withContext(Dispatchers.IO) {
+            val owner = requireSession().userId
+            val normalizedTitle = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title)
+            val members = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedMembers(owner, invitedUserIds)
+            val result = postObject(
+                "/rest/v1/rpc/create_group_conversation",
+                JSONObject().put("p_title", normalizedTitle)
+                    .put("p_member_ids", JSONArray(members))
+            ) as? JSONObject ?: error("Invalid group creation response.")
+            val id = result.optString("value").trim().removeSurrounding("\"")
+            require(runCatching { UUID.fromString(id) }.isSuccess) {
+                "Could not verify new group creation."
+            }
+            id
+        }
+
     suspend fun sendMessage(
         conversationId: String,
         content: String,
