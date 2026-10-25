@@ -84,15 +84,22 @@ object DesktopChatPhotoWorker {
                     idle = 0
                     val next = pending.first()
                     try {
+                        var lastSessionCheck = 0L
                         client.sendChatImage(
                             next.conversationId, next.file, next.caption, next.quality,
                             clientMessageId = next.messageId,
                             album = next.album,
                             onProgress = { progress ->
-                                // Re-read DPAPI state periodically during streaming to
-                                // abort immediately if the owner signs out/switches.
-                                if (sessionStore.load()?.userId != owner) {
-                                    throw IllegalStateException("Account changed during upload.")
+                                // DPAPI checks are throttled to avoid decrypting the
+                                // session on every 64 KiB network write.
+                                val now = System.nanoTime()
+                                if (lastSessionCheck == 0L ||
+                                    now - lastSessionCheck > 500_000_000L ||
+                                    progress >= 100) {
+                                    lastSessionCheck = now
+                                    if (sessionStore.load()?.userId != owner) {
+                                        throw IllegalStateException("Account changed during upload.")
+                                    }
                                 }
                                 DesktopChatImageOutbox.progress(owner, next.messageId, progress)
                             }
