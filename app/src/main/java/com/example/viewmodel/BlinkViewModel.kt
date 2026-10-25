@@ -3192,7 +3192,8 @@ private suspend fun restoreSupabaseSession() {
         if (
             current.selectedTab != tab || current.feedSubTab != nextFeedSubTab ||
             current.routedReelId != null || current.viewingProfile != null ||
-            current.viewingProduct != null || current.isConversationFullScreen
+            current.viewingProduct != null || current.isConversationFullScreen ||
+            current.activeConversationPartner != null
         ) {
             val destination = navigationEntry(current).copy(
                 selectedTab = tab,
@@ -3594,7 +3595,11 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
+    fun closeProfile() {
+        if (_uiState.value.viewingProfile == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(viewingProfile = null)
+        }
+    }
 
     fun updateProfile(updated: UserProfile) {
         viewModelScope.launch {
@@ -4810,7 +4815,13 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = state.copy(isConversationFullScreen = fullScreen)
     }
 
-    fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
+    fun closeConversation() {
+        if (_uiState.value.activeConversationPartner == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(
+                activeConversationPartner = null, isConversationFullScreen = false
+            )
+        }
+    }
 
     fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
         val before = _uiState.value.chatPrivacySettings
@@ -6559,7 +6570,13 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun openProductDetail(item: MarketItem) {
-        _uiState.value = _uiState.value.copy(viewingProduct = item)
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            navigationHistory = pushRoute(
+                current, navigationEntry(current).copy(viewingProduct = item)
+            ),
+            viewingProduct = item
+        )
         if (item.id.isBlank() || !_uiState.value.isOnline) return
         viewModelScope.launch {
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
@@ -6599,7 +6616,9 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun closeProductDetail() {
-        _uiState.value = _uiState.value.copy(viewingProduct = null)
+        if (_uiState.value.viewingProduct == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(viewingProduct = null)
+        }
     }
 
     fun toggleMarketSaved(item: MarketItem) {
