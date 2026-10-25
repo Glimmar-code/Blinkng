@@ -410,7 +410,8 @@ internal fun BlinkReferenceSearchScreen(
                         color = muted, fontSize = 11.sp)
                     referralRecommendations.take(10).forEach { person ->
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp)
+                                .trackBlinkReferralImpression(person.id, "recommendations"),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(
@@ -456,6 +457,7 @@ internal fun BlinkReferenceSearchScreen(
                         isBusy = busyFollowId == person.id,
                         onFollow = { toggleFollow(person.id) },
                         onClick = { openProfileFromDiscovery(person.id, person.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(person.id, "search"),
                     )
                 } else if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
                     val profileId = result.id
@@ -470,6 +472,7 @@ internal fun BlinkReferenceSearchScreen(
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
                         onClick = { if (result.username.isNotBlank()) openProfileFromDiscovery(profileId, result.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(profileId, "search"),
                     )
                 } else localPeople.take(limit).forEach { profile ->
                     val profileId = profile.id
@@ -484,6 +487,7 @@ internal fun BlinkReferenceSearchScreen(
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
                         onClick = { openProfileFromDiscovery(profileId, profile.username, "search") },
+                        impressionModifier = Modifier.trackBlinkReferralImpression(profileId, "search"),
                     )
                 }
                 if (searchedPeople.isEmpty() && livePeople.isEmpty() && localPeople.isEmpty())
@@ -688,9 +692,10 @@ private fun ReferencePersonRow(
     fg: Color, muted: Color, line: Color,
     followable: Boolean, following: Boolean, isBusy: Boolean,
     onFollow: () -> Unit, onClick: () -> Unit,
+    impressionModifier: Modifier = Modifier,
 ) {
     val largeFont = LocalDensity.current.fontScale >= 1.6f
-    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp).then(impressionModifier)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clickable(onClick = onClick)) { ReferenceAvatar(avatar, 49, online) }
             Spacer(Modifier.width(10.dp))
