@@ -16,12 +16,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.nestedScroll
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -178,7 +179,9 @@ fun VideoReelsScreen(
                 onRefresh = refreshSelected,
                 state = pullToRefreshState,
                 // Pager swipes must not refresh or interrupt a playing reel.
-                enabled = firstPageVisible && !isInteractionOverlayOpen && !activeRefreshing,
+                // Pull-down belongs to preview collapse at the first Reel; refresh remains
+                // available via the dedicated fullscreen action instead of stealing swipes.
+                enabled = false,
                 threshold = 96.dp
             )
     ) {
@@ -519,11 +522,11 @@ private fun ReelsContent(
         if (!initialReelId.isNullOrBlank()) expanded = true
     }
     LaunchedEffect(expanded) {
+        onBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
             animationSpec = tween(300, easing = FastOutSlowInEasing)
         )
-        onBottomBarVisibilityChange(!expanded)
     }
     // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
     DisposableEffect(onBottomBarVisibilityChange) {
@@ -548,6 +551,7 @@ private fun ReelsContent(
             )
             .clip(RoundedCornerShape(20.dp * (1f - progress)))
             .background(Color.Black)
+            .testTag("reels_preview_video_frame")
 
         // Pager-at-start downward overscroll reveals the preview progressively.
         // The pager is allowed to consume other gestures (including all next-reel swipes).
@@ -574,7 +578,31 @@ private fun ReelsContent(
             }
         }
 
-        Box(pagerFrame.nestedScroll(collapseConnection)) {
+        Box(
+            pagerFrame
+                .nestedScroll(collapseConnection)
+                .pointerInput(resumeUserKey, expanded) {
+                    if (!expanded) {
+                        var distance = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { distance = 0f },
+                            onVerticalDrag = { change, delta ->
+                                distance -= delta
+                                change.consume()
+                                animationScope.launch {
+                                    expansion.snapTo(
+                                        (expansion.value - delta / viewportHeightPx).coerceIn(0f, 1f)
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                expanded = distance >= 65.dp.toPx() || expansion.value >= 0.16f
+                            },
+                            onDragCancel = { expanded = expansion.value >= 0.5f }
+                        )
+                    }
+                }
+        ) {
         if (pagerItems.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -738,27 +766,6 @@ private fun ReelsContent(
             }
         }
 
-        // A drag on the preview expands this SAME video player; taps still reach ReelPage.
-        if (!expanded) {
-            Box(
-                Modifier.fillMaxSize().pointerInput(resumeUserKey, expanded) {
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { change, dragAmount ->
-                            if (dragAmount < 0f || expansion.value > 0f) {
-                                change.consume()
-                                animationScope.launch {
-                                    expansion.snapTo(
-                                        (expansion.value - dragAmount / viewportHeightPx).coerceIn(0f, 1f)
-                                    )
-                                }
-                            }
-                        },
-                        onDragEnd = { expanded = expansion.value >= 0.16f },
-                        onDragCancel = { expanded = expansion.value >= 0.5f }
-                    )
-                }
-            )
-        }
         }
 
         if (progress < 0.999f) {
@@ -777,6 +784,7 @@ private fun ReelsContent(
                 onNotifications = onNotificationsClick,
                 onMenu = onMenuClick,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                    .testTag("reels_reference_chrome")
                     .graphicsLayer {
                         alpha = (1f - progress * 1.4f).coerceIn(0f, 1f)
                         translationY = -48.dp.toPx() * progress
@@ -795,7 +803,7 @@ private fun ReelsContent(
         )
 
         IconButton(
-            onClick = onBackToPosts,
+            onClick = { expanded = false },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
