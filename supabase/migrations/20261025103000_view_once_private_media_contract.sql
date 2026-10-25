@@ -31,8 +31,23 @@ values (
     file_size_limit=15728640,
     allowed_mime_types=excluded.allowed_mime_types;
 
--- Intentionally NO storage.objects client policies for message-view-once.
--- Confirm no broad existing bucket policy matches this bucket during staging.
+-- A restrictive policy prevents any older broad/permissive Storage policy
+-- from exposing one-time image bytes to anonymous or authenticated clients.
+-- Service-role Storage operations bypass RLS; all clients must use the Edge API.
+do $
+begin
+    if not exists (
+        select 1 from pg_policies
+        where schemaname='storage' and tablename='objects'
+          and policyname='blink_view_once_private_restrictive_v1'
+    ) then
+        create policy blink_view_once_private_restrictive_v1
+        on storage.objects as restrictive for all to anon, authenticated
+        using (bucket_id <> 'message-view-once')
+        with check (bucket_id <> 'message-view-once');
+    end if;
+end $;
+
 alter table public.messages
     add column if not exists image_view_once boolean not null default false;
 do $$
