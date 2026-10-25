@@ -5,6 +5,8 @@ import android.net.Uri
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatUploadProgress
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
+import okhttp3.RequestBody.Companion.asRequestBody
 import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
@@ -35,6 +37,21 @@ object MessageMediaService {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
+    @Volatile private var serverHasPhotoMetadata: Boolean? = null
+
+    /** Legacy production schemas continue sending normal individual pictures. */
+    private fun photoMetadataSupported(): Boolean {
+        serverHasPhotoMetadata?.let { return it }
+        val supported = runCatching {
+            client.newCall(builder(
+                "/rest/v1/messages?select=image_album_id,image_album_position," +
+                    "image_album_size,image_preview_url&limit=0"
+            ).get().build()).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+        if (supported) serverHasPhotoMetadata = true
+        return supported
+    }
+
 
     private fun uid(): String? = SupabaseService.accessToken()?.let { token ->
         runCatching {
@@ -181,7 +198,8 @@ object MessageMediaService {
         clientMessageId: String = UUID.randomUUID().toString(),
         onUploadProgress: (Int) -> Unit = {},
         caption: String = "",
-        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD,
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
@@ -254,6 +272,8 @@ object MessageMediaService {
                 BlinkChatImagePreparer.open(context, uri, imageQuality)
             else BoundedMessageAttachment.open(context, uri, kind)
             selected.use { staged ->
+                val expandedMetadata = kind == BlinkChatAttachmentKind.IMAGE &&
+                    photoMetadataSupported()
                 val objectPath =
                     "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
                 client.newCall(
@@ -265,6 +285,25 @@ object MessageMediaService {
                 ).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful) throw IllegalStateException(error(raw, "Upload failed."))
+                }
+                var privatePreviewPath: String? = null
+                if (expandedMetadata && kind == BlinkChatAttachmentKind.IMAGE) {
+                    val thumb = BlinkChatImagePreparer.thumbnail(context, staged.file)
+                    if (thumb != null) {
+                        try {
+                            val proposed = "conversations/$conversationId/users/$senderId/preview/" +
+                                "${UUID.randomUUID()}.jpg"
+                            val result = client.newCall(
+                                builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(proposed)}")
+                                    .addHeader("x-upsert", "false")
+                                    .post(thumb.asRequestBody("image/jpeg".toMediaType()))
+                                    .build()
+                            ).execute().use { it.isSuccessful }
+                            if (result) privatePreviewPath = proposed
+                        } finally {
+                            thumb.delete()
+                        }
+                    }
                 }
                 val label = when (kind) {
                     BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
@@ -280,6 +319,16 @@ object MessageMediaService {
                     .put("media_url", "$PRIVATE_BUCKET:$objectPath")
                     .put("is_read", false)
                     .put("message_type", kind.wireType)
+                if (expandedMetadata) {
+                    if (album.grouped) {
+                        messageBody.put("image_album_id", album.id)
+                            .put("image_album_position", album.position)
+                            .put("image_album_size", album.size)
+                    }
+                    privatePreviewPath?.let {
+                        messageBody.put("image_preview_url", "$PRIVATE_BUCKET:$it")
+                    }
+                }
                 val raw = client.newCall(
                     builder("/rest/v1/messages")
                         .addHeader("Prefer", "return=representation")
@@ -313,6 +362,10 @@ object MessageMediaService {
                         voiceDuration = if (durationMs > 0) "${durationMs / 1000}s" else "",
                         voiceAudioUrl = url.takeIf { kind == BlinkChatAttachmentKind.VOICE },
                         attachedImageUrl = url.takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+                        imageAlbumId = album.id.takeIf { expandedMetadata && album.grouped },
+                        imageAlbumPosition = if (expandedMetadata) album.position else 0,
+                        imageAlbumSize = if (expandedMetadata) album.size else 1,
+                        imagePreviewUrl = privatePreviewPath?.let(::signedUrl),
                         attachedVideoUrl = url.takeIf { kind == BlinkChatAttachmentKind.VIDEO },
                         attachedDocumentUrl = url.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT },
                         attachedDocumentName = staged.name.takeIf { kind == BlinkChatAttachmentKind.DOCUMENT }
@@ -407,7 +460,15 @@ object MessageMediaService {
                 else -> null
             }
             when (kind) {
-                BlinkChatAttachmentKind.IMAGE -> message.copy(attachedImageUrl = url)
+                BlinkChatAttachmentKind.IMAGE -> {
+                    val previewRef = message.imagePreviewUrl
+                    val previewUrl = if (previewRef?.startsWith(prefix) == true)
+                        signedCache.getOrPut(previewRef) {
+                            signedUrl(previewRef.removePrefix("$PRIVATE_BUCKET:"))
+                        }
+                    else null
+                    message.copy(attachedImageUrl = url, imagePreviewUrl = previewUrl)
+                }
                 BlinkChatAttachmentKind.VIDEO -> message.copy(attachedVideoUrl = url)
                 BlinkChatAttachmentKind.VOICE -> message.copy(voiceAudioUrl = url)
                 BlinkChatAttachmentKind.DOCUMENT -> message.copy(attachedDocumentUrl = url)
