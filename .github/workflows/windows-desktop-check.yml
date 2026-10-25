@@ -56,9 +56,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
+      # Windows Git refs are case-insensitive; fetching every remote branch
+      # fails when this repository has both Testlab and testlab refs.
+      # Fetch only this PR / commit history, never refs/heads/*.
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 50
 
       - name: Compute actual checked-out Windows packaging input digest
         id: input_digest
