@@ -655,6 +655,22 @@ class DesktopSupabaseClient(
         }
     }
 
+    suspend fun freshChatImageUrl(messageId: String, conversationId: String): String? =
+        withContext(Dispatchers.IO) {
+            val id = runCatching { UUID.fromString(messageId).toString() }.getOrNull()
+                ?: return@withContext null
+            val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
+                ?: return@withContext null
+            runCatching {
+                val row = getArray(
+                    "/rest/v1/messages?id=eq.$id&conversation_id=eq.$convo&" +
+                        "select=id,message_type,media_url&limit=1"
+                ).optJSONObject(0)
+                if (row?.optString("message_type") != "image") null
+                else signedChatImageUrl(row.optString("media_url"), convo)
+            }.getOrNull()
+        }
+
     /** Save a fresh private image through messages RLS and a time-limited storage URL.
      * Only whitelisted image MIME types and at most 15 MiB can reach the output file. */
     suspend fun copyChatImageTo(messageId: String, conversationId: String, output: OutputStream):
