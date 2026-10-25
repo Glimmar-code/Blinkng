@@ -30,6 +30,13 @@
 - Both platform UIs now include creation, invitations, group member lists, community join approvals and owner moderation, but **not end-to-end verified against two real account sessions**. The presence of UI code is not evidence that its production RPCs exist.
 
 
+
+## Additional security remediation staged on 25 October 2026
+- **Critical direct-message isolation:** current hosted `cp_insert_own` authorizes inserting one's own ID into an unrelated direct conversation. This can expose other users' DM content. The new STAGING-ONLY `blink_can_self_join_creator_direct` predicate limits raw self-add to one's own direct conversation with fewer than two participants. A disposable-database negative test covers unrelated DM self-invites, and a positive test covers the original creator route. The safer server `get_or_create_direct_conversation` RPC remains the recommended entry point. **Hosted production is NOT patched yet.**
+- **Security-definer RPC bypass of RLS:** current hosted `get_my_unread_message_notifications`, `ack_message_delivered`, `ack_pending_message_deliveries` and `get_my_conversation_partners` omit `left_at` checks. Existing RLS changes cannot protect calls to these privileged functions. Their signature-compatible active-member replacements are staged in `docs/integration/departed-member-rpc-hardening-staging-20261025.sql`, with synthetic departed/active-member tests. **Not deployed.** Continue audit of other privileged message/read functions before promotion.
+- **SQL validation:** repaired invalid single-dollar PL/pgSQL delimiters in Group/Community drafts; community policies now drop before recreation. The disposable test runner replays Market, Communities, group membership and receipt scripts to detect unsafe non-idempotent DDL. Static inspection confirms paired dollar delimiters; real database runtime and Supabase staging verification are still required.
+- No users, production SQL, payment state, production branches, signed APKs or releases were changed. The new staged security edits are **not a substitute** for a real preview migration, two-account Android/Windows testing, approved integration and final head CI.
+
 ## Verification evidence and non-passed gates
 - Prior SHA `f3c558dfbff17f1dedb8f2f162655f3045e34396`: all 18 applicable GitHub checks passed, one Call Quality skipped; **not evidence for newer code**.
 - Later tested SHA `5ab0f1a22f42f14a30f20d7ee59c1f5e003a1f17`: disposable Supabase migration-safety passed after fixing a missing PGlite fixture `anon` role; newer commits require their own verification.
