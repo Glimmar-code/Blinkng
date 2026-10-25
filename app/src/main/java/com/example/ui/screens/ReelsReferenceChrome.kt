@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,8 +76,11 @@ internal fun ReelsReferenceChrome(
             .distinctBy { it.id }
     }
     Column(modifier.fillMaxWidth().background(background)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 360.dp
+        val actionSize = if (compact) 34.dp else 40.dp
         Row(
-            Modifier.fillMaxWidth().height(56.dp).padding(start = 12.dp, end = 8.dp),
+            Modifier.fillMaxWidth().height(56.dp).padding(start = if (compact) 8.dp else 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
@@ -85,26 +89,27 @@ internal fun ReelsReferenceChrome(
                 error = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "My profile",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(35.dp).clip(CircleShape)
+                modifier = Modifier.size(if (compact) 31.dp else 35.dp).clip(CircleShape)
                     .clickable { onProfileClick(currentUsername) }
             )
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(if (compact) 7.dp else 13.dp))
             Text(
                 "B L I N K",
-                fontSize = 20.sp,
+                fontSize = if (compact) 16.sp else 20.sp,
                 fontWeight = FontWeight.Black,
                 color = foreground,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onSearch, modifier = Modifier.size(actionSize)) {
                 Icon(Icons.Default.Search, contentDescription = "Search", tint = foreground)
             }
-            IconButton(onClick = onGame, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onGame, modifier = Modifier.size(actionSize)) {
                 Icon(Icons.Default.SportsEsports, contentDescription = "Games", tint = foreground)
             }
             Box(contentAlignment = Alignment.TopEnd) {
-                IconButton(onClick = onNotifications, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onNotifications, modifier = Modifier.size(actionSize)) {
                     Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = foreground)
                 }
                 if (hasUnreadNotifications) {
@@ -112,9 +117,10 @@ internal fun ReelsReferenceChrome(
                         .clip(CircleShape).background(Color(0xFFFF315C)))
                 }
             }
-            IconButton(onClick = onMenu, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(actionSize)) {
                 Icon(Icons.Default.Menu, contentDescription = "Menu", tint = foreground)
             }
+        }
         }
 
         LazyRow(
