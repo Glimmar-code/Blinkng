@@ -64,6 +64,11 @@ enum class BlinkChatAttachmentKind(
     }
 }
 
+/** Quality selection is an explicit cross-platform contract. */
+enum class BlinkChatImageQuality {
+    STANDARD, ORIGINAL
+}
+
 /** Pure, reusable percentage mapping for Android and Windows media upload indicators. */
 object BlinkChatUploadProgress {
     fun percent(bytesSent: Long, totalBytes: Long): Int {
