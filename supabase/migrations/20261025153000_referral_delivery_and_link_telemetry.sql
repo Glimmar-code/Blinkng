@@ -130,7 +130,7 @@ revoke all on function public.blink_claim_referral_pushes(integer) from public,a
 grant execute on function public.blink_claim_referral_pushes(integer) to service_role;
 
 create or replace function public.blink_finish_referral_push(
-  p_notification_id uuid,p_succeeded boolean,p_error text default null
+  p_notification_id uuid,p_succeeded boolean,p_error text,p_attempt_count integer
 ) returns boolean language plpgsql security definer set search_path=''
 as $$
 begin
@@ -140,11 +140,12 @@ begin
         next_attempt_at=case when p_succeeded then now()
           else now() + make_interval(secs => least(3600,30*power(2,least(o.attempts,7)))::integer) end,
         last_error=case when p_succeeded then null else left(coalesce(p_error,'Push failed'),400) end
-  where o.notification_id=p_notification_id and o.state='sending';
+  where o.notification_id=p_notification_id and o.state='sending'
+    and o.attempts=p_attempt_count;
   return found;
 end $$;
-revoke all on function public.blink_finish_referral_push(uuid,boolean,text) from public,anon,authenticated;
-grant execute on function public.blink_finish_referral_push(uuid,boolean,text) to service_role;
+revoke all on function public.blink_finish_referral_push(uuid,boolean,text,integer) from public,anon,authenticated;
+grant execute on function public.blink_finish_referral_push(uuid,boolean,text,integer) to service_role;
 
 -- Risk flags are server-only audit signals. Not used to falsely inflate or erase referrals.
 create table if not exists private.blink_referral_risk_reviews (
