@@ -363,7 +363,9 @@ async function run({github, context, core}) {
     })).data, core);
     return;
   }
-  const eligible = list.filter(isCandidate)
+  // Array.filter passes the numeric index as argument 2; do not
+  // mistake it for the current timestamp used by isCandidate.
+  const eligible = list.filter(pr => isCandidate(pr))
     // Examine newest active work first; old abandoned PRs should not
     // automatically become production releases.
     .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
