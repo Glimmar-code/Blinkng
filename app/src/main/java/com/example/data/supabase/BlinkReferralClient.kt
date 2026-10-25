@@ -194,6 +194,24 @@ object BlinkReferralClient {
         }
     }
 
+    /** Approximate visitor count only; these events never grant referral credits. */
+    suspend fun recordInviteLinkOpen(username: String, visitorKey: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (runCatching { java.util.UUID.fromString(visitorKey) }.isFailure) return@withContext false
+            val user = username.trim().removePrefix("@")
+            if (!user.matches(Regex("^[a-zA-Z0-9][a-zA-Z0-9._-]{1,29}$"))) return@withContext false
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_record_referral_link_open")
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer ${SupabaseConfig.anonKey}")
+                .post(JSONObject().put("p_username", user)
+                    .put("p_visitor", visitorKey).toString().toRequestBody(mediaType))
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful && response.body?.string()?.trim() == "true"
+            }
+        }
+
     suspend fun recordShareAction(channel: String): Boolean = withContext(Dispatchers.IO) {
         val token = SupabaseService.accessToken()?.takeIf(String::isNotBlank)
             ?: return@withContext false
