@@ -367,6 +367,10 @@ export async function stagedMarketCommunityContractTests() {
     console.log('PASS staged active roster permissions');
     console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
+    await db.exec(hardening);
+    await db.exec(groupCommunity);
+    await db.exec(market);
+    console.log('PASS staged SQL replay (idempotency, triggers and policies)');
     console.log('PASS independent offline staged Marketplace + Community contracts');
   } finally {
     await db.close();
