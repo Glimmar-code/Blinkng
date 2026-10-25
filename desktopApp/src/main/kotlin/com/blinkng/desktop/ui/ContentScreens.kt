@@ -1822,6 +1822,15 @@ fun MarketplaceScreen(state: DesktopAppState) {
 
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
+    // Account switching invalidates all per-profile Connect caches, requests and in-flight effects.
+    // A distinct composition is needed: merely restarting reload() retains the old user's inbox.
+    androidx.compose.runtime.key(state.profile?.id) {
+        ConnectScreenForAccount(state)
+    }
+}
+
+@Composable
+private fun ConnectScreenForAccount(state: DesktopAppState) {
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
     var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
