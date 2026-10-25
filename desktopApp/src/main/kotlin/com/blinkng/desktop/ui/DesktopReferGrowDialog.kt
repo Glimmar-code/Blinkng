@@ -37,6 +37,7 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
         growth = runCatching { state.client.referralGrowthStats() }.getOrNull()
         coins = runCatching { state.client.referralCoinRewardStatus() }.getOrNull()
         sources = runCatching { state.client.referralSourceStats() }.getOrNull()
+        linkStats = runCatching { state.client.referralLinkStats() }.getOrNull()
         leaders = runCatching { state.client.referralLeaderboard() }.getOrDefault(emptyList())
     }
     AlertDialog(
@@ -66,6 +67,12 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                 sources?.let {
                     Text("Unique Search profile opens (7 days): ${it.searchProfileOpens}")
                     Text("Unique recommended profile opens (7 days): ${it.recommendationProfileOpens}")
+                }
+                linkStats?.let {
+                    Text("Unique invite-browser opens (30 days, estimated): ${it.estimatedUniqueOpens30Days}")
+                    Text("Confirmed referral signups (30 days): ${it.confirmedSignups30Days}")
+                    Text("These counts are approximate; only confirmed accounts earn referral credit.",
+                        style = MaterialTheme.typography.labelSmall)
                 }
                 coins?.let {
                     Text("Earned referral milestone Coins: ${it.earnedCoins}")
