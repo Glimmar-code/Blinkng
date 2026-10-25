@@ -17,9 +17,14 @@ export async function stagedMarketCommunityContractTests() {
       create role authenticated;
       create role service_role bypassrls;
       create schema auth;
+      create schema private;
+      create function private.blink_profile_presence_visible(uuid)
+        returns boolean language sql stable as $select true$;
       create table auth.users(id uuid primary key, email text);
       create table public.profiles(
-        id uuid primary key, username text, full_name text, avatar_url text, handle text
+        id uuid primary key, username text, full_name text, avatar_url text, handle text,
+        online_now boolean, is_online boolean, last_seen_at timestamptz,
+        last_seen timestamptz
       );
       create table public.blocks(blocker_id uuid,blocked_id uuid);
       create function auth.uid() returns uuid language sql stable as
@@ -37,7 +42,8 @@ export async function stagedMarketCommunityContractTests() {
       create table public.conversations (
         id uuid primary key, title text, description text, avatar_url text,
         is_group boolean not null default false, created_by uuid,
-        updated_at timestamptz not null default now()
+        updated_at timestamptz not null default now(),
+        created_at timestamptz not null default now()
       );
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
@@ -286,6 +292,11 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(receiptGuard);
+    const dmSummaries = fs.readFileSync(
+      new URL('../../docs/integration/direct-message-summaries-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(dmSummaries);
 
     const privateGroup = '66666666-6666-4666-8666-666666666666';
     const dm = '77777777-7777-4777-8777-777777777777';
@@ -372,6 +383,10 @@ export async function stagedMarketCommunityContractTests() {
       'BLINK_GROUP_IDENTITY_REQUIRES_SERVER');
     await db.exec(`
       select set_config('request.jwt.claim.sub','${other}',false)`);
+    const summaries = await db.query(
+      'select conversation_id from public.get_conversation_summaries_page(20)');
+    assert.equal(summaries.rows.length,0,
+      'Group-only inbox must not contain misleading direct-message duplicates');
     const groupRoster = await db.query(`
       select user_id,is_admin from public.blink_group_members('${managed}')`);
     assert.equal(groupRoster.rows.length, 2, 'Active group user can view unique roster rows');
@@ -433,6 +448,7 @@ export async function stagedMarketCommunityContractTests() {
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     await db.exec(hardening);
     await db.exec(receiptGuard);
+    await db.exec(dmSummaries);
     await db.exec(groupCommunity);
     await db.exec(market);
     console.log('PASS staged SQL replay (idempotency, triggers and policies)');
