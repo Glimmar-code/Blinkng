@@ -50,9 +50,19 @@ begin
     raise exception 'BLINK_MEMBERSHIP_CHANGE_REQUIRES_SERVER'
       using errcode='42501';
   end if;
+  if current_user='authenticated'
+    and old.left_at is null and new.left_at is not null
+    and exists(
+      select 1 from public.conversations c
+      where c.id=old.conversation_id and c.is_group=true
+        and c.created_by=old.user_id
+    )
+  then
+    raise exception 'GROUP_OWNER_MUST_TRANSFER_FIRST' using errcode='42501';
+  end if;
   return new;
 end;
-$$;
+$;
 drop trigger if exists blink_protect_conversation_membership_guard
   on public.conversation_participants;
 create trigger blink_protect_conversation_membership_guard
