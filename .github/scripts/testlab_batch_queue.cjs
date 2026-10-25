@@ -48,7 +48,7 @@ function isCandidate(pr, now = Date.now()) {
     pr.head?.repo?.full_name === OWNER + '/' + REPO &&
     !/^Testlab-batch-/.test(pr.head?.ref || '') &&
     Number.isFinite(age) && age >= 0 && age <= ACTIVE_DAYS * 86400000 &&
-    !/^\s*\[(?:draft|wip|superseded|hold|blocked|do not merge)\]/i.test(title) &&
+    !/^\s*\[(?:draft|wip|superseded(?:\s+[^\]]+)?|hold|blocked|do not merge)\]/i.test(title) &&
     !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge)\b/i.test(body) &&
     !/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body) &&
     ![...tags].some(name => BLOCKED_LABELS.has(name.toLowerCase()));
