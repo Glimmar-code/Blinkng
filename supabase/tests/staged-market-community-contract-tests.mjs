@@ -18,6 +18,8 @@ export async function stagedMarketCommunityContractTests() {
       create role service_role bypassrls;
       create schema auth;
       create table auth.users(id uuid primary key, email text);
+      create table public.profiles(id uuid primary key, username text);
+      create table public.blocks(blocker_id uuid,blocked_id uuid);
       create function auth.uid() returns uuid language sql stable as
         $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
       grant usage on schema auth, public to authenticated, service_role;
@@ -75,7 +77,9 @@ export async function stagedMarketCommunityContractTests() {
     const other = '22222222-2222-4222-8222-222222222222';
     await db.exec(`
       insert into auth.users(id,email) values
-      ('${owner}','owner@example.test'),('${other}','reader@example.test')
+      ('${owner}','owner@example.test'),('${other}','reader@example.test');
+      insert into public.profiles(id,username) values
+      ('${owner}','testowner'),('${other}','testreader')
     `);
     const groupCommunity = fs.readFileSync(
       new URL('../../docs/integration/groups-communities-staging-20261025.sql', import.meta.url),
