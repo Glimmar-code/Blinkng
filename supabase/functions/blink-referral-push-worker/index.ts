@@ -18,6 +18,7 @@ Deno.serve(async (request) => {
   if (key.length < 32 || provided.length !== key.length) return reply({ error: "Unauthorized" }, 401);
   const x = new TextEncoder().encode(key);
   const y = new TextEncoder().encode(provided);
+  if (x.length !== y.length) return reply({ error: "Unauthorized" }, 401);
   let diff = 0;
   for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
   if (diff !== 0) return reply({ error: "Unauthorized" }, 401);
