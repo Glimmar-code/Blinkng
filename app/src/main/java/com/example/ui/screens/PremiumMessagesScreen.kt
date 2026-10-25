@@ -48,6 +48,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -2665,7 +2666,68 @@ private fun MessageContent(
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
             )
         } else {
-            if (!message.attachedImageUrl.isNullOrBlank()) {
+            if (message.imageViewOnce) {
+                var opening by remember(message.id) { mutableStateOf(false) }
+                var consumed by remember(message.id) { mutableStateOf(false) }
+                var privatePicture by remember(message.id) {
+                    mutableStateOf<android.graphics.Bitmap?>(null)
+                }
+                val openScope = rememberCoroutineScope()
+                Column(modifier = Modifier.width(214.dp).padding(9.dp)) {
+                    Text(
+                        when {
+                            isMine -> "🔒 View-once picture sent"
+                            consumed -> "View-once picture opened"
+                            message.status == MessageStatus.SENDING -> "Sending private picture…"
+                            message.status == MessageStatus.FAILED -> "Private picture wasn't sent"
+                            else -> "🔒 View-once picture"
+                        },
+                        color = contentColor, fontSize = 12.sp
+                    )
+                    if (!isMine && !consumed && !opening &&
+                        message.status == MessageStatus.SENT &&
+                        !message.id.startsWith("temp_")) {
+                        androidx.compose.material3.TextButton(onClick = {
+                            opening = true
+                            openScope.launch {
+                                val response = MessageMediaService.openViewOncePicture(message.id)
+                                consumed = true // A server claim is single-use even if decoding fails.
+                                opening = false
+                                response.onSuccess { privatePicture = it }
+                                    .onFailure {
+                                        Toast.makeText(context,
+                                            it.message ?: "Picture can't be reopened.",
+                                            Toast.LENGTH_SHORT).show()
+                                    }
+                            }
+                        }) { Text("Open once", color = palette.accent) }
+                    } else if (opening) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                    }
+                }
+                privatePicture?.let { bitmap ->
+                    DisposableEffect(bitmap) {
+                        onDispose { if (!bitmap.isRecycled) bitmap.recycle() }
+                    }
+                    Dialog(
+                        onDismissRequest = { privatePicture = null },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                    ) {
+                        Box(Modifier.fillMaxSize().background(Color.Black)) {
+                            ComposeImage(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Private one-time photo",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            androidx.compose.material3.TextButton(
+                                onClick = { privatePicture = null },
+                                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+                            ) { Text("Close", color = Color.White) }
+                        }
+                    }
+                }
+            } else if (!message.attachedImageUrl.isNullOrBlank()) {
                 val imageUrl = message.attachedImageUrl
                 var showFullImage by remember(imageUrl) { mutableStateOf(false) }
                 val isLocal = imageUrl.startsWith("content:") || imageUrl.startsWith("file:")
