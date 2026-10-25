@@ -1543,6 +1543,36 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    /**
+     * Uses the already deployed, authorization-checked 3–50 member group RPC.
+     * The group inbox UI is intentionally held until group summary pagination
+     * is tested separately; never create groups from an unverified screen.
+     */
+    suspend fun createGroupConversation(
+        title: String,
+        invitedUserIds: List<String>
+    ): String? = withContext(Dispatchers.IO) {
+        val creator = getCurrentUserId() ?: return@withContext null
+        val cleanTitle = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title)
+        val members = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedMembers(creator, invitedUserIds)
+        val body = JSONObject().put("p_title", cleanTitle)
+            .put("p_member_ids", JSONArray(members))
+        val request = newRequestBuilder("/rest/v1/rpc/create_group_conversation", true)
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        runCatching {
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty().trim().removeSurrounding("\"")
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "GROUP_CREATE_REJECTED code=${response.code}")
+                    return@use null
+                }
+                raw.takeIf { isValidUuid(it) }
+            }
+        }.getOrNull()
+    }
+
     suspend fun searchProfiles(query: String): List<UserProfile> =
         searchProfilesPage(query = query, limit = 30)
 
