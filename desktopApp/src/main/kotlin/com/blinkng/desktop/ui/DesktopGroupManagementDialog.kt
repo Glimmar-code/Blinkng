@@ -42,16 +42,16 @@ fun DesktopGroupManagementDialog(
 ) {
     val scope = rememberCoroutineScope()
     val myId = state.session?.userId.orEmpty()
-    var ownerId by remember(conversation.id) { mutableStateOf("") }
-    var members by remember(conversation.id) { mutableStateOf<List<DesktopGroupMember>>(emptyList()) }
-    var inviteQuery by remember(conversation.id) { mutableStateOf("") }
-    var searching by remember(conversation.id, inviteQuery) { mutableStateOf(false) }
-    var matches by remember(conversation.id, inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
-    var inviting by remember(conversation.id) { mutableStateOf(false) }
-    var busy by remember(conversation.id) { mutableStateOf(false) }
-    var transferTarget by remember(conversation.id) { mutableStateOf<DesktopGroupMember?>(null) }
-    var error by remember(conversation.id) { mutableStateOf<String?>(null) }
-    var info by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var ownerId by remember(conversation.id, myId) { mutableStateOf("") }
+    var members by remember(conversation.id, myId) { mutableStateOf<List<DesktopGroupMember>>(emptyList()) }
+    var inviteQuery by remember(conversation.id, myId) { mutableStateOf("") }
+    var searching by remember(conversation.id, myId, inviteQuery) { mutableStateOf(false) }
+    var matches by remember(conversation.id, myId, inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var inviting by remember(conversation.id, myId) { mutableStateOf(false) }
+    var busy by remember(conversation.id, myId) { mutableStateOf(false) }
+    var transferTarget by remember(conversation.id, myId) { mutableStateOf<DesktopGroupMember?>(null) }
+    var error by remember(conversation.id, myId) { mutableStateOf<String?>(null) }
+    var info by remember(conversation.id, myId) { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         busy = true
@@ -64,7 +64,7 @@ fun DesktopGroupManagementDialog(
         } finally { busy = false }
     }
     LaunchedEffect(conversation.id, myId) { refresh() }
-    LaunchedEffect(inviteQuery, inviting, conversation.id) {
+    LaunchedEffect(inviteQuery, inviting, conversation.id, myId) {
         if (!inviting || inviteQuery.trim().isBlank()) return@LaunchedEffect
         delay(220)
         searching = true
