@@ -42,7 +42,7 @@ export async function stagedMarketCommunityContractTests() {
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
         left_at timestamptz, is_admin boolean not null default false,
-        joined_at timestamptz not null default now()
+        joined_at timestamptz not null default now(), last_read_at timestamptz
       );
     `);
 
@@ -233,7 +233,9 @@ export async function stagedMarketCommunityContractTests() {
         id uuid primary key default gen_random_uuid(),
         conversation_id uuid references public.conversations(id),
         sender_id uuid, content text, message_type text default 'text',
-        created_at timestamptz default now()
+        created_at timestamptz default now(),
+        delivered_at timestamptz, is_read boolean default false,
+        read_at timestamptz, deleted_for_everyone boolean default false
       );
       grant select,insert,update on public.conversation_participants to authenticated;
       grant select,update on public.conversations to authenticated;
@@ -278,6 +280,11 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(hardening);
+    const receiptGuard = fs.readFileSync(
+      new URL('../../docs/integration/departed-member-rpc-hardening-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(receiptGuard);
 
     const privateGroup = '66666666-6666-4666-8666-666666666666';
     const dm = '77777777-7777-4777-8777-777777777777';
@@ -368,6 +375,7 @@ export async function stagedMarketCommunityContractTests() {
     console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     await db.exec(hardening);
+    await db.exec(receiptGuard);
     await db.exec(groupCommunity);
     await db.exec(market);
     console.log('PASS staged SQL replay (idempotency, triggers and policies)');
