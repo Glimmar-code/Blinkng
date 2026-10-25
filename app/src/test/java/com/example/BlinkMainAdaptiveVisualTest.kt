@@ -70,7 +70,7 @@ class BlinkMainAdaptiveVisualTest {
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
                 BlinkTheme(darkTheme=dark) {
-                    Box(Modifier.width(widthDp.dp).height(630.dp).background(Color.Black)
+                    Box(Modifier.width(widthDp.dp).height(630.dp).background(if (dark) Color.Black else Color.White)
                         .testTag("main_home_capture")) {
                         Column {
                             FeedTopBar(
@@ -100,7 +100,7 @@ class BlinkMainAdaptiveVisualTest {
                             feedSubTab = 0,
                             onHomeClick = {}, onReelsClick = {},
                             onMarketClick = {}, onConnectClick = {},
-                            onMessageClick = {}, isDark = true,
+                            onMessageClick = {}, isDark = dark,
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
@@ -120,7 +120,7 @@ class BlinkMainAdaptiveVisualTest {
             CompositionLocalProvider(LocalDensity provides Density(1f,scale)) {
                 BlinkTheme(darkTheme=dark) {
                     Box(Modifier.width(widthDp.dp).height(950.dp)
-                        .background(Color.Black).testTag("main_notifications_capture")) {
+                        .background(if (dark) Color.Black else Color.White).testTag("main_notifications_capture")) {
                         ActivityScreen(
                             activities = listOf(
                                 ActivityItem(
