@@ -1301,6 +1301,9 @@ fun MainAppContent(
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
+                        },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
                         },
@@ -1766,6 +1769,9 @@ fun MainAppContent(
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
                     onSendAttachment = { uri, kind, duration, caption, quality ->
                         viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality)
+                    },
+                    onCancelAttachment = { message ->
+                        viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
                     },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
