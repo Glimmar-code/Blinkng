@@ -395,7 +395,7 @@ begin
   if conversions<>1 then raise exception 'Confirmed 30d referrals should be one: %',conversions; end if;
   begin
     perform public.blink_finish_referral_push(
-      '00000000-0000-0000-0000-000000000001',true,null);
+      '00000000-0000-0000-0000-000000000001',true,null,1);
     raise exception 'User unexpectedly acknowledged a server push';
   exception when insufficient_privilege then null;
   end;
@@ -408,7 +408,10 @@ begin
   for picked in select * from public.blink_claim_referral_pushes(10)
   loop
     total := total+1;
-    if not public.blink_finish_referral_push(picked.notification_id,true,null) then
+    if public.blink_finish_referral_push(picked.notification_id,true,null,picked.attempt_count-1) then
+      raise exception 'A stale worker could acknowledge a newer delivery attempt';
+    end if;
+    if not public.blink_finish_referral_push(picked.notification_id,true,null,picked.attempt_count) then
       raise exception 'Trusted service role could not acknowledge a queued push';
     end if;
   end loop;
