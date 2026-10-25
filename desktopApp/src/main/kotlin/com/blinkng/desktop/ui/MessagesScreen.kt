@@ -20,6 +20,7 @@ import com.blinkng.shared.BlinkChatImageQuality
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 import java.io.File
+import java.io.FileOutputStream
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -444,6 +445,39 @@ fun MessagesScreen(state: DesktopAppState) {
                                     actionMessageId = null
                                 },
                             )
+                            if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Save picture as…") },
+                                    onClick = {
+                                        actionMessageId = null
+                                        val chooser = JFileChooser().apply {
+                                            dialogTitle = "Save BLINK picture"
+                                            selectedFile = File("BLINK-picture")
+                                        }
+                                        if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                            val target = chooser.selectedFile
+                                            if (target.exists()) {
+                                                error = "Choose a new file name to avoid overwriting a picture."
+                                            } else {
+                                                scope.launch {
+                                                    runCatching {
+                                                        FileOutputStream(target).use { output ->
+                                                            state.client.copyChatImageTo(
+                                                                message.id, message.conversationId, output
+                                                            )
+                                                        }
+                                                    }.onSuccess {
+                                                        error = "Picture saved to ${target.absolutePath}"
+                                                    }.onFailure { ex ->
+                                                        target.delete()
+                                                        error = ex.message ?: "Could not save picture."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Forward") },
                                 onClick = {
