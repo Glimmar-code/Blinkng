@@ -22,6 +22,7 @@ import java.io.File
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
 import com.example.data.supabase.BlinkChatPhotoEditor
+import com.example.data.supabase.MessageMediaService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.speech.RecognizerIntent
@@ -2351,6 +2352,44 @@ private fun MessageContent(
                 val imageUrl = message.attachedImageUrl
                 var showFullImage by remember(imageUrl) { mutableStateOf(false) }
                 var imageZoom by remember(imageUrl) { mutableStateOf(1f) }
+                var expandedImageUrl by remember(imageUrl) { mutableStateOf(imageUrl) }
+                val pictureActionsScope = rememberCoroutineScope()
+                val canExportImage = message.status != MessageStatus.SENDING &&
+                    message.status != MessageStatus.FAILED &&
+                    !message.id.startsWith("temp_") &&
+                    !message.conversationId.isNullOrBlank()
+                val savePhoto = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument("image/*")
+                ) { destination ->
+                    val convoId = message.conversationId
+                    if (destination != null && !convoId.isNullOrBlank() && canExportImage) {
+                        pictureActionsScope.launch {
+                            val saved = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    context.contentResolver.openOutputStream(destination)?.use { target ->
+                                        MessageMediaService.copyPrivateImage(
+                                            message.id, convoId, target
+                                        ).getOrThrow()
+                                    } ?: throw IllegalStateException("Cannot open this destination.")
+                                }
+                            }
+                            Toast.makeText(
+                                context,
+                                if (saved.isSuccess) "Picture saved." else
+                                    (saved.exceptionOrNull()?.message ?: "Could not save picture."),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+                LaunchedEffect(showFullImage, message.id, message.conversationId) {
+                    if (showFullImage && canExportImage) {
+                        val refreshed = MessageMediaService.freshImageUrl(
+                            message.id, message.conversationId.orEmpty()
+                        )
+                        if (refreshed != null) expandedImageUrl = refreshed
+                    }
+                }
                 Box(
                     modifier = Modifier.width(220.dp).height(170.dp)
                         .clip(RoundedCornerShape(13.dp))
@@ -2410,7 +2449,7 @@ private fun MessageContent(
                             contentAlignment = Alignment.Center
                         ) {
                             AsyncImage(
-                                model = imageUrl,
+                                model = expandedImageUrl,
                                 contentDescription = "Full screen picture. Pinch to zoom.",
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier.fillMaxSize()
@@ -2425,6 +2464,60 @@ private fun MessageContent(
                                     }
                                     .testTag("chat_image_fullscreen")
                             )
+                            Row(
+                                modifier = Modifier.align(Alignment.BottomCenter)
+                                    .navigationBarsPadding().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (canExportImage) {
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { savePhoto.launch("BLINK-picture") }
+                                    ) { Text("Save", color = Color.White) }
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        val convoId = message.conversationId ?: return@TextButton
+                                        pictureActionsScope.launch {
+                                            val shareResult = runCatching {
+                                                val temporary = withContext(Dispatchers.IO) {
+                                                    val folder = File(context.cacheDir, "blink-share").apply {
+                                                        mkdirs()
+                                                    }
+                                                    // Old shares are deleted on the next share and during cache cleanup.
+                                                    folder.listFiles()?.filter {
+                                                        System.currentTimeMillis() - it.lastModified() > 86_400_000L
+                                                    }?.forEach { it.delete() }
+                                                    val file = File.createTempFile("blink-share-", ".image", folder)
+                                                    try {
+                                                        java.io.FileOutputStream(file).use { stream ->
+                                                            MessageMediaService.copyPrivateImage(
+                                                                message.id, convoId, stream
+                                                            ).getOrThrow()
+                                                        }
+                                                        file
+                                                    } catch (failure: Exception) {
+                                                        file.delete()
+                                                        throw failure
+                                                    }
+                                                }
+                                                val shareUri = FileProvider.getUriForFile(
+                                                    context, "${context.packageName}.chatfiles",
+                                                    temporary
+                                                )
+                                                Intent(Intent.ACTION_SEND).apply {
+                                                    type = "image/*"
+                                                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                            }
+                                            shareResult.onSuccess { shareIntent ->
+                                                context.startActivity(Intent.createChooser(shareIntent, "Share picture"))
+                                            }.onFailure {
+                                                Toast.makeText(context, "Could not share picture.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }) { Text("Share", color = Color.White) }
+                                }
+                            }
                             IconButton(
                                 onClick = { showFullImage = false },
                                 modifier = Modifier.align(Alignment.TopEnd)
