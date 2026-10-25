@@ -290,6 +290,17 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun bookmarkPost(postId: String): JSONObject =
         rpc("bookmark_post", JSONObject().put("p_post_id", postId.trim()))
 
+    /** Owner-only finance report; server independently checks the authenticated owner capability. */
+    suspend fun adminPaystackFinance(): JSONObject = withContext(Dispatchers.IO) {
+        val capability = client.fetchAdminCapability()
+        require(capability.isOwner) { "Owner authorization is required for financial reporting." }
+        requireSessionUserId()
+        val request = requestBuilder("/functions/v1/paystack-finance")
+            .post(JSONObject().toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
+
     suspend fun adminDashboard(): AdminDashboardSnapshot {
         requireAdmin()
         val stats = rpc("admin_dashboard_stats", JSONObject())
