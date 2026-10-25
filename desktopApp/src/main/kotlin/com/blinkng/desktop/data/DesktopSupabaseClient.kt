@@ -923,8 +923,12 @@ class DesktopSupabaseClient(
             "/rest/v1/messages?id=eq.$messageId&select=id,conversation_id,sender_id," +
                 "content,media_url,message_type,is_read,delivered_at,read_at,created_at&limit=1"
         ).optJSONObject(0)
-        if (existing != null && existing.optString("sender_id") == userId &&
-            existing.optString("conversation_id") == conversationId) {
+        if (existing != null) {
+            require(existing.optString("sender_id") == userId &&
+                existing.optString("conversation_id") == conversationId &&
+                existing.optString("message_type") == "image") {
+                "This message ID belongs to a different attachment."
+            }
             val previous = parseMessage(existing)
             return@withContext previous.copy(
                 mediaUrl = previous.mediaUrl?.let { signedChatImageUrl(it, conversationId) }
