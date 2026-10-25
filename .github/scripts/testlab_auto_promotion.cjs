@@ -106,7 +106,7 @@ function preflight(pr, changedFiles) {
   if (!pr || pr.state !== 'open' || pr.draft) return 'PR is not open and ready for review';
   if (pr.base?.ref !== 'main') return 'PR does not target main';
   if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return 'PR head must be internal to Blinkng';
-  if (!pr.head?.ref || pr.head.ref === 'main' || pr.head.ref === 'Testlab') return 'PR head must be a non-main feature branch';
+  if (!pr.head?.ref || pr.head.ref === 'main' || /^Testlab(?:-|$)/.test(pr.head.ref)) return 'PR head must be a non-main, non-Testlab feature branch';
   const labels = new Set((pr.labels || []).map(label => label.name));
   if (!labels.has(OPT_IN)) return 'No auto-promote opt-in label';
   if (/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(pr.body || '')) return 'Unfinished task checklist';
