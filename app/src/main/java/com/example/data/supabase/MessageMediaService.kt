@@ -275,7 +275,7 @@ object MessageMediaService {
                 val expandedMetadata = kind == BlinkChatAttachmentKind.IMAGE &&
                     photoMetadataSupported()
                 val objectPath =
-                    "conversations/$conversationId/users/$senderId/${kind.wireType}/${UUID.randomUUID()}.${staged.extension}"
+                    "conversations/$conversationId/users/$senderId/${kind.wireType}/$safeMessageId.${staged.extension}"
                 client.newCall(
                     builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
                         .addHeader("x-upsert", "false")
@@ -284,7 +284,9 @@ object MessageMediaService {
                         }).build()
                 ).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Upload failed."))
+                    if (!response.isSuccessful && response.code != 409) {
+                        throw IllegalStateException(error(raw, "Upload failed."))
+                    }
                 }
                 var privatePreviewPath: String? = null
                 if (expandedMetadata && kind == BlinkChatAttachmentKind.IMAGE) {
@@ -292,13 +294,13 @@ object MessageMediaService {
                     if (thumb != null) {
                         try {
                             val proposed = "conversations/$conversationId/users/$senderId/preview/" +
-                                "${UUID.randomUUID()}.jpg"
+                                "$safeMessageId.jpg"
                             val result = client.newCall(
                                 builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(proposed)}")
                                     .addHeader("x-upsert", "false")
                                     .post(thumb.asRequestBody("image/jpeg".toMediaType()))
                                     .build()
-                            ).execute().use { it.isSuccessful }
+                            ).execute().use { it.isSuccessful || it.code == 409 }
                             if (result) privatePreviewPath = proposed
                         } finally {
                             thumb.delete()
