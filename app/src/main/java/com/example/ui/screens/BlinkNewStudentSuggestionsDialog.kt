@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
@@ -21,7 +22,10 @@ import kotlinx.coroutines.launch
 
 /** Only shown immediately after campus registration. Never follows anyone without a tap. */
 @Composable
-internal fun BlinkNewStudentSuggestionsDialog(onDismiss: () -> Unit) {
+internal fun BlinkNewStudentSuggestionsDialog(
+    onDismiss: () -> Unit,
+    onProfileClick: (String) -> Unit = {},
+) {
     var suggestions by remember { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
@@ -63,7 +67,12 @@ internal fun BlinkNewStudentSuggestionsDialog(onDismiss: () -> Unit) {
                         AsyncImage(model = person.avatarUrl, contentDescription = "Profile photo",
                             modifier = Modifier.size(36.dp).clip(CircleShape))
                         Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f).clickable {
+                            onProfileClick(person.username)
+                            scope.launch {
+                                runCatching { BlinkReferralClient.recordProfileOpen(person.id, "recommendations") }
+                            }
+                        }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(person.fullName.ifBlank { person.username },
                                     style = MaterialTheme.typography.bodyMedium, maxLines = 1)

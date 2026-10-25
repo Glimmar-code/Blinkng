@@ -924,7 +924,11 @@ class MainActivity : ComponentActivity() {
                             newStudentDiscoveryAccount == uiState.myProfile.id
                         ) {
                             BlinkNewStudentSuggestionsDialog(
-                                onDismiss = { newStudentDiscoveryAccount = null }
+                                onDismiss = { newStudentDiscoveryAccount = null },
+                                onProfileClick = {
+                                    newStudentDiscoveryAccount = null
+                                    viewModel.openProfile(it)
+                                }
                             )
                         }
                         if (uiState.destination == AppDestination.MAIN) {

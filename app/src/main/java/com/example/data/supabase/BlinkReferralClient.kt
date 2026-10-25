@@ -3,6 +3,8 @@ package com.example.data.supabase
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralStats
 import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
 import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import kotlinx.coroutines.Dispatchers
@@ -128,6 +130,42 @@ object BlinkReferralClient {
                 )
             }
         }
+
+    suspend fun coinRewardStatus(): BlinkReferralCoinStatus = withContext(Dispatchers.IO) {
+        val row = invoke("blink_referral_coin_status", JSONObject(), authenticated = true)
+            .optJSONObject(0) ?: return@withContext BlinkReferralCoinStatus()
+        BlinkReferralCoinStatus(
+            earnedCoins = row.optLong("earned_coins"),
+            nextMilestone = row.optInt("next_milestone").takeIf { !row.isNull("next_milestone") },
+            rewardEnabled = row.optBoolean("reward_enabled"),
+            nextRewardCoins = row.optInt("next_reward_coins")
+        )
+    }
+
+    suspend fun sourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
+        val row = invoke("blink_referral_source_analytics", JSONObject(), authenticated = true)
+            .optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
+        BlinkReferralSourceStats(
+            searchProfileOpens = row.optLong("search_profile_opens"),
+            recommendationProfileOpens = row.optLong("recommendation_profile_opens")
+        )
+    }
+
+    suspend fun recordProfileOpen(profileId: String, source: String): Boolean = withContext(Dispatchers.IO) {
+        if (source !in setOf("search", "recommendations")) return@withContext false
+        if (runCatching { java.util.UUID.fromString(profileId) }.isFailure) return@withContext false
+        val token = SupabaseService.accessToken() ?: return@withContext false
+        val request = Request.Builder()
+            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_record_referral_discovery_open")
+            .header("apikey", SupabaseConfig.anonKey)
+            .header("Authorization", "Bearer $token")
+            .post(JSONObject().put("p_profile", profileId).put("p_source", source)
+                .toString().toRequestBody(mediaType))
+            .build()
+        client.newCall(request).execute().use {
+            it.isSuccessful && it.body?.string()?.trim()=="true"
+        }
+    }
 
     suspend fun growthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
         val row = invoke("blink_referral_growth_stats", JSONObject(), authenticated = true)

@@ -1002,6 +1002,8 @@
     modal('Refer & Grow', '<p>Invite friends. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
       '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
       '<div id="referral-growth" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-sources" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-coins" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-top" class="muted" style="margin-top:9px"></div>' +
       '<div class="form-stack"><button type="button" class="btn primary" id="share-referral">Share invitation</button></div>');
     const stats=document.getElementById('referral-stats');
@@ -1025,8 +1027,9 @@
         : 'No referral activity yet.';
     }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
     void Promise.allSettled([
-      rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5})
-    ]).then(([growthResult,leaderResult])=>{
+      rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5}),
+      rpc('blink_referral_source_analytics'), rpc('blink_referral_coin_status')
+    ]).then(([growthResult,leaderResult,sourceResult,coinResult])=>{
       const growth=document.getElementById('referral-growth');
       if(growth?.isConnected && growthResult.status==='fulfilled'){
         const x=Array.isArray(growthResult.value)?growthResult.value[0]:null;
@@ -1034,6 +1037,19 @@
           ' · Followers gained this week: '+fmt(x.followers_gained_this_week)+
           ' · Invite share actions: '+fmt(x.share_actions)+
           ' · Source-level Search/recommendation attribution is not yet tracked.';
+      }
+      const sources=document.getElementById('referral-sources');
+      if(sources?.isConnected && sourceResult.status==='fulfilled'){
+        const item=Array.isArray(sourceResult.value)?sourceResult.value[0]:null;
+        if(item)sources.textContent='Unique profile opens from Search (7 days): '+
+          fmt(item.search_profile_opens)+' · From recommendations: '+fmt(item.recommendation_profile_opens);
+      }
+      const coins=document.getElementById('referral-coins');
+      if(coins?.isConnected && coinResult.status==='fulfilled'){
+        const item=Array.isArray(coinResult.value)?coinResult.value[0]:null;
+        if(item)coins.textContent='Referral Coins earned: '+fmt(item.earned_coins)+
+          (item.reward_enabled?' · Next milestone: '+fmt(item.next_milestone):
+            ' · Milestone awards await owner approval.');
       }
       const lead=document.getElementById('referral-top');
       if(lead?.isConnected && leaderResult.status==='fulfilled'){
@@ -1095,8 +1111,15 @@
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
       const pmap=await fetchProfiles((posts||[]).map(x=>x.user_id));
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
-      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
+      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
       bindPostCards();
+      out.querySelectorAll('[data-ref-profile]').forEach(button=>
+        button.addEventListener('click',()=>{
+          const id=button.getAttribute('data-ref-profile');
+          if(id)void rpc('blink_record_referral_discovery_open',
+            {p_profile:id,p_source:'search'}).catch(()=>{});
+        })
+      );
     }catch(e){if(requestId===state.searchRequestId&&out.isConnected)out.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
   }
 

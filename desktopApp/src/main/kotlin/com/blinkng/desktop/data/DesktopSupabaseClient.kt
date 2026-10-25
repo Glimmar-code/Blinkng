@@ -10,6 +10,8 @@ import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.blinkng.shared.discovery.BlinkReferralStats
 import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
 import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
@@ -247,6 +249,26 @@ class DesktopSupabaseClient(
                 )
             }
         }
+
+    suspend fun referralCoinRewardStatus(): BlinkReferralCoinStatus = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_coin_status", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralCoinStatus()
+        BlinkReferralCoinStatus(
+            earnedCoins = row.optLong("earned_coins"),
+            nextMilestone = row.optInt("next_milestone").takeIf { !row.isNull("next_milestone") },
+            rewardEnabled = row.optBoolean("reward_enabled"),
+            nextRewardCoins = row.optInt("next_reward_coins"),
+        )
+    }
+
+    suspend fun referralSourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_source_analytics", JSONObject(),
+            "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
+        BlinkReferralSourceStats(
+            searchProfileOpens = row.optLong("search_profile_opens"),
+            recommendationProfileOpens = row.optLong("recommendation_profile_opens"),
+        )
+    }
 
     suspend fun referralGrowthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
         val row = postArray("/rest/v1/rpc/blink_referral_growth_stats",

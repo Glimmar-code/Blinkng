@@ -21,6 +21,18 @@ data class BlinkReferralStats(
     val nextAchievementTarget: Int? = 1,
 )
 
+data class BlinkReferralCoinStatus(
+    val earnedCoins: Long = 0,
+    val nextMilestone: Int? = null,
+    val rewardEnabled: Boolean = false,
+    val nextRewardCoins: Int = 0,
+)
+
+data class BlinkReferralSourceStats(
+    val searchProfileOpens: Long = 0,
+    val recommendationProfileOpens: Long = 0,
+)
+
 /** Aggregated counts from real owned activity; do not infer missing traffic sources. */
 data class BlinkReferralGrowthStats(
     val profileViewsThisWeek: Long = 0,

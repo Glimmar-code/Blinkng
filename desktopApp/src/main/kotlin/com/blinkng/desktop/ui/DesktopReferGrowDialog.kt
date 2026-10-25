@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.dp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
 import com.blinkng.shared.discovery.BlinkReferralGrowthStats
 import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import kotlinx.coroutines.launch
@@ -22,6 +24,8 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
     val scope = rememberCoroutineScope()
     var stats by remember { mutableStateOf<BlinkReferralStats?>(null) }
     var growth by remember { mutableStateOf<BlinkReferralGrowthStats?>(null) }
+    var coins by remember { mutableStateOf<BlinkReferralCoinStatus?>(null) }
+    var sources by remember { mutableStateOf<BlinkReferralSourceStats?>(null) }
     var leaders by remember { mutableStateOf<List<BlinkReferralLeaderboardEntry>>(emptyList()) }
     var error by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
@@ -30,6 +34,8 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
             .onSuccess { stats = it }
             .onFailure { error = true }
         growth = runCatching { state.client.referralGrowthStats() }.getOrNull()
+        coins = runCatching { state.client.referralCoinRewardStatus() }.getOrNull()
+        sources = runCatching { state.client.referralSourceStats() }.getOrNull()
         leaders = runCatching { state.client.referralLeaderboard() }.getOrDefault(emptyList())
     }
     AlertDialog(
@@ -55,6 +61,16 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                     Text("Referral link share actions: ${it.shareActions}")
                     Text("Search/recommendation attribution is not tracked separately.",
                         style = MaterialTheme.typography.labelSmall)
+                }
+                sources?.let {
+                    Text("Unique Search profile opens (7 days): ${it.searchProfileOpens}")
+                    Text("Unique recommended profile opens (7 days): ${it.recommendationProfileOpens}")
+                }
+                coins?.let {
+                    Text("Earned referral milestone Coins: ${it.earnedCoins}")
+                    Text(if (it.rewardEnabled)
+                        "Next milestone: ${it.nextMilestone ?: "All unlocked"} · ${it.nextRewardCoins} Coins"
+                        else "Milestone Coin awards await owner approval.")
                 }
                 if (leaders.isNotEmpty()) {
                     Text("Top connectors this week", style = MaterialTheme.typography.titleSmall)

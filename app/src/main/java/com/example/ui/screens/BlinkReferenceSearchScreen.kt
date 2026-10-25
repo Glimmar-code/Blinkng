@@ -161,6 +161,12 @@ internal fun BlinkReferenceSearchScreen(
             if (!okay) Toast.makeText(context, "Follow request failed. Try again.", Toast.LENGTH_SHORT).show()
         }
     }
+    fun openProfileFromDiscovery(id: String, username: String, source: String) {
+        onProfileClick(username)
+        followScope.launch {
+            runCatching { BlinkReferralClient.recordProfileOpen(id, source) }
+        }
+    }
     fun select(value: ReferenceCategory) {
         category = value
         if (discovery.backendAvailable) search.selectType(value.discoveryType)
@@ -408,7 +414,7 @@ internal fun BlinkReferenceSearchScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(
-                                Modifier.weight(1f).clickable { onProfileClick(person.username) },
+                                Modifier.weight(1f).clickable { openProfileFromDiscovery(person.id, person.username, "recommendations") },
                             ) {
                                 Text(person.fullName.ifBlank { person.username },
                                     color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -449,7 +455,7 @@ internal fun BlinkReferenceSearchScreen(
                         following = person.id in followingIds,
                         isBusy = busyFollowId == person.id,
                         onFollow = { toggleFollow(person.id) },
-                        onClick = { onProfileClick(person.username) },
+                        onClick = { openProfileFromDiscovery(person.id, person.username, "search") },
                     )
                 } else if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
                     val profileId = result.id
@@ -463,7 +469,7 @@ internal fun BlinkReferenceSearchScreen(
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
-                        onClick = { if (result.username.isNotBlank()) onProfileClick(result.username) },
+                        onClick = { if (result.username.isNotBlank()) openProfileFromDiscovery(profileId, result.username, "search") },
                     )
                 } else localPeople.take(limit).forEach { profile ->
                     val profileId = profile.id
@@ -477,7 +483,7 @@ internal fun BlinkReferenceSearchScreen(
                         followable = profileId.isNotBlank() && profileId != currentProfile?.id,
                         following = profileId in followingIds, isBusy = busyFollowId == profileId,
                         onFollow = { toggleFollow(profileId) },
-                        onClick = { onProfileClick(profile.username) },
+                        onClick = { openProfileFromDiscovery(profileId, profile.username, "search") },
                     )
                 }
                 if (searchedPeople.isEmpty() && livePeople.isEmpty() && localPeople.isEmpty())

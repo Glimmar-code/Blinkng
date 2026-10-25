@@ -13,6 +13,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralCoinStatus
+import com.blinkng.shared.discovery.BlinkReferralSourceStats
 import com.blinkng.shared.discovery.BlinkReferralGrowthStats
 import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import kotlinx.coroutines.launch
@@ -26,6 +28,8 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var stats by remember { mutableStateOf<BlinkReferralStats?>(null) }
     var growth by remember { mutableStateOf<BlinkReferralGrowthStats?>(null) }
+    var coins by remember { mutableStateOf<BlinkReferralCoinStatus?>(null) }
+    var sources by remember { mutableStateOf<BlinkReferralSourceStats?>(null) }
     var leaders by remember { mutableStateOf<List<BlinkReferralLeaderboardEntry>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(username) {
@@ -33,6 +37,8 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
             .onSuccess { stats = it }
             .onFailure { error = "Referral statistics are unavailable until the server update is ready." }
         growth = runCatching { BlinkReferralClient.growthStats() }.getOrNull()
+        coins = runCatching { BlinkReferralClient.coinRewardStatus() }.getOrNull()
+        sources = runCatching { BlinkReferralClient.sourceStats() }.getOrNull()
         leaders = runCatching { BlinkReferralClient.leaderboard() }.getOrDefault(emptyList())
     }
     AlertDialog(
@@ -57,6 +63,18 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                     Text("Followers gained this week: ${it.followersGainedThisWeek}")
                     Text("Referral link share actions: ${it.shareActions}")
                     Text("Search and recommendation view sources are not yet tracked separately.",
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                sources?.let {
+                    Text("Profile opens from Search (7 days): ${it.searchProfileOpens}")
+                    Text("Profile opens from new-student recommendations: ${it.recommendationProfileOpens}")
+                    Text("Only unique daily in-app opens are counted.", style = MaterialTheme.typography.labelSmall)
+                }
+                coins?.let {
+                    Text("Referral milestone Coins earned: ${it.earnedCoins}")
+                    if (it.rewardEnabled) {
+                        Text("Next milestone: ${it.nextMilestone ?: "All unlocked"} · ${it.nextRewardCoins} Coins")
+                    } else Text("Milestone Coin awards are awaiting owner approval.",
                         style = MaterialTheme.typography.labelSmall)
                 }
                 if (leaders.isNotEmpty()) {
