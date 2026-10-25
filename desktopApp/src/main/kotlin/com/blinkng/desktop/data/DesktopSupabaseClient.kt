@@ -637,12 +637,14 @@ class DesktopSupabaseClient(
         if (!reference.startsWith(expectedPrefix)) return null
         val objectPath = reference.removePrefix("message-media:")
         val encoded = objectPath.split('/').joinToString("/") { encode(it) }
-        val response = postObject(
-            "/storage/v1/object/sign/message-media/$encoded",
-            JSONObject().put("expiresIn", 3600)
-        )
-        val url = (response as? JSONObject)?.optString("signedURL").orEmpty()
-            .ifBlank { (response as? JSONObject)?.optString("signedUrl").orEmpty() }
+        val url = runCatching {
+            val response = postObject(
+                "/storage/v1/object/sign/message-media/$encoded",
+                JSONObject().put("expiresIn", 3600)
+            ) as? JSONObject
+            response?.optString("signedURL").orEmpty()
+                .ifBlank { response?.optString("signedUrl").orEmpty() }
+        }.getOrDefault("")
         return when {
             url.startsWith("/storage/v1/") -> baseUrl + url
             url.startsWith("/object/") -> baseUrl + "/storage/v1" + url
@@ -655,10 +657,23 @@ class DesktopSupabaseClient(
     suspend fun sendChatImage(
         conversationId: String, file: File, caption: String,
         quality: BlinkChatImageQuality,
-        onProgress: (Int) -> Unit = {}
+        onProgress: (Int) -> Unit = {},
+        clientMessageId: String = UUID.randomUUID().toString()
     ): DesktopMessage = withContext(Dispatchers.IO) {
         require(UUID.fromString(conversationId).toString() == conversationId) { "Invalid conversation." }
         val userId = requireSession().userId
+        val messageId = UUID.fromString(clientMessageId).toString()
+        val existing = getArray(
+            "/rest/v1/messages?id=eq.$messageId&select=id,conversation_id,sender_id," +
+                "content,media_url,message_type,is_read,delivered_at,read_at,created_at&limit=1"
+        ).optJSONObject(0)
+        if (existing != null && existing.optString("sender_id") == userId &&
+            existing.optString("conversation_id") == conversationId) {
+            val previous = parseMessage(existing)
+            return@withContext previous.copy(
+                mediaUrl = previous.mediaUrl?.let { signedChatImageUrl(it, conversationId) }
+            )
+        }
         val mime = when (file.extension.lowercase()) {
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
@@ -691,8 +706,7 @@ class DesktopSupabaseClient(
                 extension = "jpg"
                 BlinkChatAttachmentKind.IMAGE.verify(uploadMime, prepared.length())
             }
-            val messageId = UUID.randomUUID().toString()
-            val objectPath = "conversations/$conversationId/users/$userId/image/$messageId.$extension"
+            val objectPath = "conversations/$conversationId/users/$userId/image/${UUID.randomUUID()}.$extension"
             val encoded = objectPath.split('/').joinToString("/") { encode(it) }
             val inputFile = prepared
             val body = object : RequestBody() {
