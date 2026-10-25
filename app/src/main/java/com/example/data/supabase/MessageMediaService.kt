@@ -3,6 +3,7 @@ package com.example.data.supabase
 import android.content.Context
 import android.net.Uri
 import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatUploadProgress
 import com.blinkng.shared.safeChatFilename
 import android.util.Base64
 import android.util.Log
@@ -103,7 +104,8 @@ object MessageMediaService {
         uri: Uri,
         kind: BlinkChatAttachmentKind,
         durationMs: Long = 0L,
-        clientMessageId: String = UUID.randomUUID().toString()
+        clientMessageId: String = UUID.randomUUID().toString(),
+        onUploadProgress: (Int) -> Unit = {}
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
@@ -178,7 +180,9 @@ object MessageMediaService {
                 client.newCall(
                     builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
                         .addHeader("x-upsert", "false")
-                        .post(staged.requestBody()).build()
+                        .post(staged.requestBody { sent, total ->
+                            onUploadProgress(BlinkChatUploadProgress.percent(sent, total))
+                        }).build()
                 ).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful) throw IllegalStateException(error(raw, "Upload failed."))
