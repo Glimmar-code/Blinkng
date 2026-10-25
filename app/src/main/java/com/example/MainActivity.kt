@@ -1304,6 +1304,9 @@ fun MainAppContent(
                         onCancelAttachment = { partner, message ->
                             viewModel.cancelAttachmentMessage(partner, message)
                         },
+                        onForwardPicture = { target, message ->
+                            viewModel.forwardPictureMessage(target, message)
+                        },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
                         },
@@ -1772,6 +1775,9 @@ fun MainAppContent(
                     },
                     onCancelAttachment = { message ->
                         viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
+                    },
+                    onForwardPicture = { target, message ->
+                        viewModel.forwardPictureMessage(target, message)
                     },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
