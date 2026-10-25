@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
 import java.io.File
 import java.util.UUID
 
@@ -51,6 +52,14 @@ class BlinkChatImageUploadWorker(
 
         val quality = runCatching { BlinkChatImageQuality.valueOf(mimeQuality) }
             .getOrDefault(BlinkChatImageQuality.STANDARD)
+        val albumId = inputData.getString("albumId").orEmpty()
+        val album = if (albumId.isNotBlank()) runCatching {
+            BlinkChatPhotoAlbum.of(
+                albumId, inputData.getInt("albumPosition", 0),
+                inputData.getInt("albumSize", 1)
+            )
+        }.getOrDefault(BlinkChatPhotoAlbum.single())
+        else BlinkChatPhotoAlbum.single()
         val outcome = MessageMediaService.sendAttachment(
             applicationContext, partner, Uri.fromFile(file),
             BlinkChatAttachmentKind.IMAGE,
@@ -59,7 +68,8 @@ class BlinkChatImageUploadWorker(
                 setProgressAsync(workDataOf("progress" to percent))
             },
             caption = caption,
-            imageQuality = quality
+            imageQuality = quality,
+            album = album
         )
         return outcome.fold(
             onSuccess = {
