@@ -53,7 +53,7 @@ internal fun DesktopNewStudentSuggestionsDialog(
                 if (!loading && !failed && suggestions.isEmpty()) Text("Find students from your campus in Search.")
                 suggestions.take(10).forEach { person ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Person, contentDescription = null)
+                        DesktopReferralAvatar(person.avatarUrl)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
