@@ -95,6 +95,19 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('if (needsTwoRows)', header)
         self.assertIn('compact = compactToolbar,', header)
 
+    def test_profile_to_chat_keeps_reverse_navigation_history(self):
+        # Direct Message must push the current profile route once, not first
+        # close Profile and navigate to an intermediate Messages tab.
+        direct_message = method_body(
+            MAIN,
+            "                    onDirectMessage = { partner ->",
+            "                    onEndorseSkill = { skill ->"
+        )
+        self.assertIn("viewModel.openChatWithUser(partner", direct_message)
+        self.assertNotIn("viewModel.closeProfile()", direct_message)
+        self.assertNotIn("viewModel.setTab(MainTab.MESSAGES)", direct_message)
+        self.assertIn("viewModel.navigateBackInHistory()", MAIN)
+
     def test_hidden_bottom_navigation_releases_feed_space(self):
         # MainActivity's scroll visibility must actually reach the feed's
         # viewport and FAB. Hiding the overlay alone leaves a phantom gap.
