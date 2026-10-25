@@ -44,6 +44,7 @@ import com.example.data.models.Comment
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkPink
+import com.blinkng.shared.BlinkUserSuggestionPolicy
 
 private data class MentionToken(
     val start: Int,
@@ -88,26 +89,26 @@ fun CommentSheet(
     var reportingCommentId by remember { mutableStateOf<String?>(null) }
 
     val mentionToken = remember(textInput) { activeMentionToken(textInput) }
-    val mentionSuggestions = remember(mentionToken, mentionCandidates) {
-        val query = mentionToken?.query.orEmpty()
-        if (mentionToken == null) {
-            emptyList()
-        } else {
-            mentionCandidates
-                .asSequence()
-                .filter { it.username.isNotBlank() }
-                .filter {
-                    query.isBlank() ||
-                        it.username.contains(query, ignoreCase = true) ||
-                        it.fullName.contains(query, ignoreCase = true)
-                }
-                .sortedBy {
-                    if (it.username.startsWith(query, ignoreCase = true)) 0 else 1
-                }
-                .distinctBy { it.username.trim().removePrefix("@").lowercase() }
-                .take(5)
-                .toList()
-        }
+    var expandMentionSuggestions by remember(mentionToken?.query) { mutableStateOf(false) }
+    val mentionSuggestions = remember(mentionToken, mentionCandidates, expandMentionSuggestions) {
+        if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.page(
+            visibleCandidates = mentionCandidates,
+            query = mentionToken.query,
+            pageSize = if (expandMentionSuggestions) 50 else BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE,
+            username = { it.username },
+            displayName = { it.fullName }
+        )
+    }
+    val hasMoreMentionSuggestions = remember(mentionToken, mentionCandidates, expandMentionSuggestions) {
+        mentionToken != null && !expandMentionSuggestions &&
+            BlinkUserSuggestionPolicy.page(
+                visibleCandidates = mentionCandidates,
+                query = mentionToken.query,
+                offset = BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE,
+                pageSize = 1,
+                username = { it.username },
+                displayName = { it.fullName }
+            ).isNotEmpty()
     }
 
     fun startReply(parentId: String, username: String) {
@@ -314,6 +315,12 @@ fun CommentSheet(
                                     }
                                 }
                             )
+                        }
+                        if (hasMoreMentionSuggestions) {
+                            TextButton(
+                                onClick = { expandMentionSuggestions = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("See more matching users") }
                         }
                     }
                 }
