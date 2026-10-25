@@ -9,6 +9,7 @@ import com.blinkng.desktop.data.DesktopSession
 import com.blinkng.desktop.data.DesktopSupabaseClient
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.discovery.BlinkUniversitySearch
 
 class DesktopAppState(
     val client: DesktopSupabaseClient = DesktopSupabaseClient(),
@@ -137,12 +138,13 @@ class DesktopAppState(
         gender: String,
         birthDate: String,
     ) = profileAction {
-        require(university.trim().isNotBlank()) { "Choose your university." }
+        val canonicalUniversity = BlinkUniversitySearch.canonical(university)
+            ?: throw IllegalArgumentException("Select a university from the BLINK directory.")
         require(department.trim().isNotBlank()) { "Choose your department." }
         require(gender in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
         client.savePrivateBirthDate(birthDate)
         profile = client.saveOnboardingProfile(
-            university = university,
+            university = canonicalUniversity,
             department = department,
             academicLevel = level,
             gender = gender,
