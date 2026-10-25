@@ -185,15 +185,15 @@ as $$
      )
      and nullif(trim(p.username),'') is not null
      and (
-       lower(p.username) like '%' || lower(trim(p_query)) || '%'
-       or lower(coalesce(p.full_name,'')) like '%' || lower(trim(p_query)) || '%'
+       position(lower(trim(p_query)) in lower(p.username)) > 0
+       or position(lower(trim(p_query)) in lower(coalesce(p.full_name,''))) > 0
      )
    order by
      case
        when lower(p.username) = lower(trim(p_query)) then 0
-       when lower(p.username) like lower(trim(p_query)) || '%' then 1
-       when lower(coalesce(p.full_name,'')) like lower(trim(p_query)) || '%' then 2
-       when lower(p.username) like '%' || lower(trim(p_query)) || '%' then 3
+       when starts_with(lower(p.username), lower(trim(p_query))) then 1
+       when starts_with(lower(coalesce(p.full_name,'')), lower(trim(p_query))) then 2
+       when position(lower(trim(p_query)) in lower(p.username)) > 0 then 3
        else 4
      end,
      lower(p.username), p.id
@@ -498,9 +498,9 @@ as $$
            coalesce(b.points,0) as visibility_points,
            case
              when lower(p.username) = t.q then 0
-             when lower(p.username) like t.q || '%' then 1
-             when lower(p.full_name) like t.q || '%' then 2
-             when lower(p.username) like '%' || t.q || '%' then 3
+             when starts_with(lower(p.username), t.q) then 1
+             when starts_with(lower(coalesce(p.full_name,'')), t.q) then 2
+             when position(t.q in lower(p.username)) > 0 then 3
              else 4 end as relevance,
            case when p.university=v.university then 0 else 1 end as campus_tie
     from public.profiles p
@@ -509,8 +509,8 @@ as $$
     left join boost b on b.referrer_user_id=p.id
     where length(t.q) between 1 and 40 and p.onboarding_completed is true
       and p.id <> v.id
-      and (lower(p.username) like '%'||t.q||'%' or
-           lower(coalesce(p.full_name,'')) like '%'||t.q||'%')
+      and (position(t.q in lower(p.username)) > 0 or
+           position(t.q in lower(coalesce(p.full_name,''))) > 0)
       and not exists (
         select 1 from public.user_settings st
         where st.user_id=p.id and st.private_account is true
