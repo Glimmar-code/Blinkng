@@ -36,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
     private var rewardedAdShowPending = false
+    private var startupIntroComplete = false
     private var itemsOpenSignal by mutableIntStateOf(0)
     private var boostOpenSignal by mutableIntStateOf(0)
     private var showBugReportSheet by mutableStateOf(false)
@@ -491,7 +493,7 @@ class MainActivity : ComponentActivity() {
             viewModel.verifyPendingPaystackCheckout()
             reconcileReturnedPaystackPayment()
             viewModel.retryPendingRewardedAdClaim()
-            if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
+            if (startupIntroComplete && BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
             }
             startPresenceHeartbeat()
@@ -556,6 +558,20 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            // Covers auth/session restoration too: returning users must see the intro.
+            var showStartupIntro by remember { mutableStateOf(true) }
+            // Ad consent and rewarded-ad loading compete with first-frame rendering.
+            // Run them only after the exact approved BLINK intro finishes.
+            LaunchedEffect(showStartupIntro) {
+                if (!showStartupIntro && !isFinishing && !isDestroyed) {
+                    delay(300L)
+                    adConsentManager.gatherConsent {
+                        if (BlinkAdsRuntime.canRequestAds.value && !isFinishing && !isDestroyed) {
+                            rewardedAdManager.load()
+                        }
+                    }
+                }
+            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             val websiteDownloadState by websiteApkDownloadCoordinator.state.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
@@ -610,7 +626,7 @@ class MainActivity : ComponentActivity() {
             // Market, Connect or Messages, but must not interrupt other overlays.
             // Loading feed posts must never block an available app update:
             // people with an offline/failed feed still need access to Update Center.
-            val idleAppForUpdate = uiState.destination == AppDestination.MAIN &&
+            val idleAppForUpdate = !showStartupIntro && uiState.destination == AppDestination.MAIN &&
                 !uiState.isMenuOpen &&
                 !uiState.isActivityOpen &&
                 !uiState.isCreatePostOpen &&
@@ -697,8 +713,11 @@ class MainActivity : ComponentActivity() {
                 val routeManagesTopInset =
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
+                Box(modifier = Modifier.fillMaxSize()) {
                 Scaffold(
                     contentWindowInsets = when {
+                        // The intro paints behind both system bars on every device size.
+                        uiState.destination == AppDestination.SPLASH -> WindowInsets(0, 0, 0, 0)
                         // The new profile owns both status and gesture-bar safe
                         // areas; don't reserve another inset in the host scaffold.
                         uiState.destination == AppDestination.MAIN &&
@@ -726,11 +745,7 @@ class MainActivity : ComponentActivity() {
                         )
                         else -> ScaffoldDefaults.contentWindowInsets
                     },
-                    containerColor = if (homeManagesSystemInsets) {
-                        MaterialTheme.colorScheme.background
-                    } else {
-                        MaterialTheme.colorScheme.background
-                    },
+                    containerColor = if (uiState.destination == AppDestination.SPLASH) androidx.compose.ui.graphics.Color.Black else MaterialTheme.colorScheme.background,
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
@@ -980,15 +995,29 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (showBugReportSheet && uiState.destination == AppDestination.MAIN) {
+                if (showBugReportSheet && !showStartupIntro && uiState.destination == AppDestination.MAIN) {
                     BlinkBugReportSheet(onDismiss = { showBugReportSheet = false })
                 }
+                // Always overlay the entire Activity for one cold launch, regardless of
+                // how quickly a cached session transitions from SPLASH to MAIN.
+                if (showStartupIntro) {
+                    com.blinkng.shared.brand.BlinkBeyondLinkIntro(
+                        onFinished = { startupIntroComplete = true; showStartupIntro = false },
+                        modifier = Modifier.fillMaxSize()
+                            .zIndex(1000f)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                    )
+                }
+                } // Fullscreen startup overlay host
             }
         }
 
-        adConsentManager.gatherConsent {
-            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
-        }
         handleIncomingIntent(intent)
     }
 }
@@ -1014,8 +1043,9 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
-    var bottomBarTravelPx by remember { mutableStateOf(0f) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
     // MainAppContent hosts the Home feed: keep permission state in this scope.
@@ -1509,11 +1539,17 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
+                        // HorizontalPager keeps its neighbours composed. Only the settled,
+                        // foreground destination may own an active Feed/Reels player.
+                        isMainPageActive = selectedPage == page &&
+                            pagerState.currentPage == page &&
+                            !pagerState.isScrollInProgress && mainPageSwipeEnabled,
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
+                        onOpenFeedPost = { viewModel.openFeedPostDetails(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
                         onRepostPost = { viewModel.toggleRepost(it) },
                         onSharePost = { sharePostOrReel(it) },
@@ -1591,14 +1627,12 @@ fun MainAppContent(
                         onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
+                        isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         },
-                        onBottomBarTravelChange = { pixels ->
-                            bottomBarTravelPx = if (
-                                uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0
-                            ) pixels.coerceIn(0f, 50f) else 0f
-                        }
+                        // Home now requests complete hide/show, never partial translation.
+                        onBottomBarTravelChange = { _ -> }
                     )
                 }
 
@@ -2080,14 +2114,6 @@ fun MainAppContent(
                 .zIndex(30f)
         )
 
-        // The Home feed moves its nav rail 50px for every 80px of post scroll.
-        // Prevent a translated bar from leaking onto Reels, Market or Messages.
-        LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
-            if (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0) {
-                bottomBarTravelPx = 0f
-            }
-        }
-
         // Floating bottom navigation follows the feed chrome state. Its transition is
         // deliberately non-bouncy so a restored bar glides in instead of springing back.
         val shouldShowBottomBar = feedUtilitySheet == null &&
@@ -2107,10 +2133,15 @@ fun MainAppContent(
                 uiState.activePostOptionsPost == null &&
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
-                !uiState.isMenuOpen
+                !uiState.isMenuOpen && !showWallet
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = shouldShowBottomBar,
+            // A downward Home scroll hides the entire rail, including its shadow,
+            // rather than moving it by a fixed 50 px on different screen sizes.
+            visible = shouldShowBottomBar && (
+                uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0 ||
+                    isBottomBarVisibleByScroll
+            ),
             enter = androidx.compose.animation.slideInVertically(
                 initialOffsetY = { it },
                 animationSpec = androidx.compose.animation.core.tween(
@@ -2209,9 +2240,7 @@ fun MainAppContent(
                     viewModel.openMenu(true)
                 },
                 isMenuOpen = uiState.isMenuOpen,
-                modifier = Modifier.graphicsLayer {
-                    translationY = bottomBarTravelPx
-                }
+                modifier = Modifier
             )
         }
 
@@ -2224,6 +2253,14 @@ fun MainAppContent(
                 .zIndex(50f)
         )
 
+        // Load the full thread once when a post opens. Keep the comment sheet
+        // for other routes; the full post now renders its comments inline.
+        LaunchedEffect(uiState.deepLinkedPost?.id) {
+            uiState.deepLinkedPost?.id?.let { postId ->
+                if (uiState.activeCommentsPostId != postId) viewModel.openCommentsForPost(postId)
+            }
+        }
+
         AnimatedVisibility(
             visible = uiState.deepLinkedPost != null,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
@@ -2233,16 +2270,22 @@ fun MainAppContent(
                 SharedPostScreen(
                     post = post,
                     currentUsername = uiState.myProfile.username,
+                    currentUserId = uiState.myProfile.id,
                     isDark = uiState.isDarkMode,
+                    comments = uiState.comments,
+                    isCommentsLoading = uiState.isCommentsLoading,
+                    isPostingComment = uiState.isPostingComment,
                     onBack = { viewModel.closeDeepLinkedPost() },
                     onLike = { viewModel.togglePostLike(post.id) },
-                    onComment = { viewModel.openCommentsForPost(post.id) },
                     onBookmark = { viewModel.toggleBookmark(post.id) },
                     onShare = { sharePostOrReel(post.id) },
                     onOptions = { viewModel.openPostOptions(post) },
                     onDelete = { viewModel.deletePost(post.id) },
                     onProfileClick = { viewModel.openProfile(it) },
-                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) }
+                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                    onSendComment = { text, parentId -> viewModel.addComment(post.id, text, parentId) },
+                    onToggleCommentLike = { viewModel.toggleCommentLike(it) },
+                    onReportComment = { id, reason -> viewModel.reportComment(id, reason) }
                 )
             }
         }
@@ -2349,6 +2392,7 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
+                    initialTab = if (isMyProfile && showSavedProfile) 5 else 0,
                     userPosts = profilePosts,
                     isPostsLoading = isProfilePostsLoading,
                     hasPostsLoadError = profilePostsLoadFailed,
@@ -2359,7 +2403,7 @@ fun MainAppContent(
                     userMarketItems = userMarketItems,
                     isMarketLoading = isProfileMarketLoading,
                     hasMarketLoadError = isProfileMarketFailed,
-                    onBack = { viewModel.closeProfile() },
+                    onBack = { showSavedProfile = false; viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
                         viewModel.closeProfile()
@@ -2491,7 +2535,7 @@ fun MainAppContent(
         }
 
         // Modals: Comments Modal Sheet with reply & like interactions
-        if (uiState.activeCommentsPostId != null) {
+        if (uiState.activeCommentsPostId != null && uiState.deepLinkedPost == null) {
             CommentSheet(
                 comments = uiState.comments,
                 isLoading = uiState.isCommentsLoading,
@@ -2876,27 +2920,192 @@ fun MainAppContent(
             )
         }
 
-        // Modals: 3-Dot App Menu Sheet
-        if (uiState.isMenuOpen) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            AppMenuSheet(
+        // BLINK Menu reference — all routes preserve existing production services.
+        if (uiState.isMenuOpen && !showWallet) {
+            BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
+                hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
-                onViewProfile = { viewModel.openProfile("you") },
-                onEditProfile = { viewModel.openEditProfile(true) },
-                onOpenMarket = { viewModel.setTab(MainTab.MARKET) },
-                onOpenPostItem = { viewModel.openPostItem(true) },
-                onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
-                onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
-                onOpenActivity = { viewModel.openActivity(true) },
+                onViewProfile = {
+                    showSavedProfile = false
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onLeaderboard = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onWallet = {
+                    viewModel.openMenu(false)
+                    showWallet = true
+                },
+                onNotifications = {
+                    viewModel.openMenu(false)
+                    viewModel.openActivity(true)
+                },
+                onSaved = {
+                    showSavedProfile = true
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onVerification = {
+                    viewModel.openMenu(false)
+                    viewModel.openGetVerified(true)
+                },
+                onSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java)
+                            .putExtra("section", "privacy"),
+                        "Could not open settings."
+                    )
+                },
                 onToggleTheme = { viewModel.toggleDarkMode() },
-                onLogout = { viewModel.logout() },
-                onShowToast = { viewModel.showToast(it) },
+                onCallSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.notification.NotificationAndCallSettingsActivity::class.java),
+                        "Could not open call settings."
+                    )
+                },
+                onSwitchAccount = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.auth.AccountSwitcherActivity::class.java),
+                        "Could not switch account."
+                    )
+                },
+                onOpenAdmin = {
+                    viewModel.openMenu(false)
+                    if (canOpenAdmin) context.startActivitySafely(
+                        Intent(context, AdminControlCenterActivity::class.java),
+                        "Could not open administration."
+                    )
+                },
+                onMessages = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                onEditProfile = {
+                    viewModel.openMenu(false)
+                    viewModel.openEditProfile(true)
+                },
+                onFindFriends = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onPostItem = {
+                    viewModel.openMenu(false)
+                    viewModel.openPostItem(true)
+                },
+                onSellerHub = {
+                    viewModel.openMenu(false)
+                    viewModel.openBecomeSeller(true)
+                },
+                onScheduledPosts = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "scheduled"),
+                        "Could not open scheduled posts."
+                    )
+                },
+                onGroups = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "groups"),
+                        "Could not open groups."
+                    )
+                },
+                onOrdersAndWishlist = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", "market"),
+                        "Could not open orders."
+                    )
+                },
+                onCallHistory = {
+                    viewModel.openMenu(false)
+                    context.startActivitySafely(
+                        Intent(context, com.example.call.CallHistoryActivity::class.java),
+                        "Could not open call history."
+                    )
+                },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
-                onAdPrivacyOptions = onAdPrivacyOptions,
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) },
-                onReportBug = onReportBug
+                onAdPrivacyOptions = {
+                    viewModel.openMenu(false)
+                    onAdPrivacyOptions()
+                },
+                onLogOut = {
+                    viewModel.openMenu(false)
+                    showWallet = false
+                    viewModel.logout()
+                },
+                onSearch = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onGames = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(3)
+                },
+                onOpenUpdateWebsite = onOpenWebsiteUpdate,
+                onOpenHelpWebsite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.blink.com.ng"))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                },
+                onHome = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 0)
+                },
+                onReels = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 1)
+                },
+                onMarket = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.MARKET)
+                },
+                onConnect = {
+                    viewModel.openMenu(false)
+                    viewModel.navigateToPrimaryTab(MainTab.HOME, 2)
+                }
+            )
+        }
+
+        // The wallet always reads this account's authoritative state from Supabase.
+        if (showWallet && uiState.myProfile.id.isNotBlank()) {
+            BlinkWalletScreen(
+                accountId = uiState.myProfile.id,
+                lastKnownBalance = uiState.blinkCoinBalance,
+                dailyStreak = uiState.myProfile.dailyStreak,
+                adsToday = uiState.rewardedAdsToday,
+                policy = uiState.economyPolicy,
+                missions = uiState.dailyMissions,
+                loadingMissions = uiState.isDailyMissionsLoading,
+                isDark = uiState.isDarkMode,
+                onBack = { showWallet = false; viewModel.openMenu(true) },
+                onRefresh = { viewModel.refreshProfileRewards() },
+                onClaimMission = { viewModel.claimDailyMission(it) },
+                onWatchOptionalAd = onWatchAdForCoins,
+                onOpenVerification = {
+                    showWallet = false
+                    viewModel.openGetVerified(true)
+                },
+                onOpenStore = {
+                    if (BlinkStoreAvailability.isPaused) {
+                        showStoreComingSoon = true
+                    } else context.startActivitySafely(
+                        Intent(context, BlinkStoreActivity::class.java),
+                        "Unable to open BLINK Store."
+                    )
+                }
             )
         }
 

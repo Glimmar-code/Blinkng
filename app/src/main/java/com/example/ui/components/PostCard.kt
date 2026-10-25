@@ -181,6 +181,7 @@ fun PostCard(
     trackExposure: Boolean = true,
     xFeedStyle: Boolean = false,
     isFeedScrolling: Boolean = false,
+    onOpenPost: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -610,6 +611,7 @@ fun PostCard(
                         SelectionContainer {
                             Text(
                                 text = post.text,
+                                modifier = Modifier.clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                                 color = textStyle.textColor,
                                 fontSize = textSize,
                                 lineHeight = textSize * 1.18f,
@@ -634,7 +636,8 @@ fun PostCard(
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp
                             ) else MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp),
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp)
+                                .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->

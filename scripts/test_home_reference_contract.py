@@ -83,9 +83,26 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_five_navigation_destinations_and_unread_dot(self):
         nav = method_body(NAV, 'private val feedBottomItems = listOf(', '@Composable\nfun FeedBottomBar(')
         self.assertEqual(nav.count('FeedBottomItem('), 5)
-        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MESSAGE'):
+        for tag in ('HOME', 'REELS', 'MARKET', 'CONNECT', 'MENU'):
             self.assertIn(f'FeedBottomDestination.{tag}', nav)
         self.assertIn('hasUnreadMessages', NAV)
+        self.assertIn('FeedBottomDestination.MENU -> onMenuClick()', NAV)
+        # The five-slot Menu redesign moves Messages to an actual Menu route.
+        menu = (ROOT / "app/src/main/java/com/example/ui/screens/BlinkReferenceMenuScreen.kt").read_text()
+        self.assertIn('onMessages: () -> Unit', menu)
+        self.assertIn('"Messages & inbox" to onMessages', menu)
+        self.assertIn('onMessages = {', MAIN)
+
+    def test_hidden_bottom_navigation_releases_feed_space(self):
+        # MainActivity's scroll visibility must actually reach the feed's
+        # viewport and FAB. Hiding the overlay alone leaves a phantom gap.
+        self.assertIn('isBottomNavigationVisible = isBottomBarVisibleByScroll', MAIN)
+        self.assertIn('isBottomNavigationVisible: Boolean = true', HOME)
+        self.assertIn('bottom = bottomRailClearance', HOME)
+        self.assertIn('bottom = createFabClearance', HOME)
+        self.assertIn('if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset', HOME)
+        self.assertNotIn('.padding(bottom = 64.dp + bottomNavigationInset)', HOME)
+        self.assertNotIn('.padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset)', HOME)
 
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)

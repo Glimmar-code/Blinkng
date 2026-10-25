@@ -11,7 +11,8 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowSplashScreenBackground">@color/blink_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/app_icon</item>
+        <!-- Pure black native pre-frame; Compose starts the approved opening sequence. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/blink_splash_empty</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>

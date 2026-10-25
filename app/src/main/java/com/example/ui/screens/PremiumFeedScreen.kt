@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -348,8 +350,11 @@ fun PremiumFeedScreen(
     onLoadMoreFollowingPosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
+    onOpenFeedPost: (FeedPost) -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    isBottomNavigationVisible: Boolean = true,
     onBottomBarTravelChange: (Float) -> Unit = {},
+    isMainPageActive: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
     routedReelId: String? = null,
@@ -424,6 +429,7 @@ fun PremiumFeedScreen(
     ) { page ->
     when (page) {
         0 -> PremiumHomeFeed(
+            isScreenActive = isMainPageActive,
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
@@ -480,6 +486,8 @@ fun PremiumFeedScreen(
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            isBottomNavigationVisible = isBottomNavigationVisible,
+            onOpenFeedPost = onOpenFeedPost,
             onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
@@ -487,6 +495,7 @@ fun PremiumFeedScreen(
         )
 
         1 -> FeedScreen(
+            isScreenActive = isMainPageActive,
             posts = posts,
             reels = reels,
             followingReels = followingPosts.filter { it.isReel || !it.videoUrl.isNullOrBlank() },
@@ -602,6 +611,7 @@ fun PremiumFeedScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PremiumHomeFeed(
+    isScreenActive: Boolean,
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     profiles: List<UserProfile>,
@@ -658,6 +668,8 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    isBottomNavigationVisible: Boolean,
+    onOpenFeedPost: (FeedPost) -> Unit,
     onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
@@ -717,6 +729,20 @@ private fun PremiumHomeFeed(
     // Bottom navigation includes the system gesture bar inset.
     val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val reduceMotion = rememberBlinkReduceMotion()
+    // The bottom bar lives in MainActivity's overlay. Reserving its 64dp
+    // while hidden creates an invisible viewport gap on narrow phones.
+    val bottomRailClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedBottomRailClearance"
+    )
+    // Keep the create action above visible navigation; when navigation
+    // scrolls away it can move down without leaving a dead strip.
+    val createFabClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 144.dp + bottomNavigationInset else 24.dp + bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedCreateFabClearance"
+    )
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
@@ -769,7 +795,18 @@ private fun PremiumHomeFeed(
     val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
     val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
     val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
-    var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
+    var fabExpanded by remember(laneResumeKey) { mutableStateOf(false) }
+    var idleSignal by remember(laneResumeKey) { mutableIntStateOf(0) }
+    var fingerDown by remember(laneResumeKey) { mutableStateOf(false) }
+
+    // Only show the label after six uninterrupted seconds with no active gesture.
+    LaunchedEffect(laneResumeKey, idleSignal, fingerDown, listState.isScrollInProgress, isScreenActive) {
+        fabExpanded = false
+        if (isScreenActive && !fingerDown && !listState.isScrollInProgress) {
+            delay(6_000L)
+            if (!fingerDown && !listState.isScrollInProgress) fabExpanded = true
+        }
+    }
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -1069,8 +1106,10 @@ private fun PremiumHomeFeed(
                 val nextOffset = -nextTravel
                 if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
-                    fabExpanded = direction > 0
+                    fabExpanded = false
                 }
+                // Hide the complete rail on downward movement; restore on upward movement.
+                onBottomBarVisibilityChange(direction > 0)
                 val nextNavPx = BlinkFeedScrollMotion.advance(
                     previous = navScrollTravelPx.value,
                     scrollUpPx = -deltaY,
@@ -1140,7 +1179,7 @@ private fun PremiumHomeFeed(
                 }
 
                 delay(if (reduceMotion) 0 else 120)
-                fabExpanded = true
+                fabExpanded = false
                 pendingDirectionDistancePx[0] = 0f
                 lastFlingVelocityY[0] = 0f
                 hadScroll = false
@@ -1160,7 +1199,7 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
             navScrollTravelPx.value = 0f
             onBottomBarTravelChange(0f)
@@ -1289,7 +1328,7 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
         }
     }
@@ -1458,11 +1497,32 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(homeBackground)
                 .nestedScroll(scrollConnection)
+                .pointerInput(laneResumeKey) {
+                    var lastActivitySignalMs = 0L
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressed = event.changes.any { it.pressed }
+                            fingerDown = pressed
+                            if (event.type == PointerEventType.Press ||
+                                event.type == PointerEventType.Release ||
+                                (event.type == PointerEventType.Move && pressed)
+                            ) {
+                                fabExpanded = false
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (event.type == PointerEventType.Release || now - lastActivitySignalMs >= 300L) {
+                                    idleSignal++
+                                    lastActivitySignalMs = now
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 64.dp + bottomNavigationInset)
+                    .padding(bottom = bottomRailClearance)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1562,7 +1622,7 @@ private fun PremiumHomeFeed(
                                     headerScrollDirection[0] = 0
                                     pendingDirectionDistancePx[0] = 0f
                                     lastFlingVelocityY[0] = 0f
-                                    fabExpanded = true
+                                    fabExpanded = false
                                     onBottomBarVisibilityChange(true)
                                     requestSafeRefresh()
                                 }
@@ -1663,6 +1723,7 @@ private fun PremiumHomeFeed(
                                                     isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
+                                                    onOpenPost = { onOpenFeedPost(post) },
                                                     onBookmark = { onBookmarkPost(post.id) },
                                                     onRepost = { onRepostPost(post.id) },
                                                     onShare = { onSharePost(post.id) },
@@ -1726,6 +1787,7 @@ private fun PremiumHomeFeed(
                                                 isDark = isDark,
                                                 onLike = { onLikePost(post.id) },
                                                 onComment = { onCommentPost(post.id) },
+                                                onOpenPost = { onOpenFeedPost(post) },
                                                 onBookmark = { onBookmarkPost(post.id) },
                                                 onRepost = { onRepostPost(post.id) },
                                                 onShare = { onSharePost(post.id) },
@@ -1831,8 +1893,8 @@ private fun PremiumHomeFeed(
                                             val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
-                                                isActive = activeInlineReelKey == previewKey,
-                                                shouldPreload = preloadedInlineReelKey == previewKey,
+                                                isActive = isScreenActive && activeInlineReelKey == previewKey,
+                                                shouldPreload = isScreenActive && preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1919,7 +1981,7 @@ private fun PremiumHomeFeed(
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
                                         lastFlingVelocityY[0] = 0f
-                                        fabExpanded = true
+                                        fabExpanded = false
                                         onBottomBarVisibilityChange(true)
                                         requestSafeRefresh()
                                     }
@@ -1944,7 +2006,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = createFabClearance),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
