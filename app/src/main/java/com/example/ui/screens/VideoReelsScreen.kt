@@ -1187,6 +1187,7 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
+                fillViewport = true,
                 isActive = shouldPlayReel(
                     selected = isActive,
                     foreground = true,
@@ -1999,6 +2000,7 @@ private data class ReelPlaybackSession(
 private fun ReelVideo(
     url: String,
     isActive: Boolean,
+    fillViewport: Boolean = false,
     isMuted: Boolean,
     fastForward: Boolean = false,
     initialPositionMs: Long = 0L,
@@ -2198,13 +2200,22 @@ private fun ReelVideo(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = if (fillViewport) {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
                     keepScreenOn = playbackAllowed
                     this.player = player
                 }
             },
             update = {
                 it.player = player
+                it.resizeMode = if (fillViewport) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
                 it.keepScreenOn = playbackAllowed
             },
             modifier = Modifier.fillMaxSize()
