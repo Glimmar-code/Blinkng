@@ -5,6 +5,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.supabase.SupabaseConfig
+import com.example.data.supabase.MessageMediaService
 import com.example.data.supabase.SupabaseService
 import com.example.util.TimeFormatters
 import kotlinx.coroutines.Dispatchers
