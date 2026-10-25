@@ -7,6 +7,9 @@ package com.blinkng.shared
  */
 object BlinkRefreshPolicy {
     const val FOREGROUND_REFRESH_INTERVAL_MS: Long = 3 * 60_000L
+    // Home and Reels need fresher content without reloading other app modules.
+    // Repeated foreground transitions inside one minute are still coalesced.
+    const val SOCIAL_FEED_REFRESH_INTERVAL_MS: Long = 60_000L
 
     fun isStale(
         lastRefreshElapsedMs: Long,

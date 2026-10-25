@@ -27,6 +27,16 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application android:name=".BlinkApplication" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.MyApplication">
+        <!-- Scoped, non-exported full-resolution camera output for direct messages. -->
+        <provider
+            android:name=".media.BlinkChatFileProvider"
+            android:authorities="${applicationId}.chatfiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/blink_chat_file_paths" />
+        </provider>
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
