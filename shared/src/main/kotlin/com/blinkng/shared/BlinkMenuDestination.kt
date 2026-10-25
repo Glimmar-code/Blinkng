@@ -6,6 +6,7 @@ package com.blinkng.shared
  */
 enum class BlinkMenuDestination(val key: String, val title: String) {
     PROFILE("profile", "My Profile"),
+    REFER_GROW("refer_grow", "Refer & Grow"),
     LEADERBOARD("leaderboard", "Leaderboard"),
     WALLET("wallet", "Wallet & Coins"),
     NOTIFICATIONS("notifications", "Notifications"),

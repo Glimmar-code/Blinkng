@@ -97,6 +97,7 @@ fun BlinkReferenceMenuScreen(
         LocalDensity.current.fontScale >= 1.5f
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
+    var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
     var adminModeAvailable by remember(profile.id) { mutableStateOf(false) }
     var updateMessage by rememberSaveable { mutableStateOf("Check for the latest verified BLINK release.") }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -104,6 +105,10 @@ fun BlinkReferenceMenuScreen(
     LaunchedEffect(profile.id) {
         adminModeAvailable = runCatching { AdminSupabaseService().fetchCapability().getOrNull()?.isAdmin == true }
             .getOrDefault(false)
+    }
+
+    if (showReferGrow) {
+        BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
     }
 
     BackHandler {
@@ -229,6 +234,7 @@ fun BlinkReferenceMenuScreen(
                     val tint: Color
                     when (item) {
                         BlinkMenuDestination.PROFILE -> { icon = Icons.Rounded.Person; tint = MenuPurple }
+                        BlinkMenuDestination.REFER_GROW -> { icon = Icons.Rounded.GroupAdd; tint = MenuBlue }
                         BlinkMenuDestination.LEADERBOARD -> { icon = Icons.Rounded.EmojiEvents; tint = MenuOrange }
                         BlinkMenuDestination.WALLET -> { icon = Icons.Rounded.AccountBalanceWallet; tint = MenuGreen }
                         BlinkMenuDestination.NOTIFICATIONS -> { icon = Icons.Rounded.Notifications; tint = MenuRed }
@@ -247,6 +253,7 @@ fun BlinkReferenceMenuScreen(
                             .clickable {
                                 when (item) {
                                     BlinkMenuDestination.PROFILE -> onViewProfile()
+                                    BlinkMenuDestination.REFER_GROW -> showReferGrow = true
                                     BlinkMenuDestination.LEADERBOARD -> onLeaderboard()
                                     BlinkMenuDestination.WALLET -> onWallet()
                                     BlinkMenuDestination.NOTIFICATIONS -> onNotifications()

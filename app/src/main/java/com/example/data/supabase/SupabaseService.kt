@@ -631,7 +631,8 @@ class SupabaseService {
         username: String,
         fullName: String,
         faculty: String = "",
-        university: String = ""
+        university: String = "",
+        referrerId: String? = null
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -661,6 +662,9 @@ class SupabaseService {
                         put("name", cleanFullName)
                         put("faculty", faculty)
                         put("university", university)
+                        referrerId?.takeIf {
+                            runCatching { java.util.UUID.fromString(it) }.isSuccess
+                        }?.let { put("blink_referrer_id", it) }
                     })
                 }
 
