@@ -175,7 +175,8 @@ fun CreatePostSheet(
     onPublishScheduledPostNow: (String) -> Unit = {},
     onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
-    isSubmitting: Boolean = false
+    isSubmitting: Boolean = false,
+    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -891,6 +892,12 @@ fun CreatePostSheet(
                         shape = RoundedCornerShape(20.dp)
                     )
                 }
+
+                BlinkPostMentionSuggestions(
+                    text = text,
+                    onTextChanged = { text = it.take(5000) },
+                    searchProfiles = searchMentions
+                )
 
                 if (selectedImages.isNotEmpty()) {
                     LazyRow(
