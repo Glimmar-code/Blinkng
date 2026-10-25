@@ -627,7 +627,7 @@ fun PostCard(
                                 lineHeight = textSize * 1.18f,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
+                                maxLines = if (expandedText) Int.MAX_VALUE else 4,
                                 overflow = TextOverflow.Ellipsis,
                                 onTextLayout = { result ->
                                     if (!expandedText) {
@@ -648,7 +648,7 @@ fun PostCard(
                             ) else MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp)
                                 .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
-                            maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7,
+                            maxLines = if (expandedText) Int.MAX_VALUE else 4,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
                                 if (!expandedText) {
