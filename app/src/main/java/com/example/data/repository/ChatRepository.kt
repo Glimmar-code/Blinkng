@@ -113,6 +113,10 @@ class ChatRepository(
         // Conversation summaries are account data, not cache data. Walk the full server
         // history so clearing local storage or returning years later can rebuild the list.
         val merged = LinkedHashMap<String, ChatConversation>()
+        // Group RLS rows must override the legacy summary RPC's per-member
+        // pseudodirect rows; only active participant IDs are considered.
+        val groupConversations = runCatching { fetchActiveGroupConversations() }
+            .getOrDefault(emptyList())
         var beforeAt: String? = null
         var beforeId: String? = null
         var pageNumber = 0
@@ -123,6 +127,7 @@ class ChatRepository(
             page.items.forEach { conversation ->
                 if (conversation.id.isNotBlank()) merged[conversation.id] = conversation
             }
+            groupConversations.forEach { group -> merged[group.id] = group }
             pageNumber += 1
             if (pageNumber == 1) {
                 // Display the first 100 conversations without waiting for years
@@ -141,6 +146,77 @@ class ChatRepository(
 
         if (pageNumber == 1) firstPage.orEmpty()
         else applyConversationState(merged.values.toList())
+    }
+
+    /**
+     * The deployed get_conversation_summaries_page RPC produces one partner row
+     * per group member and does not reliably return is_group. For group metadata,
+     * use the RLS-protected tables and require our own *active* membership.
+     * This is a read-only compatibility adapter; the SQL policy must additionally
+     * prevent departed users from reading a group through direct PostgREST.
+     */
+    private suspend fun fetchActiveGroupConversations(): List<ChatConversation> {
+        val owner = supabaseService.getCurrentUserId()
+            ?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+            ?: return emptyList()
+
+        suspend fun fetch(path: String): org.json.JSONArray {
+            val token = SupabaseService.accessToken()
+                ?: throw IllegalStateException("You must sign in to load group conversations.")
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/$path")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $token")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IllegalStateException(
+                    "Group lookup failed (${response.code})."
+                )
+                return org.json.JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            }
+        }
+        val membershipRows = fetch(
+            "conversation_participants?select=conversation_id" +
+                "&user_id=eq.$owner&left_at=is.null&limit=1000"
+        )
+        val groupIds = (0 until membershipRows.length()).mapNotNull { index ->
+            membershipRows.optJSONObject(index)?.optString("conversation_id")
+                ?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+        }.distinct()
+        if (groupIds.isEmpty()) return emptyList()
+
+        val groups = buildList {
+            groupIds.chunked(75).forEach { batch ->
+                val rows = fetch(
+                    "conversations?select=id,title,avatar_url,is_group,last_message_at" +
+                        "&id=in.(${batch.joinToString(",")})&is_group=eq.true" +
+                        "&order=last_message_at.desc.nullslast&limit=100"
+                )
+                repeat(rows.length()) { i ->
+                    val row = rows.optJSONObject(i) ?: return@repeat
+                    val id = row.optString("id").trim()
+                    if (id !in batch) return@repeat
+                    val at = row.optString("last_message_at")
+                        .takeIf { it.isNotBlank() && it != "null" }.orEmpty()
+                    add(
+                        ChatConversation(
+                            id = id,
+                            partnerUsername = com.blinkng.shared.BlinkGroupRoute.key(id),
+                            partnerName = row.optString("title")
+                                .takeIf { it.isNotBlank() && it != "null" } ?: "Group chat",
+                            partnerAvatar = row.optString("avatar_url").takeUnless { it == "null" }.orEmpty(),
+                            lastMessageRawTime = at,
+                            lastMessageTime = at.takeIf { it.isNotBlank() }
+                                ?.let(::formatMessageTime).orEmpty(),
+                            lastSeen = "Private group",
+                            isGroup = true
+                        )
+                    )
+                }
+            }
+        }
+        return groups.distinctBy { it.id }
     }
 
     private suspend fun fetchConversationPage(beforeAt: String?, beforeId: String?): ConversationPage {
@@ -430,6 +506,46 @@ class ChatRepository(
         }
     }
 
+
+    /**
+     * Non-idempotent deployed RPC: NEVER blindly retry an ambiguous network
+     * failure; the server may have committed the message already.
+     * Sender must refresh history before initiating any intentional resend.
+     */
+    suspend fun sendGroupMessage(
+        conversationId: String,
+        content: String
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(isServerUuid(conversationId)) { "Invalid group conversation." }
+            val owner = supabaseService.getCurrentUserId()
+                ?: error("Sign in to send a group message.")
+            val clean = content.trim()
+            require(clean.isNotEmpty() && clean.length <= 5000) {
+                "Messages must contain 1–5,000 characters."
+            }
+            val response = postAuthenticatedRpc(
+                "send_group_message",
+                JSONObject().put("p_conversation_id", conversationId)
+                    .put("p_content", clean)
+            )
+            val id = response.trim().removeSurrounding("\"")
+            require(isServerUuid(id)) { "Group message confirmation was incomplete." }
+            val now = Instant.now().toString()
+            ChatMessage(
+                id = id,
+                conversationId = conversationId,
+                senderId = owner,
+                receiverUsername = com.blinkng.shared.BlinkGroupRoute.key(conversationId),
+                text = clean,
+                rawTimestamp = now,
+                timestamp = formatMessageTime(now),
+                isFromMe = true,
+                isRead = false,
+                status = MessageStatus.SENT
+            )
+        }
+    }
 
     suspend fun triggerMessagePushBestEffort(messageId: String) = withContext(Dispatchers.IO) {
         if (messageId.isBlank()) return@withContext
