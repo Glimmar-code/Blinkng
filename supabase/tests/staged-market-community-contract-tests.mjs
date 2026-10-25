@@ -162,6 +162,12 @@ export async function stagedMarketCommunityContractTests() {
       select id from public.blink_communities
       where id='33333333-3333-4333-8333-333333333333'`);
     assert.equal(bannedView.rows.length, 0, 'Banned member has no private read access');
+    await rejects(() => db.exec(`
+      select public.blink_community_leave('33333333-3333-4333-8333-333333333333')`),
+      'COMMUNITY_MEMBERSHIP_BANNED');
+    await rejects(() => db.exec(`
+      select public.blink_community_request_join('33333333-3333-4333-8333-333333333333')`),
+      'COMMUNITY_MEMBERSHIP_BANNED');
     await db.exec('reset role');
     // Independent owner-approved private request, including real roster rows.
     const applicant = '99999999-9999-4999-8999-999999999999';
