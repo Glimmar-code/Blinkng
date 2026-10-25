@@ -469,10 +469,11 @@ class SupabaseService {
 
                         return@withContext Result.failure(
                             Exception(
-                                parseSupabaseError(
-                                    responseBody,
-                                    "Invalid email or password."
-                                )
+                                when (response.code) {
+                                    429 -> "Too many requests."
+                                    in 500..599 -> "Authentication service temporarily unavailable."
+                                    else -> parseSupabaseError(responseBody, "Invalid email or password.")
+                                }
                             )
                         )
                     }
@@ -630,7 +631,8 @@ class SupabaseService {
         username: String,
         fullName: String,
         faculty: String = "",
-        university: String = ""
+        university: String = "",
+        referrerId: String? = null
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -660,6 +662,9 @@ class SupabaseService {
                         put("name", cleanFullName)
                         put("faculty", faculty)
                         put("university", university)
+                        referrerId?.takeIf {
+                            runCatching { java.util.UUID.fromString(it) }.isSuccess
+                        }?.let { put("blink_referrer_id", it) }
                     })
                 }
 
@@ -1542,6 +1547,36 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    /**
+     * Uses the already deployed, authorization-checked 3–50 member group RPC.
+     * The group inbox UI is intentionally held until group summary pagination
+     * is tested separately; never create groups from an unverified screen.
+     */
+    suspend fun createGroupConversation(
+        title: String,
+        invitedUserIds: List<String>
+    ): String? = withContext(Dispatchers.IO) {
+        val creator = getCurrentUserId() ?: return@withContext null
+        val cleanTitle = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title)
+        val members = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedMembers(creator, invitedUserIds)
+        val body = JSONObject().put("p_title", cleanTitle)
+            .put("p_member_ids", JSONArray(members))
+        val request = newRequestBuilder("/rest/v1/rpc/create_group_conversation", true)
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        runCatching {
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty().trim().removeSurrounding("\"")
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "GROUP_CREATE_REJECTED code=${response.code}")
+                    return@use null
+                }
+                raw.takeIf { isValidUuid(it) }
+            }
+        }.getOrNull()
+    }
+
     suspend fun searchProfiles(query: String): List<UserProfile> =
         searchProfilesPage(query = query, limit = 30)
 
@@ -2388,6 +2423,9 @@ fun getCurrentUserId(): String? {
         clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
+            require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+                "Item sales belong in BLINK Market."
+            }
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             val cleanClientRequestId = clientRequestId
                 ?.trim()
@@ -3458,12 +3496,16 @@ suspend fun uploadPostMedia(
         try {
             val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=world_rank.asc&limit=50", true).get().build()).use { resp ->
                 val body = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@withContext emptyList()
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "Leaderboard HTTP status: " + resp.code)
+                    return@withContext emptyList()
+                }
                 body
             }
             val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
             buildList { for (i in 0 until arr.length()) parseLeaderboardUser(arr.getJSONObject(i), i + 1)?.let { add(it) } }
         } catch (e: Exception) {
+            Log.e(TAG, "Leaderboard fetch failed", e)
             emptyList()
         }
     }

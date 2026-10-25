@@ -82,7 +82,7 @@ class SearchDiscoveryViewModel : ViewModel() {
         }
     }
 
-    fun setQuery(value: String) {
+    fun setQuery(value: String, persistHistory: Boolean = true) {
         val normalized = value.take(200)
         _state.value = _state.value.copy(
             query = normalized,
@@ -92,8 +92,15 @@ class SearchDiscoveryViewModel : ViewModel() {
         debounceJob?.cancel()
         debounceJob = viewModelScope.launch {
             delay(280)
-            loadFirst(persistHistory = normalized.trim().isNotBlank())
+            loadFirst(persistHistory = persistHistory && normalized.trim().isNotBlank())
         }
+    }
+
+    /** Only submitted queries from the reference landing create saved search history. */
+    fun commitQuery() {
+        if (_state.value.query.isBlank() || !_state.value.backendAvailable) return
+        debounceJob?.cancel()
+        loadFirst(persistHistory = true)
     }
 
     fun selectType(type: DiscoveryResultType?) {

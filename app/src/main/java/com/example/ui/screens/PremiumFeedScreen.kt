@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -94,7 +97,9 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.network.NetworkMonitor
+import com.blinkng.shared.BlinkFeedScrollMotion
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.performance.FeedScrollPerformanceMonitor
 import com.example.performance.rememberBlinkReduceMotion
 import com.example.data.supabase.BlinkEconomyService
@@ -317,6 +322,7 @@ fun PremiumFeedScreen(
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onFollowingVisible: () -> Unit = {},
     onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
@@ -345,7 +351,11 @@ fun PremiumFeedScreen(
     onLoadMoreFollowingPosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
+    onOpenFeedPost: (FeedPost) -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    isBottomNavigationVisible: Boolean = true,
+    onBottomBarTravelChange: (Float) -> Unit = {},
+    isMainPageActive: Boolean = true,
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
     routedReelId: String? = null,
@@ -363,6 +373,13 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    // An explicit Following visit fetches only that lane. The ViewModel's
+    // per-account cooldown handles repeat composition or quick tab changes.
+    LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
+        if (feedLane == 1 && currentSubTab == 0 && isMainPageActive) {
+            onFollowingVisible()
+        }
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
@@ -420,6 +437,7 @@ fun PremiumFeedScreen(
     ) { page ->
     when (page) {
         0 -> PremiumHomeFeed(
+            isScreenActive = isMainPageActive,
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
@@ -455,6 +473,7 @@ fun PremiumFeedScreen(
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
             onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
             onOpenCreatePost = onOpenCreatePost,
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
@@ -475,12 +494,16 @@ fun PremiumFeedScreen(
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            isBottomNavigationVisible = isBottomNavigationVisible,
+            onOpenFeedPost = onOpenFeedPost,
+            onBottomBarTravelChange = onBottomBarTravelChange,
             onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
         1 -> FeedScreen(
+            isScreenActive = isMainPageActive,
             posts = posts,
             reels = reels,
             followingReels = followingPosts.filter { it.isReel || !it.videoUrl.isNullOrBlank() },
@@ -494,6 +517,7 @@ fun PremiumFeedScreen(
             userAvatar = userAvatar,
             currentSubTab = 1,
             onSubTabChanged = onSubTabChanged,
+            hasUnreadNotifications = hasUnreadNotifications,
             isDark = isDark,
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
@@ -596,6 +620,7 @@ fun PremiumFeedScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PremiumHomeFeed(
+    isScreenActive: Boolean,
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     profiles: List<UserProfile>,
@@ -631,6 +656,7 @@ private fun PremiumHomeFeed(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
@@ -651,6 +677,9 @@ private fun PremiumHomeFeed(
     onLoadMorePosts: () -> Unit,
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
+    isBottomNavigationVisible: Boolean,
+    onOpenFeedPost: (FeedPost) -> Unit,
+    onBottomBarTravelChange: (Float) -> Unit,
     onGameClick: () -> Unit,
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
@@ -659,6 +688,8 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val pendingCoinGiftRequests = remember { mutableStateMapOf<String, String>() }
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
     // The Home feed must hydrate follows independently. Previously only Reels
     // called refresh(), leaving Home to show '+ Follow' for existing follows.
@@ -693,6 +724,7 @@ private fun PremiumHomeFeed(
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
     val laneResumeKey = "$resumeUserKey:$laneIndex"
+    val navScrollTravelPx = remember(laneResumeKey) { mutableStateOf(0f) }
     // The first visit in a fresh process opens at the top with the full feed.
     // Returning from another in-app screen may recover the saved scroll/filter.
     val restoreWithinProcess = remember(laneResumeKey) {
@@ -706,6 +738,20 @@ private fun PremiumHomeFeed(
     // Bottom navigation includes the system gesture bar inset.
     val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val reduceMotion = rememberBlinkReduceMotion()
+    // The bottom bar lives in MainActivity's overlay. Reserving its 64dp
+    // while hidden creates an invisible viewport gap on narrow phones.
+    val bottomRailClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedBottomRailClearance"
+    )
+    // Keep the create action above visible navigation; when navigation
+    // scrolls away it can move down without leaving a dead strip.
+    val createFabClearance by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBottomNavigationVisible) 144.dp + bottomNavigationInset else 24.dp + bottomNavigationInset,
+        animationSpec = tween(if (reduceMotion) 0 else 180),
+        label = "feedCreateFabClearance"
+    )
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
@@ -758,7 +804,18 @@ private fun PremiumHomeFeed(
     val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
     val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
     val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
-    var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
+    var fabExpanded by remember(laneResumeKey) { mutableStateOf(false) }
+    var idleSignal by remember(laneResumeKey) { mutableIntStateOf(0) }
+    var fingerDown by remember(laneResumeKey) { mutableStateOf(false) }
+
+    // Only show the label after six uninterrupted seconds with no active gesture.
+    LaunchedEffect(laneResumeKey, idleSignal, fingerDown, listState.isScrollInProgress, isScreenActive) {
+        fabExpanded = false
+        if (isScreenActive && !fingerDown && !listState.isScrollInProgress) {
+            delay(6_000L)
+            if (!fingerDown && !listState.isScrollInProgress) fabExpanded = true
+        }
+    }
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -1011,7 +1068,7 @@ private fun PremiumHomeFeed(
     }
 
     val scrollConnection = remember(
-        onBottomBarVisibilityChange,
+        onBottomBarTravelChange,
         headerDirectionDeadZone
     ) {
         object : NestedScrollConnection {
@@ -1046,24 +1103,33 @@ private fun PremiumHomeFeed(
                     pendingDirectionDistancePx[0] = 0f
                 }
 
+                // Let posts consume the full gesture: moving the header at
+                // one-quarter speed must not steal scroll pixels from the list.
                 val previousOffset = headerOffsetPx.value
-                val nextOffset = clampFeedHeaderOffset(
-                    currentOffsetPx = previousOffset,
-                    deltaYPx = effectiveDeltaY,
-                    headerHeightPx = headerHeight
+                val nextTravel = BlinkFeedScrollMotion.advance(
+                    previous = -previousOffset,
+                    scrollUpPx = -effectiveDeltaY,
+                    ratio = BlinkFeedScrollMotion.TOP_PER_POST,
+                    maxTravelPx = headerHeight
                 )
+                val nextOffset = -nextTravel
                 if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
-                    fabExpanded = direction > 0
+                    fabExpanded = false
                 }
-                // Header and LazyColumn must never both apply the same drag
-                // distance. Consume only the pixels the header actually moved;
-                // let the list receive the remainder when the header is at an
-                // edge, or during the direction reversal dead zone.
-                return androidx.compose.ui.geometry.Offset(
-                    0f,
-                    feedHeaderConsumedScrollDelta(previousOffset, nextOffset, deltaY)
+                // Hide the complete rail on downward movement; restore on upward movement.
+                onBottomBarVisibilityChange(direction > 0)
+                val nextNavPx = BlinkFeedScrollMotion.advance(
+                    previous = navScrollTravelPx.value,
+                    scrollUpPx = -deltaY,
+                    ratio = BlinkFeedScrollMotion.NAV_PER_POST,
+                    maxTravelPx = 50f
                 )
+                if (nextNavPx != navScrollTravelPx.value) {
+                    navScrollTravelPx.value = nextNavPx
+                    onBottomBarTravelChange(nextNavPx)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
@@ -1122,7 +1188,7 @@ private fun PremiumHomeFeed(
                 }
 
                 delay(if (reduceMotion) 0 else 120)
-                fabExpanded = true
+                fabExpanded = false
                 pendingDirectionDistancePx[0] = 0f
                 lastFlingVelocityY[0] = 0f
                 hadScroll = false
@@ -1142,9 +1208,15 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
+            navScrollTravelPx.value = 0f
+            onBottomBarTravelChange(0f)
         }
+    }
+
+    DisposableEffect(laneResumeKey) {
+        onDispose { onBottomBarTravelChange(0f) }
     }
 
     LaunchedEffect(Unit) { screenVisible = true }
@@ -1265,7 +1337,7 @@ private fun PremiumHomeFeed(
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
             lastFlingVelocityY[0] = 0f
-            fabExpanded = true
+            fabExpanded = false
             onBottomBarVisibilityChange(true)
         }
     }
@@ -1434,11 +1506,32 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(homeBackground)
                 .nestedScroll(scrollConnection)
+                .pointerInput(laneResumeKey) {
+                    var lastActivitySignalMs = 0L
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressed = event.changes.any { it.pressed }
+                            fingerDown = pressed
+                            if (event.type == PointerEventType.Press ||
+                                event.type == PointerEventType.Release ||
+                                (event.type == PointerEventType.Move && pressed)
+                            ) {
+                                fabExpanded = false
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (event.type == PointerEventType.Release || now - lastActivitySignalMs >= 300L) {
+                                    idleSignal++
+                                    lastActivitySignalMs = now
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 64.dp + bottomNavigationInset)
+                    .padding(bottom = bottomRailClearance)
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
@@ -1538,7 +1631,7 @@ private fun PremiumHomeFeed(
                                     headerScrollDirection[0] = 0
                                     pendingDirectionDistancePx[0] = 0f
                                     lastFlingVelocityY[0] = 0f
-                                    fabExpanded = true
+                                    fabExpanded = false
                                     onBottomBarVisibilityChange(true)
                                     requestSafeRefresh()
                                 }
@@ -1639,6 +1732,7 @@ private fun PremiumHomeFeed(
                                                     isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
+                                                    onOpenPost = { onOpenFeedPost(post) },
                                                     onBookmark = { onBookmarkPost(post.id) },
                                                     onRepost = { onRepostPost(post.id) },
                                                     onShare = { onSharePost(post.id) },
@@ -1662,6 +1756,31 @@ private fun PremiumHomeFeed(
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                     onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                     onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                    onMessageAuthor = {
+                                                        onDirectMessage(
+                                                            post.authorUsername.trim().removePrefix("@")
+                                                                .ifBlank { post.author.trim().removePrefix("@") },
+                                                            post.author,
+                                                            post.authorAvatar
+                                                        )
+                                                    },
+                                                    onGiftCoinsAuthor = { recipientId, amount ->
+                                                        val key = "$recipientId:$amount"
+                                                        val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                            java.util.UUID.randomUUID().toString()
+                                                        }
+                                                        uiScope.launch {
+                                                            val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                            if (sent) pendingCoinGiftRequests.remove(key)
+                                                            android.widget.Toast.makeText(
+                                                                context,
+                                                                if (sent) "Sent $amount BLINK Coins"
+                                                                else "Coin gift not confirmed. No transfer shown.",
+                                                                android.widget.Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                    },
+                                                    coinGiftingEnabled = true,
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1677,6 +1796,7 @@ private fun PremiumHomeFeed(
                                                 isDark = isDark,
                                                 onLike = { onLikePost(post.id) },
                                                 onComment = { onCommentPost(post.id) },
+                                                onOpenPost = { onOpenFeedPost(post) },
                                                 onBookmark = { onBookmarkPost(post.id) },
                                                 onRepost = { onRepostPost(post.id) },
                                                 onShare = { onSharePost(post.id) },
@@ -1694,6 +1814,31 @@ private fun PremiumHomeFeed(
                                                     isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
                                                 onFollowAuthor = { id -> requestAuthorFollow(id, true) },
                                                 onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
+                                                onMessageAuthor = {
+                                                    onDirectMessage(
+                                                        post.authorUsername.trim().removePrefix("@")
+                                                            .ifBlank { post.author.trim().removePrefix("@") },
+                                                        post.author,
+                                                        post.authorAvatar
+                                                    )
+                                                },
+                                                onGiftCoinsAuthor = { recipientId, amount ->
+                                                    val key = "$recipientId:$amount"
+                                                    val requestId = pendingCoinGiftRequests.getOrPut(key) {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
+                                                    uiScope.launch {
+                                                        val sent = interactionRepository.giftCoinsOnce(recipientId, amount, requestId)
+                                                        if (sent) pendingCoinGiftRequests.remove(key)
+                                                        android.widget.Toast.makeText(
+                                                            context,
+                                                            if (sent) "Sent $amount BLINK Coins"
+                                                            else "Coin gift not confirmed. No transfer shown.",
+                                                            android.widget.Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                },
+                                                coinGiftingEnabled = true,
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
@@ -1757,8 +1902,8 @@ private fun PremiumHomeFeed(
                                             val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
-                                                isActive = activeInlineReelKey == previewKey,
-                                                shouldPreload = preloadedInlineReelKey == previewKey,
+                                                isActive = isScreenActive && activeInlineReelKey == previewKey,
+                                                shouldPreload = isScreenActive && preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1845,7 +1990,7 @@ private fun PremiumHomeFeed(
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
                                         lastFlingVelocityY[0] = 0f
-                                        fabExpanded = true
+                                        fabExpanded = false
                                         onBottomBarVisibilityChange(true)
                                         requestSafeRefresh()
                                     }
@@ -1870,7 +2015,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset),
+                    .padding(end = 14.dp, bottom = createFabClearance),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
