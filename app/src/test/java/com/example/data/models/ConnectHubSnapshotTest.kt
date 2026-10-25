@@ -46,4 +46,21 @@ class ConnectHubSnapshotTest {
         assertTrue(fresh.failedSections.isEmpty())
     }
 
+    @Test
+    fun gameStatsErrorRetainsCachedScoreAndWarnsWithoutRestoringHealthyListings() {
+        val previous = ConnectHubSnapshot(
+            roommates = listOf(RoommateListing(id = "room1", userId = "u1", title = "Quiet room")),
+            gameStats = GameProfileStats(score = 90, coins = 30)
+        )
+        val current = ConnectHubSnapshot(
+            roommates = emptyList(), // request completed successfully: clear obsolete listings
+            failedSections = listOf("Game stats")
+        ).retainFailedSectionsFrom(previous)
+
+        assertEquals(previous.gameStats, current.gameStats)
+        assertTrue(current.roommates.isEmpty())
+        assertEquals(listOf("Game stats"), current.failedSections)
+    }
+
+
 }
