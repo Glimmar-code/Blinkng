@@ -19,7 +19,7 @@ export async function stagedMarketCommunityContractTests() {
       create schema auth;
       create schema private;
       create function private.blink_profile_presence_visible(uuid)
-        returns boolean language sql stable as $select true$;
+        returns boolean language sql stable as $$select true$$;
       create table auth.users(id uuid primary key, email text);
       create table public.profiles(
         id uuid primary key, username text, full_name text, avatar_url text, handle text,
