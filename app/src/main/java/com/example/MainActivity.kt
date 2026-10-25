@@ -1801,6 +1801,9 @@ fun MainAppContent(
                             viewModel.updateChatPrivacySettings(settings)
                         },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
+                        onSearchUsers = { query, limit, afterUsername, afterId ->
+                            viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                        },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
                         onGameClick = { feedUtilitySheet = "items" },
                         isDark = uiState.isDarkMode,
