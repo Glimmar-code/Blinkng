@@ -14,7 +14,11 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
 import java.util.UUID
+import com.blinkng.shared.BlinkAuthFeedback
 import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkUniversitySearch
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
@@ -81,17 +85,19 @@ class DesktopSupabaseClient(
         require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
         val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
-        val response = if (identifier.contains("@") && !identifier.startsWith("@")) {
-            // Preserve standard Supabase email login. Owner aliases are resolved
-            // server-side only after normal email authentication fails.
-            runCatching {
+        val response = try {
+            if (identifier.contains("@") && !identifier.startsWith("@")) {
                 authPost("/auth/v1/token?grant_type=password",
                     JSONObject().put("email", identifier).put("password", password))
-            }.getOrElse {
+            } else {
                 authPost("/functions/v1/username-login", body)
             }
-        } else {
-            authPost("/functions/v1/username-login", body)
+        } catch (error: Exception) {
+            // Keep the same user-safe login feedback as Android; do not retry
+            // a rejected email/password against a different username endpoint.
+            throw IllegalStateException(
+                BlinkAuthFeedback.friendly(error.message, "Unable to sign in."), error
+            )
         }
         saveAuthResponse(response, identifier)
     }
@@ -103,6 +109,7 @@ class DesktopSupabaseClient(
         fullName: String,
         university: String,
         accountType: String,
+        referrerId: String? = null,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
@@ -127,7 +134,11 @@ class DesktopSupabaseClient(
                     .put("name", fullName.trim().ifBlank { cleanUsername })
                     .put("university", canonicalUniversity)
                     .put("university_id", BlinkUniversitySearch.idOf(canonicalUniversity))
-                    .put("account_type", accountType),
+                    .put("account_type", accountType)
+                    .apply {
+                        referrerId?.takeIf { it.matches(Regex("[0-9a-fA-F-]{36}")) }
+                            ?.let { put("blink_referrer_id", it) }
+                    },
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
@@ -151,6 +162,81 @@ class DesktopSupabaseClient(
             "Account created, but university details were not saved. Sign in and complete your profile."
         }
         enrolled
+    }
+
+
+    /** Public sign-up autocomplete; the server only returns discoverable profile fields. */
+    suspend fun findReferrers(query: String, offset: Int = 0): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val payload = JSONObject().put("p_query", clean).put("p_limit", 10)
+                .put("p_offset", offset.coerceIn(0, 500))
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/blink_referrer_suggestions")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $anonKey")
+                .header("Accept", "application/json")
+                .post(payload.toString().toRequestBody(jsonMedia))
+                .build()
+            val rows = JSONArray(execute(request))
+            (0 until rows.length()).map { i ->
+                val x = rows.getJSONObject(i)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"),
+                    username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                )
+            }
+        }
+
+    suspend fun dispatchConfirmedReferralPushes() = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_my_referral_push_ids",
+            JSONObject(), "return=representation",
+        )
+        for (i in 0 until rows.length().coerceAtMost(3)) {
+            val notificationId = rows.getJSONObject(i).optString("notification_id")
+            if (notificationId.isBlank()) continue
+            execute(authenticatedRequest("/functions/v1/send-activity-notification")
+                .post(JSONObject().put("notification_id", notificationId).toString()
+                    .toRequestBody(jsonMedia))
+                .build())
+        }
+    }
+
+    suspend fun referralRecommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_referral_recommendations",
+            JSONObject().put("p_limit", 10),
+            "return=representation",
+        )
+        (0 until rows.length()).map { i ->
+            val person = rows.getJSONObject(i)
+            BlinkReferralSuggestion(
+                id = person.getString("id"),
+                username = person.getString("username"),
+                fullName = person.optString("full_name"),
+                avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
+                university = person.optString("university").takeIf(String::isNotBlank),
+            )
+        }
+    }
+
+    suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_dashboard", JSONObject(), "return=representation")
+        val row = rows.optJSONObject(0) ?: return@withContext BlinkReferralStats()
+        BlinkReferralStats(
+            total = row.optLong("total_referrals"),
+            activeLast30Days = row.optLong("active_referrals"),
+            visibilityPoints = row.optInt("visibility_points"),
+            visibilityLabel = row.optString("visibility_label", "Normal discovery"),
+            achievementTier = row.optString("achievement_tier", "New member"),
+            nextAchievementTarget = if (row.isNull("achievement_next_target"))
+                null else row.optInt("achievement_next_target", 1),
+        )
     }
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {

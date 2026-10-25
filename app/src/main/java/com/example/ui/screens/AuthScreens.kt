@@ -500,7 +500,8 @@ fun SignUpScreen(
         email: String,
         password: String,
         university: String,
-        accountType: String
+        accountType: String,
+        referrerId: String?
     ) -> Unit,
     onGoogleSignUp: (String) -> Unit,
     onSwitchToSignIn: () -> Unit
@@ -520,6 +521,7 @@ fun SignUpScreen(
 
     var university by rememberSaveable { mutableStateOf("") }
     var accountType by rememberSaveable { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
     var universityDialog by remember { mutableStateOf(false) }
 
     var validationError by remember {
@@ -762,6 +764,12 @@ fun SignUpScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(13.dp))
+                BlinkReferrerPicker(
+                    selected = selectedReferrer,
+                    onSelected = { selectedReferrer = it }
+                )
+
                 Spacer(
                     modifier = Modifier.height(15.dp)
                 )
@@ -828,7 +836,8 @@ fun SignUpScreen(
                                     email.trim(),
                                     password,
                                     university,
-                                    accountType
+                                    accountType,
+                                    selectedReferrer?.id
                                 )
                         }
                     },

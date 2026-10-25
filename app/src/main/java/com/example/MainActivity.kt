@@ -44,6 +44,7 @@ import com.blinkng.shared.live.BlinkLiveCampaign
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
+import com.example.data.supabase.BlinkReferralClient
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPaystackRefreshJob: Job? = null
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
+    private var showNewStudentSuggestions by mutableStateOf(false)
     private var showPaystackReceipts by mutableStateOf(false)
     private var loadingPaystackReceipts by mutableStateOf(false)
     private var paystackReceiptError by mutableStateOf<String?>(null)
@@ -602,6 +604,9 @@ class MainActivity : ComponentActivity() {
                         avatarUrl = uiState.myProfile.avatarUrl
                     )
                     BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    // New member explicitly authored this confirmed referral; dispatch its push
+                    // with their JWT (the recipient does not need the app open).
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
                     viewModel.refreshProfileRewards()
                     if (
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -730,8 +735,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     SignUpScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onSuccess = { name, user, email, pass, uni, type ->
-                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type)
+                                        onSuccess = { name, user, email, pass, uni, type, referrerId ->
+                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type, referrerId = referrerId)
                                         },
                                         onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
                                         onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
@@ -754,6 +759,7 @@ class MainActivity : ComponentActivity() {
                                         initialUniversity = uiState.myProfile.university,
                                         initialAccountType = uiState.myProfile.accountType,
                                         onComplete = { uni, faculty, dept, level, type, bio, skills ->
+                                            showNewStudentSuggestions = true
                                             viewModel.completeProfileOnboarding(uni, faculty, dept, level, type, bio, skills)
                                         }
                                     )
@@ -790,6 +796,12 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && showNewStudentSuggestions) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { showNewStudentSuggestions = false }
+                            )
                         }
 
                         if (uiState.destination == AppDestination.MAIN) {

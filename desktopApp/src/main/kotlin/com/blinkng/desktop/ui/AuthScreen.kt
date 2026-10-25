@@ -60,6 +60,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var universityQuery by remember { mutableStateOf("") }
     var chosenUniversity by remember { mutableStateOf("") }
     var accountType by remember { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
     var showUniversities by remember { mutableStateOf(false) }
     var showAccountTypes by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -200,6 +201,11 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             }
                         }
                     }
+                    DesktopReferrerPicker(
+                        state = state,
+                        selected = selectedReferrer,
+                        onSelected = { selectedReferrer = it },
+                    )
                 }
 
                 OutlinedTextField(
@@ -238,7 +244,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                                     AuthMode.SIGN_IN -> state.signIn(email, password)
                                     AuthMode.SIGN_UP -> state.signUp(
                                         email, password, username, fullName,
-                                        chosenUniversity, accountType,
+                                        chosenUniversity, accountType, selectedReferrer?.id,
                                     )
                                     AuthMode.RESET -> {
                                         state.sendPasswordReset(email)
