@@ -1,5 +1,14 @@
 ## 2026-10-24 — Production Windows Kotlin compiler OOM follow-up (candidate)
 
+## 2026-10-24 — Phase 5 scoped foreground feed freshness
+
+- **Android:** Home and Reels revalidate after a per-surface one-minute cooldown when the app returns to the foreground or a primary route is revisited, while Messages, Market and Connect retain the existing conservative three-minute stale interval. This is a quiet data update, not a forced scroll-to-top or full-app reload. User-initiated feed refresh now updates only its own cooldown, rather than postponing other route refreshes.
+- **Android Following lane:** Opening Following schedules its own throttled request for accounts with online data, retaining existing content and scroll position while fresh rows arrive. Existing New Posts affordance is preserved.
+- **PARITY-EXCEPTION: android-foreground-feed-quiet-refresh-20261024** — Android foreground lifecycle uses Activity `onResume` and Compose navigation events, which have no direct desktop equivalent. **Windows equivalent** is existing explicit reload/search and live post updates in `DesktopFeedPostCard` / `HomeScreen` of `ContentScreens.kt`; no Windows event loop or caching semantics are modified.
+- **Validation:** `BlinkRefreshPolicyTest` covers first visit, repeated resumes and one-minute threshold; `test_home_reference_contract.py` checks that the screen and ViewModel retain the quiet scoped routing. Full Android/Windows CI and real-screen QA are still release gates.
+
+
+
 - **Root cause from actual main CI:** Windows `desktopApp` is an independent Gradle root (`gradle -p desktopApp`), lacking a local `gradle.properties`; the massive generated `MessagesScreen$lambda$93` failed JVM bytecode transformation with `OOMErrorException`. The previous green Testlab build compiled a different (shorter) messaging screen; it did not validate this production file.
 - **Windows scope:** Extract inbox rendering to `DesktopInboxPanel` to reduce the Kotlin/Compose method body. Preserve the existing message data, callback wiring, receipts, tabs and controls. Give desktop's independent Gradle root a 4 GiB heap with one worker and in-process Kotlin compilation so the runner does not exhaust its default compiler memory.
 - **Android:** No Android UI/backend changes. The intro repairs from main SHA `0554aa5578fda4129d4871f3b242f84a8efa754b` are already merged; the signed APK publisher must verify this SHA separately.
