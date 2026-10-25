@@ -2071,6 +2071,7 @@ private fun MessageBubble(
                     MessageContent(
                         message = message, isMine = isMine, palette = palette,
                         onStoryReferenceClick = onStoryReferenceClick,
+                        onRetry = onRetry,
                     )
                 }
 
@@ -2132,6 +2133,7 @@ private fun MessageContent(
     isMine: Boolean,
     palette: MessagePalette,
     onStoryReferenceClick: (String) -> Unit,
+    onRetry: () -> Unit,
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -2162,7 +2164,16 @@ private fun MessageContent(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    if (message.status == MessageStatus.SENDING) {
+                    if (message.status == MessageStatus.FAILED) {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .background(Color.Black.copy(alpha = .60f))
+                                .clickable(onClick = onRetry),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Upload failed · Retry", color = Color.White, fontSize = 12.sp)
+                        }
+                    } else if (message.status == MessageStatus.SENDING) {
                         Box(
                             modifier = Modifier.fillMaxSize()
                                 .background(Color.Black.copy(alpha = .45f)),
