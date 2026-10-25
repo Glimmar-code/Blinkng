@@ -104,6 +104,132 @@ with check (
   )
 );
 
+-- Strictly authenticate actual, ACTIVE members. The deployed version of
+-- send_group_message currently fails to filter left_at and therefore allowed
+-- historic/departed participants to satisfy its permission lookup.
+create or replace function public.send_group_message(
+  p_conversation_id uuid, p_content text
+) returns uuid language plpgsql security invoker
+set search_path = public, pg_temp
+as $
+declare v_id uuid; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if nullif(trim(coalesce(p_content,'')),'') is null
+    then raise exception 'MESSAGE_REQUIRED'; end if;
+  if length(trim(p_content))>5000 then raise exception 'MESSAGE_TOO_LONG'; end if;
+  if not exists(
+    select 1 from public.conversations c
+    join public.conversation_participants cp on cp.conversation_id=c.id
+    where c.id=p_conversation_id and c.is_group=true
+      and cp.user_id=v_uid and cp.left_at is null
+  ) then raise exception 'NOT_AN_ACTIVE_GROUP_MEMBER'; end if;
+  if (select count(*) from public.messages m
+      where m.sender_id=v_uid and m.created_at>now()-interval '1 minute') >=60
+  then raise exception 'MESSAGE_RATE_LIMITED'; end if;
+  insert into public.messages(conversation_id,sender_id,content,message_type)
+  values (p_conversation_id,v_uid,trim(p_content),'text')
+  returning id into v_id;
+  return v_id;
+end $;
+revoke all on function public.send_group_message(uuid,text) from public,anon;
+grant execute on function public.send_group_message(uuid,text) to authenticated;
+
+-- Group creators/admins can invite existing accounts without granting users a
+-- raw direct INSERT permission to the protected membership table.
+create or replace function public.blink_group_invite(
+  p_conversation_id uuid, p_user_id uuid
+) returns boolean language plpgsql security definer set search_path = ''
+as $
+declare v_actor uuid := auth.uid();
+begin
+  if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if p_user_id is null or p_user_id=v_actor then raise exception 'INVALID_INVITEE'; end if;
+  if not exists(
+    select 1 from public.conversations c
+    join public.conversation_participants cp on cp.conversation_id=c.id
+    where c.id=p_conversation_id and c.is_group=true
+      and cp.user_id=v_actor and cp.is_admin=true and cp.left_at is null
+  ) then raise exception 'GROUP_ADMIN_REQUIRED'; end if;
+  if (select count(*) from public.conversation_participants cp
+      where cp.conversation_id=p_conversation_id and cp.left_at is null)>=50
+  then raise exception 'GROUP_MEMBER_LIMIT'; end if;
+  if not exists(select 1 from public.profiles p where p.id=p_user_id)
+  then raise exception 'USER_NOT_FOUND'; end if;
+  if exists (
+    select 1 from public.blocks b
+    where (b.blocker_id=v_actor and b.blocked_id=p_user_id)
+      or (b.blocker_id=p_user_id and b.blocked_id=v_actor)
+  ) then raise exception 'GROUP_INVITATION_BLOCKED'; end if;
+  update public.conversation_participants
+    set left_at=null,joined_at=now(),is_admin=false
+    where conversation_id=p_conversation_id and user_id=p_user_id
+      and left_at is not null;
+  if found then return true; end if;
+  if exists (select 1 from public.conversation_participants cp
+    where cp.conversation_id=p_conversation_id
+      and cp.user_id=p_user_id and cp.left_at is null)
+  then return true; end if;
+  insert into public.conversation_participants(conversation_id,user_id,is_admin)
+  values(p_conversation_id,p_user_id,false);
+  return true;
+end $;
+revoke all on function public.blink_group_invite(uuid,uuid) from public,anon;
+grant execute on function public.blink_group_invite(uuid,uuid) to authenticated;
+
+create or replace function public.blink_group_leave(p_conversation_id uuid)
+returns boolean language plpgsql security definer set search_path = ''
+as $
+declare v_user uuid:=auth.uid(); v_owner uuid;
+begin
+  if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select created_by into v_owner from public.conversations
+    where id=p_conversation_id and is_group=true;
+  if v_owner is null then raise exception 'GROUP_NOT_FOUND'; end if;
+  if v_owner=v_user then raise exception 'GROUP_OWNER_MUST_TRANSFER_FIRST'; end if;
+  update public.conversation_participants set left_at=now(),is_admin=false
+   where conversation_id=p_conversation_id and user_id=v_user and left_at is null;
+  return found;
+end $;
+revoke all on function public.blink_group_leave(uuid) from public,anon;
+grant execute on function public.blink_group_leave(uuid) to authenticated;
+
+create or replace function public.blink_group_manage_member(
+  p_conversation_id uuid, p_user_id uuid, p_action text
+) returns boolean language plpgsql security definer set search_path = ''
+as $
+declare v_actor uuid:=auth.uid(); v_owner uuid; v_admin boolean;
+begin
+  if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  select created_by into v_owner from public.conversations c
+    where c.id=p_conversation_id and c.is_group=true;
+  if v_owner is null then raise exception 'GROUP_NOT_FOUND'; end if;
+  v_admin := exists(
+    select 1 from public.conversation_participants cp
+     where cp.conversation_id=p_conversation_id and cp.user_id=v_actor
+       and cp.is_admin=true and cp.left_at is null
+  );
+  if not v_admin then raise exception 'GROUP_ADMIN_REQUIRED'; end if;
+  if p_user_id is null or p_user_id=v_actor or p_user_id=v_owner
+  then raise exception 'CANNOT_MODERATE_GROUP_OWNER_OR_SELF'; end if;
+  if p_action not in ('remove','promote','demote') then
+    raise exception 'INVALID_GROUP_ACTION'; end if;
+  if p_action in ('promote','demote') and v_actor<>v_owner then
+    raise exception 'GROUP_OWNER_REQUIRED'; end if;
+  if p_action='remove' then
+    update public.conversation_participants set left_at=now(),is_admin=false
+      where conversation_id=p_conversation_id
+        and user_id=p_user_id and left_at is null;
+  else
+    update public.conversation_participants set is_admin=(p_action='promote')
+      where conversation_id=p_conversation_id
+        and user_id=p_user_id and left_at is null;
+  end if;
+  return found;
+end $;
+revoke all on function public.blink_group_manage_member(uuid,uuid,text) from public,anon;
+grant execute on function public.blink_group_manage_member(uuid,uuid,text) to authenticated;
+
 commit;
 
 -- Required local tests:
