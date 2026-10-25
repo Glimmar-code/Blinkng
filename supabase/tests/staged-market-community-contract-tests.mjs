@@ -18,7 +18,9 @@ export async function stagedMarketCommunityContractTests() {
       create role service_role bypassrls;
       create schema auth;
       create table auth.users(id uuid primary key, email text);
-      create table public.profiles(id uuid primary key, username text);
+      create table public.profiles(
+        id uuid primary key, username text, full_name text, avatar_url text
+      );
       create table public.blocks(blocker_id uuid,blocked_id uuid);
       create function auth.uid() returns uuid language sql stable as
         $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -298,7 +300,16 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       update public.conversations set is_group=false where id='${managed}'`),
       'BLINK_GROUP_IDENTITY_REQUIRES_SERVER');
+    await db.exec(`
+      select set_config('request.jwt.claim.sub','${other}',false)`);
+    const groupRoster = await db.query(`
+      select user_id,is_admin from public.blink_group_members('${managed}')`);
+    assert.equal(groupRoster.rows.length, 2, 'Active group user can view unique roster rows');
+    await rejects(() => db.exec(`
+      select * from public.blink_group_members('${group}')`),
+      'NOT_AN_ACTIVE_GROUP_MEMBER');
     await db.exec('reset role');
+    console.log('PASS staged active roster permissions');
     console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     console.log('PASS independent offline staged Marketplace + Community contracts');
