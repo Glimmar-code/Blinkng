@@ -520,7 +520,7 @@ private fun ReelsContent(
     // A deep-linked reel starts expanded, while a normal Reels tap opens the reference layout.
     // Enter from the bottom Reels tab in preview mode every time; only deep links
     // intentionally start fullscreen. Do not restore fullscreen across a later tab visit.
-    var expanded by remember(resumeUserKey, initialReelId) {
+    var expanded by remember(resumeUserKey) {
         mutableStateOf(!initialReelId.isNullOrBlank())
     }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
