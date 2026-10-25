@@ -19,7 +19,7 @@ export async function stagedMarketCommunityContractTests() {
       create schema auth;
       create table auth.users(id uuid primary key, email text);
       create table public.profiles(
-        id uuid primary key, username text, full_name text, avatar_url text
+        id uuid primary key, username text, full_name text, avatar_url text, handle text
       );
       create table public.blocks(blocker_id uuid,blocked_id uuid);
       create function auth.uid() returns uuid language sql stable as
@@ -229,6 +229,7 @@ export async function stagedMarketCommunityContractTests() {
     // proposed replacement policies locally, and assert authenticated users
     // cannot self-invite, self-promote or keep reading after leaving.
     await db.exec(`
+      create table public.notifications (user_id uuid, actor_id uuid, is_read boolean default false, text text);
       create table public.messages (
         id uuid primary key default gen_random_uuid(),
         conversation_id uuid references public.conversations(id),
@@ -329,6 +330,9 @@ export async function stagedMarketCommunityContractTests() {
     const messageView = await db.query(`
       select id from public.messages where conversation_id='${group}'`);
     assert.equal(messageView.rows.length, 0, 'Departed user cannot read old group messages');
+    const departedPage = await db.query(`
+      select id from public.get_conversation_messages_page('${group}',20)`);
+    assert.equal(departedPage.rows.length,0,'Departed user cannot paginate message history');
     const departedUnread = await db.query(`
       select message_id from public.get_my_unread_message_notifications(20)`);
     assert.equal(departedUnread.rows.length,0,'Departed member cannot read unread content via definer RPC');
@@ -374,6 +378,9 @@ export async function stagedMarketCommunityContractTests() {
     const activeUnread = await db.query(`
       select message_id from public.get_my_unread_message_notifications(20)`);
     assert.equal(activeUnread.rows.length,1,'Active group member retains unread access');
+    const activePage = await db.query(`
+      select id from public.get_conversation_messages_page('${managed}',20)`);
+    assert.equal(activePage.rows.length,1,'Active member can still paginate group history');
     const activeAck = await db.query(`
       select public.ack_message_delivered(
         'ffffffff-ffff-4fff-8fff-ffffffffffff') as ok`);
