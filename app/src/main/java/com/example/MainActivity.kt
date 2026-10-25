@@ -1758,6 +1758,8 @@ fun MainAppContent(
                 }
 
                 MainTab.MESSAGES -> {
+                    var showMessageComposeOptions by rememberSaveable { mutableStateOf(false) }
+                    var showGroupInvitations by rememberSaveable { mutableStateOf(false) }
                     PremiumMessagesScreen(
                         conversations = uiState.conversations,
                         stories = uiState.stories,
@@ -1826,7 +1828,7 @@ fun MainAppContent(
                         onUpdateChatPrivacy = { settings ->
                             viewModel.updateChatPrivacySettings(settings)
                         },
-                        onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
+                        onComposeMessage = { showMessageComposeOptions = true },
                         onMyProfileClick = { viewModel.openProfile(uiState.myProfile.username) },
                         onGameClick = { feedUtilitySheet = "game" },
                         isDark = uiState.isDarkMode,
@@ -1836,6 +1838,30 @@ fun MainAppContent(
                             viewModel.refreshVisibleInboxReceipt(id, timestamp)
                         }
                     )
+                    if (showMessageComposeOptions) {
+                        AlertDialog(
+                            onDismissRequest = { showMessageComposeOptions = false },
+                            title = { Text("New conversation") },
+                            text = { Text("Message a student or invite classmates to a group.") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    viewModel.setTab(MainTab.SEARCH)
+                                }) { Text("Message student") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    showMessageComposeOptions = false
+                                    showGroupInvitations = true
+                                }) { Text("Groups & invitations") }
+                            }
+                        )
+                    }
+                    if (showGroupInvitations) {
+                        BlinkGroupInvitationsDialog(
+                            onDismiss = { showGroupInvitations = false }
+                        )
+                    }
                 }
             }
         }
