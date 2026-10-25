@@ -18,6 +18,7 @@ OLD = "b" * 40
 CHECKOUT = "c" * 40
 OTHER = "d" * 40
 MAIN = "e" * 40
+FP = "f" * 64
 
 
 def event():
@@ -36,11 +37,12 @@ def checks(scope="android", status="success", id=21, pr=517, sha=OLD):
 
 
 def job(scope="android", id=21, sha=OLD):
+    names = [*reuse.REQUIRED_STEPS[scope],
+             reuse.DIGEST_LABEL.format(scope=scope, digest=FP)]
     return {"id": id, "head_sha": sha, "status": "completed",
             "conclusion": "success",
             "steps": [{"name": name, "status": "completed",
-                       "conclusion": "success"}
-                      for name in reuse.REQUIRED_STEPS[scope]]}
+                       "conclusion": "success"} for name in names]}
 
 
 class TestInputScope(unittest.TestCase):
@@ -72,40 +74,66 @@ class TestInputScope(unittest.TestCase):
                 self.assertTrue(reuse.relevant(path, "windows"))
 
 
+class TestActualFingerprint(unittest.TestCase):
+    def test_exact_blob_and_path_changes_invalidate_the_digest(self):
+        base = (b"100644 blob " + b"a" * 40 + b"\tapp/src/main/Foo.kt\0"
+                + b"100644 blob " + b"b" * 40 + b"\tREADME.md\0")
+        changing_doc = base.replace(b"b" * 40, b"c" * 40)
+        changing_source = base.replace(b"a" * 40, b"d" * 40)
+        with patch.object(reuse.subprocess, "check_output") as mock:
+            mock.return_value = base
+            first = reuse.fingerprint_inputs("android")
+            mock.return_value = changing_doc
+            second = reuse.fingerprint_inputs("android")
+            mock.return_value = changing_source
+            third = reuse.fingerprint_inputs("android")
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, third)
+        self.assertEqual(len(first), 64)
+
+
 class TestSourceEvidence(unittest.TestCase):
     def test_requires_successful_real_steps_and_exact_sha(self):
-        self.assertTrue(reuse.validate_evidence(checks(), job(), OLD, "android", 517))
+        self.assertTrue(reuse.validate_evidence(checks(), job(), OLD, "android", 517, FP))
         self.assertTrue(reuse.validate_evidence(checks(), job(sha=OTHER),
-                                                OLD, "android", 517))
+                                                OLD, "android", 517, FP))
         self.assertFalse(reuse.validate_evidence(checks(pr=518), job(),
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
         self.assertFalse(reuse.validate_evidence(checks(sha=OTHER), job(),
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
         self.assertFalse(reuse.validate_evidence(checks(status="failure"), job(),
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
         self.assertFalse(reuse.validate_evidence(checks(), job(id=19),
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
         no_steps = job()
         no_steps["steps"][0]["conclusion"] = "skipped"
         self.assertFalse(reuse.validate_evidence(checks(), no_steps,
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
         missing_step = job()
         missing_step["steps"] = missing_step["steps"][:-1]
         self.assertFalse(reuse.validate_evidence(checks(), missing_step,
-                                                 OLD, "android", 517))
+                                                 OLD, "android", 517, FP))
+
+    def test_forged_or_missing_digest_does_not_count(self):
+        self.assertFalse(reuse.validate_evidence(
+            checks(), job(), OLD, "android", 517, "0" * 64))
+        evidence = job()
+        evidence["steps"] = evidence["steps"][:-1]
+        self.assertFalse(reuse.validate_evidence(
+            checks(), evidence, OLD, "android", 517, FP))
 
     def test_new_failure_supersedes_earlier_success(self):
         self.assertFalse(reuse.validate_evidence(
             checks(id=20) + checks(id=21, status="failure"),
-            job(id=20), OLD, "android", 517))
+            job(id=20), OLD, "android", 517, FP))
 
     def test_windows_requires_actual_installer_steps(self):
         self.assertTrue(reuse.validate_evidence(
-            checks("windows"), job("windows"), OLD, "windows", 517))
+            checks("windows"), job("windows"), OLD, "windows", 517, FP))
         invalid = job("windows")
         invalid["steps"][-1]["conclusion"] = "skipped"
         self.assertFalse(reuse.validate_evidence(
-            checks("windows"), invalid, OLD, "windows", 517))
+            checks("windows"), invalid, OLD, "windows", 517, FP))
 
 
 class TestEndToEndDecision(unittest.TestCase):
@@ -139,7 +167,7 @@ class TestEndToEndDecision(unittest.TestCase):
     def test_unrelated_main_change_reuses_completed_android_suite(self):
         fetch, git, _, paths_seen = self.setup_case()
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertTrue(ok, reason)
         self.assertIn("identical inputs", reason)
         self.assertEqual(len(paths_seen), 2)
@@ -148,7 +176,7 @@ class TestEndToEndDecision(unittest.TestCase):
     def test_changed_android_files_do_not_query_or_reuse_previous_evidence(self):
         fetch, git, _, paths_seen = self.setup_case(files="app/src/main/java/Screen.kt")
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
         self.assertIn("Changed build/test inputs", reason)
         self.assertEqual(paths_seen, [])
@@ -159,7 +187,7 @@ class TestEndToEndDecision(unittest.TestCase):
             with self.subTest(status=status):
                 fetch, git, _, _ = self.setup_case(state=status)
                 ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                          "read-token", fetch=fetch, git=git)
+                                          "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
                 self.assertFalse(ok, reason)
 
     @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
@@ -167,7 +195,7 @@ class TestEndToEndDecision(unittest.TestCase):
         fetch, git, responses, _ = self.setup_case()
         responses["/commits/" + OLD + "/check-runs?per_page=100"]["total_count"] = 500
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
         self.assertIn("Incomplete prior check", reason)
 
@@ -179,7 +207,7 @@ class TestEndToEndDecision(unittest.TestCase):
             "check_runs": checks(id=21) + checks(status="failure", id=22)
         }
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
         self.assertIn("pending/failed", reason)
 
@@ -191,7 +219,7 @@ class TestEndToEndDecision(unittest.TestCase):
             with self.subTest(path=path):
                 fetch, git, _, _ = self.setup_case(files=path)
                 ok, _ = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                     "read-token", fetch=fetch, git=git)
+                                     "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
                 self.assertFalse(ok)
 
     @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
@@ -200,10 +228,10 @@ class TestEndToEndDecision(unittest.TestCase):
         fork = event()
         fork["pull_request"]["head"]["repo"]["full_name"] = "fork/Blinkng"
         ok, _ = reuse.decide("android", "pull_request", fork, CHECKOUT,
-                             "read-token", fetch=fetch, git=git)
+                             "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
         ok, _ = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                             "", fetch=fetch, git=git)
+                             "", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
 
     @patch.dict(os.environ, {"GITHUB_REPOSITORY": reuse.REPO})
@@ -219,7 +247,7 @@ class TestEndToEndDecision(unittest.TestCase):
             raise AssertionError(args)
         ok, reason = reuse.decide(
             "android", "push", {"ref": "refs/heads/main"}, CHECKOUT,
-            "read-token", fetch=fetch, git=git)
+            "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertTrue(ok, reason)
 
 
@@ -251,7 +279,7 @@ class TestEndToEndDecision(unittest.TestCase):
             return base_git(*args)
 
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertTrue(ok, reason)
         self.assertIn(older[:12], reason)
 
@@ -272,7 +300,7 @@ class TestEndToEndDecision(unittest.TestCase):
             return base_git(*args)
 
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok, reason)
         self.assertNotIn("/commits/" + older + "/check-runs?per_page=100", seen)
 
@@ -290,7 +318,7 @@ class TestEndToEndDecision(unittest.TestCase):
                 return "shared/src/commonMain/kotlin/Contract.kt"
             return base_git(*args)
         ok, reason = reuse.decide("android", "pull_request", event(), CHECKOUT,
-                                  "read-token", fetch=fetch, git=git)
+                                  "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok, reason)
         self.assertIn("Changed build/test inputs", reason)
 
@@ -301,7 +329,7 @@ class TestEndToEndDecision(unittest.TestCase):
             return CHECKOUT + " " + MAIN
         ok, _ = reuse.decide(
             "android", "push", {"ref": "refs/heads/main"}, CHECKOUT,
-            "read-token", fetch=fetch, git=git)
+            "read-token", fetch=fetch, git=git, fingerprint=lambda scope: FP)
         self.assertFalse(ok)
 
 
