@@ -1,6 +1,7 @@
 name: Web Parity Testlab Gate
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'Testlab-web-*'
@@ -8,6 +9,12 @@ on:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_blink_indexnow.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
+      - 'scripts/submit_blink_indexnow.mjs'
+      - '.github/workflows/submit-blink-indexnow.yml'
+      - 'scripts/normalize_public_html.mjs'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
@@ -21,11 +28,21 @@ on:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_blink_indexnow.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
+      - 'scripts/submit_blink_indexnow.mjs'
+      - '.github/workflows/submit-blink-indexnow.yml'
+      - 'scripts/normalize_public_html.mjs'
       - 'scripts/test_domain_auth_links.mjs'
       - 'scripts/test_landing_phase1.mjs'
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
       - 'scripts/test_web_production_phase3_authseo.mjs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -40,6 +57,12 @@ jobs:
 
       - name: BLINK official domain, SEO, routes and APK alias
         run: python3 scripts/check_github_pages_site.py
+
+      - name: Verify raw HTML SEO and private SPA route protections
+        run: node scripts/test_web_seo_static.mjs
+
+      - name: Verify public-only IndexNow and sitemap eligibility
+        run: node scripts/test_blink_indexnow.mjs
 
       - name: Verify secure canonical OAuth and recovery redirects
         run: node scripts/test_domain_auth_links.mjs

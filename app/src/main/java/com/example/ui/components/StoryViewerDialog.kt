@@ -101,7 +101,8 @@ fun StoryViewerDialog(
     // Story timer progress (0f to 1f)
     var progress by remember { mutableFloatStateOf(0f) }
     var isPaused by remember { mutableStateOf(false) }
-    var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
+    var replayNonce by rememberSaveable(currentStory.id) { mutableIntStateOf(0) }
+    var replyText by rememberPersistentTextState(key = "story-reply:$currentUserId:${currentStory.id}")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
     val viewerLifecycleOwner = LocalLifecycleOwner.current
@@ -134,7 +135,7 @@ fun StoryViewerDialog(
     var showInsights by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     var confirmDelete by rememberSaveable(currentStory.id) { mutableStateOf(false) }
     var confirmMute by rememberSaveable(currentStory.id) { mutableStateOf(false) }
-    LaunchedEffect(currentStory.id) {
+    LaunchedEffect(currentStory.id, replayNonce) {
         progress = 0f
         var elapsedMs = 0L
         val stepMs = 50L
@@ -167,6 +168,7 @@ fun StoryViewerDialog(
                 BlinkStoryVideoPlayer(
                     story = displayedStory,
                     paused = isPaused || !viewerForeground || showInsights || displayedStory.id != currentStory.id,
+                    replayKey = replayNonce,
                     onDuration = { if (displayedStory.id == currentStory.id) videoDurationMs = it },
                     onReady = { if (displayedStory.id == currentStory.id) videoReady = it }
                 )
@@ -273,7 +275,7 @@ fun StoryViewerDialog(
                                 if (currentIndex > 0) {
                                     currentIndex -= 1
                                 } else {
-                                    progress = 0f
+                                    replayNonce += 1
                                 }
                             }
                         )
@@ -698,6 +700,7 @@ fun StoryViewerDialog(
 private fun BlinkStoryVideoPlayer(
     story: Story,
     paused: Boolean,
+    replayKey: Int,
     onDuration: (Long) -> Unit,
     onReady: (Boolean) -> Unit
 ) {
@@ -742,6 +745,7 @@ private fun BlinkStoryVideoPlayer(
             player.release()
         }
     }
+    LaunchedEffect(player, replayKey) { player.seekTo(0) }
     LaunchedEffect(player, paused, lifecycleOwner) {
         if (!paused && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             player.play()
@@ -750,7 +754,7 @@ private fun BlinkStoryVideoPlayer(
         }
     }
     LaunchedEffect(player) {
-        while (true) {
+        while (!mediaError) {
             val durationMs = player.duration
             if (durationMs > 0 && durationMs != androidx.media3.common.C.TIME_UNSET) {
                 onDuration(durationMs)

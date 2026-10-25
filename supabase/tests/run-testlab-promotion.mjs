@@ -106,6 +106,10 @@ try {
     console.log('PASS professional Market migration reapply:', migration);
   }
   await (await import('./market-professional-tests.mjs')).marketProfessionalTests(db);
+  // Separate disposable PostgreSQL database: run STAGED-ONLY contracts.
+  // This never links to, mutates, or authenticates against hosted Supabase.
+  await (await import('./staged-market-community-contract-tests.mjs'))
+    .stagedMarketCommunityContractTests();
 
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);

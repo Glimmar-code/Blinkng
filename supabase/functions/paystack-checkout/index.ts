@@ -7,6 +7,8 @@ Deno.serve(async req => {
   const user=await currentUser(req);
   if(!user) return json({error:"SIGN_IN_REQUIRED"},401);
   if(!user.email) return json({error:"ACCOUNT_EMAIL_REQUIRED"},400);
+  // Enforce verified customer email before initiating a merchant transaction.
+  if(!user.email_confirmed_at) return json({error:"EMAIL_CONFIRMATION_REQUIRED"},403);
   // Additional independent kill switch; database cash_checkout_enabled is also required.
   if(Deno.env.get("BLINK_PAYSTACK_CHECKOUT_ENABLED")!=="true")
     return json({error:"CHECKOUT_DISABLED"},503);

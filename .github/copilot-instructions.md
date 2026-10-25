@@ -14,6 +14,36 @@ This instruction applies to every BLINK task, feature branch, pull request, agen
 
 See `docs/testlab-auto-promotion.md` for the exact CI and release gates.
 
+## Always-on CI failure recovery and production publishing
+
+For every PR, push, and production release, never treat a failed check as completion.
+The trusted `BLINK CI automatic recovery` workflow examines failed GitHub
+Actions jobs on the **current** `Testlab` / `Testlab-*` revision and attempts
+at most two failed-job retries (three attempts total). It collects failing job
+and step names, links to the error logs, and creates or updates a GitHub issue
+when a failure persists or a security check cannot safely be retried.
+Retries address intermittent runners/services; they do **not** fix broken code.
+
+When a coding agent is connected and assigned a recovery blocker, it must
+open the linked job logs, diagnose the actual root cause, apply a minimal
+non-destructive code/config repair on an up-to-date `Testlab-*` branch,
+add regression coverage, rerun all relevant CI checks, and repeat while
+each iteration makes meaningful progress. Never bypass security, signing,
+RLS, backend/staging/device verification, branch protections, or required checks.
+Do not loop forever or overwrite newer changes; stop and report blockers
+that cannot be fixed or independently verified.
+
+After an agent has verified the exact current commit, the existing guarded
+Testlab auto-promotion controller may merge it to `main` with its explicit
+opt-in and attestations. Never auto-promote purely because retries passed.
+Only a successful verified main merge may dispatch production workflows.
+`Signed Android release` must succeed before `Publish latest APK` runs;
+publishing must preserve signing identity, reject stale builds, and verify
+the public artifact. The previous good APK remains available on failures.
+Changes not affecting Android should not create unnecessary APKs.
+Main publishing failures may receive bounded retries, but never source
+changes directly on `main` or automatic unsafe secret/config changes.
+
 ## BLINK mandatory auto-fix → verify → Testlab → main → update app
 
 User command (repeat for each BLINK repair/release request):
@@ -271,3 +301,9 @@ Whenever an AI agent or developer completes a task that changed Supabase, the fi
 10. Whether recovery of this version would require any secret values/data backups that are intentionally kept outside Git.
 
 Do not claim a Supabase-related feature or recovery is fully complete if any required app integration, migration capture, recovery baseline, security verification, testing, or release preparation remains outstanding.
+
+## Permanent non-destructive PR preservation and consolidation
+
+Do not create overlapping PRs when the failed original can be fixed in place. Never auto-close a failed, stale or duplicate-looking PR merely because another PR is newer or has a similar title. First audit the original PR's exact head revision, file-level diff and intended feature semantics; verify the replacement actually contains those changes and passes relevant latest-head checks. Preserve work in a Testlab branch while resolving conflicts; promote to main only after verification.
+
+The default-branch `BLINK preserve unmerged pull requests` workflow reopens a closed-but-unmerged PR lacking owner-attested, file-verified preservation or owner-approved intentional abandonment. It is **not** a pre-close GitHub ruleset. See `.github/PR_PRESERVATION_POLICY.md` for required labels/comments and strict SHA-bound audit. Do not bypass that guard or delete old source branches to hide unfinished work.

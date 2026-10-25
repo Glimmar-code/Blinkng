@@ -27,6 +27,16 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application android:name=".BlinkApplication" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.MyApplication">
+        <!-- Scoped, non-exported full-resolution camera output for direct messages. -->
+        <provider
+            android:name=".media.BlinkChatFileProvider"
+            android:authorities="${applicationId}.chatfiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/blink_chat_file_paths" />
+        </provider>
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
@@ -160,8 +170,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/@" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/invite/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+            </intent-filter>
+
+            <!-- Referral links work from both the canonical domain and www. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="blink.com.ng" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="www.blink.com.ng" android:pathPrefix="/invite/" />
             </intent-filter>
 
             <!-- Supabase password-recovery redirect. Add blink://reset-password

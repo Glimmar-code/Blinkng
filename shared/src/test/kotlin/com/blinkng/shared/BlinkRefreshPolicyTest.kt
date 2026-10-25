@@ -17,6 +17,15 @@ class BlinkRefreshPolicyTest {
         assertTrue(BlinkRefreshPolicy.isStale(50L, 50L, 0L))
     }
 
+    @Test fun socialFeedRefreshesAfterOneMinuteButNeverOnRapidResume() {
+        val previous = 1_000L
+        val interval = BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS
+        assertFalse(BlinkRefreshPolicy.isStale(previous, 30_000L, interval))
+        assertFalse(BlinkRefreshPolicy.isStale(previous, 60_999L, interval))
+        assertTrue(BlinkRefreshPolicy.isStale(previous, 61_000L, interval))
+        assertFalse(BlinkRefreshPolicy.isStale(previous, 61_000L))
+    }
+
     @Test fun callerCanUseDifferentScopeAges() {
         assertTrue(BlinkRefreshPolicy.isStale(1_000L, 61_000L, 60_000L))
         assertFalse(BlinkRefreshPolicy.isStale(1_000L, 61_000L, 120_000L))

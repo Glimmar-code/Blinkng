@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -32,10 +34,86 @@ def circular_master(master: Image.Image) -> Image.Image:
     return circle
 
 
+
+def verify_current_approved_assets() -> None:
+    """Verify the new BLINK b/blue-dot assets without regenerating old circular icons.
+
+    A different sync algorithm produced the old round launcher icons. Re-running
+    that algorithm would overwrite the approved visual design, so the new pack
+    must instead be checked against its immutable source and output SHA-256s.
+    """
+    source = ROOT / "branding/approved/BLINK-logo-source.webp"
+    inventory_file = ROOT / "branding/approved/exports/manifest.json"
+    inventory = json.loads(inventory_file.read_text(encoding="utf-8"))
+    expected_source = inventory.get("approved_derived_source_sha256")
+    assert expected_source and len(expected_source) == 64
+    if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != expected_source:
+        raise SystemExit("Approved BLINK source artwork has changed unexpectedly")
+    files = inventory.get("generated_assets")
+    if not isinstance(files, list) or len(files) < 80:
+        raise SystemExit("Incomplete BLINK approved-asset catalogue")
+    out_of_sync = []
+    verified = set()
+    for item in files:
+        name = item["path"]
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise SystemExit("Unsafe approved image path: " + name)
+        file = ROOT / relative
+        verified.add(name)
+        expected_hash = item["sha256"]
+        if not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != expected_hash:
+            out_of_sync.append(name)
+        elif name.endswith(".png"):
+            with Image.open(file) as art:
+                if art.size != (item["width"], item["height"]):
+                    out_of_sync.append(name + " (image dimensions)")
+    for required in (
+        "app/src/main/res/drawable/app_icon.png",
+        "app/src/main/res/drawable/blink_logo_foreground.png",
+        "web/blink-logo-v2.png",
+        "web/blink-logo.png",
+        "desktopApp/src/main/resources/blink-logo.png",
+    ):
+        if required not in verified:
+            out_of_sync.append(required + " (missing from catalogue)")
+    for density in DENSITIES:
+        for name in ("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"):
+            target = "app/src/main/res/mipmap-" + density + "/" + name
+            if target not in verified:
+                out_of_sync.append(target + " (missing from catalogue)")
+        target = "app/src/main/res/drawable-" + density + "/ic_stat_blink.png"
+        if target not in verified:
+            out_of_sync.append(target + " (missing from catalogue)")
+        elif (ROOT / target).exists():
+            with Image.open(ROOT / target) as icon:
+                alpha = icon.convert("RGBA")
+                colored = any((r, g, b) != (255, 255, 255) for r, g, b, a in alpha.getdata() if a > 0)
+                if colored:
+                    out_of_sync.append(target + " (small notifications must be white only)")
+    manifest = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    if 'android:icon="@mipmap/ic_launcher"' not in manifest or 'android:roundIcon="@mipmap/ic_launcher_round"' not in manifest:
+        out_of_sync.append("app/src/main/AndroidManifest.xml (launcher references)")
+    foreground = (RES / "drawable/ic_launcher_foreground.xml").read_text(encoding="utf-8")
+    if "@mipmap/ic_launcher_foreground" not in foreground:
+        out_of_sync.append("app/src/main/res/drawable/ic_launcher_foreground.xml")
+    if "@drawable/app_icon" not in (RES / "drawable/ic_splash_b.xml").read_text(encoding="utf-8"):
+        out_of_sync.append("app/src/main/res/drawable/ic_splash_b.xml")
+    web_manifest = json.loads((ROOT / "web/manifest.webmanifest").read_text(encoding="utf-8"))
+    if {x["src"] for x in web_manifest["icons"]} != {"pwa-192.png", "pwa-512.png", "maskable-512.png"}:
+        out_of_sync.append("web/manifest.webmanifest (PWA icon paths)")
+    if out_of_sync:
+        raise SystemExit("Out-of-sync owner-approved BLINK assets:\\n" + "\\n".join(out_of_sync))
+    print(f"BLINK approved logo verified: {len(files)} source-matched assets.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Fail if a resource is stale.")
     options = parser.parse_args()
+    if (ROOT / 'branding/approved/exports/manifest.json').exists():
+        verify_current_approved_assets()
+        return
     master = Image.open(SOURCE).convert("RGBA")
     if master.width != master.height:
         raise SystemExit("The approved BLINK launcher master must be square.")

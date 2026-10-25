@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkReplySwipePhysics
 
 import com.example.ui.components.BlinkSkeletonChatHistory
 
@@ -9,15 +10,21 @@ import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.example.data.supabase.MessageMediaService
+import com.blinkng.shared.BlinkChatImageQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -26,6 +33,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -76,6 +84,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -172,6 +181,8 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
+import com.example.data.models.UserProfile
+import com.example.ui.components.BlinkUserPickerSheet
 import com.example.data.models.Story
 import com.blinkng.shared.notification.BlinkStoryReplyReference
 import com.blinkng.shared.notification.BlinkStoryLifecycle
@@ -234,8 +245,11 @@ fun PremiumMessagesScreen(
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
+    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
     onLoadOlder: (String) -> Unit = {},
@@ -246,12 +260,15 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
+    onSearchUsers: suspend (String, Int, String?, String?) -> List<UserProfile> = { _, _, _, _ -> emptyList() },
+    onCreateGroup: () -> Unit = {},
     onMyProfileClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
-    isDark: Boolean = false
+    isDark: Boolean = false,
+    onVisibleInboxReceipt: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val preferences = remember(context.applicationContext) {
@@ -263,6 +280,7 @@ fun PremiumMessagesScreen(
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
     var showPrivacySheet by rememberSaveable { mutableStateOf(false) }
+    var showUserPicker by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
     val liveActiveConversation = activePartner?.let { partner ->
@@ -331,14 +349,15 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
-                            onComposeMessage = onComposeMessage,
+                            onComposeMessage = { showUserPicker = true },
                             onMyProfileClick = onMyProfileClick,
                             onGameClick = onGameClick,
                             onNotificationsClick = onOpenActivity,
                             hasUnreadNotifications = activities.any { it.isUnread },
                             isConnected = isConnected,
                             isLoading = isLoading,
-                            isDark = isDark
+                            isDark = isDark,
+                            onVisibleInboxReceipt = onVisibleInboxReceipt
                         )
                     }
 
@@ -367,9 +386,12 @@ fun PremiumMessagesScreen(
                                 onForwardMessage = onForwardMessage,
                                 onSendVideo = onSendVideo,
                                 onSendAttachment = onSendAttachment,
+                                onSendPhotoAlbum = onSendPhotoAlbum,
+                                onSendViewOncePicture = onSendViewOncePicture,
                                 onPresenceChange = onPresenceChange,
                                 allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
                                 onRetryMessage = onRetryMessage,
+                                onCancelAttachment = onCancelAttachment,
                                 hasMoreMessages = hasMoreMessages,
                                 isLoadingOlder = isLoadingOlder,
                                 onLoadOlder = onLoadOlder,
@@ -426,6 +448,21 @@ fun PremiumMessagesScreen(
             )
         }
     }
+    if (showUserPicker) {
+        BlinkUserPickerSheet(
+            title = "New Message",
+            onDismiss = { showUserPicker = false },
+            searchProfiles = onSearchUsers,
+            onSelectUser = { user ->
+                showUserPicker = false
+                onOpenConversation(user.username)
+            },
+            onCreateGroup = {
+                showUserPicker = false
+                onCreateGroup()
+            }
+        )
+    }
 }
 
 
@@ -476,9 +513,12 @@ private fun PremiumMessagesMasterDetail(
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
+    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit,
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
     onPresenceChange: (String, String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
     onLoadOlder: (String) -> Unit,
@@ -490,6 +530,7 @@ private fun PremiumMessagesMasterDetail(
     isConnected: Boolean
 ) {
     val density = LocalDensity.current
+    val groupContext = LocalContext.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
 
     Box(
@@ -539,6 +580,14 @@ private fun PremiumMessagesMasterDetail(
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
                 },
+                onSendPhotoAlbum = { uris, quality ->
+                    onSendPhotoAlbum(displayedConversation.partnerUsername, uris, quality)
+                },
+                onSendViewOncePicture = { uri ->
+                    onSendViewOncePicture(
+                        displayedConversation.partnerUsername, uri, "", BlinkChatImageQuality.STANDARD
+                    )
+                },
                 onPresenceChange = { state ->
                     onPresenceChange(displayedConversation.partnerUsername, state)
                 },
@@ -546,13 +595,28 @@ private fun PremiumMessagesMasterDetail(
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
-                onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
                 onStoryReferenceClick = onStoryReferenceClick,
+                onProfileClick = {
+                    if (!displayedConversation.isGroup) {
+                        onProfileClick(displayedConversation.partnerUsername)
+                    }
+                },
+                onCancelAttachment = { message ->
+                    onCancelAttachment?.invoke(displayedConversation.partnerUsername, message)
+                },
                 onAudioCall = {
-                    onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onVideoCall = {
-                    onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 isConnected = isConnected,
                 isFullScreen = true,
@@ -673,7 +737,8 @@ private fun PremiumMessagesHome(
     hasUnreadNotifications: Boolean,
     isConnected: Boolean,
     isLoading: Boolean,
-    isDark: Boolean
+    isDark: Boolean,
+    onVisibleInboxReceipt: (String, String) -> Unit
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
@@ -730,6 +795,7 @@ private fun PremiumMessagesHome(
         onOpenSettings = onOpenAppearance,
         isConnected = isConnected,
         isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
+        onVisibleInboxReceipt = onVisibleInboxReceipt,
         filterContent = {
             MessageInboxTabs(
                 selected = inboxTab,
@@ -1236,7 +1302,10 @@ private fun ConversationList(
                 conversation = conversation,
                 palette = palette,
                 onOpen = { onOpenConversation(conversation.partnerUsername) },
-                onAvatarClick = { onProfileClick(conversation.partnerUsername) }
+                onAvatarClick = {
+                    if (conversation.isGroup) onOpenConversation(conversation.partnerUsername)
+                    else onProfileClick(conversation.partnerUsername)
+                }
             )
         }
     }
@@ -1372,9 +1441,12 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
+    onSendPhotoAlbum: (List<Uri>, BlinkChatImageQuality) -> Unit,
+    onSendViewOncePicture: (Uri) -> Unit,
     onPresenceChange: (String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
+    onCancelAttachment: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onStoryReferenceClick: (String) -> Unit,
     onAudioCall: () -> Unit,
@@ -1486,8 +1558,23 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
+    var selectedPhotoQuality by remember(conversation.id) {
+        mutableStateOf(BlinkChatImageQuality.STANDARD)
+    }
+    val photoAlbumPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        if (uris.isNotEmpty()) onSendPhotoAlbum(uris, selectedPhotoQuality)
+        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        onPresenceChange("online")
+    }
+    var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendAttachment(uri, "image")
+        if (uri != null) {
+            if (viewOncePictureChoice) onSendViewOncePicture(uri)
+            else onSendAttachment(uri, "image")
+        }
+        viewOncePictureChoice = false
         onPresenceChange("online")
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1590,7 +1677,11 @@ private fun PremiumChatDetail(
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            modifier = Modifier.fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .testTag("chat_conversation_root")
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -1806,8 +1897,9 @@ private fun PremiumChatDetail(
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
-                            allowLinkPreviews = allowLinkPreviews,
-                            onStoryReferenceClick = onStoryReferenceClick
+                            onStoryReferenceClick = onStoryReferenceClick,
+                            onCancelAttachment = { onCancelAttachment(message) },
+                            allowLinkPreviews = allowLinkPreviews
                             )
                         }
                     }
@@ -1889,6 +1981,18 @@ private fun PremiumChatDetail(
                 EmojiRail(palette = palette, onEmoji = { text += it })
             }
 
+            // Shared @username completion is used by referral, mention and invite flows.
+            com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy.trailingMention(text)?.let { needle ->
+                BlinkUsernameSearchSuggestions(
+                    query = needle,
+                    onSelected = { person ->
+                        text = com.blinkng.shared.discovery.BlinkUsernameSelectionPolicy
+                            .insertMention(text, person.username)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             MessageComposer(
                 value = text,
                 onValueChange = { text = it },
@@ -1921,7 +2025,11 @@ private fun PremiumChatDetail(
                 selectedMessage = null
             },
             onForward = {
-                forwardingMessage = message
+                if (message.imageViewOnce) {
+                    Toast.makeText(context, "View-once photos cannot be forwarded.", Toast.LENGTH_SHORT).show()
+                } else {
+                    forwardingMessage = message
+                }
                 selectedMessage = null
             },
             onEdit = {
@@ -2136,6 +2244,23 @@ private fun PremiumChatDetail(
         AttachmentSheet(
             palette = palette,
             onImage = {
+                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                photoAlbumPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onOriginalPhotos = {
+                selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                photoAlbumPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onViewOnce = {
+                viewOncePictureChoice = true
                 showAttachmentSheet = false
                 onPresenceChange("uploading")
                 imagePicker.launch("image/*")
@@ -2569,16 +2694,23 @@ private fun MessageBubble(
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
     onRetry: () -> Unit,
+    onCancelAttachment: () -> Unit,
     allowLinkPreviews: Boolean,
     onStoryReferenceClick: (String) -> Unit
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
-    val threshold = with(density) { 64.dp.toPx() }
+    val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
+    val haptic = LocalHapticFeedback.current
     var dragOffset by remember(message.id) { mutableStateOf(0f) }
+    var isDragging by remember(message.id) { mutableStateOf(false) }
+    var replyArmed by remember(message.id) { mutableStateOf(false) }
     val displayOffset by animateFloatAsState(
-        targetValue = dragOffset,
-        animationSpec = tween(70),
+        targetValue = BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
+        animationSpec = if (isDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "messageSwipeReply"
     )
 
@@ -2597,14 +2729,26 @@ private fun MessageBubble(
                 .graphicsLayer { translationX = displayOffset }
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
+                        onDragStart = { isDragging = true },
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 2f)
+                            val active = BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)
+                            if (active && !replyArmed) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            replyArmed = active
                         },
                         onDragEnd = {
-                            if (dragOffset >= threshold) onReply()
+                            if (BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)) onReply()
+                            isDragging = false
+                            replyArmed = false
                             dragOffset = 0f
                         },
-                        onDragCancel = { dragOffset = 0f }
+                        onDragCancel = {
+                            isDragging = false
+                            replyArmed = false
+                            dragOffset = 0f
+                        }
                     )
                 }
                 .pointerInput(message.id, message.status) {
@@ -2675,6 +2819,7 @@ private fun MessageBubble(
                         isMine = isMine,
                         palette = palette,
                         allowLinkPreviews = allowLinkPreviews,
+                        onCancelAttachment = onCancelAttachment,
                         onStoryReferenceClick = onStoryReferenceClick
                     )
                 }
@@ -2737,14 +2882,15 @@ private fun MessageContent(
     isMine: Boolean,
     palette: MessagePalette,
     allowLinkPreviews: Boolean,
+    onCancelAttachment: () -> Unit,
     onStoryReferenceClick: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     val storyReply = remember(message.text, message.deletedForEveryone) {
         if (message.deletedForEveryone) null
         else BlinkStoryReplyReference.parse(message.text)
     }
+    val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
         if (message.deletedForEveryone) {
             Text(
@@ -2754,7 +2900,97 @@ private fun MessageContent(
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
             )
         } else {
-            if (!message.attachedImageUrl.isNullOrBlank()) {
+            if (isMine && !message.imageViewOnce &&
+                message.id.startsWith("temp_attachment_") &&
+                message.status == MessageStatus.SENDING &&
+                message.uploadProgress != null) {
+                Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)) {
+                    Text(
+                        "Uploading photo · ${message.uploadProgress.coerceIn(0, 100)}%",
+                        color = contentColor,
+                        fontSize = 11.sp
+                    )
+                    androidx.compose.material3.TextButton(onClick = onCancelAttachment) {
+                        Text("Cancel upload", color = palette.danger)
+                    }
+                }
+            }
+            if (message.imageViewOnce) {
+                var opening by remember(message.id) { mutableStateOf(false) }
+                var alreadyOpened by remember(message.id) { mutableStateOf(false) }
+                var oneTimeBitmap by remember(message.id) {
+                    mutableStateOf<android.graphics.Bitmap?>(null)
+                }
+                val viewScope = rememberCoroutineScope()
+                Surface(
+                    color = contentColor.copy(alpha = .08f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            if (isMine) "🔒 View-once photo sent"
+                            else if (alreadyOpened) "This photo has been opened"
+                            else "🔒 Private view-once photo",
+                            color = contentColor,
+                            fontSize = 12.sp
+                        )
+                        if (!isMine && !opening && !alreadyOpened &&
+                            message.status != MessageStatus.FAILED &&
+                            message.status != MessageStatus.SENDING) {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    opening = true
+                                    viewScope.launch {
+                                        MessageMediaService.openViewOncePicture(message.id).fold(
+                                            onSuccess = {
+                                                oneTimeBitmap = it
+                                                alreadyOpened = true
+                                            },
+                                            onFailure = {
+                                                if (it.message?.contains("already", true) == true) {
+                                                    alreadyOpened = true
+                                                }
+                                                Toast.makeText(
+                                                    context, it.message ?: "Photo unavailable",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        )
+                                        opening = false
+                                    }
+                                }
+                            ) { Text("Open once", color = palette.accent) }
+                        } else if (opening) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                oneTimeBitmap?.let { bitmap ->
+                    DisposableEffect(bitmap) {
+                        onDispose { if (!bitmap.isRecycled) bitmap.recycle() }
+                    }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { oneTimeBitmap = null },
+                        title = { Text("View-once photo") },
+                        text = {
+                            androidx.compose.foundation.Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "One-time private photo",
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { oneTimeBitmap = null }
+                            ) { Text("Close") }
+                        }
+                    )
+                }
+            } else if (!message.attachedImageUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = message.attachedImageUrl,
                     contentDescription = "Shared image",
@@ -2778,40 +3014,14 @@ private fun MessageContent(
                 }
             }
             if (!message.attachedAudioUrl.isNullOrBlank()) {
-                Surface(
-                    color = Color.Transparent,
-                    contentColor = contentColor,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .widthIn(min = 190.dp)
-                        .clickable { openExternalUri(context, Uri.parse(message.attachedAudioUrl)) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (message.isVoiceNote) Icons.Default.Mic else Icons.Default.MusicNote,
-                            contentDescription = if (message.isVoiceNote) "Play voice message" else "Play audio",
-                            tint = contentColor,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            Modifier
-                                .width(104.dp)
-                                .height(3.dp)
-                                .clip(CircleShape)
-                                .background(contentColor.copy(alpha = .55f))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
-                            color = contentColor,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
+                BlinkChatVoicePlayer(
+                    url = message.attachedAudioUrl,
+                    durationLabel = if (message.isVoiceNote) {
+                        message.voiceDuration.ifBlank { "Voice note" }
+                    } else "Audio",
+                    tint = contentColor,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
             if (!message.attachedDocumentUrl.isNullOrBlank()) {
                 Surface(
@@ -3152,8 +3362,10 @@ private fun MessageComposer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            // The chat root consumes overlapping IME/navigation-bar insets.
+            // Applying navigationBarsPadding here would create a second gap.
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("chat_message_composer")
     ) {
         Surface(
             color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),
@@ -3615,6 +3827,8 @@ private fun ChatNotificationSettingsSheet(
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
+    onViewOnce: () -> Unit,
+    onOriginalPhotos: () -> Unit,
     onVideo: () -> Unit,
     onAudio: () -> Unit,
     onDocument: () -> Unit,
@@ -3656,6 +3870,20 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onImage
+            )
+            AttachmentOption(
+                label = "Original photos",
+                description = "Send up to 10 photos without resizing",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onOriginalPhotos
+            )
+            AttachmentOption(
+                label = "View-once photo",
+                description = "Recipient can open this photo only once",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onViewOnce
             )
             AttachmentOption(
                 label = "Video",

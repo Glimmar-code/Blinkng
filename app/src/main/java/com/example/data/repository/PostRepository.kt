@@ -6,65 +6,66 @@ import com.example.data.models.Comment
 import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
-// Retry ranked discovery timeouts with smaller ranked batches; preserve all server filtering.
-// PostgreSQL error 57014 is a server statement timeout, not an empty feed and
-// not an authentication failure. Do not conceal unrelated errors.
+/** SQLSTATE 57014 can be an explicit cancellation as well as a timeout.
+ * Only the server's actual statement-timeout text permits one safe fallback.
+ */
 internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
     generateSequence(error) { it.cause }
-        .any { cause ->
-            val message = cause.message.orEmpty()
-            message.contains("statement timeout", ignoreCase = true) ||
-                message.contains("57014")
-        }
+        .any { cause -> cause.message.orEmpty().contains("statement timeout", ignoreCase = true) }
 
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
     // Only retain per-post locks while operations are active or queued.
     private val likeMutationLocks = PerKeyMutationLocks()
+    // Guard the expensive discovery RPC against simultaneous Home/Reels/realtime pulls.
+    private val rankedFeedMutex = Mutex()
+    private val chronologicalFallbackTypes = mutableSetOf<String>()
 
+    /**
+     * One chronological first-page fallback after a genuine statement timeout.
+     * Keep the same pagination mode for the rest of that lane: no ranked-offset/
+     * chronological-cursor mixing or unbounded rerunning of costly ranked queries.
+     * Never swallow cancellation, authentication failures or secondary failures.
+     */
     private suspend fun fetchRankedFeedWithTimeoutFallback(
         limit: Int,
         feedType: String,
         beforeCreatedAt: String? = null,
         beforeId: String? = null
-    ): List<FeedPost> {
-        return try {
-            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, "ranked_$feedType")
+    ): List<FeedPost> = rankedFeedMutex.withLock {
+        val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+        if (!firstPage && feedType in chronologicalFallbackTypes) {
+            return@withLock supabaseService.fetchFeedPage(
+                limit = limit, beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId, feedType = feedType
+            )
+        }
+        try {
+            val page = supabaseService.fetchFeedPage(
+                limit = limit, beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId, feedType = "ranked_$feedType"
+            )
+            if (firstPage) chronologicalFallbackTypes.remove(feedType)
+            page
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
-            if (!isRecoverableRankedFeedTimeout(error)) throw error
-            // A blocked/slow ranking RPC must not strand Home on its old cached
-            // handful of posts. Preserve feed-type and cursor for pagination.
-            Log.w("PostRepository", "Ranked $feedType feed timed out; retrying smaller ranked pages", error)
-            // A smaller ranked page retains the server's privacy, blocks, mutes,
-            // and discovery filters. Gather a full window when possible so the
-            // normal 30-item hasMore pagination check never stops after just 8.
-            val recovered = ArrayList<FeedPost>(limit)
-            val seen = HashSet<String>()
-            var cursorAt = beforeCreatedAt
-            var cursorId = beforeId
-            while (recovered.size < limit) {
-                val requestSize = minOf(8, limit - recovered.size)
-                val page = supabaseService.fetchFeedPage(
-                    requestSize, cursorAt, cursorId, "ranked_$feedType"
-                )
-                val fresh = page.filter { seen.add(it.id) }
-                if (fresh.isEmpty()) break
-                recovered.addAll(fresh)
-                // Ranked Supabase paging stores an offset + snapshot internally.
-                // Nonblank cursor args prevent resetting that snapshot to page 1.
-                cursorAt = fresh.last().createdAt.ifBlank { "1970-01-01T00:00:00Z" }
-                cursorId = fresh.last().id
-                if (page.size < requestSize) break
-            }
-            recovered
+            if (!firstPage || !isRecoverableRankedFeedTimeout(error)) throw error
+            Log.w("PostRepository", "Ranked $feedType timed out; trying one authenticated chronological page", error)
+            val page = supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+            chronologicalFallbackTypes.add(feedType)
+            page
         }
     }
 

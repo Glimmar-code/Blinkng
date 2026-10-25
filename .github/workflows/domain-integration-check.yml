@@ -1,6 +1,7 @@
 name: BLINK domain integration check
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'Testlab*'
@@ -44,6 +45,10 @@ on:
       - 'scripts/test_discovery_phase2.mjs'
       - 'scripts/test_web_production_phase3.mjs'
       - 'scripts/test_web_production_phase3_authseo.mjs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
