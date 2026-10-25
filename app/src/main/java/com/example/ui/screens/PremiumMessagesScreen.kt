@@ -2228,6 +2228,14 @@ private fun PremiumChatDetail(
     galleryPreviewUri?.let { _ ->
         val selected = galleryPhotos.getOrNull(galleryPreviewIndex)
         val imageUrl = selected?.attachedImageUrl ?: galleryPreviewUri
+        var refreshedGalleryUrl by remember(galleryPreviewIndex, selected?.id) {
+            mutableStateOf(imageUrl)
+        }
+        LaunchedEffect(galleryPreviewIndex, selected?.id, conversation.id) {
+            val remote = selected ?: return@LaunchedEffect
+            val refreshed = MessageMediaService.freshImageUrl(remote.id, conversation.id)
+            if (refreshed != null) refreshedGalleryUrl = refreshed
+        }
         Dialog(
             onDismissRequest = { galleryPreviewUri = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2255,7 +2263,7 @@ private fun PremiumChatDetail(
                     }
             ) {
                 AsyncImage(
-                    model = imageUrl, contentDescription = "Shared full-screen photo",
+                    model = refreshedGalleryUrl, contentDescription = "Shared full-screen photo",
                     contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
                 )
                 Row(
