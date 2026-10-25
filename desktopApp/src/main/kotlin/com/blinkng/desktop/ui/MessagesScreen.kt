@@ -388,12 +388,23 @@ fun MessagesScreen(state: DesktopAppState) {
                 fontSize = 12.sp,
             )
         }
+        val photoGroups = messages.filter {
+            it.messageType == "image" &&
+                it.imageAlbumId != null && it.imageAlbumSize in 2..10 &&
+                !it.mediaUrl.isNullOrBlank()
+        }.groupBy { it.imageAlbumId }
+        val renderedMessages = messages.filter { message ->
+            val group = message.imageAlbumId?.let(photoGroups::get).orEmpty()
+            group.size < 2 || group.first().id == message.id
+        }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(messages, key = { it.id }) { message ->
+            items(renderedMessages, key = { it.id }) { message ->
+                val albumPhotos = message.imageAlbumId?.let(photoGroups::get).orEmpty()
+                    .sortedBy { it.imageAlbumPosition }
                 val mine = message.senderId == myUserId
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -410,9 +421,46 @@ fun MessagesScreen(state: DesktopAppState) {
                             color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
-                                if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
+                                if (albumPhotos.size > 1) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        albumPhotos.take(4).chunked(2).forEachIndexed { row, pair ->
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                pair.forEachIndexed { col, photo ->
+                                                    val photoIndex = row * 2 + col
+                                                    Box(modifier = Modifier.width(145.dp).height(110.dp)) {
+                                                        AsyncImage(
+                                                            model = photo.imagePreviewUrl ?: photo.mediaUrl,
+                                                            contentDescription = "Album picture ${photoIndex + 1}",
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                                .clickable {
+                                                                    fullGallery = albumPhotos
+                                                                    expandedGalleryIndex = photoIndex
+                                                                    scope.launch {
+                                                                        expandedPicture = state.client.freshChatImageUrl(
+                                                                            photo.id, photo.conversationId
+                                                                        ) ?: photo.mediaUrl
+                                                                    }
+                                                                }
+                                                        )
+                                                        if (photoIndex == 3 && albumPhotos.size > 4) {
+                                                            Text(
+                                                                "+${albumPhotos.size - 4}",
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.align(Alignment.BottomEnd)
+                                                                    .padding(8.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Text("${albumPhotos.size} pictures", fontSize = 11.sp)
+                                    }
+                                } else if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = message.mediaUrl,
+                                        model = message.imagePreviewUrl ?: message.mediaUrl,
                                         contentDescription = "Shared picture. Click to enlarge.",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.width(280.dp).height(175.dp)
