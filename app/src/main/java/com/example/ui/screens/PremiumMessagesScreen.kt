@@ -13,6 +13,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.example.data.supabase.MessageMediaService
+import com.blinkng.shared.BlinkChatImageQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -233,6 +236,7 @@ fun PremiumMessagesScreen(
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
@@ -368,6 +372,7 @@ fun PremiumMessagesScreen(
                                 onForwardMessage = onForwardMessage,
                                 onSendVideo = onSendVideo,
                                 onSendAttachment = onSendAttachment,
+                                onSendViewOncePicture = onSendViewOncePicture,
                                 onPresenceChange = onPresenceChange,
                                 allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
                                 onRetryMessage = onRetryMessage,
@@ -469,6 +474,7 @@ private fun PremiumMessagesMasterDetail(
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
     onPresenceChange: (String, String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
@@ -530,6 +536,11 @@ private fun PremiumMessagesMasterDetail(
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
+                },
+                onSendViewOncePicture = { uri ->
+                    onSendViewOncePicture(
+                        displayedConversation.partnerUsername, uri, "", BlinkChatImageQuality.STANDARD
+                    )
                 },
                 onPresenceChange = { state ->
                     onPresenceChange(displayedConversation.partnerUsername, state)
@@ -1364,6 +1375,7 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
+    onSendViewOncePicture: (Uri) -> Unit,
     onPresenceChange: (String) -> Unit,
     allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
@@ -1477,8 +1489,13 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
+    var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendAttachment(uri, "image")
+        if (uri != null) {
+            if (viewOncePictureChoice) onSendViewOncePicture(uri)
+            else onSendAttachment(uri, "image")
+        }
+        viewOncePictureChoice = false
         onPresenceChange("online")
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -2130,6 +2147,13 @@ private fun PremiumChatDetail(
         AttachmentSheet(
             palette = palette,
             onImage = {
+                viewOncePictureChoice = false
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                imagePicker.launch("image/*")
+            },
+            onViewOnce = {
+                viewOncePictureChoice = true
                 showAttachmentSheet = false
                 onPresenceChange("uploading")
                 imagePicker.launch("image/*")
@@ -2741,7 +2765,82 @@ private fun MessageContent(
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
             )
         } else {
-            if (!message.attachedImageUrl.isNullOrBlank()) {
+            if (message.imageViewOnce) {
+                var opening by remember(message.id) { mutableStateOf(false) }
+                var alreadyOpened by remember(message.id) { mutableStateOf(false) }
+                var oneTimeBitmap by remember(message.id) {
+                    mutableStateOf<android.graphics.Bitmap?>(null)
+                }
+                val viewScope = rememberCoroutineScope()
+                Surface(
+                    color = contentColor.copy(alpha = .08f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            if (isMine) "🔒 View-once photo sent"
+                            else if (alreadyOpened) "This photo has been opened"
+                            else "🔒 Private view-once photo",
+                            color = contentColor,
+                            fontSize = 12.sp
+                        )
+                        if (!isMine && !opening && !alreadyOpened &&
+                            message.status != MessageStatus.FAILED &&
+                            message.status != MessageStatus.SENDING) {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    opening = true
+                                    viewScope.launch {
+                                        MessageMediaService.openViewOncePicture(message.id).fold(
+                                            onSuccess = {
+                                                oneTimeBitmap = it
+                                                alreadyOpened = true
+                                            },
+                                            onFailure = {
+                                                if (it.message?.contains("already", true) == true) {
+                                                    alreadyOpened = true
+                                                }
+                                                Toast.makeText(
+                                                    context, it.message ?: "Photo unavailable",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        )
+                                        opening = false
+                                    }
+                                }
+                            ) { Text("Open once", color = palette.accent) }
+                        } else if (opening) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                oneTimeBitmap?.let { bitmap ->
+                    DisposableEffect(bitmap) {
+                        onDispose { if (!bitmap.isRecycled) bitmap.recycle() }
+                    }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { oneTimeBitmap = null },
+                        title = { Text("View-once photo") },
+                        text = {
+                            androidx.compose.foundation.Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "One-time private photo",
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { oneTimeBitmap = null }
+                            ) { Text("Close") }
+                        }
+                    )
+                }
+            } else if (!message.attachedImageUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = message.attachedImageUrl,
                     contentDescription = "Shared image",
@@ -3562,6 +3661,7 @@ private fun ChatNotificationSettingsSheet(
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
+    onViewOnce: () -> Unit,
     onVideo: () -> Unit,
     onAudio: () -> Unit,
     onDocument: () -> Unit,
@@ -3603,6 +3703,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onImage
+            )
+            AttachmentOption(
+                label = "View-once photo",
+                description = "Recipient can open this photo only once",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onViewOnce
             )
             AttachmentOption(
                 label = "Video",
