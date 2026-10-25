@@ -39,6 +39,12 @@ declare
   balance_after bigint;
 begin
   if new.confirmed_referrals <= old_count then return new; end if;
+  -- Check the actual confirmed-referral velocity BEFORE creating any Coin ledger entry.
+  -- The later risk flag trigger alone runs too late to prevent the fifth payout.
+  if (select count(*) from public.blink_referrals r
+      where r.referrer_user_id=new.user_id and r.status='confirmed'
+        and r.confirmed_at>now()-interval '1 hour')>=5
+  then return new; end if;
   -- During deployment the velocity-review extension might not exist yet.
   -- Once present, hold Coin minting for suspicious bursts pending human review.
   if to_regclass('private.blink_referral_risk_reviews') is not null then
