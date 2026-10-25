@@ -469,10 +469,11 @@ class SupabaseService {
 
                         return@withContext Result.failure(
                             Exception(
-                                parseSupabaseError(
-                                    responseBody,
-                                    "Invalid email or password."
-                                )
+                                when (response.code) {
+                                    429 -> "Too many requests."
+                                    in 500..599 -> "Authentication service temporarily unavailable."
+                                    else -> parseSupabaseError(responseBody, "Invalid email or password.")
+                                }
                             )
                         )
                     }
@@ -630,7 +631,8 @@ class SupabaseService {
         username: String,
         fullName: String,
         faculty: String = "",
-        university: String = ""
+        university: String = "",
+        referrerId: String? = null
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -660,6 +662,9 @@ class SupabaseService {
                         put("name", cleanFullName)
                         put("faculty", faculty)
                         put("university", university)
+                        referrerId?.takeIf {
+                            runCatching { java.util.UUID.fromString(it) }.isSuccess
+                        }?.let { put("blink_referrer_id", it) }
                     })
                 }
 
@@ -1542,6 +1547,36 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    /**
+     * Uses the already deployed, authorization-checked 3–50 member group RPC.
+     * The group inbox UI is intentionally held until group summary pagination
+     * is tested separately; never create groups from an unverified screen.
+     */
+    suspend fun createGroupConversation(
+        title: String,
+        invitedUserIds: List<String>
+    ): String? = withContext(Dispatchers.IO) {
+        val creator = getCurrentUserId() ?: return@withContext null
+        val cleanTitle = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title)
+        val members = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedMembers(creator, invitedUserIds)
+        val body = JSONObject().put("p_title", cleanTitle)
+            .put("p_member_ids", JSONArray(members))
+        val request = newRequestBuilder("/rest/v1/rpc/create_group_conversation", true)
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        runCatching {
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty().trim().removeSurrounding("\"")
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "GROUP_CREATE_REJECTED code=${response.code}")
+                    return@use null
+                }
+                raw.takeIf { isValidUuid(it) }
+            }
+        }.getOrNull()
+    }
+
     suspend fun searchProfiles(query: String): List<UserProfile> =
         searchProfilesPage(query = query, limit = 30)
 
@@ -2220,6 +2255,38 @@ fun getCurrentUserId(): String? {
             } else emptySet()
         }
 
+        // One bounded aggregate RPC per feed page, never a per-card network call.
+        // On older production schemas (before the verified migration is deployed),
+        // leave the count unknown rather than displaying a fabricated zero.
+        val saveCounts: Map<String, Int>? = runCatching {
+            val pageIds = (0 until postsRaw.length())
+                .mapNotNull { postsRaw.optJSONObject(it)?.cleanString("id")?.takeIf(::isValidUuid) }
+                .distinct()
+                .take(60)
+            if (pageIds.isEmpty()) {
+                emptyMap()
+            } else {
+                val request = newRequestBuilder(
+                    "/rest/v1/rpc/get_visible_post_save_counts",
+                    authenticated = true
+                ).post(
+                    JSONObject().put("p_post_ids", JSONArray(pageIds)).toString().toRequestBody(jsonMediaType)
+                ).build()
+                executeRequest(request).use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException("Save count endpoint unavailable.")
+                    val rows = JSONArray(body.ifBlank { "[]" })
+                    buildMap {
+                        for (i in 0 until rows.length()) {
+                            val row = rows.optJSONObject(i) ?: continue
+                            val postId = row.cleanString("post_id")
+                            if (postId in pageIds) put(postId, row.optLong("save_count", 0L).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                        }
+                    }
+                }
+            }
+        }.getOrNull()
+
         // Hydrate poll metadata so poll posts render as real polls in Home.
         val pollIds = buildSet {
             for (i in 0 until postsRaw.length()) {
@@ -2323,6 +2390,8 @@ fun getCurrentUserId(): String? {
                     put("author_avatar", profile.cleanString("avatar_url"))
                     put("username", username)
                     put("author_username", username)
+                    // Unknown count is null until its safely aggregated backend is available.
+                    put("saves_count", saveCounts?.get(source.cleanString("id")) ?: if (saveCounts != null) 0 else JSONObject.NULL)
                     put("is_verified", profile.optBoolean("is_verified"))
                     put("verification_badge", profile.cleanString("verification_badge"))
                     source.cleanString("poll_id")
@@ -2354,6 +2423,9 @@ fun getCurrentUserId(): String? {
         clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
+            require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+                "Item sales belong in BLINK Market."
+            }
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             val cleanClientRequestId = clientRequestId
                 ?.trim()
@@ -3424,12 +3496,16 @@ suspend fun uploadPostMedia(
         try {
             val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=world_rank.asc&limit=50", true).get().build()).use { resp ->
                 val body = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) return@withContext emptyList()
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "Leaderboard HTTP status: " + resp.code)
+                    return@withContext emptyList()
+                }
                 body
             }
             val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
             buildList { for (i in 0 until arr.length()) parseLeaderboardUser(arr.getJSONObject(i), i + 1)?.let { add(it) } }
         } catch (e: Exception) {
+            Log.e(TAG, "Leaderboard fetch failed", e)
             emptyList()
         }
     }
@@ -4159,6 +4235,8 @@ suspend fun uploadPostMedia(
             repostedById = obj.cleanString("reposted_by_id").takeIf { it.isNotBlank() },
             repostedByUsername = obj.cleanString("reposted_by_username").takeIf { it.isNotBlank() },
             viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
+            savesCount = if (obj.has("saves_count") && !obj.isNull("saves_count"))
+                obj.optInt("saves_count", 0).coerceAtLeast(0) else null,
             isBookmarked = obj.optBoolean("is_bookmarked", false),
             isReel = parsedIsReel,
             videoDuration = obj.cleanString("video_duration", "0:00"),

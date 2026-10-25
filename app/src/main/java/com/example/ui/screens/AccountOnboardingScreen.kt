@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.BlinkOnboardingCatalog
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
@@ -133,7 +134,9 @@ fun AccountOnboardingScreen(
     var usernameAvailable by remember { mutableStateOf<Boolean?>(null) }
     var usernameMessage by remember { mutableStateOf<String?>(null) }
 
-    var university by rememberSaveable(profile.id) { mutableStateOf(profile.university) }
+    var university by rememberSaveable(profile.id) {
+        mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) }.let { NigerianUniversitySearch.canonical(it) ?: it })
+    }
     var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
@@ -512,7 +515,7 @@ fun AccountOnboardingScreen(
                                 }
 
                                 onSaveBasics(
-                                    university,
+                                    NigerianUniversitySearch.canonical(university) ?: university,
                                     department,
                                     level,
                                     gender,
@@ -521,6 +524,7 @@ fun AccountOnboardingScreen(
                                 ) { ok, message ->
                                     saving = false
                                     if (ok) {
+                                        SignupCampusPreference.clear(context)
                                         avatarUrl = finalAvatar
                                         pendingAvatarUri = null
                                         step = 2
@@ -701,12 +705,10 @@ fun AccountOnboardingScreen(
     }
 
     if (universityPicker) {
-        SearchablePickerDialog(
-            title = "Select university",
-            items = NigerianUniversities.all,
+        UniversityCampusPickerDialog(
             selected = university,
             onDismiss = { universityPicker = false },
-            onSelected = {
+            onSelect = {
                 university = it
                 universityPicker = false
             }

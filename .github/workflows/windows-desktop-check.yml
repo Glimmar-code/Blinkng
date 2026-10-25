@@ -8,32 +8,87 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 concurrency:
   group: windows-desktop-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      windows: ${{ steps.detect.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Windows build-affecting changes
+        id: detect
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
   parity:
+    needs: scope
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Fail safely if diff classification failed
+        if: always() && needs.scope.result != 'success'
+        run: exit 1
+
       - name: Enforce Android-Windows feature parity
+        if: needs.scope.result == 'success'
         run: python3 scripts/check_windows_parity.py
 
       - name: Guard shared Auth-inspired dark palette
         run: python3 scripts/check_premium_dark_tokens.py
 
   windows-build:
+    needs: scope
+    if: needs.scope.result == 'success' && needs.scope.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
+      # Windows Git refs are case-insensitive; fetching every remote branch
+      # fails when this repository has both Testlab and testlab refs.
+      # Fetch only this PR / commit history, never refs/heads/*.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Compute actual checked-out Windows packaging input digest
+        id: input_digest
+        shell: pwsh
+        env:
+          BLINK_CI_SCOPE: windows
+        run: python scripts/ci_verified_reuse.py --fingerprint
+
+      - name: BLINK verified windows input sha256 ${{ steps.input_digest.outputs.fingerprint }}
+        shell: pwsh
+        run: Write-Output 'Stamped exact Windows build/test/packaging inputs for this verified job.'
+
+      - name: Check whether full Windows packaging inputs were previously verified
+        id: reuse
+        shell: pwsh
+        env:
+          BLINK_CI_SCOPE: windows
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/ci_verified_reuse.py
+
+      - name: Explain evidence-backed Windows build reuse
+        if: steps.reuse.outputs.reuse == 'true'
+        shell: pwsh
+        run: Write-Output 'Prior successful Windows build, EXE and MSI packaging reused from identical source, test and dependency inputs; this commit has a fresh successful check.'
 
       - uses: actions/setup-java@v5
+        if: steps.reuse.outputs.reuse != 'true'
         with:
           distribution: temurin
           java-version: '17'
@@ -42,10 +97,12 @@ jobs:
       # wrapper launch scripts. Pin Gradle explicitly so the desktop build is
       # deterministic and does not depend on the runner's preinstalled version.
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.reuse.outputs.reuse != 'true'
         with:
           gradle-version: '8.12.1'
 
       - name: Stage pinned Godot 4.3 native Windows runtime
+        if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -61,12 +118,15 @@ jobs:
           Copy-Item -Path $engine.FullName -Destination (Join-Path $destination 'BlinkLife.exe')
 
       - name: Compile and test desktop app
+        if: steps.reuse.outputs.reuse != 'true'
         run: gradle -p desktopApp build --stacktrace --no-daemon
 
       - name: Build Windows EXE and MSI
+        if: steps.reuse.outputs.reuse != 'true'
         run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
 
       - name: Verify native Godot assets in Windows installer build
+        if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
         run: |
           $base = 'desktopApp/build/nativeResources/windows/blink-life'
@@ -77,6 +137,7 @@ jobs:
           }
 
       - name: Upload Windows installers
+        if: steps.reuse.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-windows-${{ github.sha }}

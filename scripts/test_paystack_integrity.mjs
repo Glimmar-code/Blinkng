@@ -58,3 +58,43 @@ test("cash boosts require a separate server-side feature flag", () => {
   assert.ok(gatingIndex >= 0 && providerIndex > gatingIndex, "boost gate must precede provider checkout");
   assert.match(checkoutSource.slice(gatingIndex, providerIndex), /CASH_BOOST_DISABLED/);
 });
+
+
+const coinPacks = [
+  { code: "coins_100", naira: 100, coins: 100 },
+  { code: "coins_500", naira: 500, coins: 550 },
+  { code: "coins_1000", naira: 1000, coins: 1200 },
+  { code: "coins_2000", naira: 2000, coins: 2600 },
+  { code: "coins_5000", naira: 5000, coins: 7000 },
+];
+for (const pack of coinPacks) {
+  test(`coin pack ${pack.code}: exact Paystack kobo value required`, () => {
+    const order = { reference: `blink-ps-${"a".repeat(32)}`, amount_ngn: pack.naira, currency: "NGN" };
+    const verified = { id: 100000 + pack.naira, amount: pack.naira * 100, currency: "NGN", status: "success", reference: order.reference };
+    assert.equal(transactionMatchesOrder(verified, order), true);
+    for (const wrong of [
+      { amount: pack.naira * 100 - 1 },
+      { amount: pack.naira * 100 + 1 },
+      { status: "failed" },
+      { status: "abandoned" },
+      { status: "cancelled" },
+      { status: "pending" },
+      { currency: "USD" },
+      { reference: `blink-ps-${"b".repeat(32)}` },
+    ]) assert.equal(transactionMatchesOrder({ ...verified, ...wrong }, order), false);
+    assert.ok(pack.coins >= pack.naira, "configured bonus must not reduce coin credit");
+  });
+}
+
+// Confirm public cash checkout keeps authenticated customer eligibility and merchant gates.
+test("public checkout preserves verified customer and merchant controls", () => {
+  const checkout = readFileSync(new URL("../supabase/functions/paystack-checkout/index.ts", import.meta.url), "utf8");
+  const signIn = checkout.indexOf('if(!user) return json({error:"SIGN_IN_REQUIRED"},401)');
+  const confirmed = checkout.indexOf('if(!user.email_confirmed_at)');
+  const killSwitch = checkout.indexOf('BLINK_PAYSTACK_CHECKOUT_ENABLED');
+  const provider = checkout.indexOf('await paystackApi("transaction/initialize"');
+  assert.ok(signIn >= 0 && confirmed > signIn && killSwitch > confirmed && provider > killSwitch);
+  assert.match(checkout, /BLINK_PAYSTACK_BOOST_ENABLED/);
+  assert.match(checkout, /BLINK_PAYSTACK_MARKET_ENABLED/);
+  assert.match(checkout, /BLINK_PAYSTACK_GIFTS_ENABLED/);
+});

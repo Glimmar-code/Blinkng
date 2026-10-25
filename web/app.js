@@ -11,6 +11,8 @@
   const MODALS = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
   const SESSION_KEY = 'blink_web_session_v3';
+  const INVITE_REFERRER_KEY = 'blink_web_invited_by_v1';
+  const INVITE_VISITOR_KEY = 'blink_web_invite_visitor_v1';
   const DRAFT_KEY = 'blink_web_post_draft_v2';
   const VISITOR_KEY = 'blink_web_visitor_v2';
   const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
@@ -219,6 +221,7 @@
     try{
       const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
       await Promise.all([loadMyProfile(),loadFollowing(),refreshUnreadCount()]);
+      void wakeReferralPush();
     }catch(e){
       console.warn('session bootstrap',e);
       // Keep a refreshable session through offline/timeout/5xx/profile failures.
@@ -277,7 +280,7 @@
       </aside>
       <main class="main"><header class="topbar"><h1>${esc(title)}</h1><div class="top-actions"><a class="btn small-btn download-app" href="${APK_URL}" aria-label="Download BLINK Android app">↓ App</a><button class="btn small-btn" data-action="create-post">＋ Post</button>${p?`<button class="btn small-btn ghost" data-action="logout">Log out</button>`:'<button class="btn small-btn primary" data-nav="/login">Log in</button>'}</div></header><div class="content-wrap">${content}</div></main>
       <aside class="rightbar">${right||rightRail()}</aside>
-      <nav class="mobile-nav">${mobileItem('/feed','home','Home')}${mobileItem('/reels','reels','Reels')}${mobileItem('/search','search','Search')}${mobileItem('/messages','messages','Messages')}${mobileItem('/activity','activity','Activity')}</nav>
+      <nav class="mobile-nav">${mobileItem('/feed','home','Home')}${mobileItem('/reels','reels','Reels')}${mobileItem('/market','market','Market')}${mobileItem('/connect','connect','Connect')}${mobileItem('/messages','messages','Message')}</nav>
     </div>`;
   }
   function rightRail(){
@@ -315,15 +318,53 @@
 
   async function login(identifier,password){
     const input=identifier.trim().toLowerCase(); let data;
-    if(input.includes('@')&&!input.startsWith('@')) data=await api('/auth/v1/token?grant_type=password',{method:'POST',body:{email:input,password},auth:false});
-    else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
-    if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount();
+    if(input.includes('@')&&!input.startsWith('@')) {
+      try { data=await api('/auth/v1/token?grant_type=password',{method:'POST',body:{email:input,password},auth:false}); }
+      catch { data=await api('/functions/v1/username-login',{method:'POST',body:{username:input,password},auth:false}); }
+    } else data=await api('/functions/v1/username-login',{method:'POST',body:{username:input.replace(/^@/,''),password},auth:false});
+    if(!data?.access_token)throw new Error('Blink did not return a valid session.'); saveSession(data); if(!data.user){const user=await api('/auth/v1/user');state.session.user=user;saveSession(state.session);} await loadMyProfile();await loadFollowing();await refreshUnreadCount(); void wakeReferralPush();
   }
-  async function signup(fullName,username,email,password){
+  async function wakeReferralPush(){
+    if(!isAuthed())return;
+    try{
+      const rows=await rpc('blink_my_referral_push_ids');
+      for(const row of (Array.isArray(rows)?rows:[]).slice(0,3)){
+        if(!row.notification_id)continue;
+        await api('/functions/v1/send-activity-notification',{
+          method:'POST',body:{notification_id:String(row.notification_id)}
+        });
+      }
+    }catch(e){
+      console.warn('Referral push confirmation was deferred:',e?.message||e);
+    }
+  }
+
+  async function signup(fullName,username,email,password,referrerId='',birthDate=''){
+    const parsed=new Date(birthDate+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+       !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10)!==birthDate ||
+       parsed > new Date() || parsed < new Date(new Date().getUTCFullYear()-120,0,1)){
+      throw new Error('Enter a valid birthday before selecting your referrer.');
+    }
     if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/\d/.test(password)||!/[\W_]/.test(password))throw new Error('Use 8+ characters with uppercase, lowercase, a number and a symbol.');
     const cleanUser=username.trim().toLowerCase().replace(/^@/,''); if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(cleanUser))throw new Error('Use 2–30 lowercase letters, numbers, dots, dashes or underscores.');
-    const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:{username:cleanUser,full_name:fullName.trim(),name:fullName.trim()}}});
-    if(data?.access_token){saveSession(data);await loadMyProfile();} return data;
+    const metadata={username:cleanUser,full_name:fullName.trim(),name:fullName.trim()};
+    if(/^[0-9a-fA-F-]{36}$/.test(String(referrerId)))metadata.blink_referrer_id=referrerId;
+    const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:metadata}});
+    if(data?.access_token){
+      saveSession(data);
+      let privateBirthdaySaved=false;
+      try {
+        await api('/rest/v1/profile_private_details?on_conflict=user_id',{
+          method:'POST', prefer:'resolution=merge-duplicates,return=minimal',
+          body:{user_id:uid(),birth_date:birthDate}
+        });
+        privateBirthdaySaved=true;
+      }catch{/* Account creation succeeds; private birthday can be updated in profile setup. */}
+      await loadMyProfile();void wakeReferralPush();
+      data.private_birthday_saved=privateBirthdaySaved;
+    }
+    return data;
   }
   function googleLogin(){
     state.authError=null;
@@ -460,6 +501,9 @@
             <a href="${routeHref('/features/')}">Features</a>
             <a href="${routeHref('/download/')}">Download BLINK App</a>
             <a href="${routeHref('/faq/')}">FAQ</a>
+            <a href="${routeHref('/students/')}">BLINK for Students</a>
+            <a href="${routeHref('/marketplace/')}">BLINK Market</a>
+            <a href="${routeHref('/safety/')}">Safety</a>
             <a href="${routeHref('/privacy/')}">Privacy Policy</a>
             <a href="https://whatsapp.com/channel/0029VbBU5Hr7tkj5mIvJNH1u" target="_blank" rel="noopener noreferrer">WhatsApp Channel</a>
           </nav>
@@ -505,8 +549,103 @@
     setTitle('Sign in'); ROOT.innerHTML=`<div class="auth-wrap"><div class="card auth-card"><div class="brand" style="padding:0 0 8px"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</div><h1>Welcome back</h1><p class="muted">Use the same account you use in the Android app.</p><div class="auth-tabs"><button class="btn primary" data-auth-tab="login">Sign in</button><button class="btn" data-auth-tab="signup">Create account</button></div><div id="auth-panel"></div><p class="auth-note">Your browser receives a normal user session. Blink's service-role credentials are never exposed to the web.</p><button class="btn ghost" style="width:100%;margin-top:8px" data-nav="/">Browse without signing in</button></div></div>`;
     const panel=document.getElementById('auth-panel');
     const showLogin=()=>{panel.innerHTML=`${state.authError?`<div class="error" style="margin-bottom:10px">${esc(state.authError)}</div>`:''}<form id="login-form" class="form-stack"><input class="field" name="identifier" placeholder="Email or @username" required autocomplete="username"><input class="field" name="password" type="password" placeholder="Password" required autocomplete="current-password"><button class="btn primary">Sign in</button><button class="btn" type="button" id="google-auth">Continue with Google</button><button class="btn ghost" type="button" id="forgot">Forgot password?</button><div id="auth-msg"></div></form>`; document.getElementById('login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');msg.innerHTML='<span class="muted">Signing in…</span>';try{await login(f.get('identifier'),f.get('password'));toast('Signed in');navigate('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}}; document.getElementById('google-auth').onclick=e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Opening Google…';googleLogin();}; document.getElementById('forgot').onclick=()=>{modal('Reset password',`<form id="reset-form" class="form-stack"><input class="field" type="email" name="email" placeholder="Email address" required><button class="btn primary">Send reset email</button><div id="reset-msg"></div></form>`);document.getElementById('reset-form').onsubmit=async e=>{e.preventDefault();const email=new FormData(e.currentTarget).get('email');try{await requestReset(email);document.getElementById('reset-msg').innerHTML='<div class="success">Check your inbox for the Blink password reset link.</div>';}catch(err){document.getElementById('reset-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};};
-    const showSignup=()=>{panel.innerHTML=`<form id="signup-form" class="form-stack"><input class="field" name="name" placeholder="Full name" required><input class="field" name="username" placeholder="Username" required><input class="field" type="email" name="email" placeholder="Email" required><input class="field" type="password" name="password" placeholder="Strong password" required><button class="btn primary">Create Blink account</button><div id="auth-msg"></div></form>`;document.getElementById('signup-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');try{const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'));if(data?.access_token){toast('Account created');navigate('/feed');}else msg.innerHTML='<div class="success">Account created. Check your email if Blink requires verification.</div>';}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};
-    document.querySelector('[data-auth-tab="login"]').onclick=showLogin;document.querySelector('[data-auth-tab="signup"]').onclick=showSignup;document.querySelector('[data-nav="/"]').onclick=()=>navigate('/');showLogin();
+    const showSignup=()=>{
+      panel.innerHTML = '<form id="signup-form" class="form-stack">' +
+        '<input class="field" name="name" placeholder="Full name" required>' +
+        '<input class="field" name="username" placeholder="Username" required>' +
+        '<input class="field" type="email" name="email" placeholder="Email" required>' +
+        '<input class="field" type="password" name="password" placeholder="Strong password" required>' +
+        '<label class="muted small" for="signup-birthday">Birthday</label>' +
+        '<input class="field" id="signup-birthday" name="birthday" type="date" required autocomplete="bday">' +
+        '<p class="muted small">Your birthday is private and is not shared with a referrer.</p>' +
+        '<label class="muted small" for="referrer-search">Referred by (optional)</label>' +
+        '<input class="field" id="referrer-search" name="referrer" placeholder="Search name or @username" autocomplete="off">' +
+        '<div id="referrer-results" class="form-stack" aria-live="polite"></div>' +
+        '<button class="btn primary">Create Blink account</button>' +
+        '<div id="auth-msg" aria-live="polite"></div></form>';
+      let selectedReferrerId = '';
+      let offset = 0;
+      let seq = 0;
+      let debounce = null;
+      const field = document.getElementById('referrer-search');
+      const results = document.getElementById('referrer-results');
+      const invited = storageGet(INVITE_REFERRER_KEY, '');
+      const lookup = async (append=false) => {
+        const query = String(field.value||'').trim().replace(/^@/,'').slice(0,40);
+        if(!query){results.replaceChildren();return;}
+        const thisSearch = ++seq;
+        if(!append){offset=0;results.replaceChildren();}
+        try {
+          const rows=await anonRpc('blink_referrer_suggestions',
+            {p_query:query,p_limit:10,p_offset:offset});
+          if(thisSearch !== seq)return;
+          if(!append)results.replaceChildren();
+          if(!rows?.length && !append){results.textContent='No matching users found.';return;}
+          for(const person of rows){
+            const button=document.createElement('button');
+            button.type='button';
+            button.className='btn';
+            // Show the real profile photo and verification mark without trusting raw HTML.
+            const photoUrl=safeUrl(person.avatar_url);
+            const photo=document.createElement(photoUrl?'img':'span');
+            photo.className='avatar-sm';
+            if(photoUrl){photo.src=photoUrl;photo.alt='';photo.loading='lazy';}
+            else{photo.classList.add('avatar-fallback');photo.textContent='@';}
+            const display=document.createElement('span');
+            display.textContent=(person.full_name || person.username)+' (@'+person.username+')'+
+              (person.university?' · '+person.university:'');
+            button.append(photo,display);
+            if(person.is_verified){
+              const badge=document.createElement('span');
+              badge.className='verified';
+              badge.title='Verified account';
+              badge.setAttribute('aria-label','Verified account');
+              badge.textContent='✓';
+              button.append(badge);
+            }
+            button.onclick=()=>{
+              selectedReferrerId=String(person.id||'');
+              field.value='@'+person.username;
+              results.textContent='Selected: @'+person.username;
+            };
+            results.appendChild(button);
+          }
+          if(invited && !selectedReferrerId && query.toLowerCase()===invited.toLowerCase()){
+            const exact=rows.find(person=>person.username?.toLowerCase()===invited.toLowerCase());
+            if(exact){selectedReferrerId=String(exact.id);field.value='@'+exact.username;results.textContent='Referred by @'+exact.username;}
+          }
+          if(rows.length===10 && offset<500){
+            const more=document.createElement('button');
+            more.type='button';more.className='btn ghost';more.textContent='See more people';
+            more.onclick=()=>{more.remove();offset+=10;lookup(true);};
+            results.appendChild(more);
+          }
+        } catch {
+          if(thisSearch===seq)results.textContent='Referrer search is unavailable. This field is optional.';
+        }
+      };
+      field.addEventListener('input',()=>{
+        selectedReferrerId='';
+        storageRemove(INVITE_REFERRER_KEY);
+        clearTimeout(debounce);
+        debounce=setTimeout(()=>lookup(),260);
+      });
+      if(invited){field.value='@'+invited;lookup();}
+      document.getElementById('signup-form').onsubmit=async e=>{
+        e.preventDefault();
+        const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');
+        msg.textContent='Creating account…';
+        try{
+          const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'),selectedReferrerId,String(f.get('birthday')||''));
+          storageRemove(INVITE_REFERRER_KEY);
+          if(data?.access_token){
+            toast(data.private_birthday_saved?'Account created':'Account created. Confirm your birthday in Profile.');
+            navigate('/feed');
+          } else msg.textContent='Account created. Check your email, then confirm your birthday during profile setup.';
+        }catch(err){msg.textContent=err.message||'Sign up failed.';}
+      };
+    };
+    document.querySelector('[data-auth-tab="login"]').onclick=showLogin;document.querySelector('[data-auth-tab="signup"]').onclick=showSignup;document.querySelector('[data-nav="/"]').onclick=()=>navigate('/');if(storageGet(INVITE_REFERRER_KEY))showSignup();else showLogin();
   }
 
   async function uploadPublicFile(bucket,file,prefix='web'){
@@ -614,7 +753,19 @@
 
   async function fetchProfiles(ids){ const unique=[...new Set(ids.filter(Boolean))];if(!unique.length)return new Map(); const rows=await rpc('get_public_profiles_by_ids',{p_ids:unique});return new Map((rows||[]).map(p=>[p.id,p])); }
   function normalizeFeedItem(row,profiles){ const x=row?.item||row; const p=profiles.get(x.user_id)||{}; return {...x,author:p}; }
-  function mediaBlock(post){ const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);const video=safeUrl(post.video_url);if(video)return `<div class="post-media"><video src="${esc(video)}" controls playsinline preload="none" data-autopause></video></div>`;if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;return ''; }
+  function mediaBlock(post){
+    const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);
+    const raw=typeof post.video_url==='string'?post.video_url.trim():'';
+    const video=safeUrl(raw);
+    const declaredVideo=post.media_type==='video'||post.type==='video'||post.is_reel===true;
+    const videoExtension=/\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(raw);
+    const invalidPlaceholder=/^(null|undefined|none|false|0|about:blank)$/i.test(raw);
+    const hasRealVideo=!!video&&!invalidPlaceholder&&(declaredVideo||videoExtension||/\/storage\/v1\/object\//i.test(raw));
+    if(hasRealVideo)return `<div class="post-media" data-video-post><video src="${esc(video)}" controls playsinline preload="none" data-autopause onerror="this.closest('[data-video-post]').innerHTML='<div class=&quot;muted&quot; style=&quot;padding:16px&quot;>Video unavailable</div>'"></video></div>`;
+    if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;
+    if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;
+    return '';
+  }
   function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
@@ -718,7 +869,7 @@
 
   async function renderFeed(path='/feed'){
     if(!requireAuth())return; state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
-    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`${storyStrip(stories)}<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button><button class="tab ${state.feedMode==='all'?'active':''}" data-feed-mode="all">Mixed</button></div><section class="card composer"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindStories(stories);bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
+    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button></div><section class="card composer" style="display:none"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
     finally{state.loading=false;}
   }
   async function loadMoreFeed(){if(state.loading)return;state.loading=true;const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:state.feedOffset,p_as_of:state.feedAsOf,p_feed_type:state.feedMode});if(!rows?.length){toast('You’re caught up');return;}state.feedOffset=rows[0]?.next_offset||state.feedOffset+rows.length;const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));const list=document.getElementById('feed-list');if(!list)return;const existing=new Set([...list.querySelectorAll('[data-post-id]')].map(el=>el.dataset.postId));const fresh=items.filter(item=>!existing.has(String(item.id)));if(fresh.length){list.insertAdjacentHTML('beforeend',fresh.map(postCard).join(''));bindPostCards();}else toast('No new posts on this page');}catch(e){toast(e.message);}finally{state.loading=false;if(btn)btn.textContent='Load more';}}
@@ -744,8 +895,21 @@
       const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
       const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
-      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><strong>@${esc(a.username||'user')}${verifyMark(a)}</strong><p>${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}">♡</button><button type="button" data-comments="${esc(r.id)}">◌</button><button type="button" data-share="/reel/${esc(r.id)}">↗</button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
+      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
       ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
+      document.querySelectorAll('[data-reel-follow]').forEach(button=>button.addEventListener('click',async()=>{
+        if(button.disabled||!requireAuth())return;
+        const creator=button.dataset.reelFollow;
+        if(!creator||creator===uid())return;
+        button.disabled=true;
+        try{
+          const already=state.following.has(creator);
+          await rpc(already?'unfollow_user':'follow_user',{p_target_user_id:creator});
+          if(already)state.following.delete(creator);else state.following.add(creator);
+          document.querySelectorAll('[data-reel-follow]').forEach(b=>{if(b.dataset.reelFollow===creator)b.textContent=already?'Follow':'Following';});
+        }catch(error){toast(error.message);}finally{button.disabled=false;}
+      }));
+
       state.mediaObserver?.disconnect();
       state.mediaObserver=null;
       const reelCards=[...document.querySelectorAll('.reel-card')];
@@ -850,11 +1014,119 @@
     }catch(e){const body=document.getElementById('comments-body');if(body)body.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
   }
 
+  async function showReferralGrowth(){
+    if(!requireAuth())return;
+    modal('Refer & Grow', '<p>Invite friends. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
+      '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
+      '<div id="referral-growth" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-sources" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-impressions" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-links" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-coins" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-top" class="muted" style="margin-top:9px"></div>' +
+      '<div class="form-stack"><button type="button" class="btn primary" id="share-referral">Share invitation</button></div>');
+    const stats=document.getElementById('referral-stats');
+    if(!stats)return;
+    try{
+      const rows=await rpc('blink_referral_dashboard');
+      if(!stats.isConnected)return;
+      const row=Array.isArray(rows)?rows[0]:null;
+      const milestone=row?.achievement_next_target;
+      stats.textContent=row
+        ? 'Lifetime confirmed referrals: '+fmt(row.total_referrals)+
+          ' · Achievement: '+String(row.achievement_tier||'New member')+
+          ' · '+(milestone == null
+                ? 'All referral milestones unlocked'
+                : fmt(Math.max(0,Number(milestone)-Number(row.total_referrals||0)))+
+                  ' more to reach '+fmt(milestone))+
+          ' · Active last 30 days: '+fmt(row.active_referrals)+
+          ' · Temporary visibility: '+fmt(row.visibility_points)+' points ('+
+          String(row.visibility_label||'Normal discovery')+')'+
+          ' · Each new confirmation adds 3 points for 10 days, then 2, then 1; after 30 days it expires. Your achievement never fades.'
+        : 'No referral activity yet.';
+    }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
+    void Promise.allSettled([
+      rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5}),
+      rpc('blink_referral_source_analytics'), rpc('blink_referral_coin_status'),
+      rpc('blink_referral_link_stats'), rpc('blink_referral_impression_stats')
+    ]).then(([growthResult,leaderResult,sourceResult,coinResult,linkResult,impressionResult])=>{
+      const impressionSummary=document.getElementById('referral-impressions');
+      if(impressionSummary?.isConnected && impressionResult.status==='fulfilled'){
+        const item=Array.isArray(impressionResult.value)?impressionResult.value[0]:null;
+        if(item)impressionSummary.textContent='Estimated seen Search profiles (7 days): '+
+          fmt(item.search_impressions_7d)+' · Recommendations: '+
+          fmt(item.recommendation_impressions_7d)+
+          '. Impressions are visibility-qualified estimates, not verified human views.';
+      }
+      const linkStats=document.getElementById('referral-links');
+      if(linkStats?.isConnected && linkResult.status==='fulfilled'){
+        const item=Array.isArray(linkResult.value)?linkResult.value[0]:null;
+        if(item)linkStats.textContent='Unique invite-browser opens (30 days, estimated): '+
+          fmt(item.unique_link_opens_30d)+
+          ' · Confirmed new accounts (30 days): '+fmt(item.confirmed_referrals_30d)+
+          '. Opens are approximate and never earn Coins.';
+      }
+      const growth=document.getElementById('referral-growth');
+      if(growth?.isConnected && growthResult.status==='fulfilled'){
+        const x=Array.isArray(growthResult.value)?growthResult.value[0]:null;
+        if(x) growth.textContent='Real profile views this week: '+fmt(x.profile_views_this_week)+
+          ' · Followers gained this week: '+fmt(x.followers_gained_this_week)+
+          ' · Invite share actions: '+fmt(x.share_actions)+
+          ' · Source-level Search/recommendation attribution is not yet tracked.';
+      }
+      const sources=document.getElementById('referral-sources');
+      if(sources?.isConnected && sourceResult.status==='fulfilled'){
+        const item=Array.isArray(sourceResult.value)?sourceResult.value[0]:null;
+        if(item)sources.textContent='Unique profile opens from Search (7 days): '+
+          fmt(item.search_profile_opens)+' · From recommendations: '+fmt(item.recommendation_profile_opens);
+      }
+      const coins=document.getElementById('referral-coins');
+      if(coins?.isConnected && coinResult.status==='fulfilled'){
+        const item=Array.isArray(coinResult.value)?coinResult.value[0]:null;
+        if(item)coins.textContent='Referral Coins earned: '+fmt(item.earned_coins)+
+          (item.reward_enabled?' · Next milestone: '+fmt(item.next_milestone):
+            ' · Milestone awards await owner approval.');
+      }
+      const lead=document.getElementById('referral-top');
+      if(lead?.isConnected && leaderResult.status==='fulfilled'){
+        const rows=Array.isArray(leaderResult.value)?leaderResult.value:[];
+        if(rows.length)lead.textContent='Top connectors this week: '+
+          rows.map(x=>'#'+x.rank_position+' @'+x.username+' ('+fmt(x.successful_referrals)+')').join(' · ');
+      }
+    });
+    document.getElementById('share-referral')?.addEventListener('click',async()=>{
+      const username=String(state.profile?.username||'').toLowerCase().replace(/^@/,'');
+      if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(username)){toast('Complete your username first.');return;}
+      const invite='Join me on BLINK — connect and discover students beyond link.\n'+
+        SITE_URL+'/invite/'+encodeURIComponent(username);
+      try{
+        if(navigator.share) {
+          await navigator.share({title:'Join BLINK',text:invite});
+          void rpc('blink_record_referral_share',{p_channel:'web'}).catch(()=>{});
+        } else if(navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(invite);
+          toast('Invite copied.');
+          void rpc('blink_record_referral_share',{p_channel:'copy'}).catch(()=>{});
+        } else toast('Sharing is unavailable in this browser.');
+      }catch{}
+    });
+  }
+
   async function renderSearch(){
     if(!requireAuth())return;
     const q=new URLSearchParams(location.search).get('q')||'';
     const form=`<form id="search-form" style="display:flex;gap:8px;margin-bottom:13px"><input class="search-input" name="q" maxlength="120" value="${esc(q)}" placeholder="Search people, posts, tags…" autocomplete="off"><button class="btn primary">Search</button></form><div id="search-results"></div>`;
-    ROOT.innerHTML=shell(form,'Search');bindCommon();
+    const promo='<button type="button" class="card" id="refer-grow-promo" style="width:100%;text-align:left;margin-bottom:13px;padding:15px">' +
+      '<strong>🚀 Refer friends. Get discovered.</strong><p class="muted small">Invite students to BLINK. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
+      '<span class="btn small-btn primary">Invite friends →</span>'+
+      '<span class="muted small" id="refer-grow-promo-count"></span></button>';
+    ROOT.innerHTML=shell(promo+form,'Search');bindCommon();
+    document.getElementById('refer-grow-promo').onclick=showReferralGrowth;
+    void rpc('blink_referral_dashboard').then(rows=>{
+      const n=document.getElementById('refer-grow-promo-count');
+      const item=Array.isArray(rows)?rows[0]:null;
+      if(n?.isConnected && item)n.textContent=' · '+fmt(item.total_referrals)+' confirmed referrals';
+    }).catch(()=>{});
     document.getElementById('search-form').onsubmit=e=>{
       e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();
       const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);runSearch(v);
@@ -868,15 +1140,55 @@
     const requestId=++state.searchRequestId;
     out.innerHTML='<div class="spinner"></div>';
     try{
+      // For signed-in people, use the same relevance-first referral-aware ranker
+      // as Android and Windows. Do not let a visibility boost beat an exact match.
+      const profileResults=isAuthed()
+        ? rpc('blink_referral_profile_search',{p_query:q,p_limit:20})
+            .catch(()=>rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}))
+        : rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null});
       const [profiles,posts]=await Promise.all([
-        rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}),
+        profileResults,
         rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})
       ]);
       if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
       const pmap=await fetchProfiles((posts||[]).map(x=>x.user_id));
       if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
-      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
+      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}" data-ref-profile="${esc(p.id)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
       bindPostCards();
+      // Count an actual visible profile card only after a sustained on-screen view.
+      // Counting DOM creation alone would artificially inflate impressions below the fold.
+      if(typeof IntersectionObserver==='function'){
+        const timers=new Map(),tracked=new Set();
+        const observer=new IntersectionObserver(entries=>{
+          for(const entry of entries){
+            const element=entry.target;
+            const eligible=entry.isIntersecting && entry.intersectionRatio>=0.6 &&
+              document.visibilityState==='visible' && element.isConnected;
+            if(!eligible){if(timers.has(element))clearTimeout(timers.get(element));timers.delete(element);continue;}
+            if(tracked.has(element)||timers.has(element))continue;
+            const timer=setTimeout(()=>{
+              timers.delete(element);
+              const rect=element.getBoundingClientRect();
+              if(!element.isConnected || document.visibilityState!=='visible' ||
+                 rect.height<=0 || rect.width<=0) return;
+              const visible=Math.max(0,Math.min(rect.bottom,innerHeight)-Math.max(0,rect.top));
+              if(visible/rect.height<0.6)return;
+              const id=element.getAttribute('data-ref-profile');
+              if(id){tracked.add(element);void rpc('blink_record_referral_impression',
+                {p_profile:id,p_source:'search'}).catch(()=>{});}
+            },750);
+            timers.set(element,timer);
+          }
+        },{threshold:[0,0.6,1]});
+        out.querySelectorAll('[data-ref-profile]').forEach(el=>observer.observe(el));
+      }
+      out.querySelectorAll('[data-ref-profile]').forEach(button=>
+        button.addEventListener('click',()=>{
+          const id=button.getAttribute('data-ref-profile');
+          if(id)void rpc('blink_record_referral_discovery_open',
+            {p_profile:id,p_source:'search'}).catch(()=>{});
+        })
+      );
     }catch(e){if(requestId===state.searchRequestId&&out.isConnected)out.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
   }
 
@@ -918,6 +1230,7 @@
     if(!requireAuth())return;
     const parts=path.split('/').filter(Boolean),convId=parts[1],target=new URLSearchParams(location.search).get('user')||'';
     if(convId==='new'){renderNewMessage(target);return;}
+    if(convId==='groups'){renderGroupInvitations();return;}
     if(convId){renderConversation(convId,target);return;}
     ROOT.innerHTML=shell('<div class="spinner"></div>','Messages');bindCommon();
     try{
@@ -943,7 +1256,7 @@
           meta=new Map((list||[]).map(x=>[String(x.id),x]));
         }catch{}
       }
-      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button></div><div class="list">${rows.map(m=>{
+      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button><button type="button" class="btn" id="group-invites">Groups &amp; invitations</button></div><div class="list">${rows.map(m=>{
         const group=meta.get(String(m.conversation_id));
         const isGroup=!!group?.is_group;
         const title=isGroup?(group.title||'Group chat'):(m.partner_name||m.partner_username||'Blink user');
@@ -952,8 +1265,67 @@
         const unread=Number(m.unread_count||0);
         return `<button type="button" class="card list-item ${unread?'notification unread':''}" data-nav="/messages/${esc(m.conversation_id)}${targetQuery}">${avatar(picture,title)}<span class="grow"><span class="title">${esc(title)}${m.partner_online&&!isGroup?' <span class="online-dot" title="Online"></span>':''}</span><span class="sub">${esc(m.last_message||'No messages yet')} · ${ago(m.last_message_at)}</span></span>${unread?`<span class="badge">${fmt(unread)}</span>`:''}</button>`;
       }).join('')||'<div class="card empty"><h2>No conversations yet</h2><p>Start a conversation with a Blink user.</p></div>'}</div>`;
-      ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');
+      ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');document.getElementById('group-invites').onclick=()=>navigate('/messages/groups');
     }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}
+  }
+  async function renderGroupInvitations(){
+    if(!requireAuth())return;
+    const html=`<section class="card" style="padding:16px"><h2>Invite classmates to a group</h2><p class="muted">Invited students choose whether to join. No automatic memberships.</p><form class="form-stack" id="invite-group-form"><label class="form-label">Group name</label><input name="title" class="field" maxlength="80" minlength="2" required><label class="form-label">Find students by username</label><input class="field" id="group-member-lookup" placeholder="Search @username" maxlength="40" autocomplete="off"><div id="group-member-results"></div><div id="group-selected" class="muted"></div><button class="btn primary" id="group-create" type="submit">Create group &amp; send invitations</button><p id="group-status" aria-live="polite"></p></form></section><section class="card" style="padding:16px;margin-top:12px"><h2>Your pending group invitations</h2><div id="group-pending"><div class="spinner"></div></div></section>`;
+    ROOT.innerHTML=shell(html,'Groups & invitations');bindCommon();
+    const selection=new Map(),input=document.getElementById('group-member-lookup');
+    const suggestions=document.getElementById('group-member-results'),chosen=document.getElementById('group-selected');
+    const status=document.getElementById('group-status');let seq=0,debounce;
+    function updateSelected(){
+      chosen.textContent=selection.size?'Selected ('+selection.size+'/30): '+[...selection.values()].map(x=>'@'+x.username).join(', '):'Select at least two different students.';
+      document.getElementById('group-create').disabled=selection.size<2;
+    }
+    updateSelected();
+    async function lookupMembers(){
+      const token=++seq,query=input.value.trim().replace(/^@/,'');
+      if(query.length<2){suggestions.textContent='';return;}
+      try{
+        const rows=await anonRpc('blink_referrer_suggestions',{p_query:query,p_limit:10,p_offset:0});
+        if(token!==seq)return;
+        suggestions.textContent='';
+        (rows||[]).filter(person=>person.id!==uid()&&!selection.has(person.id)).slice(0,10).forEach(person=>{
+          const b=document.createElement('button');b.type='button';b.className='btn ghost';
+          b.textContent=(person.full_name||person.username)+' (@'+person.username+')'+(person.is_verified?' ✓':'');
+          b.style.margin='4px';b.onclick=()=>{if(selection.size>=30){toast('Maximum 30 invitations');return;}selection.set(person.id,person);input.value='';suggestions.textContent='';updateSelected();};
+          suggestions.append(b);
+        });
+      }catch{if(token===seq)suggestions.textContent='Student search is unavailable.';}
+    }
+    input.addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(lookupMembers,260);});
+    document.getElementById('invite-group-form').onsubmit=async e=>{
+      e.preventDefault();if(selection.size<2)return;
+      const form=e.currentTarget,button=document.getElementById('group-create');button.disabled=true;status.textContent='Creating invitations…';
+      try{
+        const title=String(new FormData(form).get('title')||'').trim();
+        await rpc('blink_create_invite_only_group',{p_title:title,p_member_ids:[...selection.keys()]});
+        toast('Invitations sent. Students must accept to join.');navigate('/messages');
+      }catch(error){status.textContent='Unable to create group: '+String(error.message||'Try again.').slice(0,140);button.disabled=false;}
+    };
+    const list=document.getElementById('group-pending');
+    try{
+      const rows=await rpc('blink_my_group_invitations',{p_limit:20});
+      if(!list.isConnected)return;list.textContent='';
+      if(!rows?.length)list.textContent='No pending invitations.';
+      (rows||[]).forEach(item=>{
+        const row=document.createElement('div');row.className='list-item';
+        const title=document.createElement('strong');title.textContent=item.group_title||'Group invitation';
+        const from=document.createElement('span');from.className='muted';from.textContent=' From @'+item.inviter_username;
+        row.append(title,from);
+        for(const [label,accept] of [['Accept',true],['Decline',false]]){
+          const button=document.createElement('button');button.type='button';button.className='btn ghost';button.style.margin='4px';button.textContent=label;
+          button.onclick=async()=>{button.disabled=true;try{
+            const ok=await rpc('blink_respond_to_group_invite',{p_group_id:item.group_id,p_accept:accept});
+            if(ok!==true)throw Error('Invitation is no longer valid');
+            toast(accept?'Invitation accepted':'Invitation declined');row.remove();
+          }catch(error){toast('Unable to respond to invitation.');button.disabled=false;}};
+          row.append(button);
+        }list.append(row);
+      });
+    }catch{list.textContent='Invitations are unavailable until the server update is deployed.';}
   }
   function renderNewMessage(prefill=''){
     ROOT.innerHTML=shell(`<div class="card" style="padding:15px"><form id="new-message-form" class="form-stack"><label class="form-label">Username</label><input class="field" name="username" maxlength="64" value="${esc(prefill)}" placeholder="@username" required autocomplete="off"><label class="form-label">Message</label><textarea class="field" name="text" maxlength="8000" placeholder="Write a message" required></textarea><button type="submit" class="btn primary">Send</button><div id="message-status"></div></form></div>`,'New message');bindCommon();
@@ -1208,6 +1580,21 @@
     state.searchRequestId++;
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
+    const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);
+    if(invited){
+      const referrer=invited[1].toLowerCase();
+      storageSet(INVITE_REFERRER_KEY,referrer);
+      // Anonymous per-browser estimate only; no credits or personal identifiers.
+      let visitor=storageGet(INVITE_VISITOR_KEY,'');
+      if(!/^[0-9a-f-]{36}$/i.test(visitor)){
+        visitor=crypto.randomUUID();
+        storageSet(INVITE_VISITOR_KEY,visitor);
+      }
+      void anonRpc('blink_record_referral_link_open',{
+        p_username:referrer,p_visitor:visitor
+      }).catch(()=>{});
+      return navigate('/login',true);
+    }
     if(path==='/login')return renderLogin();
     if(path==='/site-stats')return renderSiteAnalytics();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));

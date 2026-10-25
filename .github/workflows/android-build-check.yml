@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 concurrency:
   group: android-quality-${{ github.ref }}
@@ -20,45 +22,207 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Android-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
+      - name: Explain intentionally skipped Android work
+        if: steps.scope.outputs.android != 'true'
+        run: echo "No Android or relevant build/test inputs changed; Android build tasks are not applicable."
 
       - name: Test fail-closed Testlab auto-promotion policy
         run: node --test .github/scripts/testlab_auto_promotion.test.cjs
 
+      - name: Test bounded CI recovery and security policy
+        run: node --test .github/scripts/ci_auto_recovery.test.cjs
+
+      - name: Test multi-PR Testlab batch selection and strict dispatch gating
+        run: node --test .github/scripts/testlab_batch_queue.test.cjs
+
+      - name: Test trustworthy expensive-suite reuse policy
+        run: python3 -m unittest discover -s scripts -p 'test_ci_verified_reuse.py' -v
+
+      - name: Compute actual checked-out Android input digest
+        id: input_digest
+        if: steps.scope.outputs.android == 'true'
+        env:
+          BLINK_CI_SCOPE: android
+        run: python3 scripts/ci_verified_reuse.py --fingerprint
+
+      - name: BLINK verified android input sha256 ${{ steps.input_digest.outputs.fingerprint }}
+        if: steps.scope.outputs.android == 'true'
+        run: echo "Stamped exact Android build, test and dependency inputs for the current check."
+
+      - name: Check whether full Android build inputs were previously verified
+        id: reuse
+        if: steps.scope.outputs.android == 'true'
+        env:
+          BLINK_CI_SCOPE: android
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci_verified_reuse.py
+
+      - name: Explain evidence-backed Android test reuse
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse == 'true'
+        run: echo "A prior full Android CI suite passed on identical build, test, and dependency inputs. Required latest-SHA quality gate, policy tests, and security checks still ran."
+
       - uses: actions/setup-java@v5
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         with:
           distribution: temurin
           java-version: '17'
 
+      - name: Test version-aware APK delta round trips and corruption rejection
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        run: python3 .github/scripts/test_blink_delta.py
+
       - name: Verify in-app APK installer permissions and source trust
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/test_inapp_apk_update.py
 
       - name: Verify launcher images match the approved BLINK logo
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         shell: bash
         run: |
           python3 -m pip install --disable-pip-version-check Pillow==11.3.0
           python3 scripts/sync_android_launcher_assets.py --check
 
       - name: Verify X-style circular launcher and full BLINK artwork
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/test_launcher_circle.py
 
       - name: Verify image decoder regression
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/test_png_asset_validator.py
 
       - name: Reject retired Google Maps SDK configuration
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/test_no_google_maps_sdk.py
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
 
       - name: Blink Store pause parity regression
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/test_blink_store_pause.py
 
       - name: Guard Auth-inspired dark theme design tokens
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/check_premium_dark_tokens.py
 
+      - name: Guard approved BLINK Home reference structure
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        run: python3 scripts/test_home_reference_contract.py
+
       - name: Android unit tests
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Record real responsive authentication screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest \
+            --tests com.example.ui.screens.BlinkAuthNarrowScreenTest \
+            --tests com.example.ui.screens.BlinkAuthExpandedScreenTest \
+            -Proborazzi.test.record=true --rerun-tasks --no-daemon
+          find . -type f -name 'blink-auth-*.png' -print | sort
+          count=$(find . -type f -name 'blink-auth-*.png' | wc -l)
+          echo "Captured auth reference screenshots: $count"
+          test "$count" -ge 7
+
+      - name: Upload responsive BLINK authentication reference captures
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-auth-reference-screens-${{ github.sha }}
+          path: '**/blink-auth-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record actual Compose accessibility screenshots with Robolectric
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        run: gradle :app:testDebugUnitTest --tests com.example.BlinkMainAdaptiveVisualTest -Proborazzi.test.record=true --rerun-tasks --stacktrace --no-daemon
+
+      - name: Require real Home and Notifications visual captures
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type f \( -name 'main_home_w*_font*.png' -o -name 'main_notifications_w*_font*.png' \) -print | sort
+          home_count=$(find . -type f -name 'main_home_w*_font*.png' | wc -l)
+          notices=$(find . -type f -name 'main_notifications_w*_font*.png' | wc -l)
+          echo "Home captures: $home_count, Notifications captures: $notices"
+          test "$home_count" -ge 5
+          test "$notices" -ge 5
+
+      - name: Upload font-scale captures for review
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-main-visual-captures-${{ github.sha }}
+          path: '**/src/test/screenshots/main_*.png'
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Capture full-screen BLINK profile screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark large-fonts medium-fonts extra-large-fonts 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/profile-reference-${name}.png" || {
+              echo "::error::Missing profile-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/profile-reference-light.png app/src/test/screenshots/profile-reference-dark.png; then
+            echo "::error::Light and dark screenshots are identical; render native UI before merging."
+            exit 1
+          fi
+          find . -name 'profile-reference-*.png' -print
+
+      - name: Upload full-screen BLINK profile screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-profile-screenshots-${{ github.sha }}
+          path: '**/profile-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Capture campus Search reference screenshots
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        shell: bash
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkSearchReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/search-reference-${name}.png" || {
+              echo "::error::Missing Search screenshot search-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/search-reference-light.png app/src/test/screenshots/search-reference-dark.png; then
+            echo "::error::Search light/dark captures are identical."
+            exit 1
+          fi
+
+      - name: Upload campus Search visual evidence
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-search-visual-evidence-${{ github.sha }}
+          path: '**/search-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Android lint
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         shell: bash
         run: |
           set +e
@@ -74,15 +238,19 @@ jobs:
           exit "$status"
 
       - name: Compile instrumentation tests
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
 
       - name: Build debug APK
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Build debug App Bundle
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         run: gradle :app:bundleDebug --stacktrace --no-daemon
 
       - name: Upload debug App Bundle
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-aab-${{ github.sha }}
@@ -91,6 +259,7 @@ jobs:
           retention-days: 14
 
       - name: Upload latest debug APK
+        if: steps.scope.outputs.android == 'true' && steps.reuse.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-${{ github.sha }}

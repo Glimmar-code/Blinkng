@@ -6,13 +6,28 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/tests/paystack_postgres_*'
+      - 'supabase/tests/blink_coin_gift_*'
+      - 'supabase/tests/blink_discovery_perf_*'
       - 'supabase/functions/paystack-*/**'
       - 'supabase/functions/_shared/*paystack*'
       - 'scripts/test_paystack_integrity.mjs'
       - '.github/workflows/paystack-postgres-integration.yml'
   push:
     branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/paystack_postgres_*'
+      - 'supabase/tests/blink_coin_gift_*'
+      - 'supabase/tests/blink_discovery_perf_*'
+      - 'supabase/functions/paystack-*/**'
+      - 'supabase/functions/_shared/*paystack*'
+      - 'scripts/test_paystack_integrity.mjs'
+      - '.github/workflows/paystack-postgres-integration.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -57,6 +72,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019090000_paystack_cash_boosts.sql
       - name: Apply transactional payment email worker queue
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019083000_paystack_email_outbox.sql
+      - name: Test all five Coin packs, failed/cancelled isolation and delayed fulfillment
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_phase2_assertions.pgfixture
       - name: Test prices, roles, payment replay and exactly-once coin/verification grants
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_postgres_assertions.pgfixture
       - name: Install disposable Marketplace schema for Paystack tests
@@ -67,6 +84,24 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/paystack_market_assertions.pgfixture
       - name: Run independent HMAC and transaction forgery tests
         run: node --test scripts/test_paystack_integrity.mjs
+      - name: Start separate disposable Home save-count test database
+        run: |
+          psql -d postgres -v ON_ERROR_STOP=1 -c 'create database blink_home_ci'
+          psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_fixture.pgfixture
+      - name: Apply Save-count RPC to isolated test database
+        run: psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/migrations/20261021061500_home_post_save_counts.sql
+      - name: Verify Save-count access, totals and privacy restrictions
+        run: psql -d blink_home_ci -v ON_ERROR_STOP=1 -f supabase/tests/home_save_counts_assertions.pgfixture
+      - name: Test retry-safe Coin gifts in a separate disposable database
+        run: |
+          createdb blink_gift_ci
+          PGDATABASE=blink_gift_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_coin_gift_fixture.pgfixture
+          PGDATABASE=blink_gift_ci psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261022043000_idempotent_blink_coin_gifts.sql
+          PGDATABASE=blink_gift_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_coin_gift_assertions.pgfixture
+      - name: Benchmark synthetic ranking selections with EXPLAIN ANALYZE
+        run: |
+          createdb blink_discovery_perf_ci
+          PGDATABASE=blink_discovery_perf_ci psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_discovery_perf_fixture.pgfixture
       - name: Production-safety affirmation
         run: |
           echo 'All tests run against a disposable GitHub runner PostgreSQL service.'

@@ -8,13 +8,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** Admin entry is role-gated inside Items, never a fifth Home toolbar icon. */
 class AdminHeaderAccessTest {
     @get:Rule val rule = createComposeRule()
 
@@ -36,10 +39,11 @@ class AdminHeaderAccessTest {
             }
         }
         rule.onNodeWithTag("feed_admin_action").assertDoesNotExist()
+        rule.onNodeWithTag("feed_items_action").assertIsDisplayed()
     }
 
-    @Test fun accessibilityFontScaleKeepsAdminControlUsableOnNarrowPhone() {
-        var opened = false
+    @Test fun accessibilityFontScaleKeepsItemsControlUsableOnNarrowAdminPhone() {
+        var openedItems = false
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                 MaterialTheme {
@@ -49,8 +53,8 @@ class AdminHeaderAccessTest {
                             hasUnreadNotifications = false,
                             onSearchClick = {},
                             isAdmin = true,
-                            onAdminClick = { opened = true },
-                            onItemsClick = {},
+                            onAdminClick = {},
+                            onItemsClick = { openedItems = true },
                             onNotificationClick = {},
                             onMenuClick = {},
                             onProfileClick = {},
@@ -60,12 +64,12 @@ class AdminHeaderAccessTest {
                 }
             }
         }
-        rule.onNodeWithTag("feed_admin_action").performClick()
-        rule.runOnIdle { assertTrue(opened) }
+        rule.onNodeWithTag("feed_items_action").assertIsDisplayed().performClick()
+        rule.runOnIdle { assertTrue(openedItems) }
     }
 
-    @Test fun adminSeesDashboardShortcutNextToSearch() {
-        var opened = false
+    @Test fun adminOpensItemsWithoutExtraHeaderButton() {
+        var openedItems = false
         rule.setContent {
             MaterialTheme {
                 FeedTopBar(
@@ -73,8 +77,8 @@ class AdminHeaderAccessTest {
                     hasUnreadNotifications = false,
                     onSearchClick = {},
                     isAdmin = true,
-                    onAdminClick = { opened = true },
-                    onItemsClick = {},
+                    onAdminClick = {},
+                    onItemsClick = { openedItems = true },
                     onNotificationClick = {},
                     onMenuClick = {},
                     onProfileClick = {},
@@ -82,8 +86,13 @@ class AdminHeaderAccessTest {
                 )
             }
         }
-        rule.onNodeWithTag("feed_search_action").assertExists()
-        rule.onNodeWithTag("feed_admin_action").performClick()
-        rule.runOnIdle { assertTrue(opened) }
+        rule.onNodeWithText("BLINK").assertIsDisplayed()
+        rule.onNodeWithTag("feed_search_action").assertIsDisplayed()
+        rule.onNodeWithTag("feed_items_action").assertIsDisplayed()
+        rule.onNodeWithTag("feed_notification_action").assertIsDisplayed()
+        rule.onNodeWithTag("feed_menu_action").assertIsDisplayed()
+        rule.onNodeWithTag("feed_admin_action").assertDoesNotExist()
+        rule.onNodeWithTag("feed_items_action").performClick()
+        rule.runOnIdle { assertTrue(openedItems) }
     }
 }

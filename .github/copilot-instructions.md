@@ -1,5 +1,49 @@
 # Blinkng Repository Instructions
 
+## Permanent BLINK release policy — no owner testing downloads
+
+This instruction applies to every BLINK task, feature branch, pull request, agent, GitHub Actions workflow, and release. **Do not ask the repository owner to download or install an unfinished APK simply to test it, confirm it works, or report results back.** Mobile data is limited. The owner should install only the approved final release intended for actual daily use.
+
+1. **Stage first:** Develop non-destructively in a current `Testlab-*` branch, preserve all existing functionality and settings, and reconcile with the latest `main`. Do not bypass protected `main`.
+2. **Automation first:** Use GitHub Actions, Android 15 emulators, UI/instrumentation tests, Android/Windows builds, backend/provider staging checks, CI artifacts, screenshot comparisons, security checks, and regression testing. Collect logs and fix failures without demanding owner-side APK installs.
+3. **Only final APK:** For Android releases, test the signed *production candidate* on CI, including package/signature identity, install, previous-published-version upgrade without uninstall, and startup. Ensure the final download is published only after all required gates pass. The emulator install check is not proof that all user data or device/OEM flows survive.
+4. **Physical-device exception:** For voice/video calls, WebRTC/JNI, Telecom, Bluetooth audio, OEM notifications, background behavior, and installation/updating on vendor-specific phones, require independent physical-device or hosted device-lab evidence when emulators cannot validate behavior. Do not automatically pay for device labs; ask before incurring costs. If no safe independent verification is available, hold the high-risk release in Testlab and report the precise unverified risk rather than claiming success.
+5. **AI-authorized release control, no GitHub visit:** The owner can direct ChatGPT or another trusted GitHub-connected AI to fix, merge or publish BLINK. A connected agent may prepare PRs, inspect CI, add the `auto-promote` label and complete GitHub actions without asking the owner to open GitHub, click Approve, post a `BLINK APPROVE` comment, or perform manual label management. The agent must opt in only on the latest reviewed PR revision; a new push invalidates `auto-promote`, `staging-verified`, and `device-verified`. Keep branch protection, fail-closed CI, staging/provider/device evidence and security gates for sensitive changes; do not assert verification without evidence.
+6. **One consolidated release:** Batch related verified app updates wherever possible. Avoid multiple successive owner downloads. Report final commit, test evidence, GitHub release and actual APK version only after publication is verified. The owner's use of the published app is not a substitute for pre-release QA.
+7. **Never overclaim:** Differentiate implementation, emulator-tested, independently device-tested, merged, built, published, and confirmed on an owner's phone. The last cannot be asserted without evidence, and routine releases should not depend on asking the owner for a test-install confirmation.
+
+See `docs/testlab-auto-promotion.md` for the exact CI and release gates.
+
+## Always-on CI failure recovery and production publishing
+
+For every PR, push, and production release, never treat a failed check as completion.
+The trusted `BLINK CI automatic recovery` workflow examines failed GitHub
+Actions jobs on the **current** `Testlab` / `Testlab-*` revision and attempts
+at most two failed-job retries (three attempts total). It collects failing job
+and step names, links to the error logs, and creates or updates a GitHub issue
+when a failure persists or a security check cannot safely be retried.
+Retries address intermittent runners/services; they do **not** fix broken code.
+
+When a coding agent is connected and assigned a recovery blocker, it must
+open the linked job logs, diagnose the actual root cause, apply a minimal
+non-destructive code/config repair on an up-to-date `Testlab-*` branch,
+add regression coverage, rerun all relevant CI checks, and repeat while
+each iteration makes meaningful progress. Never bypass security, signing,
+RLS, backend/staging/device verification, branch protections, or required checks.
+Do not loop forever or overwrite newer changes; stop and report blockers
+that cannot be fixed or independently verified.
+
+After an agent has verified the exact current commit, the existing guarded
+Testlab auto-promotion controller may merge it to `main` with its explicit
+opt-in and attestations. Never auto-promote purely because retries passed.
+Only a successful verified main merge may dispatch production workflows.
+`Signed Android release` must succeed before `Publish latest APK` runs;
+publishing must preserve signing identity, reject stale builds, and verify
+the public artifact. The previous good APK remains available on failures.
+Changes not affecting Android should not create unnecessary APKs.
+Main publishing failures may receive bounded retries, but never source
+changes directly on `main` or automatic unsafe secret/config changes.
+
 ## BLINK mandatory auto-fix → verify → Testlab → main → update app
 
 User command (repeat for each BLINK repair/release request):
@@ -7,7 +51,7 @@ User command (repeat for each BLINK repair/release request):
 > Fix all identified errors professionally. Reverify every applicable check. If a test fails, read its real error log, correct the underlying code, commit, and run tests again. Repeat while meaningful progress is possible. After ALL relevant quality gates AND backend/provider integration checks pass on the latest candidate commit, push the verified change to Testlab, merge to main via a passing PR, and verify that the signed Android release and latest APK publication actually succeed. Report the real APK link and final SHA. Never claim an unverified fix, merge, deployment, or app update.
 
 1. Inspect current Android, Windows, Supabase/backend, web/game contracts, test failures and PR state; preserve working behavior and platform parity.
-2. Fix in a branch targeting Testlab. Verify Android unit/lint/build/APK, Windows desktop/parity, migration SQL/RLS, Edge Function type checks, relevant feature/runtime tests, and signed-release checks. Match every result to the candidate commit SHA.
+2. Fix in a branch targeting Testlab. Run checks relevant to the diff: Android build/unit/lint for Android inputs, Windows parity for affected Android user features and full desktop packaging for Windows/shared changes, migration SQL/RLS/Edge Function checks for backend changes, and signing/release checks when publishing an APK. Avoid unrelated/duplicate tests. When uncertain, run all checks and explain which suites ran versus were not applicable. Match results to the candidate commit SHA.
 3. If a check fails, diagnose its logs, make a real code/config fix, and rerun. Transient CI retries are NOT repairs. Never skip failures or loop forever; report an unsolved blocker clearly.
 4. **Backend integration is a separate mandatory gate.** GitHub static/CI green does not establish that Supabase hosted migrations, Brevo emails, Auth templates/redirects, or new Edge Functions are deployed and functional. Test safely in local/isolated/staging infrastructure, then verify actual behavior. No production-first experiments or fabricated successes.
 5. **No paid staging without approval.** The owner declined Supabase's fee for a hosted testing branch. Do not incur fees or activate paid resources automatically. If no safe free staging option can validate a required change, hold the production merge and explain the blocker.
@@ -257,3 +301,9 @@ Whenever an AI agent or developer completes a task that changed Supabase, the fi
 10. Whether recovery of this version would require any secret values/data backups that are intentionally kept outside Git.
 
 Do not claim a Supabase-related feature or recovery is fully complete if any required app integration, migration capture, recovery baseline, security verification, testing, or release preparation remains outstanding.
+
+## Permanent non-destructive PR preservation and consolidation
+
+Do not create overlapping PRs when the failed original can be fixed in place. Never auto-close a failed, stale or duplicate-looking PR merely because another PR is newer or has a similar title. First audit the original PR's exact head revision, file-level diff and intended feature semantics; verify the replacement actually contains those changes and passes relevant latest-head checks. Preserve work in a Testlab branch while resolving conflicts; promote to main only after verification.
+
+The default-branch `BLINK preserve unmerged pull requests` workflow reopens a closed-but-unmerged PR lacking owner-attested, file-verified preservation or owner-approved intentional abandonment. It is **not** a pre-close GitHub ruleset. See `.github/PR_PRESERVATION_POLICY.md` for required labels/comments and strict SHA-bound audit. Do not bypass that guard or delete old source branches to hide unfinished work.

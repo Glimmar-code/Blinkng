@@ -100,6 +100,40 @@ class PublishedReleaseAuditTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     auditor.release_snapshot("owner/repo")
 
+    def test_real_published_delta_asset_names_are_allowed(self):
+        """Ten legitimate versioned .bdp archives are valid; no wildcard bypass."""
+        names = sorted(auditor.EXPECTED_ASSETS) + ["deltas.txt"]
+        names += [f"delta-{298781584 + i}.bdp" for i in range(10)]
+        snapshot = {
+            "tagName": self.tag, "isDraft": False,
+            "assets": [{"name": name, "size": 100} for name in names],
+        }
+        with patch.object(auditor, "command", return_value=json.dumps(snapshot)):
+            self.assertEqual(auditor.release_snapshot("Glimmar-code/Blinkng")["tagName"], self.tag)
+        for bad in ("delta-123x bdp", "delta-123Xbdp", "delta-123.bdp.exe", "delta-0.bdp"):
+            tampered = {**snapshot, "assets": snapshot["assets"][:-1] + [{"name": bad, "size": 100}]}
+            with patch.object(auditor, "command", return_value=json.dumps(tampered)):
+                with self.assertRaisesRegex(ValueError, "unexpected"):
+                    auditor.release_snapshot("Glimmar-code/Blinkng")
+
+    def test_version_specific_deltas_are_verified_and_rejected_if_tampered(self):
+        from blink_delta import create_patch, manifest, digest
+        old = self.folder / "older.apk"
+        old.write_bytes(b"initial-" + self.apk.read_bytes())
+        patch_file = self.folder / "delta-12345667.bdp"
+        create_patch(old, self.apk, patch_file)
+        sha = digest(patch_file)
+        text = manifest(12345678, self.apk_hash, [
+            (12345667, digest(old), patch_file.name, sha, patch_file.stat().st_size)
+        ])
+        (self.folder / "deltas.txt").write_text(text)
+        old.unlink()
+        self.assertEqual(auditor.inspect_download(self.folder, self.release)["versionCode"],
+                         "12345678")
+        patch_file.write_bytes(patch_file.read_bytes() + b"tampered")
+        with self.assertRaisesRegex(ValueError, "delta checksum"):
+            auditor.inspect_download(self.folder, self.release)
+
     def test_public_latest_alias_must_match_downloaded_verified_metadata(self):
         info = {"raw": self.info.read_text()}
         responses = [io.BytesIO(info["raw"].encode()), io.BytesIO(b"PK")]
