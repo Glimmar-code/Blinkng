@@ -282,9 +282,9 @@ export async function stagedMarketCommunityContractTests() {
     const privateGroup = '66666666-6666-4666-8666-666666666666';
     const dm = '77777777-7777-4777-8777-777777777777';
     await db.exec(`
-      insert into public.conversations(id,title,is_group) values
-        ('${privateGroup}','Private Readers',true),
-        ('${dm}','Legacy Direct',false);
+      insert into public.conversations(id,title,is_group,created_by) values
+        ('${privateGroup}','Private Readers',true,'${owner}'),
+        ('${dm}','Legacy Direct',false,'${other}');
       insert into public.conversation_participants(conversation_id,user_id)
         values ('${privateGroup}','${owner}');
       insert into public.messages(conversation_id,sender_id,content)
