@@ -69,7 +69,8 @@ class BlinkChatImageUploadWorker(
             },
             caption = caption,
             imageQuality = quality,
-            album = album
+            album = album,
+            shouldCancel = { isStopped }
         )
         return outcome.fold(
             onSuccess = {
@@ -78,6 +79,7 @@ class BlinkChatImageUploadWorker(
                 Result.success(workDataOf("serverMessageId" to it.id))
             },
             onFailure = {
+                if (isStopped) return@fold Result.failure()
                 // A transient loss of network should retry after constraints return;
                 // repeated server denials eventually fail, not spin forever.
                 if (runAttemptCount < 3) Result.retry()
