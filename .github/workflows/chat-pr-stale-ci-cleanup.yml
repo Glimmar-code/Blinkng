@@ -5,7 +5,7 @@ name: BLINK chat PR stale CI cleanup
 # This job may cancel ONLY earlier checks from this PR's exact same branch.
 on:
   pull_request:
-    branches: [Testlab]
+    branches: [Testlab, main]
     types: [synchronize, opened, reopened]
   workflow_dispatch:
 
@@ -14,16 +14,19 @@ permissions:
   actions: write
 
 concurrency:
-  group: chat-pr-523-ci-cleanup-${{ github.event.pull_request.number || github.ref }}
+  group: chat-pr-ci-cleanup-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   cancel-obsolete-checks:
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.number == 523 &&
+      (github.event.pull_request.number == 523 || github.event.pull_request.number == 543) &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'feature/chat-all-attachments-20261024'
+      ((github.event.pull_request.number == 523 &&
+        github.event.pull_request.head.ref == 'feature/chat-all-attachments-20261024') ||
+       (github.event.pull_request.number == 543 &&
+        github.event.pull_request.head.ref == 'integrate/chat-media-523-onto-main-20261025'))
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -32,6 +35,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const {owner,repo}=context.repo;
+            const prNumber=context.payload.pull_request.number;
             const current=context.payload.pull_request.head.sha;
             const branch=context.payload.pull_request.head.ref;
             let cancelled=0, failed=0;
@@ -46,7 +50,7 @@ jobs:
               if (cancelled >= 250) break;
               if (run.head_branch !== branch || run.head_sha === current) continue;
               if (!['queued','in_progress','waiting','pending','requested'].includes(run.status)) continue;
-              if (!run.pull_requests?.some(pr=>pr.number===523)) continue;
+              if (!run.pull_requests?.some(pr=>pr.number===prNumber)) continue;
               try {
                 await github.rest.actions.cancelWorkflowRun({owner,repo,run_id:run.id});
                 cancelled++;
@@ -56,7 +60,7 @@ jobs:
                 core.warning(`Could not cancel superseded run ${run.id}: ${error.message}`);
               }
             }
-            core.summary.addHeading('BLINK PR #523 CI queue cleanup')
+            core.summary.addHeading(`BLINK PR #${prNumber} CI queue cleanup`)
               .addRaw(`Superseded PR jobs cancelled: ${cancelled}; races/denials: ${failed}.\\n`)
               .addRaw('Only obsolete SHA runs were considered. The current PR checks were kept intact.\\n')
               .write();
