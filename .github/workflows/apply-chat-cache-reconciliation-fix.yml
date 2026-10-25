@@ -1,11 +1,6 @@
 name: Apply chat cache reconciliation fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_chat_cache_reconciliation_fix.py'
-      - '.github/workflows/apply-chat-cache-reconciliation-fix.yml'
   workflow_dispatch:
 
 permissions:

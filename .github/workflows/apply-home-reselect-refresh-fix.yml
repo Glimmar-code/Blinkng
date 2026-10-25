@@ -1,11 +1,6 @@
 name: Apply Home reselect and refresh fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_home_reselect_refresh_fix.py'
-      - '.github/workflows/apply-home-reselect-refresh-fix.yml'
   workflow_dispatch:
 
 permissions:

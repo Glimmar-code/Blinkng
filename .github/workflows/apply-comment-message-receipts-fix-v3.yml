@@ -1,12 +1,6 @@
 name: Apply comment and message receipt fix v3
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_comment_message_receipts_fix_v2.py'
-      - '.github/scripts/patch_legacy_message_receipts.py'
-      - '.github/workflows/apply-comment-message-receipts-fix-v3.yml'
   workflow_dispatch:
 
 permissions:

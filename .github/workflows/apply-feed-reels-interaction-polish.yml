@@ -1,10 +1,7 @@
 name: Apply feed and reels interaction polish
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-feed-reels-interaction-polish.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

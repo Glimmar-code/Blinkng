@@ -1,10 +1,6 @@
 name: Notify Bing IndexNow of changed public BLINK pages
 
 on:
-  workflow_run:
-    workflows: ["Deploy Blink web"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       bootstrap_all_public_urls:
@@ -22,7 +18,7 @@ concurrency:
 
 jobs:
   notify-indexnow:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: github.repository == 'Glimmar-code/Blinkng' && github.ref == 'refs/heads/main' && github.actor == 'Glimmar-code'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

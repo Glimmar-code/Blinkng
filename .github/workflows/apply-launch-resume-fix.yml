@@ -1,11 +1,6 @@
 name: Apply fast launch and resume-state fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_launch_resume_fix.py'
-      - '.github/workflows/apply-launch-resume-fix.yml'
   workflow_dispatch:
 
 permissions:

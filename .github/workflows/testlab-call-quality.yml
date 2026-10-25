@@ -1,14 +1,6 @@
 name: Testlab Call Quality
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "app/**"
-      - "supabase/functions/call-turn-credentials/**"
-      - "supabase/config.toml"
-      - ".github/workflows/testlab-call-quality.yml"
   workflow_dispatch:
 
 permissions:

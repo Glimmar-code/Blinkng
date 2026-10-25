@@ -3,20 +3,12 @@
 name: BLINK CI automatic recovery
 
 on:
-  workflow_run:
-    workflows:
-      - Android quality gate
-      - Android runtime smoke
-      - Android release smoke test
-      - Windows desktop quality gate
-      - APK delivery integrity
-      - Web Parity Testlab Gate
-      - Supabase safety gate
-      - Secret leak guard
-      - Signed Android release
-      - Publish latest APK
-    types: [completed]
-
+  workflow_dispatch:
+    inputs:
+      failed_run_id:
+        description: 'Failed BLINK workflow run ID to diagnose or retry'
+        required: true
+        type: string
 permissions:
   contents: read
   actions: write
@@ -28,7 +20,7 @@ concurrency:
 
 jobs:
   diagnose-and-retry:
-    if: github.repository == 'Glimmar-code/Blinkng'
+    if: github.repository == 'Glimmar-code/Blinkng' && github.actor == 'Glimmar-code' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,4 +35,26 @@ jobs:
         with:
           script: |
             const recovery = require('./.github/scripts/ci_auto_recovery.cjs');
-            await recovery({ github, context, core });
+            const runId = Number(context.payload.inputs?.failed_run_id);
+            if (!Number.isSafeInteger(runId) || runId < 1) {
+              throw new Error('Enter a valid GitHub Actions run ID');
+            }
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              owner:'Glimmar-code', repo:'Blinkng', run_id:runId
+            });
+            if (run.head_repository?.full_name !== 'Glimmar-code/Blinkng' ||
+                run.status !== 'completed' || run.conclusion !== 'failure') {
+              throw new Error('The selected workflow is not a failed BLINK run');
+            }
+            const {data: branch} = await github.rest.repos.getBranch({
+              owner:'Glimmar-code', repo:'Blinkng', branch:run.head_branch
+            });
+            if (branch.commit.sha !== run.head_sha) {
+              throw new Error('The failing run is from an outdated commit');
+            }
+            await recovery({
+              github, context:{
+                eventName:'workflow_run', repo:context.repo,
+                payload:{workflow_run:run}
+              }, core
+            });

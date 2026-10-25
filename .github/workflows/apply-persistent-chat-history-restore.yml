@@ -1,11 +1,7 @@
 name: Apply persistent chat history restore
 
 on:
-  push:
-    paths:
-      - '.github/scripts/apply_persistent_chat_history_restore.py'
-      - '.github/workflows/apply-persistent-chat-history-restore.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

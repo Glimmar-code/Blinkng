@@ -1,32 +1,6 @@
 name: BLINK LIFE on-demand feature bundle verification
 
 on:
-  pull_request:
-    branches: [main, Testlab]
-    paths:
-      - 'game3d/**'
-      - 'blinkLifeFeature/**'
-      - 'settings.gradle.kts'
-      - 'gradle/libs.versions.toml'
-      - 'app/src/main/java/com/example/game/**'
-      - 'app/src/test/java/com/example/game/**'
-      - 'app/src/main/java/com/example/MainActivity.kt'
-      - 'app/src/main/AndroidManifest.xml'
-      - 'app/build.gradle.kts'
-      - '.github/workflows/blink-life-native-apk-preview.yml'
-  push:
-    branches: [main, Testlab]
-    paths:
-      - 'game3d/**'
-      - 'blinkLifeFeature/**'
-      - 'settings.gradle.kts'
-      - 'gradle/libs.versions.toml'
-      - 'app/src/main/java/com/example/game/**'
-      - 'app/src/test/java/com/example/game/**'
-      - 'app/src/main/java/com/example/MainActivity.kt'
-      - 'app/src/main/AndroidManifest.xml'
-      - 'app/build.gradle.kts'
-      - '.github/workflows/blink-life-native-apk-preview.yml'
   workflow_dispatch:
 
 permissions:

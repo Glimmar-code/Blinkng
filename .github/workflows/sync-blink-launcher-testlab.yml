@@ -1,20 +1,6 @@
 name: Synchronize BLINK launcher assets in Testlab
 on:
-  push:
-    branches:
-      - Testlab
-      - 'Testlab-*'
-    paths:
-      - 'scripts/sync_android_launcher_assets.py'
-      - 'app/src/main/res/drawable/app_icon.png'
-      - 'app/src/main/res/drawable/ic_launcher_foreground.xml'
-      - 'app/src/main/res/drawable/ic_launcher_background.xml'
-      - 'app/src/main/res/drawable/app_icon_circle.png'
-      - 'app/src/main/res/mipmap-*/ic_launcher*.png'
-      - 'web/blink-logo.png'
-      - 'web/blink-logo-v2.png'
-      - '.github/workflows/sync-blink-launcher-testlab.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

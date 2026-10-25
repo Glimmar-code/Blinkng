@@ -2,15 +2,12 @@ name: BLINK Paystack transactional email worker
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/30 * * * *'
-
 permissions:
   contents: read
 
 jobs:
   deliver-payment-notices:
-    if: vars.BLINK_PAYMENT_EMAIL_SCHEDULE_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.actor == 'Glimmar-code' && vars.BLINK_PAYMENT_EMAIL_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

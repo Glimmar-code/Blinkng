@@ -1,14 +1,6 @@
 name: BLINK chat media disposable database gate
 
 on:
-  pull_request:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/*chat_photo*'
-      - 'supabase/migrations/*view_once*'
-      - 'supabase/functions/blink-view-once-image/**'
-      - 'scripts/testing/chat_media_*'
-      - '.github/workflows/chat-media-contract-gate.yml'
   workflow_dispatch:
 
 concurrency:

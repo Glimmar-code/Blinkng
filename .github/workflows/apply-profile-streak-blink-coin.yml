@@ -1,10 +1,7 @@
 name: Apply profile streak and Blink Coin
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-profile-streak-blink-coin.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

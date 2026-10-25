@@ -2,11 +2,6 @@ name: Apply messages fresh install realtime fix
 
 # Explicit retrigger after workflow installation.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_messages_fresh_install_realtime_fix.py'
-      - '.github/workflows/apply-messages-fresh-install-realtime-fix.yml'
   workflow_dispatch:
 
 permissions:

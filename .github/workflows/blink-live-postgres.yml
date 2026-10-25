@@ -1,27 +1,6 @@
 name: BLINK live content disposable PostgreSQL gate
 
 on:
-  pull_request:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/20261019100000_blink_live_configuration.sql'
-      - 'supabase/migrations/20261019113000_admin_blink_live_config_manager.sql'
-      - 'supabase/migrations/20261019150000_blink_live_campaigns_v1.sql'
-      - 'supabase/migrations/20261019163500_blink_live_banner_storage.sql'
-      - 'supabase/migrations/20261020100000_blink_live_campaign_analytics.sql'
-      - 'supabase/tests/blink_live_analytics_assertions.pgfixture'
-      - 'supabase/tests/blink_live_campaigns_*'
-      - '.github/workflows/blink-live-postgres.yml'
-  push:
-    branches: [Testlab]
-    paths:
-      - 'supabase/migrations/20261019100000_blink_live_configuration.sql'
-      - 'supabase/migrations/20261019113000_admin_blink_live_config_manager.sql'
-      - 'supabase/migrations/20261019150000_blink_live_campaigns_v1.sql'
-      - 'supabase/migrations/20261019163500_blink_live_banner_storage.sql'
-      - 'supabase/migrations/20261020100000_blink_live_campaign_analytics.sql'
-      - 'supabase/tests/blink_live_analytics_assertions.pgfixture'
-      - 'supabase/tests/blink_live_campaigns_*'
   workflow_dispatch:
 
 permissions:

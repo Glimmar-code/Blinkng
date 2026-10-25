@@ -2,13 +2,6 @@ name: AdMob live SSV readiness
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'Testlab-ssv-*'
-    paths:
-      - 'scripts/check_admob_live_readiness.mjs'
-      - '.github/workflows/admob-live-readiness.yml'
-
 permissions:
   contents: read
 

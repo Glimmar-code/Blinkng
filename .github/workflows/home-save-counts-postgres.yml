@@ -1,12 +1,6 @@
 name: BLINK Home Save Counter isolated PostgreSQL
 
 on:
-  pull_request:
-    branches: [main, Testlab]
-    paths:
-      - 'supabase/migrations/20261021061500_home_post_save_counts.sql'
-      - 'supabase/tests/home_save_counts_*'
-      - '.github/workflows/home-save-counts-postgres.yml'
   workflow_dispatch:
 
 permissions:

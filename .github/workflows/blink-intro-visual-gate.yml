@@ -1,21 +1,7 @@
 name: BLINK Intro Visual Gate
 
 on:
-  pull_request:
-    branches: [Testlab, main]
-    paths:
-      - 'app/src/main/**'
-      - 'app/src/test/java/com/example/BlinkBeyondLinkIntroTest.kt'
-      - 'shared/src/main/kotlin/com/blinkng/shared/brand/**'
-      - '.github/workflows/blink-intro-visual-gate.yml'
-  push:
-    branches: [Testlab]
-    paths:
-      - 'app/src/main/**'
-      - 'app/src/test/java/com/example/BlinkBeyondLinkIntroTest.kt'
-      - 'shared/src/main/kotlin/com/blinkng/shared/brand/**'
-      - '.github/workflows/blink-intro-visual-gate.yml'
-
+  workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

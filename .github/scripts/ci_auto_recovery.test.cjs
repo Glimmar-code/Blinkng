@@ -47,13 +47,16 @@ test('ignore successes, other repositories and unrelated branches', () => {
   for (const run of [
     base({conclusion: 'success'}),
     base({head_repository: {full_name: 'attacker/Blinkng'}}),
-    base({head_branch: 'feature'}),
     base({name: 'Unknown workflow'}),
     base({name: 'Android quality gate', head_branch: 'main'}),
   ]) assert.equal(recovery.qualify(run), null);
 });
 
-test('retry failed Testlab jobs, never mutate source or bypass checks', async () => {
+test('new internal feature branches can use manually requested recovery', () => {
+  assert.ok(recovery.qualify(base({head_branch: 'feature/feed-repair'})));
+});
+
+test('retry failed feature branch jobs, never mutate source or bypass checks', async () => {
   const run = base();
   const h = harness(run);
   await recovery({github: h.github, context: ctx(run), core: h.core});

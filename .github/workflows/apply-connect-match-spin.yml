@@ -1,10 +1,7 @@
 name: Apply Connect match spin
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-connect-match-spin.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

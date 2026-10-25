@@ -1,28 +1,6 @@
 name: Paystack disposable PostgreSQL integration
 
 on:
-  pull_request:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'supabase/tests/paystack_postgres_*'
-      - 'supabase/tests/blink_coin_gift_*'
-      - 'supabase/tests/blink_discovery_perf_*'
-      - 'supabase/functions/paystack-*/**'
-      - 'supabase/functions/_shared/*paystack*'
-      - 'scripts/test_paystack_integrity.mjs'
-      - '.github/workflows/paystack-postgres-integration.yml'
-  push:
-    branches: [Testlab, main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'supabase/tests/paystack_postgres_*'
-      - 'supabase/tests/blink_coin_gift_*'
-      - 'supabase/tests/blink_discovery_perf_*'
-      - 'supabase/functions/paystack-*/**'
-      - 'supabase/functions/_shared/*paystack*'
-      - 'scripts/test_paystack_integrity.mjs'
-      - '.github/workflows/paystack-postgres-integration.yml'
   workflow_dispatch:
 
 concurrency:

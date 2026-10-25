@@ -1,10 +1,6 @@
 name: Apply feed navigation rearrangement
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-feed-navigation-rearrangement.yml'
   workflow_dispatch:
 
 permissions:

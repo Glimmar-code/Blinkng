@@ -1,10 +1,7 @@
 name: Apply feed reels follow interact
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-feed-reels-follow-interact.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

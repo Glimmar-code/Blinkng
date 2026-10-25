@@ -1,11 +1,6 @@
 name: Apply chat-open history edge fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_chat_open_history_edge_fix.py'
-      - '.github/workflows/apply-chat-open-history-edge-fix.yml'
   workflow_dispatch:
 
 permissions:

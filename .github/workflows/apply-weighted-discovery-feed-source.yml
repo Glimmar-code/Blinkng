@@ -1,11 +1,7 @@
 name: Apply weighted discovery feed source fix
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - '.github/workflows/apply-weighted-discovery-feed-source.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

@@ -1,11 +1,7 @@
 name: Apply premium Connect match upgrade
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-connect-match-premium.yml'
-      - '.github/scripts/apply_connect_match_premium.py'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

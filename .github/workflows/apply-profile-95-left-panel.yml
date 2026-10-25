@@ -1,10 +1,6 @@
 name: Apply 95 percent left profile panel
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-profile-95-left-panel.yml'
   workflow_dispatch:
 
 permissions:

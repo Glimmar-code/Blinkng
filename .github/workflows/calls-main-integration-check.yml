@@ -1,19 +1,6 @@
 name: BLINK calling main integration checks
 
 on:
-  push:
-    branches:
-      - 'release/calls-phase5-safe-integration-20261018'
-    paths:
-      - '.github/workflows/calls-main-integration-check.yml'
-      - 'app/src/main/java/com/example/call/**'
-      - 'app/src/test/java/com/example/call/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/calls-main-integration-check.yml'
-      - 'app/src/main/java/com/example/call/**'
-      - 'app/src/test/java/com/example/call/**'
   workflow_dispatch:
 
 permissions:

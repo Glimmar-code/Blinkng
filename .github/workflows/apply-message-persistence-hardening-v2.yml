@@ -1,11 +1,6 @@
 name: Apply message persistence hardening v2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_message_persistence_hardening_v2.py'
-      - '.github/workflows/apply-message-persistence-hardening-v2.yml'
   workflow_dispatch:
 
 permissions:

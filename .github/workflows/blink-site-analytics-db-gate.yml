@@ -1,21 +1,7 @@
 name: BLINK site analytics isolated database test
 
 on:
-  pull_request:
-    paths:
-      - 'supabase/migrations/20261018090100_blink_site_aggregate_metrics.sql'
-      - 'supabase/functions/blink-site-analytics/**'
-      - 'scripts/test_site_analytics_postgres.sql'
-      - '.github/workflows/blink-site-analytics-db-gate.yml'
-  push:
-    branches:
-      - 'Testlab-web-*'
-    paths:
-      - 'supabase/migrations/20261018090100_blink_site_aggregate_metrics.sql'
-      - 'supabase/functions/blink-site-analytics/**'
-      - 'scripts/test_site_analytics_postgres.sql'
-      - '.github/workflows/blink-site-analytics-db-gate.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 

@@ -1,13 +1,6 @@
 name: Delta updater Android 15 preservation
 
 on:
-  pull_request:
-    paths:
-      - '.github/scripts/blink_delta.py'
-      - '.github/scripts/test_blink_delta.py'
-      - '.github/workflows/delta-android15-emulator.yml'
-      - 'app/src/main/java/com/example/update/**'
-      - 'shared/src/main/kotlin/com/blinkng/shared/update/**'
   workflow_dispatch:
 
 permissions:

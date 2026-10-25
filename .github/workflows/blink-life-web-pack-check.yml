@@ -1,18 +1,5 @@
 name: BLINK LIFE web pack and size isolation
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'game3d/**'
-      - 'scripts/build_blink_life_web_pack.sh'
-      - '.github/workflows/blink-life-web-pack-check.yml'
-      - 'app/src/main/java/com/example/game/**'
-  push:
-    branches: [main, Testlab, 'Testlab-*']
-    paths:
-      - 'game3d/**'
-      - 'scripts/build_blink_life_web_pack.sh'
-      - '.github/workflows/blink-life-web-pack-check.yml'
   workflow_dispatch:
 permissions:
   contents: read

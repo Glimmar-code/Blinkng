@@ -4,9 +4,6 @@ name: BLINK chat PR stale CI cleanup
 # *current* candidate from getting a clean Android/Windows/Supabase verdict.
 # This job may cancel ONLY earlier checks from this PR's exact same branch.
 on:
-  pull_request:
-    branches: [Testlab, main]
-    types: [synchronize, opened, reopened]
   workflow_dispatch:
 
 permissions:

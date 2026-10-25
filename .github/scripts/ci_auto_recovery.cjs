@@ -33,8 +33,7 @@ function qualify(run) {
   if (!BAD.has(run.conclusion) || !Number.isSafeInteger(run.id) || run.id <= 0) return null;
   if (run.head_repository?.full_name !== FULL) return null;
   const branch = run.head_branch || '';
-  if (branch !== 'main' && !/^Testlab(?:-|$)/.test(branch)) return null;
-  if (branch === 'main' && !PRODUCTION.has(run.name)) return null;
+  if (!branch || branch === 'main' && !PRODUCTION.has(run.name)) return null;
   if (!Number.isInteger(run.run_attempt) || run.run_attempt < 1) return null;
   return { branch, runId: run.id, attempt: run.run_attempt, workflow: run.name };
 }
@@ -71,7 +70,7 @@ function report(item, run, failures) {
     '**Attempt:** ' + item.attempt + ' / ' + MAX_ATTEMPTS + '\n' +
     '**Run:** ' + (run.html_url || '') + '\n\n' +
     '**Failed jobs and steps:**\n' + rows + '\n\n' +
-    '**Next automatic-agent task:** Read the linked error logs, correct the underlying code or infrastructure configuration in a Testlab branch, rerun the affected checks, and obtain all required staging/device/backend evidence. ' +
+    '**Next automatic-agent task:** Read the linked error logs, correct the underlying code or infrastructure configuration in a feature branch, rerun the affected checks, and obtain all required staging/device/backend evidence. ' +
     'Do not merge to main or publish until every required gate is green. ' +
     'For production signing or publishing failures, retain the last verified public APK and never change signing secrets automatically.\n\n' +
     'A retry is not a code fix; this controller has not bypassed checks or edited application code.';
@@ -85,7 +84,7 @@ async function createOrUpdateBlocker(github, item, run, failures, core) {
     try {
       await github.rest.issues.createLabel({
         owner: OWNER, repo: REPO, name: LABEL, color: 'B60205',
-        description: 'Automatic CI retry exhausted; requires Testlab code repair',
+        description: 'Automatic CI retry exhausted; requires feature-branch code repair',
       });
     } catch (error) {
       if (error.status !== 422) throw error; // created by a parallel incident

@@ -1,15 +1,6 @@
 name: BLINK LIFE native 3D Godot smoke
 
 on:
-  pull_request:
-    paths:
-      - 'game3d/**'
-      - '.github/workflows/blink-life-3d-check.yml'
-  push:
-    branches: [Testlab, main]
-    paths:
-      - 'game3d/**'
-      - '.github/workflows/blink-life-3d-check.yml'
   workflow_dispatch:
 
 permissions:

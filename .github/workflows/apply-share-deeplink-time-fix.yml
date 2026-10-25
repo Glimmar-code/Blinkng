@@ -1,11 +1,6 @@
 name: Apply share deep link and timestamp fixes
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_share_deeplink_time_fix.py'
-      - '.github/workflows/apply-share-deeplink-time-fix.yml'
   workflow_dispatch:
 
 permissions:

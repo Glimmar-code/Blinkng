@@ -1,10 +1,7 @@
 name: Apply natural post image sizing and zoom
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-natural-post-image-zoom.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

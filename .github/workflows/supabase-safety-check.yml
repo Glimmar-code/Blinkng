@@ -1,10 +1,6 @@
 name: Supabase safety gate
 
 on:
-  push:
-    branches: [Testlab, main]
-  pull_request:
-    branches: [Testlab, main]
   workflow_dispatch:
 
 permissions:

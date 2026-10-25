@@ -1,10 +1,7 @@
 name: Apply repeated post and reel views
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-repeated-content-views.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

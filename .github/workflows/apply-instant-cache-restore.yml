@@ -1,11 +1,7 @@
 name: Apply instant cache restore
 
 on:
-  push:
-    paths:
-      - '.github/scripts/apply_instant_cache_restore.py'
-      - '.github/workflows/apply-instant-cache-restore.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

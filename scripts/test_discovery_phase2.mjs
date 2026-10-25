@@ -3,15 +3,20 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=p=>readFileSync(p,'utf8');
-const kotlin=read('app/src/main/java/com/example/data/models/NigerianUniversities.kt');
+const kotlin=read('shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt');
 const exported=JSON.parse(read('web/campuses.json'));
 const extract=kind=>{
  const m=kotlin.match(new RegExp('private val '+kind+' = listOf\\(([\\s\\S]*?)\\n    \\)'));
  assert.ok(m,'Missing Android university list: '+kind);
  return [...m[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(v=>v[1]);
 };
-const source=[...new Set(['federal','state','private'].flatMap(extract))].sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
-assert.deepEqual(exported.universities,source,'Website university choices must stay synced with Android');
+const groups=['federal','state','private','federalAdditional','stateAdditional','privateAdditional'];
+const listed=groups.flatMap(extract);
+const seen=new Set();
+const source=listed.filter(name=>{const key=name.toLowerCase();if(seen.has(key))return false;seen.add(key);return true;})
+  .sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
+assert.equal(exported.source,'shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt','Website campus source must be the shared Android/Windows catalogue');
+assert.deepEqual(exported.universities,source,'Website university choices must stay synced with Android and Windows');
 assert.ok(source.includes('Federal University of Technology, Akure'),'FUTA must be available');
 assert.equal(source.length,new Set(source).size,'No duplicate universities allowed');
 const js=read('web/discovery.js'),app=read('web/app.js');

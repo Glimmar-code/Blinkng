@@ -1,10 +1,7 @@
 name: Apply fullscreen colored text posts
 
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-fullscreen-color-text-posts.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

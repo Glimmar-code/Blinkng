@@ -1,12 +1,6 @@
 name: Apply advanced chat interactions
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_advanced_chat_interactions.py'
-      - '.github/scripts/fix_advanced_chat_interactions_compile.py'
-      - '.github/workflows/apply-advanced-chat-interactions.yml'
   workflow_dispatch:
 
 permissions:
