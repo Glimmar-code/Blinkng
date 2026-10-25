@@ -35,6 +35,15 @@ class BlinkChatAttachmentPolicyTest {
         assertEquals(100, BlinkChatUploadProgress.percent(Long.MAX_VALUE, Long.MAX_VALUE))
     }
 
+    @Test fun photoQualitySupportsStandardAndOriginalWithoutNewMediaType() {
+        assertEquals(2, BlinkChatImageQuality.entries.size)
+        assertTrue(BlinkChatImageQuality.STANDARD != BlinkChatImageQuality.ORIGINAL)
+        assertEquals("image", BlinkChatAttachmentKind.IMAGE.wireType)
+        assertTrue(BlinkChatAttachmentKind.IMAGE.accepts("image/jpeg"))
+        assertTrue(BlinkChatAttachmentKind.IMAGE.accepts("image/heic"))
+        assertFalse(BlinkChatAttachmentKind.IMAGE.accepts("application/pdf"))
+    }
+
     @Test fun extensionsAndNamesAreSafe() {
         assertEquals("jpg", BlinkChatAttachmentKind.IMAGE.extension("image/jpeg"))
         assertEquals("docx", BlinkChatAttachmentKind.DOCUMENT.extension(
