@@ -3458,6 +3458,21 @@ private suspend fun restoreSupabaseSession() {
     private fun profileSurfacePosts(state: BlinkUiState): List<FeedPost> =
         state.profilePostsByUserId.values.flatten() + state.myLikedPosts + state.mySavedPosts
 
+    /**
+     * Shared authenticated discovery source for mention, message-recipient and invitation pickers.
+     * The server RPC already excludes block relationships and masks private presence.
+     */
+    suspend fun searchMentionProfiles(
+        query: String,
+        limit: Int = 60,
+        afterUsername: String? = null,
+        afterId: String? = null
+    ): List<UserProfile> {
+        val clean = query.trim().removePrefix("@")
+        if (clean.isBlank() || !_uiState.value.isOnline) return emptyList()
+        return supabaseService.searchProfilesPage(clean, limit, afterUsername, afterId)
+    }
+
     fun openProfile(username: String) {
         if (isMe(username)) {
             val current = _uiState.value
