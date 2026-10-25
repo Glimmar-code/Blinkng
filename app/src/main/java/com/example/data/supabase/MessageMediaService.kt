@@ -19,6 +19,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MultipartBody
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.ByteArrayOutputStream
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -180,6 +184,137 @@ object MessageMediaService {
                 output.flush()
                 written to mimeType
             }
+        }
+    }
+
+    /** Upload through the service-role-only, one-use media endpoint. Never store
+     * or sign a normal message-media reference for this picture. */
+    suspend fun sendViewOncePicture(
+        context: Context,
+        conversationId: String,
+        uri: Uri,
+        caption: String,
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD,
+        messageId: String = UUID.randomUUID().toString()
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        runCatching {
+            val conversation = UUID.fromString(conversationId).toString()
+            val id = UUID.fromString(messageId).toString()
+            val owner = uid() ?: throw SecurityException("Sign in to send a view-once picture.")
+            require(SupabaseService().restoreSession()) { "Please sign in again." }
+            BlinkChatImagePreparer.open(context, uri, imageQuality).use { photo ->
+                val form = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("conversation_id", conversation)
+                    .addFormDataPart("message_id", id)
+                    .addFormDataPart("caption", caption.trim().take(1024))
+                    .addFormDataPart("photo", photo.name,
+                        photo.file.asRequestBody(photo.mime.toMediaType()))
+                    .build()
+                val response = client.newCall(
+                    builder("/functions/v1/blink-view-once-image").post(form).build()
+                ).execute().use { http ->
+                    val raw = http.body?.string().orEmpty()
+                    check(http.isSuccessful) {
+                        error(raw, "View-once pictures aren't available yet.")
+                    }
+                    JSONObject(raw)
+                }
+                require(response.optString("messageId") == id) {
+                    "Server didn't acknowledge your private picture."
+                }
+                ChatMessage(
+                    id = id, senderId = owner, conversationId = conversation,
+                    text = caption.trim().take(1024).ifBlank { "View once photo" },
+                    timestamp = "Just now", isFromMe = true, isRead = false,
+                    status = MessageStatus.SENT, imageViewOnce = true
+                )
+            }
+        }
+    }
+
+    /** One atomic server claim. No signed URL, WebView, disk cache or external
+     * viewer is involved. The memory bitmap must be released with the viewer. */
+    suspend fun openViewOncePicture(messageId: String): Result<Bitmap> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val id = UUID.fromString(messageId).toString()
+                require(SupabaseService().restoreSession()) { "Please sign in again." }
+                val url = "/functions/v1/blink-view-once-image?message_id=$id"
+                val body = client.newCall(builder(url).get().build()).execute().use { response ->
+                    check(response.isSuccessful) {
+                        if (response.code == 410) "This picture has already been opened."
+                        else "Private picture could not be opened."
+                    }
+                    val mime = response.header("Content-Type").orEmpty()
+                        .substringBefore(';').lowercase()
+                    require(BlinkChatAttachmentKind.IMAGE.accepts(mime)) {
+                        "Server sent an unexpected image type."
+                    }
+                    val data = response.body ?: error("Empty private picture.")
+                    require(data.contentLength() <= 15L * 1024L * 1024L) {
+                        "Picture is too large."
+                    }
+                    ByteArrayOutputStream().use { target ->
+                        val chunk = ByteArray(64 * 1024)
+                        var length = 0
+                        data.byteStream().use { input ->
+                            while (true) {
+                                val count = input.read(chunk)
+                                if (count == -1) break
+                                length += count
+                                require(length <= 15 * 1024 * 1024) {
+                                    "Picture exceeds the maximum safe size."
+                                }
+                                target.write(chunk, 0, count)
+                            }
+                        }
+                        target.toByteArray()
+                    }
+                }
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(body, 0, body.size, bounds)
+                require(bounds.outWidth in 1..20000 && bounds.outHeight in 1..20000) {
+                    "Picture dimensions are not supported."
+                }
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+                BitmapFactory.decodeByteArray(body, 0, body.size,
+                    BitmapFactory.Options().apply { inSampleSize = sample })
+                    ?: throw IllegalStateException("Cannot decode this picture.")
+            }
+        }
+
+    /** Query only rows already readable through messages RLS. Older schemas
+     * gracefully fall back to normal image rendering. */
+    suspend fun hydrateViewOnceFlags(
+        messages: List<ChatMessage>, conversationId: String
+    ): List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty()) return@withContext messages
+        val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
+            ?: return@withContext messages
+        val ids = messages.filter { it.attachedImageUrl != null ||
+            it.text == "View once photo" }.mapNotNull {
+            runCatching { UUID.fromString(it.id).toString() }.getOrNull()
+        }
+        if (ids.isEmpty()) return@withContext messages
+        val flags = runCatching {
+            val request = builder("/rest/v1/messages?conversation_id=eq.$convo" +
+                "&id=in.(${ids.joinToString(",")})&select=id,image_view_once&limit=100").get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use emptySet<String>()
+                val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+                buildSet {
+                    for (i in 0 until rows.length()) {
+                        val row = rows.optJSONObject(i) ?: continue
+                        if (row.optBoolean("image_view_once")) add(row.optString("id"))
+                    }
+                }
+            }
+        }.getOrDefault(emptySet())
+        if (flags.isEmpty()) messages
+        else messages.map { if (it.id in flags)
+            it.copy(imageViewOnce = true, attachedImageUrl = null, imagePreviewUrl = null)
+            else it
         }
     }
 
