@@ -83,7 +83,7 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertNotIn('Icons.Default.Visibility', footer)
         self.assertIn('value = if (post.hideLikes) null else formatNumber(post.likes)', footer)
         self.assertIn('text = "${formatNumber(displayedViewsCount)} views"', footer)
-        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', POST)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else 4', POST)
         self.assertIn('authorUniversity.trim().ifBlank', POST)
         self.assertIn('onOpenPost?.invoke()', POST)
 
@@ -117,7 +117,7 @@ class HomeReferenceContractTests(unittest.TestCase):
         starts = [contents.index(icon) for icon in order]
         self.assertEqual(starts, sorted(starts))
         self.assertIn('"${BlinkPostFormat.count(post.viewCount)} views"', contents)
-        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7', DESKTOP)
+        self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else 4', DESKTOP)
 
     def test_foreground_feed_refresh_is_scoped_and_preserves_existing_posts(self):
         policy = (ROOT / "shared/src/main/kotlin/com/blinkng/shared/BlinkRefreshPolicy.kt").read_text()
