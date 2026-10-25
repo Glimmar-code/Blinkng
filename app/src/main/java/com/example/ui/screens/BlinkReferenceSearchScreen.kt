@@ -46,6 +46,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.example.data.models.UserProfile
 import com.example.viewmodel.SearchDiscoveryViewModel
 import com.blinkng.shared.discovery.BlinkReferralPolicy
@@ -119,9 +120,20 @@ internal fun BlinkReferenceSearchScreen(
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var searchedPeople by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
+    var referralCount by remember(accountKey) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(accountKey, query) {
+        val clean = BlinkReferralPolicy.normalizedQuery(query)
+        if (clean.isBlank()) { searchedPeople = emptyList(); return@LaunchedEffect }
+        delay(260)
+        searchedPeople = runCatching {
+            BlinkReferralClient.searchPeopleWithReferralRelevance(clean)
+        }.getOrDefault(emptyList())
+    }
     LaunchedEffect(accountKey) {
         if (myProfile.id.isNotBlank()) {
             referralRecommendations = runCatching { BlinkReferralClient.recommendations() }.getOrDefault(emptyList())
+            referralCount = runCatching { BlinkReferralClient.dashboard().total }.getOrNull()
         }
     }
 
@@ -336,6 +348,9 @@ internal fun BlinkReferenceSearchScreen(
                     Spacer(Modifier.height(5.dp))
                     Text("Invite friends  ›", color = fg, fontSize = 12.sp,
                         fontWeight = FontWeight.Bold)
+                    referralCount?.let {
+                        Text("$it confirmed referrals", color = muted, fontSize = 11.sp)
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -423,7 +438,20 @@ internal fun BlinkReferenceSearchScreen(
 
             if (category == ReferenceCategory.ALL || category == ReferenceCategory.PEOPLE) {
                 ReferenceTitle("People", fg, muted) { select(ReferenceCategory.PEOPLE) }
-                if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
+                if (searchedPeople.isNotEmpty()) searchedPeople.take(limit).forEach { person ->
+                    ReferencePersonRow(
+                        title = person.fullName.ifBlank { person.username },
+                        subtitle = listOfNotNull(person.university,
+                            if (person.visibilityPoints > 0) "Referral discovery" else null).joinToString(" · "),
+                        avatar = person.avatarUrl, verified = person.isVerified,
+                        online = false, fg = fg, muted = muted, line = line,
+                        followable = person.id.isNotBlank() && person.id != currentProfile?.id,
+                        following = person.id in followingIds,
+                        isBusy = busyFollowId == person.id,
+                        onFollow = { toggleFollow(person.id) },
+                        onClick = { onProfileClick(person.username) },
+                    )
+                } else if (livePeople.isNotEmpty()) livePeople.take(limit).forEach { result ->
                     val profileId = result.id
                     val presentProfile = allProfiles.firstOrNull {
                         it.id == profileId || (result.username.isNotBlank() && it.username.equals(result.username, true))
@@ -452,7 +480,8 @@ internal fun BlinkReferenceSearchScreen(
                         onClick = { onProfileClick(profile.username) },
                     )
                 }
-                if (livePeople.isEmpty() && localPeople.isEmpty()) ReferenceNoResults("No people found", muted)
+                if (searchedPeople.isEmpty() && livePeople.isEmpty() && localPeople.isEmpty())
+                    ReferenceNoResults("No people found", muted)
                 Spacer(Modifier.height(12.dp))
             }
 

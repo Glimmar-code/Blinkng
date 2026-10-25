@@ -108,6 +108,27 @@ object BlinkReferralClient {
         }
     }
 
+    suspend fun searchPeopleWithReferralRelevance(query: String): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val rows = invoke("blink_referral_profile_search",
+                JSONObject().put("p_query", clean).put("p_limit", 20), authenticated = true)
+            (0 until rows.length()).map { index ->
+                val item = rows.getJSONObject(index)
+                BlinkReferralSuggestion(
+                    id = item.getString("id"),
+                    username = item.getString("username"),
+                    fullName = item.optString("full_name"),
+                    avatarUrl = item.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = item.optString("university").takeIf(String::isNotBlank),
+                    isVerified = item.optBoolean("is_verified"),
+                    verificationBadge = item.optString("verification_badge").takeIf(String::isNotBlank),
+                    visibilityPoints = item.optInt("visibility_points"),
+                )
+            }
+        }
+
     suspend fun growthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
         val row = invoke("blink_referral_growth_stats", JSONObject(), authenticated = true)
             .optJSONObject(0) ?: return@withContext BlinkReferralGrowthStats()

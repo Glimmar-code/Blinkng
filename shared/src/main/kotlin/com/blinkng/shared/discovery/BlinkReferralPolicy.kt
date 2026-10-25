@@ -9,6 +9,7 @@ data class BlinkReferralSuggestion(
     val university: String? = null,
     val isVerified: Boolean = false,
     val verificationBadge: String? = null,
+    val visibilityPoints: Int = 0,
 )
 
 data class BlinkReferralStats(
