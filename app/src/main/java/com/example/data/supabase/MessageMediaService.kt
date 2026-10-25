@@ -199,9 +199,11 @@ object MessageMediaService {
         onUploadProgress: (Int) -> Unit = {},
         caption: String = "",
         imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD,
-        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single(),
+        shouldCancel: () -> Boolean = { false }
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
+            if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
             val receiver = receiverUsername.trim().removePrefix("@")
             if (receiver.isBlank() || receiver.equals("null", ignoreCase = true)) {
@@ -276,6 +278,7 @@ object MessageMediaService {
                 BlinkChatImagePreparer.open(context, uri, imageQuality)
             else BoundedMessageAttachment.open(context, uri, kind)
             selected.use { staged ->
+                if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
                 val expandedMetadata = kind == BlinkChatAttachmentKind.IMAGE &&
                     photoMetadataSupported()
                 val objectPath =
@@ -284,6 +287,7 @@ object MessageMediaService {
                     builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
                         .addHeader("x-upsert", "false")
                         .post(staged.requestBody { sent, total ->
+                            if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
                             onUploadProgress(BlinkChatUploadProgress.percent(sent, total))
                         }).build()
                 ).execute().use { response ->
@@ -311,6 +315,7 @@ object MessageMediaService {
                         }
                     }
                 }
+                if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
                 val label = when (kind) {
                     BlinkChatAttachmentKind.DOCUMENT -> "Document: ${staged.name}"
                     BlinkChatAttachmentKind.VOICE -> "Voice note: ${durationMs.coerceAtLeast(0) / 1000}s"
@@ -335,6 +340,7 @@ object MessageMediaService {
                         messageBody.put("image_preview_url", "$PRIVATE_BUCKET:$it")
                     }
                 }
+                if (shouldCancel()) throw java.io.InterruptedIOException("Upload cancelled.")
                 val raw = client.newCall(
                     builder("/rest/v1/messages")
                         .addHeader("Prefer", "return=representation")
