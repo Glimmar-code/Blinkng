@@ -521,9 +521,8 @@ class MainActivity : ComponentActivity() {
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
         )
         adConsentManager = BlinkAdConsentManager(this)
-        adConsentManager.gatherConsent {
-            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
-        }
+        // Avoid UMP/WebView startup work on the intro animation's first frames.
+        // The required consent flow still runs after the intro completes.
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -534,6 +533,17 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             var showStartupIntro by remember { mutableStateOf(true) }
+            LaunchedEffect(showStartupIntro) {
+                if (!showStartupIntro) {
+                    // Ads remain gated on UMP consent, after the startup animation.
+                    delay(300L)
+                    if (!isFinishing && !isDestroyed) {
+                        adConsentManager.gatherConsent {
+                            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
+                        }
+                    }
+                }
+            }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
             var websiteRelease by remember { mutableStateOf<BlinkReleaseInfo?>(null) }
             var websiteUpdateCheckFinished by remember { mutableStateOf(false) }
