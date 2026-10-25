@@ -9,6 +9,8 @@ import com.blinkng.shared.BlinkAuthFeedback
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -224,6 +226,39 @@ class DesktopSupabaseClient(
                 verificationBadge = person.optString("verification_badge").takeIf(String::isNotBlank),
             )
         }
+    }
+
+    suspend fun referralGrowthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
+        val row = postArray("/rest/v1/rpc/blink_referral_growth_stats",
+            JSONObject(), "return=representation").optJSONObject(0)
+            ?: return@withContext BlinkReferralGrowthStats()
+        BlinkReferralGrowthStats(
+            profileViewsThisWeek = row.optLong("profile_views_this_week"),
+            followersGainedThisWeek = row.optLong("followers_gained_this_week"),
+            shareActions = row.optLong("share_actions"),
+        )
+    }
+
+    suspend fun referralLeaderboard(): List<BlinkReferralLeaderboardEntry> = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_leaderboard",
+            JSONObject().put("p_days", 7).put("p_limit", 20), "return=representation")
+        (0 until rows.length()).map { i ->
+            val row = rows.getJSONObject(i)
+            BlinkReferralLeaderboardEntry(
+                position = row.optLong("position"), id = row.getString("id"),
+                username = row.getString("username"), fullName = row.optString("full_name"),
+                avatarUrl = row.optString("avatar_url").takeIf(String::isNotBlank),
+                university = row.optString("university").takeIf(String::isNotBlank),
+                confirmedReferrals = row.optLong("successful_referrals"),
+            )
+        }
+    }
+
+    suspend fun recordReferralShare(channel: String): Boolean = withContext(Dispatchers.IO) {
+        if (channel !in setOf("copy", "share", "desktop", "web")) return@withContext false
+        val result = postObject("/rest/v1/rpc/blink_record_referral_share",
+            JSONObject().put("p_channel", channel))
+        (result as? JSONObject)?.optString("value")?.trim()?.equals("true", ignoreCase = true) == true
     }
 
     suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {

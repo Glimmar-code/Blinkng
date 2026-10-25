@@ -20,6 +20,23 @@ data class BlinkReferralStats(
     val nextAchievementTarget: Int? = 1,
 )
 
+/** Aggregated counts from real owned activity; do not infer missing traffic sources. */
+data class BlinkReferralGrowthStats(
+    val profileViewsThisWeek: Long = 0,
+    val followersGainedThisWeek: Long = 0,
+    val shareActions: Long = 0,
+)
+
+data class BlinkReferralLeaderboardEntry(
+    val position: Long,
+    val id: String,
+    val username: String,
+    val fullName: String,
+    val avatarUrl: String? = null,
+    val university: String? = null,
+    val confirmedReferrals: Long = 0,
+)
+
 /** Copy is deliberately a possibility, not a promise of followers, views or placement. */
 object BlinkReferralPolicy {
     const val PROMO_TITLE = "Refer friends. Get discovered."

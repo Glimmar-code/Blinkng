@@ -2,6 +2,8 @@ package com.example.data.supabase
 
 import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralGrowthStats
+import com.blinkng.shared.discovery.BlinkReferralLeaderboardEntry
 import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -103,6 +105,48 @@ object BlinkReferralClient {
                     throw IllegalStateException("Referral push dispatch unavailable (${response.code}).")
                 }
             }
+        }
+    }
+
+    suspend fun growthStats(): BlinkReferralGrowthStats = withContext(Dispatchers.IO) {
+        val row = invoke("blink_referral_growth_stats", JSONObject(), authenticated = true)
+            .optJSONObject(0) ?: return@withContext BlinkReferralGrowthStats()
+        BlinkReferralGrowthStats(
+            profileViewsThisWeek = row.optLong("profile_views_this_week"),
+            followersGainedThisWeek = row.optLong("followers_gained_this_week"),
+            shareActions = row.optLong("share_actions"),
+        )
+    }
+
+    suspend fun leaderboard(): List<BlinkReferralLeaderboardEntry> = withContext(Dispatchers.IO) {
+        val rows = invoke("blink_referral_leaderboard",
+            JSONObject().put("p_days", 7).put("p_limit", 20), authenticated = true)
+        (0 until rows.length()).map { index ->
+            val item = rows.getJSONObject(index)
+            BlinkReferralLeaderboardEntry(
+                position = item.optLong("position"),
+                id = item.getString("id"),
+                username = item.getString("username"),
+                fullName = item.optString("full_name"),
+                avatarUrl = item.optString("avatar_url").takeIf(String::isNotBlank),
+                university = item.optString("university").takeIf(String::isNotBlank),
+                confirmedReferrals = item.optLong("successful_referrals"),
+            )
+        }
+    }
+
+    suspend fun recordShareAction(channel: String): Boolean = withContext(Dispatchers.IO) {
+        val token = SupabaseService.accessToken()?.takeIf(String::isNotBlank)
+            ?: return@withContext false
+        if (channel !in setOf("copy", "share", "web", "desktop")) return@withContext false
+        val request = Request.Builder()
+            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_record_referral_share")
+            .header("apikey", SupabaseConfig.anonKey)
+            .header("Authorization", "Bearer $token")
+            .post(JSONObject().put("p_channel", channel).toString().toRequestBody(mediaType))
+            .build()
+        client.newCall(request).execute().use { response ->
+            response.isSuccessful && response.body?.string()?.trim() == "true"
         }
     }
 
