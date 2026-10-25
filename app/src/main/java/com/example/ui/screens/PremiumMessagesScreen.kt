@@ -22,6 +22,7 @@ import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
 import com.example.data.supabase.BlinkChatPhotoEditor
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatMediaPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.speech.RecognizerIntent
@@ -1307,6 +1308,15 @@ private fun PremiumChatDetail(
     var galleryOffset by remember(conversation.id) { mutableIntStateOf(0) }
     var galleryHasMore by remember(conversation.id) { mutableStateOf(true) }
     var galleryLoading by remember(conversation.id) { mutableStateOf(false) }
+    var mediaWifiAuto by remember(conversation.id) {
+        mutableStateOf(BlinkChatMediaPreferences.wifiAuto(context))
+    }
+    var mediaMobileAuto by remember(conversation.id) {
+        mutableStateOf(BlinkChatMediaPreferences.mobileAuto(context))
+    }
+    var mediaDataSaver by remember(conversation.id) {
+        mutableStateOf(BlinkChatMediaPreferences.dataSaver(context))
+    }
     var galleryFailure by remember(conversation.id) { mutableStateOf<String?>(null) }
     val galleryScope = rememberCoroutineScope()
     fun fetchMoreGallery() {
@@ -2056,6 +2066,33 @@ private fun PremiumChatDetail(
                     .background(palette.incomingBubble).padding(14.dp)
             ) {
                 Text("Shared photos", fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                Text("Automatically download pictures:", color = palette.textSecondary, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.FilterChip(
+                        selected = mediaWifiAuto,
+                        onClick = {
+                            mediaWifiAuto = !mediaWifiAuto
+                            BlinkChatMediaPreferences.update(context, wifi = mediaWifiAuto)
+                        },
+                        label = { Text("Wi-Fi") }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = mediaMobileAuto,
+                        onClick = {
+                            mediaMobileAuto = !mediaMobileAuto
+                            BlinkChatMediaPreferences.update(context, mobile = mediaMobileAuto)
+                        },
+                        label = { Text("Mobile data") }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = mediaDataSaver,
+                        onClick = {
+                            mediaDataSaver = !mediaDataSaver
+                            BlinkChatMediaPreferences.update(context, saver = mediaDataSaver)
+                        },
+                        label = { Text("Data Saver") }
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 if (galleryPhotos.isEmpty() && !galleryLoading) {
                     Text(
@@ -2519,6 +2556,10 @@ private fun MessageContent(
             if (!message.attachedImageUrl.isNullOrBlank()) {
                 val imageUrl = message.attachedImageUrl
                 var showFullImage by remember(imageUrl) { mutableStateOf(false) }
+                val isLocal = imageUrl.startsWith("content:") || imageUrl.startsWith("file:")
+                var manuallyDownloaded by remember(message.id) { mutableStateOf(false) }
+                val autoDownload = BlinkChatMediaPreferences.allowAutoDownload(context)
+                val shouldLoad = isLocal || manuallyDownloaded || autoDownload
                 var imageZoom by remember(imageUrl) { mutableStateOf(1f) }
                 var expandedImageUrl by remember(imageUrl) { mutableStateOf(imageUrl) }
                 val pictureActionsScope = rememberCoroutineScope()
@@ -2566,12 +2607,24 @@ private fun MessageContent(
                 ) {
                     // Local content Uri renders immediately for optimistic messages.
                     // Server-confirmed messages use short-lived private signed URLs.
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = "Shared image. Tap to enlarge.",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (shouldLoad) {
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = "Shared image. Tap to enlarge.",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .background(palette.glassElevated)
+                                .clickable { manuallyDownloaded = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Tap to load photo · Data Saver", color = palette.textSecondary,
+                                fontSize = 12.sp)
+                        }
+                    }
                     if (message.status == MessageStatus.FAILED) {
                         Box(
                             modifier = Modifier.fillMaxSize()
