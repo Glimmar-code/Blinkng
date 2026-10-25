@@ -23,16 +23,35 @@ $$;
 revoke all on function public.blink_conversation_is_group(uuid) from public, anon;
 grant execute on function public.blink_conversation_is_group(uuid) to authenticated;
 
--- Normal clients may join their own existing 1:1 conversation under the
--- legacy contract, but MUST NOT self-invite to a private group.
--- Group creation and legitimate moderator invites must use vetted server
--- RPCs, not raw client inserts. Their privileged calls bypass RLS safely.
+-- Critical IDOR guard: never let a caller join an existing stranger's DM.
+-- Legacy cp_insert_own permitted arbitrary self-join by UUID. Allow a narrow
+-- compatibility path only for the creator's *own* direct conversation with
+-- fewer than two participants. The verified get_or_create_direct_conversation
+-- server RPC remains the primary route; SECURITY DEFINER writes bypass RLS.
+create or replace function public.blink_can_self_join_creator_direct(
+  p_conversation_id uuid
+) returns boolean language sql stable security definer set search_path=''
+as $
+  select (select auth.uid()) is not null and exists (
+    select 1 from public.conversations c
+    where c.id=p_conversation_id
+      and c.created_by=(select auth.uid())
+      and c.is_group is false
+      and (select count(*) from public.conversation_participants cp
+           where cp.conversation_id=c.id) < 2
+  );
+$;
+revoke all on function public.blink_can_self_join_creator_direct(uuid)
+  from public,anon;
+grant execute on function public.blink_can_self_join_creator_direct(uuid)
+  to authenticated;
+
 drop policy if exists cp_insert_own on public.conversation_participants;
 create policy cp_insert_own on public.conversation_participants
 for insert to authenticated
 with check (
   (select auth.uid()) = user_id
-  and not public.blink_conversation_is_group(conversation_id)
+  and public.blink_can_self_join_creator_direct(conversation_id)
 );
 
 create or replace function public.blink_protect_conversation_membership()
@@ -313,7 +332,8 @@ commit;
 -- Required local tests:
 -- 1. Self-join private group denied by cp_insert_own even when group is
 --    hidden from the caller by conversations RLS.
--- 2. Self-promote cp.is_admin, account reassignment, forged joined_at and
+-- 2. Prevent unauthorized self-join to ANY stranger DM or group; self-promote,
+--    account reassignment, forged joined_at and
 --    departed-member rejoin denied.
 -- 3. Owner/server-authorized group creation still produces 3–50 member rows.
 -- 4. Departed account cannot SELECT group/messages or send_group_message.
