@@ -3098,11 +3098,6 @@ private suspend fun restoreSupabaseSession() {
                     stage.file.copyTo(file, overwrite = true)
                     file
                 }
-                if (pending.uri.scheme == "file") {
-                    val source = java.io.File(pending.uri.path.orEmpty())
-                    if (source.parentFile?.name == "blink-camera" &&
-                        source.name.startsWith("blink-camera-")) source.delete()
-                }
                 val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
                     .setConstraints(Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -3134,6 +3129,11 @@ private suspend fun restoreSupabaseSession() {
                             if (supabaseService.getCurrentUserId() != pending.ownerId) return
                             if (info.state == WorkInfo.State.SUCCEEDED) {
                                 pendingAttachments.remove(tempId)
+                                if (pending.uri.scheme == "file") {
+                                    val sourceFile = java.io.File(pending.uri.path.orEmpty())
+                                    if (sourceFile.parentFile?.name == "blink-camera" &&
+                                        sourceFile.name.startsWith("blink-camera-")) sourceFile.delete()
+                                }
                                 viewModelScope.launch(Dispatchers.IO) {
                                     val remoteId = info.outputData.getString("serverMessageId")
                                     val remote = runCatching {
@@ -4368,6 +4368,15 @@ private suspend fun restoreSupabaseSession() {
     fun logout() {
         // Drop in-memory picker grants and private recordings on account change.
         pendingAttachments.values.forEach { attachment ->
+            if (attachment.kind == BlinkChatAttachmentKind.IMAGE &&
+                attachment.uri.scheme == "file") {
+                runCatching {
+                    java.io.File(attachment.uri.path.orEmpty()).takeIf {
+                        it.parentFile?.name == "blink-camera" &&
+                            it.name.startsWith("blink-camera-")
+                    }?.delete()
+                }
+            }
             if (attachment.kind == BlinkChatAttachmentKind.VOICE && attachment.uri.scheme == "file") {
                 runCatching {
                     java.io.File(attachment.uri.path.orEmpty()).takeIf {
