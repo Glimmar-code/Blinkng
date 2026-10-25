@@ -1862,7 +1862,7 @@ fun MainAppContent(
                         onUpdateChatPrivacy = { settings ->
                             viewModel.updateChatPrivacySettings(settings)
                         },
-                        onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
+                        onComposeMessage = { showMessageComposeOptions = true },
                         onSearchUsers = { query, limit, afterUsername, afterId ->
                             viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                         },
