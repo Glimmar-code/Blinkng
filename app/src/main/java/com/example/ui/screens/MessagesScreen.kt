@@ -49,11 +49,15 @@ fun MessagesScreen(
         onCloseConversation = onCloseConversation,
         onSendMessage = { partner, text, _ -> onSendMessage(partner, text) },
         onSendVideo = onSendVideo,
-        onSendAttachment = onSendAttachment,
-        onSendViewOncePicture = onSendViewOncePicture,
+        onSendAttachment = { partner, uri, kind ->
+            val attachment = BlinkChatAttachmentKind.fromWireType(kind)
+                ?: if (kind == "audio") BlinkChatAttachmentKind.VOICE else null
+            if (attachment != null) onSendAttachment(
+                partner, uri, attachment, 0L, "", BlinkChatImageQuality.STANDARD,
+                BlinkChatPhotoAlbum.single()
+            )
+        },
         onRetryMessage = onRetryMessage,
-        onCancelAttachment = onCancelAttachment,
-        onForwardPicture = onForwardPicture,
         hasMoreMessages = hasMoreMessages,
         isLoadingOlder = isLoadingOlder,
         onLoadOlder = onLoadOlder,
@@ -105,11 +109,15 @@ fun ChatConversationView(
         onCloseConversation = onBack,
         onSendMessage = { _, text, _ -> onSendMessage(text) },
         onSendVideo = { _, uri -> onSendVideo(uri) },
-        onSendAttachment = { _, uri, kind, duration, caption, quality, album -> onSendAttachment(uri, kind, duration, caption, quality, album) },
-        onSendViewOncePicture = { _, uri, caption, quality -> onSendViewOncePicture(uri, caption, quality) },
+        onSendAttachment = { _, uri, kind ->
+            val attachment = BlinkChatAttachmentKind.fromWireType(kind)
+                ?: if (kind == "audio") BlinkChatAttachmentKind.VOICE else null
+            if (attachment != null) onSendAttachment(
+                uri, attachment, 0L, "", BlinkChatImageQuality.STANDARD,
+                BlinkChatPhotoAlbum.single()
+            )
+        },
         onRetryMessage = onRetryMessage?.let { retry -> { _, message -> retry(message) } },
-        onCancelAttachment = onCancelAttachment?.let { cancel -> { _, message -> cancel(message) } },
-        onForwardPicture = onForwardPicture,
         hasMoreMessages = { hasMoreMessages },
         isLoadingOlder = { isLoadingOlder },
         onLoadOlder = { onLoadOlder() },
