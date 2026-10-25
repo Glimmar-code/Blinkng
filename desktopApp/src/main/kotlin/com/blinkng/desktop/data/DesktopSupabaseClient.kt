@@ -1373,6 +1373,41 @@ class DesktopSupabaseClient(
      * do not encourage blind retrying of an already committed message.
      */
     /** Backend-authorized group creation; shared member validation with Android. */
+    suspend fun groupMembers(conversationId: String): List<DesktopGroupMember> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_group_members",
+                JSONObject().put("p_conversation_id", conversationId))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopGroupMember(
+                        id = row.optString("user_id"),
+                        username = row.optString("username"),
+                        displayName = row.optString("full_name").ifBlank {
+                            row.optString("username")
+                        },
+                        isAdmin = row.optBoolean("is_admin")
+                    )
+                }
+            }
+        }
+
+    suspend fun inviteGroupMember(conversationId: String, userId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_invite",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId)))
+
+    suspend fun leaveGroup(conversationId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_leave",
+            JSONObject().put("p_conversation_id", conversationId)))
+
+    suspend fun moderateGroupMember(conversationId: String, userId: String, action: String): Boolean {
+        require(action in setOf("remove","promote","demote"))
+        return rpcBoolean(postObject("/rest/v1/rpc/blink_group_manage_member",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId).put("p_action", action)))
+    }
+
     suspend fun createGroupConversation(title: String, invitedUserIds: List<String>): String =
         withContext(Dispatchers.IO) {
             val owner = requireSession().userId
