@@ -106,6 +106,21 @@ async function handle(req: Request): Promise<Response> {
         !participants.some((entry) => entry.user_id === user.id))
       return reply(403, "NOT_A_DIRECT_CHAT_MEMBER");
 
+    const peer = participants.find((entry) => entry.user_id !== user.id)?.user_id;
+    if (!uuid(peer)) return reply(403, "INVALID_RECIPIENT");
+    // RLS on messages INSERT checks sender membership, but doesn't enforce
+    // direct-chat type or user blocks. Verify both using trusted server data.
+    const {data: chat, error: chatError} = await svc.from("conversations")
+      .select("id,is_group").eq("id", conversationId).maybeSingle();
+    if (chatError || !chat || chat.is_group !== false)
+      return reply(403, "DIRECT_CHAT_REQUIRED");
+    const {data: blocked, error: blockError} = await svc.from("blocks")
+      .select("blocker_id")
+      .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${peer}),and(blocker_id.eq.${peer},blocked_id.eq.${user.id})`)
+      .limit(1);
+    if (blockError || !blocked || blocked.length !== 0)
+      return reply(403, "RECIPIENT_UNAVAILABLE");
+
     const userClient = createClient(base, anon, {
       auth:{persistSession:false,autoRefreshToken:false},
       global:{headers:{Authorization:`Bearer ${token}`}},
