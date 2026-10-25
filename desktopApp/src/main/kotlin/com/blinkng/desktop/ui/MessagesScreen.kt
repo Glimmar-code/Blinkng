@@ -76,6 +76,8 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.desktop.data.DesktopChatImageOutbox
+import com.blinkng.desktop.data.DesktopChatPhotoWorker
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.blinkng.shared.BlinkDeliveryReceipt
@@ -148,6 +150,10 @@ fun MessagesScreen(state: DesktopAppState) {
     fun attemptQueuedPhotoUploads() {
         val account = myUserId
         if (account.isBlank() || outboxUploading) return
+        // Prefer a detached user-scoped worker so uploads survive closing the window.
+        // The previous in-process queue remains the fallback for developer builds
+        // whose platform launcher cannot start another BLINK process.
+        if (DesktopChatPhotoWorker.start(account)) return
         outboxUploading = true
         scope.launch {
             try {
@@ -243,6 +249,27 @@ fun MessagesScreen(state: DesktopAppState) {
         loadConversations()
     }
     LaunchedEffect(selected?.id) { loadMessages(selected) }
+
+    LaunchedEffect(myUserId) {
+        while (myUserId.isNotBlank() && state.session?.userId == myUserId) {
+            val pending = runCatching {
+                withContext(Dispatchers.IO) {
+                    DesktopChatImageOutbox.pending(myUserId).size to
+                        DesktopChatImageOutbox.pendingProgress(myUserId)
+                }
+            }.getOrNull()
+            if (pending != null) {
+                val previousCount = queuedPhotoCount
+                queuedPhotoCount = pending.first
+                pictureProgress = pending.second ?: 0
+                if (previousCount > queuedPhotoCount) {
+                    loadMessages(selected)
+                    loadConversations()
+                }
+            }
+            delay(2_000L)
+        }
+    }
 
     AnimatedContent(
         targetState = selected,
