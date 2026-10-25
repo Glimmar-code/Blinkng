@@ -2692,8 +2692,9 @@ private fun MessageContent(
                         color = contentColor, fontSize = 12.sp
                     )
                     if (!isMine && !consumed && !opening &&
-                        message.status == MessageStatus.SENT &&
-                        !message.id.startsWith("temp_")) {
+                        message.status in setOf(
+                            MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
+                        ) && !message.id.startsWith("temp_")) {
                         androidx.compose.material3.TextButton(onClick = {
                             opening = true
                             openScope.launch {
