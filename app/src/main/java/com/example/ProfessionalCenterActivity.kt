@@ -95,6 +95,7 @@ import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkUserPickerSheet
+import com.example.ui.components.BlinkCommunitiesPanel
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import com.example.ui.theme.BlinkTheme
@@ -123,6 +124,7 @@ private enum class ProfessionalSection(val key: String, val label: String) {
     SAFETY("safety", "Safety"),
     MARKET("market", "Orders"),
     GROUPS("groups", "Groups"),
+    COMMUNITIES("communities", "Communities"),
     ACCOUNT("account", "Account")
 }
 
@@ -351,6 +353,12 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                             busy = false
                         }
                     }
+
+                    ProfessionalSection.COMMUNITIES -> BlinkCommunitiesPanel(
+                        searchProfiles = { query, limit, afterUsername, afterId ->
+                            service.searchProfilesPage(query, limit, afterUsername, afterId)
+                        }
+                    )
 
                     ProfessionalSection.ACCOUNT -> AccountSection(
                         username = service.getCurrentUsername().orEmpty(),
