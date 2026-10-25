@@ -345,7 +345,11 @@ class DesktopSupabaseClient(
     }
 
     fun signOut() {
-        clearSession()
+        val previousOwner = session?.userId
+        clearSession() // Persist logout before touching queued media.
+        previousOwner?.let { owner ->
+            runCatching { DesktopChatImageOutbox.discardOwner(owner) }
+        }
     }
 
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
