@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.theme.FeedBlue
+import com.example.ui.theme.FeedTextSecondary
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.feedAccentBrush
 
