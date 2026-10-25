@@ -2138,8 +2138,7 @@ fun MainAppContent(
             // A downward Home scroll hides the entire rail, including its shadow,
             // rather than moving it by a fixed 50 px on different screen sizes.
             visible = shouldShowBottomBar && (
-                uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 0 ||
-                    isBottomBarVisibleByScroll
+                uiState.selectedTab != MainTab.HOME || isBottomBarVisibleByScroll
             ),
             enter = androidx.compose.animation.slideInVertically(
                 initialOffsetY = { it },
