@@ -232,7 +232,7 @@ object MessageMediaService {
             val existing = client.newCall(
                 builder(
                     "/rest/v1/messages?id=eq.$safeMessageId&select=id,sender_id,conversation_id," +
-                        "content,created_at,media_url&limit=1"
+                        "content,created_at,media_url,message_type&limit=1"
                 ).get().build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
@@ -241,8 +241,12 @@ object MessageMediaService {
                 )
                 JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
             }
-            if (existing != null && existing.optString("sender_id") == senderId &&
-                existing.optString("conversation_id") == conversationId) {
+            if (existing != null) {
+                require(existing.optString("sender_id") == senderId &&
+                    existing.optString("conversation_id") == conversationId &&
+                    existing.optString("message_type") == kind.wireType) {
+                    "This message ID belongs to a different attachment."
+                }
                 val ref = existing.optString("media_url")
                 val objectPath = ref.removePrefix("$PRIVATE_BUCKET:")
                 val replayUrl = if (ref.startsWith("$PRIVATE_BUCKET:conversations/$conversationId/users/"))
