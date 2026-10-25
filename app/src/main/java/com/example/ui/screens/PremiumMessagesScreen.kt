@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkReplySwipePhysics
 
 import com.example.ui.components.BlinkSkeletonChatHistory
 
@@ -9,6 +10,8 @@ import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -30,6 +33,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -177,6 +181,8 @@ import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
+import com.example.data.models.UserProfile
+import com.example.ui.components.BlinkUserPickerSheet
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -252,6 +258,8 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
+    onSearchUsers: suspend (String, Int, String?, String?) -> List<UserProfile> = { _, _, _, _ -> emptyList() },
+    onCreateGroup: () -> Unit = {},
     onMyProfileClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
@@ -270,6 +278,7 @@ fun PremiumMessagesScreen(
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
     var showPrivacySheet by rememberSaveable { mutableStateOf(false) }
+    var showUserPicker by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
     val liveActiveConversation = activePartner?.let { partner ->
@@ -338,7 +347,7 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
-                            onComposeMessage = onComposeMessage,
+                            onComposeMessage = { showUserPicker = true },
                             onMyProfileClick = onMyProfileClick,
                             onGameClick = onGameClick,
                             onNotificationsClick = onOpenActivity,
@@ -429,6 +438,21 @@ fun PremiumMessagesScreen(
             )
         }
     }
+    if (showUserPicker) {
+        BlinkUserPickerSheet(
+            title = "New Message",
+            onDismiss = { showUserPicker = false },
+            searchProfiles = onSearchUsers,
+            onSelectUser = { user ->
+                showUserPicker = false
+                onOpenConversation(user.username)
+            },
+            onCreateGroup = {
+                showUserPicker = false
+                onCreateGroup()
+            }
+        )
+    }
 }
 
 
@@ -495,6 +519,7 @@ private fun PremiumMessagesMasterDetail(
     isConnected: Boolean
 ) {
     val density = LocalDensity.current
+    val groupContext = LocalContext.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
 
     Box(
@@ -559,15 +584,27 @@ private fun PremiumMessagesMasterDetail(
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
+                onProfileClick = {
+                    if (!displayedConversation.isGroup) {
+                        onProfileClick(displayedConversation.partnerUsername)
+                    }
+                },
                 onCancelAttachment = { message ->
                     onCancelAttachment?.invoke(displayedConversation.partnerUsername, message)
                 },
-                onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
                 onAudioCall = {
-                    onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onVideoCall = {
-                    onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 isConnected = isConnected,
                 isFullScreen = true,
@@ -1253,7 +1290,10 @@ private fun ConversationList(
                 conversation = conversation,
                 palette = palette,
                 onOpen = { onOpenConversation(conversation.partnerUsername) },
-                onAvatarClick = { onProfileClick(conversation.partnerUsername) }
+                onAvatarClick = {
+                    if (conversation.isGroup) onOpenConversation(conversation.partnerUsername)
+                    else onProfileClick(conversation.partnerUsername)
+                }
             )
         }
     }
@@ -2644,11 +2684,17 @@ private fun MessageBubble(
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
-    val threshold = with(density) { 64.dp.toPx() }
+    val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
+    val haptic = LocalHapticFeedback.current
     var dragOffset by remember(message.id) { mutableStateOf(0f) }
+    var isDragging by remember(message.id) { mutableStateOf(false) }
+    var replyArmed by remember(message.id) { mutableStateOf(false) }
     val displayOffset by animateFloatAsState(
-        targetValue = dragOffset,
-        animationSpec = tween(70),
+        targetValue = BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
+        animationSpec = if (isDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "messageSwipeReply"
     )
 
@@ -2667,14 +2713,26 @@ private fun MessageBubble(
                 .graphicsLayer { translationX = displayOffset }
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
+                        onDragStart = { isDragging = true },
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 2f)
+                            val active = BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)
+                            if (active && !replyArmed) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            replyArmed = active
                         },
                         onDragEnd = {
-                            if (dragOffset >= threshold) onReply()
+                            if (BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)) onReply()
+                            isDragging = false
+                            replyArmed = false
                             dragOffset = 0f
                         },
-                        onDragCancel = { dragOffset = 0f }
+                        onDragCancel = {
+                            isDragging = false
+                            replyArmed = false
+                            dragOffset = 0f
+                        }
                     )
                 }
                 .pointerInput(message.id, message.status) {

@@ -96,6 +96,17 @@ enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
 
+/** Snapshot only the active navigation surface; never the entire feed or chat history. */
+data class BlinkNavigationEntry(
+    val accountId: String,
+    val selectedTab: MainTab,
+    val feedSubTab: Int,
+    val viewingProfile: UserProfile?,
+    val viewingProduct: MarketItem?,
+    val activeConversationPartner: String?,
+    val isConversationFullScreen: Boolean
+)
+
 data class BlinkUiState(
     val destination: AppDestination = AppDestination.SPLASH,
     val selectedTab: MainTab = MainTab.HOME,
@@ -104,6 +115,7 @@ data class BlinkUiState(
     val profiles: List<UserProfile> = emptyList(),
     val viewingProfile: UserProfile? = null,
     val viewingProduct: MarketItem? = null,
+    val navigationHistory: List<BlinkNavigationEntry> = emptyList(),
     val isPostItemOpen: Boolean = false,
     val isBecomeSellerOpen: Boolean = false,
     val showSellerCongratulationsDialog: Boolean = false,
@@ -1783,7 +1795,10 @@ private suspend fun restoreSupabaseSession() {
         val key = "$ownerKey:$scope"
         val now = SystemClock.elapsedRealtime()
         val lastRefresh = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
-        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, maxAgeMillis)) return
+        val requestedAge = if (scope == "feed" || scope == "reels") {
+            minOf(maxAgeMillis, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)
+        } else maxAgeMillis
+        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, requestedAge)) return
         // Reserve this scope immediately to coalesce repeated onResume callbacks.
         visibleRefreshAt[key] = now
 
@@ -1821,6 +1836,49 @@ private suspend fun restoreSupabaseSession() {
             } catch (error: Exception) {
                 Log.w(TAG, "Quiet visible Feed refresh failed", error)
                 // Existing cached content remains untouched.
+            }
+        }
+    }
+
+    /**
+     * Following is a separate Home lane, not the global For You feed. Refresh it
+     * quietly when opened, without a full app sync, losing cached rows or
+     * changing the reader's current scroll position.
+     */
+    fun refreshFollowingIfStale() {
+        val state = _uiState.value
+        if (state.destination != AppDestination.MAIN || state.selectedTab != MainTab.HOME ||
+            state.feedSubTab != 0 || !state.isOnline || state.myProfile.id.isBlank() ||
+            syncJob?.isActive == true || state.isRefreshingFollowing
+        ) return
+        val key = "${state.myProfile.id}:following"
+        val now = SystemClock.elapsedRealtime()
+        val last = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
+        if (!BlinkRefreshPolicy.isStale(last, now, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)) return
+        visibleRefreshAt[key] = now
+        val accountId = state.myProfile.id
+        viewModelScope.launch {
+            try {
+                syncMutex.withLock {
+                    val fresh = postRepository.fetchFollowingFeed(limit = 30)
+                    if (_uiState.value.myProfile.id != accountId) return@withLock
+                    val current = _uiState.value
+                    // A successful empty response means the Following lane has
+                    // no eligible posts (e.g. after unfollowing everyone). Do
+                    // not indefinitely retain obsolete recommendations. Failed
+                    // requests still leave cached posts untouched in catch.
+                    _uiState.value = current.copy(
+                        followingPosts = if (fresh.isEmpty()) emptyList()
+                            else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
+                            current.followingRefreshRevision + 1 else current.followingRefreshRevision
+                    )
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet Following feed refresh failed", error)
             }
         }
     }
@@ -2243,7 +2301,11 @@ private suspend fun restoreSupabaseSession() {
                         previous = previous,
                         fetched = page,
                         idOf = { it.id },
-                        prioritizeNew = !following
+                        prioritizeNew = !following,
+                        // Offer a fairer mix of newly discovered organic creators.
+                        // Never reorder a paid placement or Following chronology.
+                        organicAuthorKey = { it.authorProfileId.ifBlank { it.authorUsername } },
+                        isPromoted = { it.isSponsored }
                     )
                     _uiState.value = when {
                         following -> now.copy(
@@ -2262,7 +2324,15 @@ private suspend fun restoreSupabaseSession() {
                             hasMorePosts = page.size >= pageSize
                         )
                     }
-                    lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
+                    // A manual refresh of one lane must not postpone fresh
+                    // Messages, Market or Connect content on the next app resume.
+                    val ownerKey = now.myProfile.id.ifBlank { now.myProfile.username.lowercase() }
+                    val refreshedScope = when {
+                        following -> "following"
+                        isReel -> "reels"
+                        else -> "feed"
+                    }
+                    visibleRefreshAt["$ownerKey:$refreshedScope"] = SystemClock.elapsedRealtime()
                     if (!following) {
                         val updated = _uiState.value
                         cacheWriteMutex.withLock {
@@ -3106,20 +3176,71 @@ private suspend fun restoreSupabaseSession() {
      * One state transition per primary navigation action. Reels and Connect are
      * Home sub-tabs, but must not briefly render Home before their destination.
      */
+    private fun navigationEntry(state: BlinkUiState): BlinkNavigationEntry = BlinkNavigationEntry(
+        accountId = state.myProfile.id,
+        selectedTab = state.selectedTab,
+        feedSubTab = state.feedSubTab,
+        viewingProfile = state.viewingProfile,
+        viewingProduct = state.viewingProduct,
+        activeConversationPartner = state.activeConversationPartner,
+        isConversationFullScreen = state.isConversationFullScreen
+    )
+
+    private fun pushRoute(
+        state: BlinkUiState,
+        destination: BlinkNavigationEntry
+    ): List<BlinkNavigationEntry> {
+        val current = navigationEntry(state)
+        val history = state.navigationHistory.filter { it.accountId == state.myProfile.id }
+        return com.blinkng.shared.BlinkNavigationHistoryPolicy.push(history, current, destination)
+    }
+
+    /** Back restores the prior route and its retained Compose feed/list state. */
+    fun navigateBackInHistory(): Boolean {
+        val state = _uiState.value
+        val history = state.navigationHistory.filter { it.accountId == state.myProfile.id }
+        val (remaining, previous) = com.blinkng.shared.BlinkNavigationHistoryPolicy.pop(history)
+            ?: return false
+        _uiState.value = state.copy(
+            selectedTab = previous.selectedTab,
+            feedSubTab = previous.feedSubTab,
+            viewingProfile = previous.viewingProfile,
+            viewingProduct = previous.viewingProduct,
+            activeConversationPartner = previous.activeConversationPartner,
+            isConversationFullScreen = previous.isConversationFullScreen,
+            navigationHistory = remaining,
+            routedReelId = null
+        )
+        persistUiPreferences()
+        if (previous.selectedTab == MainTab.MESSAGES) loadInboxOnEntry()
+        return true
+    }
+
     fun navigateToPrimaryTab(tab: MainTab, homeSubTab: Int = 0) {
         val current = _uiState.value
         val nextFeedSubTab = if (tab == MainTab.HOME) homeSubTab.coerceIn(0, 3) else current.feedSubTab
         if (
             current.selectedTab != tab || current.feedSubTab != nextFeedSubTab ||
             current.routedReelId != null || current.viewingProfile != null ||
-            current.viewingProduct != null || current.isConversationFullScreen
+            current.viewingProduct != null || current.isConversationFullScreen ||
+            current.activeConversationPartner != null
         ) {
+            val destination = navigationEntry(current).copy(
+                selectedTab = tab,
+                feedSubTab = nextFeedSubTab,
+                viewingProfile = null,
+                viewingProduct = null,
+                activeConversationPartner = null,
+                isConversationFullScreen = false
+            )
             _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, destination),
                 selectedTab = tab,
                 feedSubTab = nextFeedSubTab,
                 routedReelId = null,
                 viewingProfile = null,
                 viewingProduct = null,
+                activeConversationPartner = null,
                 isConversationFullScreen = false
             )
             persistUiPreferences()
@@ -3368,11 +3489,38 @@ private suspend fun restoreSupabaseSession() {
     private fun profileSurfacePosts(state: BlinkUiState): List<FeedPost> =
         state.profilePostsByUserId.values.flatten() + state.myLikedPosts + state.mySavedPosts
 
+    /**
+     * Shared authenticated discovery source for mention, message-recipient and invitation pickers.
+     * The server RPC already excludes block relationships and masks private presence.
+     */
+    suspend fun searchMentionProfiles(
+        query: String,
+        limit: Int = 60,
+        afterUsername: String? = null,
+        afterId: String? = null
+    ): List<UserProfile> {
+        val clean = query.trim().removePrefix("@")
+        if (clean.isBlank() || !_uiState.value.isOnline) return emptyList()
+        return supabaseService.searchProfilesPage(clean, limit, afterUsername, afterId)
+    }
+
     fun openProfile(username: String) {
-        if (isMe(username)) { _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile); return }
+        if (isMe(username)) {
+            val current = _uiState.value
+            val profile = current.myProfile
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(viewingProfile = profile)),
+                viewingProfile = profile
+            )
+            return
+        }
         val cached = cachedProfile(username)
         if (cached != null) {
-            _uiState.value = _uiState.value.copy(viewingProfile = cached)
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(viewingProfile = cached)),
+                viewingProfile = cached
+            )
         }
         if (!_uiState.value.isOnline) {
             if (cached == null) showToast("That profile is not saved on this device yet.")
@@ -3386,7 +3534,11 @@ private suspend fun restoreSupabaseSession() {
                 profileRepository.fetchByUsername(cleanIdentifier)
             }
             if (remoteProfile != null) {
-                _uiState.value = _uiState.value.copy(
+                val beforeRemote = _uiState.value
+                _uiState.value = beforeRemote.copy(
+                    navigationHistory = if (cached == null) pushRoute(
+                        beforeRemote, navigationEntry(beforeRemote).copy(viewingProfile = remoteProfile)
+                    ) else beforeRemote.navigationHistory,
                     viewingProfile = remoteProfile,
                     profiles = listOf(remoteProfile) + _uiState.value.profiles.filterNot {
                         it.id == remoteProfile.id || it.username.equals(remoteProfile.username, true)
@@ -3401,12 +3553,23 @@ private suspend fun restoreSupabaseSession() {
 
     fun openProfileFromChat(username: String) {
         if (isMe(username)) {
-            _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile, isConversationFullScreen = false, activeConversationPartner = null)
+            val current = _uiState.value
+            val target = current.myProfile
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(
+                    viewingProfile = target, activeConversationPartner = null, isConversationFullScreen = false
+                )),
+                viewingProfile = target, isConversationFullScreen = false, activeConversationPartner = null
+            )
             return
         }
         val cached = cachedProfile(username)
         if (cached != null) {
-            _uiState.value = _uiState.value.copy(
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(
+                    viewingProfile = cached, activeConversationPartner = null, isConversationFullScreen = false
+                )),
                 viewingProfile = cached,
                 isConversationFullScreen = false,
                 activeConversationPartner = null
@@ -3419,7 +3582,13 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             val remote = profileRepository.fetchByUsername(username)
             if (remote != null) {
-                _uiState.value = _uiState.value.copy(
+                val beforeRemote = _uiState.value
+                _uiState.value = beforeRemote.copy(
+                    navigationHistory = if (cached == null) pushRoute(
+                        beforeRemote, navigationEntry(beforeRemote).copy(
+                            viewingProfile = remote, activeConversationPartner = null, isConversationFullScreen = false
+                        )
+                    ) else beforeRemote.navigationHistory,
                     viewingProfile = remote,
                     isConversationFullScreen = false,
                     activeConversationPartner = null,
@@ -3456,7 +3625,11 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
+    fun closeProfile() {
+        if (_uiState.value.viewingProfile == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(viewingProfile = null)
+        }
+    }
 
     fun updateProfile(updated: UserProfile) {
         viewModelScope.launch {
@@ -3793,7 +3966,8 @@ private suspend fun restoreSupabaseSession() {
         clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
-        if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
+        if (com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category) ||
+            com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
             showToast("Item sales belong in BLINK Market. Open Market to list your product.")
             return
         }
@@ -4440,8 +4614,20 @@ private suspend fun restoreSupabaseSession() {
         }
         val state = _uiState.value
         val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(clean) != null && existing?.isGroup != true) {
+            showToast("This group is no longer available. Refresh Messages.")
+            return
+        }
+        val newChatRoute = navigationEntry(state).copy(
+            selectedTab = MainTab.MESSAGES,
+            viewingProfile = null,
+            viewingProduct = null,
+            activeConversationPartner = clean,
+            isConversationFullScreen = false
+        )
         if (existing != null) {
             _uiState.value = state.copy(
+                navigationHistory = pushRoute(state, newChatRoute),
                 selectedTab = MainTab.MESSAGES,
                 viewingProfile = null,
                 viewingProduct = null,
@@ -4464,6 +4650,7 @@ private suspend fun restoreSupabaseSession() {
         }
 
         _uiState.value = state.copy(
+            navigationHistory = pushRoute(state, newChatRoute),
             selectedTab = MainTab.MESSAGES,
             viewingProfile = null,
             viewingProduct = null,
@@ -4662,7 +4849,13 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = state.copy(isConversationFullScreen = fullScreen)
     }
 
-    fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
+    fun closeConversation() {
+        if (_uiState.value.activeConversationPartner == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(
+                activeConversationPartner = null, isConversationFullScreen = false
+            )
+        }
+    }
 
     fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
         val before = _uiState.value.chatPrivacySettings
@@ -4712,6 +4905,59 @@ private suspend fun restoreSupabaseSession() {
         val cleanText = text.trim()
         val cleanPartner = partnerUsername.trim().removePrefix("@")
         if (cleanText.isBlank() || cleanPartner.isBlank()) return
+
+        val group = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername == cleanPartner && it.isGroup
+        }
+        if (group != null) {
+            // Group chat does not use the direct-message outbox. The deployed group
+            // RPC currently lacks a client-generated idempotency key, so an
+            // ambiguous failure must never be automatically retried.
+            val tempId = "temp_group_${UUID.randomUUID()}"
+            val timestamp = Instant.now().toString()
+            appendMessageToState(cleanPartner, ChatMessage(
+                id = tempId,
+                conversationId = group.id,
+                senderId = _uiState.value.myProfile.id,
+                receiverUsername = cleanPartner,
+                text = cleanText,
+                timestamp = "Sending...",
+                rawTimestamp = timestamp,
+                isFromMe = true,
+                isRead = false,
+                status = MessageStatus.SENDING
+            ))
+            viewModelScope.launch(Dispatchers.IO) {
+                if (!_uiState.value.isOnline) {
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                        showToast("Group message not sent. Connect and refresh before resending.")
+                    }
+                    return@launch
+                }
+                chatRepository.sendGroupMessage(group.id, cleanText).fold(
+                    onSuccess = { confirmed ->
+                        withContext(Dispatchers.Main) {
+                            replaceMessageInState(cleanPartner, tempId, confirmed)
+                        }
+                        persistConversationsNow()
+                    },
+                    onFailure = {
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                            showToast("Group delivery unconfirmed. Refresh before resending to avoid duplicates.")
+                        }
+                    }
+                )
+            }
+            return
+        }
+        // Never interpret synthetic group IDs as usernames, even if local
+        // conversation history has not hydrated from the database yet.
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(cleanPartner) != null) {
+            showToast("Refresh your group list before sending.")
+            return
+        }
 
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
         val currentUsername = supabaseService.getCurrentUsername()
@@ -5179,6 +5425,10 @@ private suspend fun restoreSupabaseSession() {
             }
         }
         if (cleanPartner.isBlank()) return
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(cleanPartner) != null) {
+            showToast("Group attachments require the verified group media service.")
+            return
+        }
 
         val tempId = "temp_attachment_${UUID.randomUUID()}"
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
@@ -5289,6 +5539,10 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(partnerUsername.trim()) != null) {
+            showToast("Refresh this group before retrying; delivery may already be complete.")
+            return
+        }
         if (failedMessage.id.startsWith("temp_attachment_")) {
             if (!pendingAttachments.containsKey(failedMessage.id)) restoreDurablePictureDrafts()
             if (pendingAttachments.containsKey(failedMessage.id)) {
@@ -6817,7 +7071,13 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun openProductDetail(item: MarketItem) {
-        _uiState.value = _uiState.value.copy(viewingProduct = item)
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            navigationHistory = pushRoute(
+                current, navigationEntry(current).copy(viewingProduct = item)
+            ),
+            viewingProduct = item
+        )
         if (item.id.isBlank() || !_uiState.value.isOnline) return
         viewModelScope.launch {
             val count = supabaseService.recordMarketView(item.id) ?: return@launch
@@ -6857,7 +7117,9 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun closeProductDetail() {
-        _uiState.value = _uiState.value.copy(viewingProduct = null)
+        if (_uiState.value.viewingProduct == null || !navigateBackInHistory()) {
+            _uiState.value = _uiState.value.copy(viewingProduct = null)
+        }
     }
 
     fun toggleMarketSaved(item: MarketItem) {

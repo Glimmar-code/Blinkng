@@ -114,10 +114,12 @@ fun MessagesScreen(state: DesktopAppState) {
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
+    var showGroupMembers by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var olderLoading by remember { mutableStateOf(false) }
     var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewGroup by remember { mutableStateOf(false) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
     var controlsBusy by remember { mutableStateOf(false) }
@@ -129,13 +131,13 @@ fun MessagesScreen(state: DesktopAppState) {
     var deleteForEveryone by remember { mutableStateOf(false) }
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
-    var showGroupInvitations by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var outboxPending by remember { mutableStateOf(0) }
     var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
+    var showGroupInvitations by remember(myUserId) { mutableStateOf(false) }
     val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
     var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
@@ -385,6 +387,7 @@ fun MessagesScreen(state: DesktopAppState) {
             onShowAllChange = { inboxShowAll = it },
             onInboxChange = { inbox = it },
             onRefresh = { scope.launch { loadConversations() } },
+            onNewGroup = { showNewGroup = true },
             onGroupInvitations = { showGroupInvitations = true },
         )
         return@AnimatedContent
@@ -477,15 +480,20 @@ fun MessagesScreen(state: DesktopAppState) {
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.clickable { showContactCard = true }) {
+                    Box(modifier = Modifier.clickable {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
                         PresenceAvatar(
                             name = active.title,
                             isOnline = if (active.isGroup) null else active.isOnline,
                             size = 40.dp
                         )
                     }
-                    IconButton(onClick = { showContactCard = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "Chat profile and options")
+                    IconButton(onClick = {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription =
+                            if (active.isGroup) "Group members and options" else "Chat profile and options")
                     }
                 }
             }
@@ -894,7 +902,20 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
 
-        if (showContactCard) {
+        if (showGroupMembers && active.isGroup) {
+            DesktopGroupManagementDialog(
+                state = state,
+                conversation = active,
+                onDismiss = { showGroupMembers = false },
+                onLeft = {
+                    showGroupMembers = false
+                    selected = null
+                    messages = emptyList()
+                    scope.launch { loadConversations() }
+                }
+            )
+        }
+        if (showContactCard && !active.isGroup) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -1145,11 +1166,26 @@ fun MessagesScreen(state: DesktopAppState) {
         )
     }
     }
+    // Dialogs must be OUTSIDE AnimatedContent: the empty-inbox branch
+    // returns early, so children inside its lambda cannot display.
     if (showGroupInvitations) {
         DesktopGroupInvitationsDialog(
             state = state,
             onDismiss = { showGroupInvitations = false },
-            onRefreshMessages = { scope.launch { loadConversations() } },
+            onMembershipChanged = { scope.launch { loadConversations() } }
+        )
+    }
+    if (showNewGroup) {
+        DesktopNewGroupDialog(
+            state = state,
+            onDismiss = { showNewGroup = false },
+            onCreated = { id ->
+                showNewGroup = false
+                scope.launch {
+                    loadConversations()
+                    selected = conversations.firstOrNull { it.id == id }
+                }
+            }
         )
     }
 }
@@ -1179,6 +1215,7 @@ private fun DesktopInboxPanel(
     onShowAllChange: (Boolean) -> Unit,
     onInboxChange: (BlinkMessageInbox) -> Unit,
     onRefresh: () -> Unit,
+    onNewGroup: () -> Unit,
     onGroupInvitations: () -> Unit,
 ) {
     val filtered = remember(conversations, query, inbox) {
@@ -1205,6 +1242,8 @@ private fun DesktopInboxPanel(
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                TextButton(onClick = onGroupInvitations) { Text("Invites") }
+                TextButton(onClick = onNewGroup) { Text("New Group") }
                 IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
                     Icon(Icons.Rounded.Search, contentDescription = "Search messages")
                 }

@@ -988,6 +988,9 @@ class DesktopSupabaseClient(
         isDisappearing: Boolean = false,
         clientRequestId: String = UUID.randomUUID().toString(),
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
+        require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+            "Item sales belong in BLINK Market."
+        }
         val active = requireSession()
         val clean = text.trim()
         val effectiveTags = BlinkSmartTags.allTags(clean, tags)
@@ -1134,6 +1137,128 @@ class DesktopSupabaseClient(
             JSONObject().put("post_id", postId).put("content", content.trim()),
             prefer = "return=minimal",
         )
+    }
+
+    /** Lightweight privacy-filtered, paginated username search for inline mentions. */
+    private fun parseCommunity(row: JSONObject): DesktopCommunity {
+        val rules = row.optJSONArray("rules") ?: JSONArray()
+        return DesktopCommunity(
+            id = row.optString("id"),
+            ownerId = row.optString("owner_id"),
+            name = row.optString("name"),
+            description = row.optString("description"),
+            university = row.optString("university"),
+            category = row.optString("category"),
+            visibility = row.optString("visibility"),
+            coverUrl = row.optNullableString("cover_url"),
+            rules = (0 until rules.length()).mapNotNull { rules.optString(it).takeIf(String::isNotBlank) },
+        )
+    }
+
+    suspend fun fetchCommunities(limit: Int = 50): List<DesktopCommunity> = withContext(Dispatchers.IO) {
+        val rows = getArray(
+            "/rest/v1/blink_communities?" +
+                "select=id,owner_id,name,description,university,category,visibility,cover_url,rules" +
+                "&order=created_at.desc&limit=" + limit.coerceIn(1, 100)
+        )
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let(::parseCommunity)
+        }
+    }
+
+    suspend fun createCommunity(
+        name: String,
+        description: String,
+        university: String,
+        category: String,
+        visibility: com.blinkng.shared.BlinkCommunityPolicy.Visibility,
+        rules: List<String>,
+        coverUrl: String? = null,
+    ): DesktopCommunity = withContext(Dispatchers.IO) {
+        val ownerId = requireSession().userId
+        val body = JSONObject()
+            .put("owner_id", ownerId)
+            .put("name", com.blinkng.shared.BlinkCommunityPolicy.validatedName(name))
+            .put("description", com.blinkng.shared.BlinkCommunityPolicy.validatedDescription(description))
+            .put("university", com.blinkng.shared.BlinkCommunityPolicy.validatedField(university,"University"))
+            .put("category", com.blinkng.shared.BlinkCommunityPolicy.validatedField(category,"Category",80))
+            .put("visibility", visibility.wire)
+            .put("rules", JSONArray(com.blinkng.shared.BlinkCommunityPolicy.validatedRules(rules)))
+        if (!coverUrl.isNullOrBlank()) body.put("cover_url", coverUrl)
+        val rows = postArray("/rest/v1/blink_communities?select=*", body, prefer = "return=representation")
+        parseCommunity(rows.optJSONObject(0)
+            ?: error("Community creation was not confirmed by Supabase."))
+    }
+
+    private suspend fun communityRpc(name: String, args: JSONObject): String = withContext(Dispatchers.IO) {
+        (postObject("/rest/v1/rpc/" + name, args) as? JSONObject)
+            ?.optString("value").orEmpty().removeSurrounding("\"")
+    }
+
+    suspend fun joinCommunity(id: String): String =
+        communityRpc("blink_community_join", JSONObject().put("p_community_id", id))
+
+    suspend fun requestJoinCommunity(id: String): String =
+        communityRpc("blink_community_request_join", JSONObject().put("p_community_id", id))
+
+    suspend fun inviteToCommunity(id: String, userId: String): String =
+        communityRpc("blink_community_invite",
+            JSONObject().put("p_community_id", id).put("p_user_id", userId))
+
+    suspend fun leaveCommunity(id: String): Boolean =
+        communityRpc("blink_community_leave",
+            JSONObject().put("p_community_id", id)).equals("true", ignoreCase = true)
+
+    suspend fun communityMemberRoster(id: String): List<DesktopProfileMembership> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_community_members_page",
+                JSONObject().put("p_community_id", id).put("p_limit", 100))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopProfileMembership(
+                        id = row.optString("user_id"),
+                        username = row.optString("username"),
+                        displayName = row.optString("full_name")
+                            .ifBlank { row.optString("username") },
+                        role = row.optString("role"),
+                        status = row.optString("status")
+                    )
+                }
+            }
+        }
+
+    suspend fun moderateCommunity(id: String, userId: String, action: String): Boolean {
+        require(action in setOf("approve","ban","remove","promote","demote"))
+        return communityRpc("blink_community_moderate",
+            JSONObject().put("p_community_id", id)
+                .put("p_target", userId).put("p_action", action)).equals("true", ignoreCase = true)
+    }
+
+    suspend fun searchMentionProfiles(
+        query: String,
+        limit: Int = 60,
+        afterUsername: String? = null,
+        afterId: String? = null
+    ): List<DesktopProfile> = withContext(Dispatchers.IO) {
+        val clean = query.trim().removePrefix("@")
+        if (clean.isBlank()) return@withContext emptyList()
+        val response = postObject(
+            "/rest/v1/rpc/search_profiles_page",
+            JSONObject()
+                .put("p_query", clean)
+                .put("p_limit", limit.coerceIn(1, 100))
+                .put("p_after_username", afterUsername ?: JSONObject.NULL)
+                .put("p_after_id", afterId ?: JSONObject.NULL)
+        )
+        val rows = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let(::parseProfile)
+        }
     }
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
@@ -1973,6 +2098,94 @@ class DesktopSupabaseClient(
      * Once the RPC confirms an ID, a failed follow-up fetch is not a failed send:
      * do not encourage blind retrying of an already committed message.
      */
+    /** Backend-authorized group creation; shared member validation with Android. */
+    suspend fun groupOwner(conversationId: String): String? = withContext(Dispatchers.IO) {
+        val rows = getArray("/rest/v1/conversations?select=created_by" +
+            "&id=eq." + conversationId + "&is_group=eq.true&limit=1")
+        rows.optJSONObject(0)?.optString("created_by")?.takeIf(String::isNotBlank)
+    }
+
+    suspend fun groupMembers(conversationId: String): List<DesktopGroupMember> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_group_members",
+                JSONObject().put("p_conversation_id", conversationId))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopGroupMember(
+                        id = row.optString("user_id"),
+                        username = row.optString("username"),
+                        displayName = row.optString("full_name").ifBlank {
+                            row.optString("username")
+                        },
+                        isAdmin = row.optBoolean("is_admin")
+                    )
+                }
+            }
+        }
+
+    /** User-scoped pending group invitations. The backend hides other invitees. */
+    suspend fun fetchGroupInvitations(): List<DesktopGroupInvitation> =
+        withContext(Dispatchers.IO) {
+            val response = postObject("/rest/v1/rpc/blink_group_pending_invitations",
+                JSONObject().put("p_limit", 50))
+            val rows = response as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    DesktopGroupInvitation(
+                        conversationId = row.optString("conversation_id"),
+                        title = row.optString("title").ifBlank { "Group chat" },
+                        inviterUsername = row.optString("inviter_username"),
+                        invitedAt = row.optString("invited_at")
+                    )
+                }
+            }.filter { it.conversationId.isNotBlank() }
+        }
+
+    suspend fun respondGroupInvitation(conversationId: String, accept: Boolean): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_respond_invitation",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_accept", accept)))
+
+    suspend fun inviteGroupMember(conversationId: String, userId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_invite",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId)))
+
+    /** Atomic owner transfer; backend checks current creator and active successor. */
+    suspend fun transferGroupOwnership(conversationId: String, successorId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_transfer_owner",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_new_owner_id", successorId)))
+
+    suspend fun leaveGroup(conversationId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_leave",
+            JSONObject().put("p_conversation_id", conversationId)))
+
+    suspend fun moderateGroupMember(conversationId: String, userId: String, action: String): Boolean {
+        require(action in setOf("remove","promote","demote"))
+        return rpcBoolean(postObject("/rest/v1/rpc/blink_group_manage_member",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_user_id", userId).put("p_action", action)))
+    }
+
+    suspend fun createGroupConversation(title: String, invitedUserIds: List<String>): String =
+        withContext(Dispatchers.IO) {
+            val owner = requireSession().userId
+            val normalizedTitle = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title)
+            val members = com.blinkng.shared.BlinkGroupCreationPolicy.normalizedMembers(owner, invitedUserIds)
+            val result = postObject(
+                "/rest/v1/rpc/create_group_conversation",
+                JSONObject().put("p_title", normalizedTitle)
+                    .put("p_member_ids", JSONArray(members))
+            ) as? JSONObject ?: error("Invalid group creation response.")
+            val id = result.optString("value").trim().removeSurrounding("\"")
+            require(runCatching { UUID.fromString(id) }.isSuccess) {
+                "Could not verify new group creation."
+            }
+            id
+        }
+
     suspend fun sendMessage(
         conversationId: String,
         content: String,

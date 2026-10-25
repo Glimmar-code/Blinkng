@@ -348,7 +348,9 @@ data class ChatConversation(
     val muteUntil: String? = null,
     val presenceLabel: String = "",
     val lastOutgoingStatus: MessageStatus? = null,
-    val lastReceiptMessageId: String = ""
+    val lastReceiptMessageId: String = "",
+    /** Server-derived conversation kind. Never infer group-ness from a username. */
+    val isGroup: Boolean = false
 )
 
 data class ChatPrivacySettings(

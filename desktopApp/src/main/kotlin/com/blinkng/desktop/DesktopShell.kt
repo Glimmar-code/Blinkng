@@ -141,6 +141,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
     DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
     DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
+    DesktopDestination("communities", "Communities", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
@@ -560,6 +561,7 @@ private fun AuthenticatedShell(
                         "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
                         "connect" -> ConnectScreen(state)
+                        "communities" -> com.blinkng.desktop.ui.DesktopCommunitiesScreen(state)
                         "messages" -> MessagesScreen(state)
                         "marketplace" -> MarketplaceScreen(state)
                         "games" -> GamesScreen(state)
