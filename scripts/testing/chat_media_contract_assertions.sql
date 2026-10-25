@@ -34,7 +34,7 @@ INSERT INTO storage.objects(id,bucket_id,name) VALUES
 ('00000000-0000-4000-8000-000000000102','message-media','normal-test.jpg');
 
 SET ROLE authenticated;
-DO $
+DO $$
 DECLARE public_count integer;
 DECLARE private_count integer;
 BEGIN
@@ -55,7 +55,7 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN
         NULL;
     END;
-END $;
+END $$;
 RESET ROLE;
 
 INSERT INTO public.conversation_participants(conversation_id,user_id)
