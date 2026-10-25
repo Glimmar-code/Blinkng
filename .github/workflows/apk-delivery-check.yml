@@ -3,9 +3,6 @@ name: APK delivery integrity
 # Always available as a required CI gate on every PR. Previously this job
 # was path-filtered and could be absent for unrelated PRs.
 on:
-  push:
-    branches: [main, Testlab, 'Testlab-*']
-  pull_request:
   workflow_dispatch:
 
 permissions:

@@ -3,11 +3,6 @@
 name: Automatically merge verified BLINK PRs into main
 
 on:
-  pull_request_target:
-    types: [opened, reopened, synchronize, edited, labeled, unlabeled, ready_for_review]
-    branches: [main]
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
