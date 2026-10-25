@@ -49,6 +49,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -110,6 +111,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Badge
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -164,6 +166,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
@@ -1265,6 +1269,8 @@ private fun PremiumChatDetail(
     var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    // Confirm a selected image before sending; no backend row exists until Send.
+    var selectedImageUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1361,7 +1367,7 @@ private fun PremiumChatDetail(
         else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
     }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.IMAGE, 0L)
+        selectedImageUri = uri
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendAttachment(uri, BlinkChatAttachmentKind.VIDEO, 0L)
@@ -1774,6 +1780,41 @@ private fun PremiumChatDetail(
         )
     }
 
+    selectedImageUri?.let { selected ->
+        Dialog(onDismissRequest = { selectedImageUri = null }) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(palette.incomingBubble)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Send picture", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                AsyncImage(
+                    model = selected,
+                    contentDescription = "Selected picture preview",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().height(250.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .testTag("chat_image_before_send_preview")
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    androidx.compose.material3.TextButton(onClick = { selectedImageUri = null }) {
+                        Text("Cancel", color = palette.textSecondary)
+                    }
+                    androidx.compose.material3.Button(onClick = {
+                        selectedImageUri = null
+                        onSendAttachment(selected, BlinkChatAttachmentKind.IMAGE, 0L)
+                    }) {
+                        Text("Send picture")
+                    }
+                }
+            }
+        }
+    }
+
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
@@ -2104,12 +2145,81 @@ private fun MessageContent(
             )
         } else {
             if (!message.attachedImageUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = message.attachedImageUrl,
-                    contentDescription = "Shared image",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
-                )
+                val imageUrl = message.attachedImageUrl
+                var showFullImage by remember(imageUrl) { mutableStateOf(false) }
+                var imageZoom by remember(imageUrl) { mutableStateOf(1f) }
+                Box(
+                    modifier = Modifier.width(220.dp).height(170.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .clickable { showFullImage = true }
+                        .testTag("chat_image_thumbnail")
+                ) {
+                    // Local content Uri renders immediately for optimistic messages.
+                    // Server-confirmed messages use short-lived private signed URLs.
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = "Shared image. Tap to enlarge.",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (message.status == MessageStatus.SENDING) {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .background(Color.Black.copy(alpha = .45f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    progress = { (message.uploadProgress ?: 0).coerceIn(0, 100) / 100f },
+                                    color = Color.White,
+                                    strokeWidth = 3.dp,
+                                    modifier = Modifier.size(34.dp)
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    if ((message.uploadProgress ?: 0) >= 100) "Finishing…"
+                                    else "${message.uploadProgress ?: 0}%",
+                                    color = Color.White, fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                if (showFullImage) {
+                    Dialog(
+                        onDismissRequest = { showFullImage = false },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = "Full screen picture. Pinch to zoom.",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                                    .pointerInput(imageUrl) {
+                                        detectTransformGestures { _, _, zoom, _ ->
+                                            imageZoom = (imageZoom * zoom).coerceIn(1f, 5f)
+                                        }
+                                    }
+                                    .graphicsLayer {
+                                        scaleX = imageZoom
+                                        scaleY = imageZoom
+                                    }
+                                    .testTag("chat_image_fullscreen")
+                            )
+                            IconButton(
+                                onClick = { showFullImage = false },
+                                modifier = Modifier.align(Alignment.TopEnd)
+                                    .statusBarsPadding().padding(12.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Close picture", tint = Color.White)
+                            }
+                        }
+                    }
+                }
             }
             if (!message.attachedVideoUrl.isNullOrBlank()) {
                 Surface(
