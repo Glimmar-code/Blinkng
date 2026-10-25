@@ -129,14 +129,43 @@ async function allFiles(github, number) {
 // The former batch-testlab label remains supported but is no longer required.
 
 
+// A batch made through a connected account can automatically trigger PR /
+// push workflows. GITHUB_TOKEN-created batches cannot, so dispatch only when
+// no run already exists for the exact candidate SHA. This avoids performing
+// the same Android/Windows/release smoke work twice on identical code.
+async function existingWorkflowRun(github, workflow_id, branch, sha) {
+  const {data} = await github.rest.actions.listWorkflowRuns({
+    ...repoArgs, workflow_id, branch, per_page: 100
+  });
+  if (data.total_count > data.workflow_runs.length &&
+      !data.workflow_runs.some(r => r.head_sha === sha &&
+        r.head_branch === branch)) {
+    // An incomplete search MUST NOT cause duplicate dispatch; stop safely.
+    throw new Error('Cannot establish complete existing runs for ' + workflow_id);
+  }
+  return data.workflow_runs.find(r =>
+    r.head_sha === sha && r.head_branch === branch &&
+    ['pull_request', 'push', 'workflow_dispatch'].includes(r.event));
+}
+
 async function dispatch(github, pr, paths, core) {
   const sha = pr.head.sha;
   if ((pr.body || '').includes('<!-- BLINK_BATCH_DISPATCH_SHA: ' + sha + ' -->')) return false;
   for (const workflow_id of relevantWorkflows(paths)) {
+    const existing = await existingWorkflowRun(
+      github, workflow_id, pr.head.ref, sha
+    );
+    if (existing) {
+      core.info('Reusing existing ' + workflow_id + ' run #' + existing.id +
+        ' for the unchanged Testlab batch SHA ' + sha +
+        ' (status: ' + existing.status + ', conclusion: ' +
+        (existing.conclusion || 'pending') + ')');
+      continue; // Failures block promotion; they are never silently re-run.
+    }
     await github.rest.actions.createWorkflowDispatch({
       ...repoArgs, workflow_id, ref: pr.head.ref
     });
-    core.info('Dispatched ' + workflow_id + ' for ' + pr.head.ref + ' @ ' + sha);
+    core.info('Dispatched missing ' + workflow_id + ' for ' + pr.head.ref + ' @ ' + sha);
   }
   await github.rest.pulls.update({
     ...repoArgs, pull_number: pr.number,
@@ -449,4 +478,6 @@ module.exports.sourceChecksGreen = sourceChecksGreen;
 module.exports.hasBlockingReview = hasBlockingReview;
 module.exports.selectVerified = selectVerified;
 module.exports.relevantWorkflows = relevantWorkflows;
+module.exports.existingWorkflowRun = existingWorkflowRun;
+module.exports.dispatch = dispatch;
 module.exports.bodyWithoutStaleMarkers = bodyWithoutStaleMarkers;
