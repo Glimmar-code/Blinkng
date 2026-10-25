@@ -99,6 +99,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
+    var showGroupMembers by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var olderLoading by remember { mutableStateOf(false) }
     var hasMoreOlder by remember { mutableStateOf(false) }
@@ -380,15 +381,20 @@ fun MessagesScreen(state: DesktopAppState) {
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.clickable { showContactCard = true }) {
+                    Box(modifier = Modifier.clickable {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
                         PresenceAvatar(
                             name = active.title,
                             isOnline = if (active.isGroup) null else active.isOnline,
                             size = 40.dp
                         )
                     }
-                    IconButton(onClick = { showContactCard = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "Chat profile and options")
+                    IconButton(onClick = {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription =
+                            if (active.isGroup) "Group members and options" else "Chat profile and options")
                     }
                 }
             }
@@ -729,7 +735,20 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
 
-        if (showContactCard) {
+        if (showGroupMembers && active.isGroup) {
+            DesktopGroupManagementDialog(
+                state = state,
+                conversation = active,
+                onDismiss = { showGroupMembers = false },
+                onLeft = {
+                    showGroupMembers = false
+                    selected = null
+                    messages = emptyList()
+                    scope.launch { loadConversations() }
+                }
+            )
+        }
+        if (showContactCard && !active.isGroup) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
