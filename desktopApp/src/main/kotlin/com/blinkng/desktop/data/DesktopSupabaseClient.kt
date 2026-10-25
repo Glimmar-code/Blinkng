@@ -43,6 +43,12 @@ private class DesktopApiException(
     message: String,
 ) : IllegalStateException(message)
 
+data class DesktopPendingGroupInvite(
+    val groupId: String,
+    val groupTitle: String,
+    val inviterUsername: String,
+)
+
 class DesktopSupabaseClient(
     private val sessionStore: DesktopSessionStore = DesktopSessionStore(),
 ) {
@@ -260,6 +266,46 @@ class DesktopSupabaseClient(
             nextRewardCoins = row.optInt("next_reward_coins"),
         )
     }
+
+    /** Invitees join only after accepting the server-owned invitation. */
+    suspend fun createGroupWithInvitations(title: String, ids: List<String>): String =
+        withContext(Dispatchers.IO) {
+            require(title.trim().length in 2..80) { "Choose a group name of 2–80 characters." }
+            require(ids.distinct().size in 2..30) { "Choose 2–30 different students." }
+            require(ids.all { runCatching { UUID.fromString(it) }.isSuccess }) {
+                "Invalid student selection."
+            }
+            val data = postObject("/rest/v1/rpc/blink_create_invite_only_group",
+                JSONObject().put("p_title", title.trim()).put("p_member_ids", JSONArray(ids.distinct())))
+            (data as? JSONObject)?.optString("value").orEmpty().removeSurrounding("\"")
+                .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                ?: throw IllegalStateException("The server did not confirm group creation.")
+        }
+
+    suspend fun pendingGroupInvitations(): List<DesktopPendingGroupInvite> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_my_group_invitations",
+                JSONObject().put("p_limit", 20), "return=representation")
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                row.optString("group_id").takeIf {
+                    runCatching { UUID.fromString(it) }.isSuccess
+                }?.let { group ->
+                    DesktopPendingGroupInvite(
+                        groupId = group,
+                        groupTitle = row.optString("group_title"),
+                        inviterUsername = row.optString("inviter_username"),
+                    )
+                }
+            }
+        }
+
+    suspend fun respondToGroupInvitation(groupId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (runCatching { UUID.fromString(groupId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_respond_to_group_invite",
+                JSONObject().put("p_group_id", groupId).put("p_accept", accept)))
+        }
 
     suspend fun referralLinkStats(): com.blinkng.shared.discovery.BlinkReferralLinkStats =
         withContext(Dispatchers.IO) {
