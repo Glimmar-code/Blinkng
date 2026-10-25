@@ -10,7 +10,8 @@ on:
       - Android release smoke test
       - Windows desktop quality gate
       - APK delivery integrity
-      - Web parity test
+      - Web Parity Testlab Gate
+      - Supabase safety gate
       - Secret leak guard
       - Signed Android release
       - Publish latest APK
