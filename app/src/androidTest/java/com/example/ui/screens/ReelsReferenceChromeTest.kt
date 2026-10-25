@@ -29,6 +29,7 @@ class ReelsReferenceChromeTest {
                     userAvatar = "",
                     currentUsername = "current",
                     isDark = false,
+                    hasUnreadNotifications = true,
                     selectedTab = currentTab,
                     onSelectTab = { actions += "tab:$it"; currentTab = it },
                     onAddStory = { actions += "new-story" },
