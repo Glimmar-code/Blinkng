@@ -868,26 +868,6 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
-    if (showGroupInvitations) {
-        DesktopGroupInvitationsDialog(
-            state = state,
-            onDismiss = { showGroupInvitations = false },
-            onMembershipChanged = { scope.launch { loadConversations() } }
-        )
-    }
-    if (showNewGroup) {
-        DesktopNewGroupDialog(
-            state = state,
-            onDismiss = { showNewGroup = false },
-            onCreated = { id ->
-                showNewGroup = false
-                scope.launch {
-                    loadConversations()
-                    selected = conversations.firstOrNull { it.id == id }
-                }
-            }
-        )
-    }
     editingMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) editingMessage = null },
@@ -1000,6 +980,28 @@ fun MessagesScreen(state: DesktopAppState) {
             dismissButton = { TextButton(enabled = !controlsBusy, onClick = { forwardMessageId = null }) { Text("Cancel") } },
         )
     }
+    }
+    // Dialogs must be OUTSIDE AnimatedContent: the empty-inbox branch
+    // returns early, so children inside its lambda cannot display.
+    if (showGroupInvitations) {
+        DesktopGroupInvitationsDialog(
+            state = state,
+            onDismiss = { showGroupInvitations = false },
+            onMembershipChanged = { scope.launch { loadConversations() } }
+        )
+    }
+    if (showNewGroup) {
+        DesktopNewGroupDialog(
+            state = state,
+            onDismiss = { showNewGroup = false },
+            onCreated = { id ->
+                showNewGroup = false
+                scope.launch {
+                    loadConversations()
+                    selected = conversations.firstOrNull { it.id == id }
+                }
+            }
+        )
     }
 }
 
