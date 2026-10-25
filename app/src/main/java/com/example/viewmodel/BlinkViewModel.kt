@@ -3209,6 +3209,7 @@ private suspend fun restoreSupabaseSession() {
                 routedReelId = null,
                 viewingProfile = null,
                 viewingProduct = null,
+                activeConversationPartner = null,
                 isConversationFullScreen = false
             )
             persistUiPreferences()
@@ -3506,12 +3507,23 @@ private suspend fun restoreSupabaseSession() {
 
     fun openProfileFromChat(username: String) {
         if (isMe(username)) {
-            _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile, isConversationFullScreen = false, activeConversationPartner = null)
+            val current = _uiState.value
+            val target = current.myProfile
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(
+                    viewingProfile = target, activeConversationPartner = null, isConversationFullScreen = false
+                )),
+                viewingProfile = target, isConversationFullScreen = false, activeConversationPartner = null
+            )
             return
         }
         val cached = cachedProfile(username)
         if (cached != null) {
-            _uiState.value = _uiState.value.copy(
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                navigationHistory = pushRoute(current, navigationEntry(current).copy(
+                    viewingProfile = cached, activeConversationPartner = null, isConversationFullScreen = false
+                )),
                 viewingProfile = cached,
                 isConversationFullScreen = false,
                 activeConversationPartner = null
@@ -3524,7 +3536,13 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             val remote = profileRepository.fetchByUsername(username)
             if (remote != null) {
-                _uiState.value = _uiState.value.copy(
+                val beforeRemote = _uiState.value
+                _uiState.value = beforeRemote.copy(
+                    navigationHistory = if (cached == null) pushRoute(
+                        beforeRemote, navigationEntry(beforeRemote).copy(
+                            viewingProfile = remote, activeConversationPartner = null, isConversationFullScreen = false
+                        )
+                    ) else beforeRemote.navigationHistory,
                     viewingProfile = remote,
                     isConversationFullScreen = false,
                     activeConversationPartner = null,
