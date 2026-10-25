@@ -175,13 +175,13 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
                                 scope.launch {
                                     busy = true
                                     try {
-                                        state.client.joinCommunity(community.id)
-                                        message = "Joined " + community.name
+                                        val result = state.client.requestJoinCommunity(community.id)
+                                        message = if (result == "pending") "Join request sent." else "Joined " + community.name
                                         error = null
                                     } catch (cause: Exception) { error = cause.message }
                                     finally { busy = false }
                                 }
-                            }) { Text("Join / Accept Invite") }
+                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Join") }
                             TextButton(enabled = !busy, onClick = {
                                 scope.launch {
                                     busy = true
