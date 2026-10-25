@@ -55,7 +55,7 @@ function statusEntry(pr, code, detail = '') {
   return {
     number: pr.number, sha: pr.head?.sha || '', code,
     message: item[0], action: item[1],
-    detail: String(detail || '').replace(/[\r\n|<>]/g, ' ').slice(0, 120),
+    detail: String(detail || '').replace(/[\r\n|<>\[\]()]/g, ' ').slice(0, 120),
   };
 }
 
@@ -82,6 +82,11 @@ function isOurComment(comment) {
 }
 
 async function syncComment(github, entry) {
+  // The source PR might have closed or changed after the scheduled scan.
+  const fresh = (await github.rest.pulls.get({
+    ...repoArgs, pull_number: entry.number
+  })).data;
+  if (fresh.state !== 'open' || fresh.head?.sha !== entry.sha) return 'stale';
   const comments = await github.paginate(github.rest.issues.listComments, {
     ...repoArgs, issue_number: entry.number, per_page: 100
   });
@@ -116,18 +121,20 @@ async function publishReport(github, core, entries, options = {}) {
         .addRaw('Status only: no checks, branches, releases or reviews are bypassed.\n')
         .addTable(cells).write();
     } catch (error) {
-      core.warning('Actions summary unavailable: ' + error.message);
+      core.warning?.('Actions summary unavailable: ' + error.message);
     }
   }
   let writes = 0;
-  for (const entry of rows) {
+  // Do not revive old PRs by commenting on them. A bounded number of
+  // candidate comment reads also avoids exhausting GitHub's REST quotas.
+  for (const entry of rows.filter(e => e.code !== 'inactive').slice(0, 30)) {
     if (writes >= (options.maxComments ?? COMMENT_LIMIT)) break;
     try {
       const result = await syncComment(github, entry);
       if (result === 'created' || result === 'updated') writes++;
-      core.info('#' + entry.number + ': ' + entry.message + ' [' + result + ']');
+      core.info?.('#' + entry.number + ': ' + entry.message + ' [' + result + ']');
     } catch (error) {
-      core.warning('PR #' + entry.number + ' notice unavailable: ' + error.message);
+      core.warning?.('PR #' + entry.number + ' notice unavailable: ' + error.message);
     }
   }
   return {total: rows.length, writes};
