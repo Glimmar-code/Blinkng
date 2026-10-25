@@ -64,6 +64,16 @@ fun BlinkDesktopMenuScreen(state: DesktopAppState, onNavigate: (String) -> Unit)
                         }
                     }
                 }
+                if (state.adminCapability.allowed) {
+                    OutlinedButton(
+                        onClick = { onNavigate("admin") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Switch to Admin Profile")
+                    }
+                }
                 BlinkMenuDestination.entries.forEachIndexed { index, destination ->
                     val icon: ImageVector = when (destination) {
                         BlinkMenuDestination.PROFILE -> Icons.Rounded.Person
