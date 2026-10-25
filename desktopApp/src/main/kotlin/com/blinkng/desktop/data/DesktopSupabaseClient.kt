@@ -326,6 +326,17 @@ class DesktopSupabaseClient(
                 JSONObject().put("p_profile", profileId).put("p_source", source)))
         }
 
+    suspend fun referralImpressionStats(): com.blinkng.shared.discovery.BlinkReferralImpressionStats =
+        withContext(Dispatchers.IO) {
+            val row = postArray("/rest/v1/rpc/blink_referral_impression_stats", JSONObject(),
+                "return=representation").optJSONObject(0)
+                ?: return@withContext com.blinkng.shared.discovery.BlinkReferralImpressionStats()
+            com.blinkng.shared.discovery.BlinkReferralImpressionStats(
+                searchImpressions7d = row.optLong("search_impressions_7d"),
+                recommendationImpressions7d = row.optLong("recommendation_impressions_7d"),
+            )
+        }
+
     suspend fun referralSourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
         val row = postArray("/rest/v1/rpc/blink_referral_source_analytics", JSONObject(),
             "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
