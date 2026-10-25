@@ -2691,14 +2691,17 @@ private fun MessageContent(
                             opening = true
                             openScope.launch {
                                 val response = MessageMediaService.openViewOncePicture(message.id)
-                                consumed = true // A server claim is single-use even if decoding fails.
                                 opening = false
-                                response.onSuccess { privatePicture = it }
-                                    .onFailure {
-                                        Toast.makeText(context,
-                                            it.message ?: "Picture can't be reopened.",
-                                            Toast.LENGTH_SHORT).show()
-                                    }
+                                response.onSuccess {
+                                    consumed = true
+                                    privatePicture = it
+                                }.onFailure { failure ->
+                                    // Do not treat connectivity errors as proof of consumption.
+                                    consumed = failure.message?.contains("already", true) == true
+                                    Toast.makeText(context,
+                                        failure.message ?: "Private picture unavailable.",
+                                        Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }) { Text("Open once", color = palette.accent) }
                     } else if (opening) {
