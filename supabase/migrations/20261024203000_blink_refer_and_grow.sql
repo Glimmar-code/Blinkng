@@ -360,3 +360,105 @@ as $$
 $$;
 revoke all on function public.blink_my_referral_push_ids() from public, anon;
 grant execute on function public.blink_my_referral_push_ids() to authenticated;
+
+-- Referral analytics record user actions, never invented delivery or followers.
+create table if not exists public.blink_referral_share_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  channel text not null check (channel in ('copy','share','web','desktop')),
+  created_at timestamptz not null default now()
+);
+create index if not exists blink_referral_share_events_owner_created_idx
+  on public.blink_referral_share_events (user_id, created_at desc);
+alter table public.blink_referral_share_events enable row level security;
+revoke all on public.blink_referral_share_events from public, anon, authenticated, service_role;
+grant select on public.blink_referral_share_events to authenticated, service_role;
+drop policy if exists blink_referral_share_events_owner on public.blink_referral_share_events;
+create policy blink_referral_share_events_owner on public.blink_referral_share_events
+  for select to authenticated using (user_id = (select auth.uid()));
+
+-- Throttled per-user API: clients cannot forge referral credits or directly insert share events.
+create or replace function public.blink_record_referral_share(p_channel text default 'share')
+returns boolean language plpgsql security definer set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  channel_name text := lower(trim(coalesce(p_channel,'')));
+begin
+  if actor is null or channel_name not in ('copy','share','web','desktop') then
+    return false;
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(actor::text));
+  if exists (
+    select 1 from public.blink_referral_share_events
+    where user_id = actor and created_at > now() - interval '15 seconds'
+  ) or (
+    select count(*) from public.blink_referral_share_events
+    where user_id = actor and created_at >= now() - interval '1 day'
+  ) >= 100 then
+    return false;
+  end if;
+  insert into public.blink_referral_share_events(user_id, channel)
+  values(actor, channel_name);
+  return true;
+end;
+$$;
+revoke all on function public.blink_record_referral_share(text) from public, anon;
+grant execute on function public.blink_record_referral_share(text) to authenticated;
+
+-- Only first-party counts; source-attributed visits are deliberately not fabricated.
+create or replace function public.blink_referral_growth_stats()
+returns table(profile_views_this_week bigint, followers_gained_this_week bigint,
+              share_actions bigint)
+language sql stable security invoker set search_path = ''
+as $$
+  select coalesce(p.profile_views_this_week,0)::bigint,
+         (select count(*)::bigint from public.follows f
+          where f.following_id = p.id
+            and f.created_at >= now()-interval '7 days'),
+         (select count(*)::bigint from public.blink_referral_share_events e
+          where e.user_id = p.id)
+    from public.profiles p
+   where p.id = (select auth.uid())
+   limit 1;
+$$;
+revoke all on function public.blink_referral_growth_stats() from public, anon;
+grant execute on function public.blink_referral_growth_stats() to authenticated;
+
+-- Only opted-in, public profiles may appear in weekly referrals rankings.
+create or replace function public.blink_referral_leaderboard(
+  p_days integer default 7, p_limit integer default 20
+)
+returns table(position bigint, id uuid, username text, full_name text,
+              avatar_url text, university text, successful_referrals bigint)
+language sql stable security definer set search_path = ''
+as $$
+  with ranked as (
+    select row_number() over (
+             order by count(r.referred_user_id) desc, lower(p.username),p.id
+           )::bigint as position,
+           p.id, p.username, p.full_name, p.avatar_url, p.university,
+           count(r.referred_user_id)::bigint as successful_referrals
+      from public.blink_referrals r
+      join public.profiles p on p.id = r.referrer_user_id
+     where r.status = 'confirmed'
+       and r.confirmed_at >= now()-make_interval(days => greatest(1,least(coalesce(p_days,7),30)))
+       and p.onboarding_completed is true
+       and not exists (
+         select 1 from public.user_settings st
+          where st.user_id=p.id and st.private_account is true
+       )
+       and not exists (
+         select 1 from public.blocks b
+          where (b.blocker_id = (select auth.uid()) and b.blocked_id=p.id)
+             or (b.blocked_id = (select auth.uid()) and b.blocker_id=p.id)
+       )
+     group by p.id,p.username,p.full_name,p.avatar_url,p.university
+  )
+  select position,id,username,full_name,avatar_url,university,successful_referrals
+    from ranked
+   order by position
+   limit greatest(1,least(coalesce(p_limit,20),50));
+$$;
+revoke all on function public.blink_referral_leaderboard(integer,integer) from public, anon;
+grant execute on function public.blink_referral_leaderboard(integer,integer) to authenticated;
