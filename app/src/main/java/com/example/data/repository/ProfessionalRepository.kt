@@ -16,6 +16,13 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 data class BlinkGroupSummary(val id: String, val title: String, val ownerId: String)
+data class BlinkGroupInvitation(
+    val conversationId: String,
+    val title: String,
+    val inviterUsername: String,
+    val invitedAt: String,
+)
+
 data class BlinkGroupMember(
     val id: String,
     val username: String,
@@ -238,6 +245,29 @@ class ProfessionalRepository(
             }
         }
     }
+
+    /** Private invitation inbox; only records for the signed-in invitee. */
+    suspend fun fetchGroupInvitations(): List<BlinkGroupInvitation> {
+        val raw = rpc("blink_group_pending_invitations",
+            JSONObject().put("p_limit", 50))
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { row ->
+                BlinkGroupInvitation(
+                    conversationId = row.optString("conversation_id"),
+                    title = row.optString("title").ifBlank { "Group chat" },
+                    inviterUsername = row.optString("inviter_username"),
+                    invitedAt = row.optString("invited_at")
+                )
+            }
+        }.filter { it.conversationId.isNotBlank() }
+    }
+
+    /** Never trust client-side membership until the server confirms consent. */
+    suspend fun respondGroupInvitation(conversationId: String, accept: Boolean): Boolean =
+        rpc("blink_group_respond_invitation",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_accept", accept)).trim().equals("true", ignoreCase = true)
 
     suspend fun inviteGroupMember(conversationId: String, userId: String): Boolean =
         rpc("blink_group_invite",
