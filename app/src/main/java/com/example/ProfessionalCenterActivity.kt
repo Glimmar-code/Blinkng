@@ -328,7 +328,9 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                     ProfessionalSection.GROUPS -> GroupsSection(
                         busy = busy,
                         searchProfiles = { query, limit, afterUsername, afterId ->
+                            val myself = service.getCurrentUserId().orEmpty()
                             service.searchProfilesPage(query, limit, afterUsername, afterId)
+                                .filterNot { it.id == myself }
                         }
                     ) { title, members ->
                         scope.launch {
@@ -654,6 +656,7 @@ private fun GroupsSection(
             onDismiss = { showMemberPicker = false },
             searchProfiles = searchProfiles,
             onSelectUser = {},
+            initiallySelected = members,
             multiSelect = true,
             minSelection = 2,
             maxSelection = 49,
