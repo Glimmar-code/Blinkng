@@ -1435,6 +1435,23 @@ class DesktopSupabaseClient(
     ): DesktopMessage = withContext(Dispatchers.IO) {
         require(UUID.fromString(conversationId).toString() == conversationId) { "Invalid conversation." }
         val userId = requireSession().userId
+        // Unlike plain INSERT on messages, the existing server RPC enforces
+        // recipient blocking and the exact direct-conversation identity.
+        // A detached worker must recheck on every retry: never trust a staged
+        // conversation ID by itself or accidentally upload into a group.
+        val authorized = fetchConversations().firstOrNull {
+            it.id == conversationId && !it.isGroup && !it.partnerUsername.isNullOrBlank()
+        } ?: throw IllegalStateException(
+            "Direct-chat recipient isn't accessible. Reopen the chat before sharing photos."
+        )
+        val partner = authorized.partnerUsername!!.trim().removePrefix("@")
+        val verifiedTarget = postObject(
+            "/rest/v1/rpc/get_or_create_direct_conversation",
+            JSONObject().put("p_receiver_username", partner)
+        ) as? JSONObject ?: throw IllegalStateException("Recipient check failed.")
+        require(verifiedTarget.optString("value").trim().removeSurrounding("\"") == conversationId) {
+            "Private chat identity changed; photo not uploaded."
+        }
         val messageId = UUID.fromString(clientMessageId).toString()
         val existing = getArray(
             "/rest/v1/messages?id=eq.$messageId&select=id,conversation_id,sender_id," +
@@ -1609,10 +1626,12 @@ class DesktopSupabaseClient(
                 imagePreviewUrl = flags?.optNullableString("image_preview_url")?.let {
                     signedChatImageUrl(it, conversationId)
                 },
-                mediaUrl = if (once) null
-                    else item.mediaUrl?.takeIf { item.messageType == "image" }
-                        ?.let { signedChatImageUrl(it, conversationId) }
-                        ?: item.mediaUrl
+                mediaUrl = when {
+                    once -> null
+                    item.messageType == "image" ->
+                        item.mediaUrl?.let { signedChatImageUrl(it, conversationId) }
+                    else -> item.mediaUrl
+                }
             )
         }
         // Same server-authoritative action-state RPC used by Android. Only participants
