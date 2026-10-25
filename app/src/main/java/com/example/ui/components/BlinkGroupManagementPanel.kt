@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.data.models.UserProfile
+import com.example.data.repository.BlinkGroupInvitation
 import com.example.data.repository.BlinkGroupMember
 import com.example.data.repository.BlinkGroupSummary
 import com.example.data.repository.ProfessionalRepository
@@ -40,6 +41,7 @@ fun BlinkGroupManagementPanel(
     val ownerId = SupabaseService().getCurrentUserId().orEmpty()
     val scope = rememberCoroutineScope()
     var groups by remember(ownerId) { mutableStateOf<List<BlinkGroupSummary>>(emptyList()) }
+    var invitations by remember(ownerId) { mutableStateOf<List<BlinkGroupInvitation>>(emptyList()) }
     var openGroup by remember(ownerId) { mutableStateOf<BlinkGroupSummary?>(null) }
     var members by remember(openGroup?.id) { mutableStateOf<List<BlinkGroupMember>>(emptyList()) }
     var showInvite by remember(openGroup?.id) { mutableStateOf(false) }
@@ -52,6 +54,7 @@ fun BlinkGroupManagementPanel(
         busy = true
         try {
             groups = repo.fetchMyGroups()
+            invitations = repo.fetchGroupInvitations()
             error = null
         } catch (cause: Exception) {
             error = cause.message ?: "Could not load groups."
@@ -88,6 +91,41 @@ fun BlinkGroupManagementPanel(
             style = MaterialTheme.typography.bodySmall
         )
         if (!info.isNullOrBlank()) Text(info.orEmpty(), style = MaterialTheme.typography.bodySmall)
+        if (invitations.isNotEmpty()) {
+            Text("Pending group invitations", style = MaterialTheme.typography.titleMedium)
+            invitations.forEach { invitation ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(invitation.title, style = MaterialTheme.typography.titleSmall)
+                        Text("Invited by @" + invitation.inviterUsername,
+                            style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(true to "Accept", false to "Decline").forEach { (accept, label) ->
+                                OutlinedButton(enabled = !busy, onClick = {
+                                    scope.launch {
+                                        busy = true
+                                        try {
+                                            check(repo.respondGroupInvitation(
+                                                invitation.conversationId, accept
+                                            )) { "Invitation response was not confirmed." }
+                                            info = if (accept) "Group invitation accepted."
+                                                else "Group invitation declined."
+                                            error = null
+                                            reloadGroups()
+                                        } catch (cause: Exception) {
+                                            error = cause.message ?: "Could not respond to invitation."
+                                        } finally { busy = false }
+                                    }
+                                }) { Text(label) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (groups.isEmpty() && !busy) {
             Text("Your real group conversations will appear here after creation.",
                 style = MaterialTheme.typography.bodyMedium)
