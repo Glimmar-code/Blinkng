@@ -507,6 +507,7 @@ fun PremiumFeedScreen(
             userAvatar = userAvatar,
             currentSubTab = 1,
             onSubTabChanged = onSubTabChanged,
+            hasUnreadNotifications = hasUnreadNotifications,
             isDark = isDark,
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
