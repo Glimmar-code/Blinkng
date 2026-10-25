@@ -216,6 +216,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     )
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
+    private val chatImageObservers = mutableListOf<
+        Pair<androidx.lifecycle.LiveData<WorkInfo>, Observer<WorkInfo>>
+    >()
     private var chatUiForeground = false
     private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -3126,6 +3129,7 @@ private suspend fun restoreSupabaseSession() {
                             }
                             if (!info.state.isFinished) return
                             source.removeObserver(this)
+                            chatImageObservers.removeAll { it.first === source && it.second === this }
                             if (supabaseService.getCurrentUserId() != pending.ownerId) return
                             if (info.state == WorkInfo.State.SUCCEEDED) {
                                 pendingAttachments.remove(tempId)
@@ -3157,6 +3161,7 @@ private suspend fun restoreSupabaseSession() {
                             }
                         }
                     }
+                    chatImageObservers.add(source to observer)
                     source.observeForever(observer)
                 }
             } catch (e: Exception) {
@@ -4554,6 +4559,13 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun showToast(message: String) { _snackBarMessages.tryEmit(message) }
+
+    override fun onCleared() {
+        // The image WorkManager jobs survive this ViewModel; only UI observers go away.
+        chatImageObservers.forEach { (source, observer) -> source.removeObserver(observer) }
+        chatImageObservers.clear()
+        super.onCleared()
+    }
 }
 
 private fun String.capitalizeWords(): String = split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
