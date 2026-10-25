@@ -3094,6 +3094,55 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** View-once pictures never enter the durable normal-photo outbox or public
+     * media bucket. A failed private send stays failed instead of silently
+     * falling back to an unrestricted regular picture. */
+    fun sendViewOncePicture(
+        partnerUsername: String,
+        uri: Uri,
+        caption: String,
+        quality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
+    ) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        val owner = supabaseService.getCurrentUserId().orEmpty()
+        val conversationId = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername.equals(partner, true)
+        }?.id?.takeUnless { it.startsWith("local_") }.orEmpty()
+        if (owner.isBlank() || conversationId.isBlank()) {
+            showToast("Open a confirmed conversation to send a view-once picture.")
+            return
+        }
+        val messageId = UUID.randomUUID().toString()
+        val temporaryId = "temp_attachment_$messageId"
+        appendMessageToState(partner, ChatMessage(
+            id = temporaryId, conversationId = conversationId,
+            senderId = owner, isFromMe = true, isRead = false,
+            text = caption.trim().take(1024).ifBlank { "View once photo" },
+            timestamp = "Sending...", rawTimestamp = java.time.Instant.now().toString(),
+            imageViewOnce = true, status = MessageStatus.SENDING
+        ))
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendViewOncePicture(
+                appContext, conversationId, uri, caption, quality, messageId
+            ).fold(onSuccess = { confirmed ->
+                cleanupPrivatePictureSource(uri)
+                withContext(Dispatchers.Main) {
+                    if (supabaseService.getCurrentUserId() == owner) {
+                        replaceMessageInState(partner, temporaryId, confirmed)
+                        fetchSupabaseData()
+                    }
+                }
+            }, onFailure = { failure ->
+                withContext(Dispatchers.Main) {
+                    if (supabaseService.getCurrentUserId() == owner) {
+                        updateMessageStatusInState(partner, temporaryId, MessageStatus.FAILED)
+                        showToast(failure.message ?: "View-once send failed. No regular picture was sent.")
+                    }
+                }
+            })
+        }
+    }
+
     fun sendVideoMessage(partnerUsername: String, uri: Uri) =
         sendAttachmentMessage(partnerUsername, uri, BlinkChatAttachmentKind.VIDEO)
 
