@@ -152,6 +152,16 @@ object BlinkReferralClient {
             )
         }
 
+    suspend fun impressionStats(): com.blinkng.shared.discovery.BlinkReferralImpressionStats =
+        withContext(Dispatchers.IO) {
+            val row = invoke("blink_referral_impression_stats", JSONObject(), authenticated = true)
+                .optJSONObject(0) ?: return@withContext com.blinkng.shared.discovery.BlinkReferralImpressionStats()
+            com.blinkng.shared.discovery.BlinkReferralImpressionStats(
+                searchImpressions7d = row.optLong("search_impressions_7d"),
+                recommendationImpressions7d = row.optLong("recommendation_impressions_7d"),
+            )
+        }
+
     suspend fun sourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
         val row = invoke("blink_referral_source_analytics", JSONObject(), authenticated = true)
             .optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
