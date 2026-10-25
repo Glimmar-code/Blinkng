@@ -263,7 +263,11 @@ data class ChatMessage(
     val reactionCounts: Map<String, Int> = emptyMap(),
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null
 )
 
 data class ChatConversation(
