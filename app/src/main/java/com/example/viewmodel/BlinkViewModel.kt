@@ -3191,6 +3191,20 @@ private suspend fun restoreSupabaseSession() {
                     durableFile.delete()
                     return@launch
                 }
+                // Replace the picker URI with our app-private durable copy so queued
+                // previews remain readable after the system revokes document grants.
+                withContext(Dispatchers.Main) {
+                    val current = _uiState.value
+                    _uiState.value = current.copy(conversations = current.conversations.map { conversation ->
+                        if (!conversation.partnerUsername.equals(partner, true)) conversation
+                        else conversation.copy(messages = conversation.messages.map { message ->
+                            if (message.id == tempId && message.status == MessageStatus.SENDING)
+                                message.copy(attachedImageUrl = Uri.fromFile(durableFile).toString())
+                            else message
+                        }.toMutableList())
+                    })
+                    persistConversations()
+                }
                 val record = java.io.File(outbox, "$messageId.pending")
                 val json = JSONObject()
                     .put("messageId", messageId)
