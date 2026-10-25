@@ -4106,7 +4106,9 @@ private suspend fun restoreSupabaseSession() {
             val conversationId = msg.conversationId?.takeIf { it.isNotBlank() }
                 ?: serverSummary?.id
                 ?: "conv_$partner"
-            val enriched = msg.copy(
+            val authorizedMedia = com.example.data.supabase.MessageMediaService
+                .hydrateViewOnceFlags(listOf(msg), conversationId).firstOrNull() ?: msg
+            val enriched = authorizedMedia.copy(
                 conversationId = conversationId,
                 senderUsername = partner,
                 isFromMe = false
