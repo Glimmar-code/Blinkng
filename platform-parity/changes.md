@@ -1,3 +1,9 @@
+## 2026-10-25 — Android touch Reels preview/fullscreen transition (Testlab only)
+
+- **PARITY-EXCEPTION: android-reels-touch-preview-expand-20261025** — Android's requested compact Reels preview enlarges into an immersive vertical, edge-to-edge video player on a tap or gesture. This is a phone-specific interaction built around Android Compose gesture input, the bottom navigation rail and Media3 playback; it does not change the shared reel data, server response or engagement permissions.
+- **Windows equivalent / limitation:** `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt` already provides a dedicated **Reels** navigation destination, reel listing, caption, engagement counts and share actions in desktop window geometry. Its existing viewer displays video availability text rather than an Android-style Media3 player; actual desktop video playback remains a separate, explicitly unimplemented parity improvement. This exception must not be used to claim Windows full-screen video parity.
+- **Verification:** Android-specific animation, fast swipes, pause/resume, orientation, font scaling and navigation insets need runtime visual checks. Shared/reel metadata and both platform build gates still apply. No production merge until current-head checks pass.
+
 ## 2026-10-25 — Refer & Grow follow-up: four requested capabilities
 
 - **Birthday position and privacy:** Android, Windows and web registration now place Birthday immediately before the optional referrer picker. Android/Windows validate exact YYYY-MM-DD with a strict shared date policy; web uses a date field. Upon authenticated signup, birthday is saved only to `profile_private_details` (not public profile or referral metadata). If email confirmation withholds a session, web requests completion during private profile onboarding rather than persisting sensitive DOB in browser storage.
