@@ -101,6 +101,14 @@ data class DesktopComment(
     val premiumStyleSource: String? = null,
 )
 
+data class DesktopProfileMembership(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val role: String,
+    val status: String,
+)
+
 data class DesktopCommunity(
     val id: String,
     val ownerId: String,
