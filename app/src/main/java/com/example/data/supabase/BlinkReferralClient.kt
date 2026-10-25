@@ -161,6 +161,24 @@ object BlinkReferralClient {
         )
     }
 
+    suspend fun recordImpression(profileId: String, source: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (source !in setOf("search", "recommendations")) return@withContext false
+            if (runCatching { java.util.UUID.fromString(profileId) }.isFailure) return@withContext false
+            val token = SupabaseService.accessToken()?.takeIf(String::isNotBlank)
+                ?: return@withContext false
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_record_referral_impression")
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer $token")
+                .post(JSONObject().put("p_profile", profileId).put("p_source", source)
+                    .toString().toRequestBody(mediaType))
+                .build()
+            client.newCall(request).execute().use {
+                it.isSuccessful && it.body?.string()?.trim() == "true"
+            }
+        }
+
     suspend fun recordProfileOpen(profileId: String, source: String): Boolean = withContext(Dispatchers.IO) {
         if (source !in setOf("search", "recommendations")) return@withContext false
         if (runCatching { java.util.UUID.fromString(profileId) }.isFailure) return@withContext false
