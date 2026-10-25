@@ -244,6 +244,13 @@ class ProfessionalRepository(
             JSONObject().put("p_conversation_id", conversationId)
                 .put("p_user_id", userId)).trim().equals("true", ignoreCase = true)
 
+    /** Owner-only atomic transfer; server rejects inactive or external accounts. */
+    suspend fun transferGroupOwnership(conversationId: String, successorId: String): Boolean =
+        rpc("blink_group_transfer_owner",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_new_owner_id", successorId))
+            .trim().equals("true", ignoreCase = true)
+
     suspend fun leaveGroup(conversationId: String): Boolean =
         rpc("blink_group_leave",
             JSONObject().put("p_conversation_id", conversationId))
