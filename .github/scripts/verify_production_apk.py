@@ -90,28 +90,31 @@ def set_network(online):
 
 def exercise():
     start()
-    require_text('Connect. Share. Discover.')
+    # The current landing uses the Welcome to BLINK actions, not the old tagline.
+    # Check both entry points and keep this smoke strictly signed-out/read-only.
+    require_text('Log in')
+    require_text('Create account')
     tap_text('Log in')
-    require_text('Welcome back')
+    require_text('Sign in')
     healthy(10)
-    tap_text('Back')
-    require_text('Connect. Share. Discover.')
+    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    require_text('Log in')
     tap_text('Create account')
-    require_text('Start your BLINK profile')
+    require_text('Create account')
     healthy(10)
-    tap_text('Back')
+    adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
     adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     start()
     adb('shell', 'am', 'force-stop', PACKAGE)
     try:
         set_network(False)
         start()
-        require_text('Connect. Share. Discover.')
+        require_text('Log in')
     finally:
         set_network(True)
     adb('shell', 'am', 'force-stop', PACKAGE)
     start()
-    require_text('Connect. Share. Discover.')
+    require_text('Log in')
 
 
 def main():
