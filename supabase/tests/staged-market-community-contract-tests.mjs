@@ -49,7 +49,8 @@ export async function stagedMarketCommunityContractTests() {
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
         left_at timestamptz, is_admin boolean not null default false,
-        joined_at timestamptz not null default now(), last_read_at timestamptz
+        joined_at timestamptz not null default now(), last_read_at timestamptz,
+        primary key (conversation_id,user_id)
       );
     `);
 
@@ -297,6 +298,11 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(hardening);
+    const groupConsent = fs.readFileSync(
+      new URL('../../docs/integration/group-invitation-consent-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(groupConsent);
     // The untrusted client role must never bypass the validated group
     // creation RPC by inserting an arbitrary "is_group" conversation.
     await db.exec('set role authenticated');
@@ -435,6 +441,55 @@ export async function stagedMarketCommunityContractTests() {
       where conversation_id='${managed}' and user_id='${owner}'`),
       'GROUP_OWNER_MUST_TRANSFER_FIRST');
     await db.exec('reset role');
+    // No admin can force an applicant into an existing group. Invitations
+    // remain hidden from non-recipients and require explicit acceptance.
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_group_invite('${managed}','${applicant}')`),
+      'GROUP_ADMIN_REQUIRED');
+    await rejects(() => db.exec(`
+      select public.blink_group_respond_invitation('${managed}',true)`),
+      'GROUP_INVITATION_NOT_PENDING');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const sentInvite = await db.query(`
+      select public.blink_group_invite('${managed}','${applicant}') as ok`);
+    assert.equal(sentInvite.rows[0].ok,true,'Owner can issue an invitation');
+    const membersPending = await db.query(`
+      select user_id from public.blink_group_members('${managed}')`);
+    assert.equal(membersPending.rows.length,2,
+      'Invite must not immediately add a nonconsenting user as an active member');
+    const ownerInvites = await db.query(`
+      select * from public.blink_group_pending_invitations(50)`);
+    assert.equal(ownerInvites.rows.length,0,'Pending invites visible only to invited user');
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    const applicantInvites = await db.query(`
+      select conversation_id,title from public.blink_group_pending_invitations(50)`);
+    assert.equal(applicantInvites.rows.length,1);
+    assert.equal(applicantInvites.rows[0].conversation_id,managed);
+    await rejects(() => db.exec(`
+      select * from public.blink_group_members('${managed}')`),
+      'NOT_AN_ACTIVE_GROUP_MEMBER');
+    const rejected = await db.query(`
+      select public.blink_group_respond_invitation('${managed}',false) as ok`);
+    assert.equal(rejected.rows[0].ok,true,'Applicant can decline without joining');
+    await rejects(() => db.exec(`
+      select public.blink_group_respond_invitation('${managed}',true)`),
+      'GROUP_INVITATION_NOT_PENDING');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await db.exec(`select public.blink_group_invite('${managed}','${applicant}')`);
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    const accepted = await db.query(`
+      select public.blink_group_respond_invitation('${managed}',true) as ok`);
+    assert.equal(accepted.rows[0].ok,true,'Explicit user acceptance authorizes membership');
+    const memberAfterConsent = await db.query(`
+      select user_id from public.blink_group_members('${managed}')`);
+    assert.equal(memberAfterConsent.rows.length,3);
+    const remainingInvites = await db.query(`
+      select * from public.blink_group_pending_invitations(50)`);
+    assert.equal(remainingInvites.rows.length,0,'Accepted invitation leaves pending inbox');
+    await db.exec('reset role');
+    console.log('PASS staged group invitation consent, decline, acceptance and role isolation');
     // Read-receipt authorization must survive regular two-person messages
     // while denying the same RPC after someone leaves that direct chat.
     await db.exec(`
@@ -585,6 +640,7 @@ export async function stagedMarketCommunityContractTests() {
     console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     await db.exec(hardening);
+    await db.exec(groupConsent);
     await db.exec(receiptGuard);
     await db.exec(dmSummaries);
     await db.exec(dmSend);
