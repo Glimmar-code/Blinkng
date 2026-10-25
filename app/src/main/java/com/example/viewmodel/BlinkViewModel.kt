@@ -1761,7 +1761,10 @@ private suspend fun restoreSupabaseSession() {
         val key = "$ownerKey:$scope"
         val now = SystemClock.elapsedRealtime()
         val lastRefresh = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
-        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, maxAgeMillis)) return
+        val requestedAge = if (scope == "feed" || scope == "reels") {
+            minOf(maxAgeMillis, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)
+        } else maxAgeMillis
+        if (!BlinkRefreshPolicy.isStale(lastRefresh, now, requestedAge)) return
         // Reserve this scope immediately to coalesce repeated onResume callbacks.
         visibleRefreshAt[key] = now
 
@@ -1799,6 +1802,49 @@ private suspend fun restoreSupabaseSession() {
             } catch (error: Exception) {
                 Log.w(TAG, "Quiet visible Feed refresh failed", error)
                 // Existing cached content remains untouched.
+            }
+        }
+    }
+
+    /**
+     * Following is a separate Home lane, not the global For You feed. Refresh it
+     * quietly when opened, without a full app sync, losing cached rows or
+     * changing the reader's current scroll position.
+     */
+    fun refreshFollowingIfStale() {
+        val state = _uiState.value
+        if (state.destination != AppDestination.MAIN || state.selectedTab != MainTab.HOME ||
+            state.feedSubTab != 0 || !state.isOnline || state.myProfile.id.isBlank() ||
+            syncJob?.isActive == true || state.isRefreshingFollowing
+        ) return
+        val key = "${state.myProfile.id}:following"
+        val now = SystemClock.elapsedRealtime()
+        val last = maxOf(lastSuccessfulSyncAt, visibleRefreshAt[key] ?: 0L)
+        if (!BlinkRefreshPolicy.isStale(last, now, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)) return
+        visibleRefreshAt[key] = now
+        val accountId = state.myProfile.id
+        viewModelScope.launch {
+            try {
+                syncMutex.withLock {
+                    val fresh = postRepository.fetchFollowingFeed(limit = 30)
+                    if (_uiState.value.myProfile.id != accountId) return@withLock
+                    val current = _uiState.value
+                    // A successful empty response means the Following lane has
+                    // no eligible posts (e.g. after unfollowing everyone). Do
+                    // not indefinitely retain obsolete recommendations. Failed
+                    // requests still leave cached posts untouched in catch.
+                    _uiState.value = current.copy(
+                        followingPosts = if (fresh.isEmpty()) emptyList()
+                            else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
+                            current.followingRefreshRevision + 1 else current.followingRefreshRevision
+                    )
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Quiet Following feed refresh failed", error)
             }
         }
     }
@@ -2240,7 +2286,15 @@ private suspend fun restoreSupabaseSession() {
                             hasMorePosts = page.size >= pageSize
                         )
                     }
-                    lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
+                    // A manual refresh of one lane must not postpone fresh
+                    // Messages, Market or Connect content on the next app resume.
+                    val ownerKey = now.myProfile.id.ifBlank { now.myProfile.username.lowercase() }
+                    val refreshedScope = when {
+                        following -> "following"
+                        isReel -> "reels"
+                        else -> "feed"
+                    }
+                    visibleRefreshAt["$ownerKey:$refreshedScope"] = SystemClock.elapsedRealtime()
                     if (!following) {
                         val updated = _uiState.value
                         cacheWriteMutex.withLock {
