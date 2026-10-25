@@ -36,7 +36,8 @@ export async function stagedMarketCommunityContractTests() {
       );
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
-        left_at timestamptz
+        left_at timestamptz, is_admin boolean not null default false,
+        joined_at timestamptz not null default now()
       );
     `);
 
