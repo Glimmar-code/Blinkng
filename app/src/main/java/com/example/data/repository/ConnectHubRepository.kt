@@ -107,16 +107,13 @@ class ConnectHubRepository(
         }
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
-        val gameStats = if (uid.isBlank()) {
-            GameProfileStats()
-        } else {
-            fetchSection {
-                val arr = getArray(
-                    "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
-                )
-                if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
-            }.getOrDefault(GameProfileStats())
+        val gameStatsResult = if (uid.isBlank()) null else fetchSection {
+            val arr = getArray(
+                "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
+            )
+            if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
         }
+        val gameStats = gameStatsResult?.getOrDefault(GameProfileStats()) ?: GameProfileStats()
 
         val roommatesResult = roommatesDeferred.await()
         val mentorsResult = mentorsDeferred.await()
@@ -134,7 +131,8 @@ class ConnectHubRepository(
             housingRequestsResult.exceptionOrNull()?.let { "Housing" },
             challengesResult.exceptionOrNull()?.let { "Challenges" },
             smartMatchesResult.exceptionOrNull()?.let { "Student matches" },
-            requestsResult.exceptionOrNull()?.let { "Connect inbox" }
+            requestsResult.exceptionOrNull()?.let { "Connect inbox" },
+            gameStatsResult?.exceptionOrNull()?.let { "Game stats" }
         )
 
         ConnectHubSnapshot(
