@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,8 +56,13 @@ internal fun DesktopNewStudentSuggestionsDialog(
                         Icon(Icons.Rounded.Person, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(person.fullName.ifBlank { person.username }, maxLines = 1)
-                            Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(person.fullName.ifBlank { person.username }, maxLines = 1)
+                                if (person.isVerified) Icon(Icons.Rounded.Verified,
+                                    contentDescription = "Verified", modifier = Modifier.size(16.dp))
+                            }
+                            Text("@${person.username} · ${person.university.orEmpty()}",
+                                style = MaterialTheme.typography.labelSmall, maxLines = 1)
                         }
                         TextButton(
                             enabled = busyId == null && person.id !in followedIds,

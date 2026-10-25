@@ -6,12 +6,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkMenuDestinationTest {
-    @Test fun referenceMenuUsesTenStableUniqueRoutes() {
+    @Test fun referenceMenuUsesElevenStableUniqueRoutes() {
         val options = BlinkMenuDestination.entries
-        assertEquals(10, options.size)
-        assertEquals(10, options.map { it.key }.distinct().size)
+        assertEquals(11, options.size)
+        assertEquals(11, options.map { it.key }.distinct().size)
         assertEquals(
-            listOf("My Profile", "Leaderboard", "Wallet & Coins", "Notifications",
+            listOf("My Profile", "Refer & Grow", "Leaderboard", "Wallet & Coins", "Notifications",
                 "Saved Items", "Verification", "Update Center", "Settings",
                 "Help & Support", "Log Out"),
             options.map { it.title }

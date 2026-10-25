@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -55,10 +60,18 @@ internal fun BlinkNewStudentSuggestionsDialog(onDismiss: () -> Unit) {
                 }
                 suggestions.take(10).forEach { person ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(model = person.avatarUrl, contentDescription = "Profile photo",
+                            modifier = Modifier.size(36.dp).clip(CircleShape))
+                        Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(person.fullName.ifBlank { person.username },
-                                style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                            Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(person.fullName.ifBlank { person.username },
+                                    style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                if (person.isVerified) Icon(Icons.Rounded.Verified,
+                                    contentDescription = "Verified", modifier = Modifier.size(16.dp))
+                            }
+                            Text("@${person.username} · ${person.university.orEmpty()}",
+                                style = MaterialTheme.typography.labelSmall, maxLines = 1)
                         }
                         TextButton(
                             onClick = {
