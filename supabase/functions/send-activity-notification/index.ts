@@ -163,10 +163,13 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get("Authorization") ?? "";
   const actorId = jwtSubject(auth);
-  if (!actorId) return json({ error: "Unauthorized" }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  // Service-role dispatch may ONLY send confirmed referral notifications.
+  // This allows a trusted outbox worker to deliver without the new user reopening BLINK.
+  const serverReferralDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
+  if (!actorId && !serverReferralDispatch) return json({ error: "Unauthorized" }, 401);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
   if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
@@ -192,13 +195,30 @@ Deno.serve(async (req) => {
   if (notificationError) return json({ error: "Unable to load notification" }, 500);
   if (!notification) return json({ error: "Notification not found" }, 404);
 
-  // Automatic user-generated pushes must be attributable to the JWT that caused the event.
-  if (!notification.actor_id || String(notification.actor_id) !== actorId) {
+  // Ordinary user notifications still require the authenticated originating actor.
+  if (serverReferralDispatch) {
+    if (notification.metadata?.kind !== "blink_referral_confirmed" ||
+        !notification.actor_id || !notification.user_id) {
+      return json({ error: "Server dispatch is restricted to confirmed referrals" }, 403);
+    }
+    const { data: referral, error: referralError } = await admin
+      .from("blink_referrals")
+      .select("referred_user_id")
+      .eq("referred_user_id", String(notification.actor_id))
+      .eq("referrer_user_id", String(notification.user_id))
+      .eq("status", "confirmed")
+      .maybeSingle();
+    if (referralError || !referral) {
+      return json({ error: "Referral record was not independently verified" }, 403);
+    }
+  } else if (!notification.actor_id || String(notification.actor_id) !== actorId) {
     return json({ error: "Forbidden" }, 403);
   }
 
   const recipientId = String(notification.user_id ?? "").trim();
-  if (!recipientId || recipientId === actorId) return json({ ok: true, skipped: "self_or_missing_recipient" });
+  if (!recipientId || recipientId === String(notification.actor_id ?? "")) {
+    return json({ ok: true, skipped: "self_or_missing_recipient" });
+  }
 
   const type = wireType(notification as Record<string, unknown>);
   // DMs have a dedicated dispatcher with message delivery acknowledgement and are never sent here.
@@ -220,7 +240,7 @@ Deno.serve(async (req) => {
   }
 
   const [{ data: actor }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
-    admin.from("profiles").select("username,full_name,avatar_url").eq("id", actorId).maybeSingle(),
+    admin.from("profiles").select("username,full_name,avatar_url").eq("id", String(notification.actor_id)).maybeSingle(),
     admin.from("fcm_tokens").select("token").eq("user_id", recipientId).eq("is_active", true)
       .order("updated_at", { ascending: false }).limit(20),
     admin.from("profiles").select("fcm_token").eq("id", recipientId).maybeSingle(),
@@ -260,7 +280,7 @@ Deno.serve(async (req) => {
     body: body.slice(0, 1200),
     notification_id: notificationId,
     recipient_id: recipientId,
-    sender_id: actorId,
+    sender_id: String(notification.actor_id ?? ""),
     sender_username: senderUsername,
     sender_name: senderName,
     sender_avatar: senderAvatar,

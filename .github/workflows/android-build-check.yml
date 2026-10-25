@@ -36,6 +36,9 @@ jobs:
       - name: Test fail-closed Testlab auto-promotion policy
         run: node --test .github/scripts/testlab_auto_promotion.test.cjs
 
+      - name: Test bounded CI recovery and security policy
+        run: node --test .github/scripts/ci_auto_recovery.test.cjs
+
       - uses: actions/setup-java@v5
         if: steps.scope.outputs.android == 'true'
         with:
@@ -159,6 +162,31 @@ jobs:
         with:
           name: blink-profile-screenshots-${{ github.sha }}
           path: '**/profile-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Capture campus Search reference screenshots
+        if: steps.scope.outputs.android == 'true'
+        shell: bash
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkSearchReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/search-reference-${name}.png" || {
+              echo "::error::Missing Search screenshot search-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/search-reference-light.png app/src/test/screenshots/search-reference-dark.png; then
+            echo "::error::Search light/dark captures are identical."
+            exit 1
+          fi
+
+      - name: Upload campus Search visual evidence
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-search-visual-evidence-${{ github.sha }}
+          path: '**/search-reference-*.png'
           if-no-files-found: error
           retention-days: 7
 

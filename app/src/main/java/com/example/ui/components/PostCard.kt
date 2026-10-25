@@ -64,7 +64,6 @@ import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -181,6 +180,7 @@ fun PostCard(
     trackExposure: Boolean = true,
     xFeedStyle: Boolean = false,
     isFeedScrolling: Boolean = false,
+    onOpenPost: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -294,7 +294,13 @@ fun PostCard(
             // Exact Home reference hierarchy: avatar | name and badge | metadata | follow | options.
             if (xFeedStyle) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 13.dp, top = 12.dp, end = 8.dp, bottom = 15.dp)
+                        // Header whitespace opens the full post; child controls
+                        // (avatar, name, Follow and options) retain their actions.
+                        .clickable(enabled = onOpenPost != null, role = Role.Button) {
+                            onOpenPost?.invoke()
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.size(52.dp)) {
@@ -334,7 +340,12 @@ fun PostCard(
                                 )
                             }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.clickable(enabled = onOpenPost != null, role = Role.Button) {
+                                onOpenPost?.invoke()
+                            },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
                                 authorUniversity.trim().ifBlank { "@$resolvedAuthorUsername" },
                                 color = secondaryText, fontSize = 11.sp,
@@ -610,12 +621,13 @@ fun PostCard(
                         SelectionContainer {
                             Text(
                                 text = post.text,
+                                modifier = Modifier.clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                                 color = textStyle.textColor,
                                 fontSize = textSize,
                                 lineHeight = textSize * 1.18f,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
-                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
+                                maxLines = if (expandedText) Int.MAX_VALUE else 4,
                                 overflow = TextOverflow.Ellipsis,
                                 onTextLayout = { result ->
                                     if (!expandedText) {
@@ -634,8 +646,9 @@ fun PostCard(
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp
                             ) else MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp),
-                            maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = if (xFeedStyle) 14.dp else 10.dp)
+                                .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
+                            maxLines = if (expandedText) Int.MAX_VALUE else 4,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
                                 if (!expandedText) {
@@ -741,17 +754,25 @@ fun PostCard(
             }
 
             if (xFeedStyle) {
-                // Five-action reference rail; preserve Like via media double-tap
-                // and retain a visible Like action for text-only posts.
+                // Like remains visible for every post, including posts with images.
+                // Views are read-only metadata below the action row (no eye icon).
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    ReadOnlyMetricAction(
-                        icon = Icons.Default.Visibility, value = formatNumber(displayedViewsCount),
-                        description = "${displayedViewsCount} views",
-                        tint = primaryText
+                    PremiumPostAction(
+                        icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        value = if (post.hideLikes) null else formatNumber(post.likes),
+                        tint = likedTint,
+                        description = if (post.isLiked) "Unlike post" else "Like post",
+                        onClick = onLike
+                    )
+                    PremiumPostAction(
+                        icon = Icons.Default.ChatBubbleOutline,
+                        value = formatNumber(post.commentsCount), tint = primaryText,
+                        description = "Comments", enabled = post.allowComments,
+                        onClick = onComment
                     )
                     PremiumPostAction(
                         icon = Icons.Default.Repeat,
@@ -759,12 +780,6 @@ fun PostCard(
                         description = if (post.isRepostedByMe) "Undo repost" else "Repost",
                         enabled = !isAuthor && onRepost != null,
                         onClick = { onRepost?.invoke() }
-                    )
-                    PremiumPostAction(
-                        icon = Icons.Default.ChatBubbleOutline,
-                        value = formatNumber(post.commentsCount), tint = primaryText,
-                        description = "Comments", enabled = post.allowComments,
-                        onClick = onComment
                     )
                     PremiumPostAction(
                         icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -777,15 +792,16 @@ fun PostCard(
                         icon = Icons.Default.Share, value = null,
                         tint = primaryText, description = "Share post", onClick = onShare
                     )
-                    if (displayImages.isEmpty()) {
-                        PremiumPostAction(
-                            icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            value = null, tint = likedTint,
-                            description = if (post.isLiked) "Unlike post" else "Like post",
-                            onClick = onLike
-                        )
-                    }
                 }
+                Text(
+                    text = "${formatNumber(displayedViewsCount)} views",
+                    color = secondaryText.copy(alpha = 0.82f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 15.dp, bottom = 9.dp)
+                        .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() }
+                )
             } else {
                 Row(
                     modifier = Modifier

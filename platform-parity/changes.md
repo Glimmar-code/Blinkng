@@ -1,3 +1,124 @@
+## 2026-10-25 — Android touch Reels preview/fullscreen transition (Testlab only)
+
+- **PARITY-EXCEPTION: android-reels-touch-preview-expand-20261025** — Android's requested compact Reels preview enlarges into an immersive vertical, edge-to-edge video player on a tap or gesture. This is a phone-specific interaction built around Android Compose gesture input, the bottom navigation rail and Media3 playback; it does not change the shared reel data, server response or engagement permissions.
+- **Windows equivalent / limitation:** `desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt` already provides a dedicated **Reels** navigation destination, reel listing, caption, engagement counts and share actions in desktop window geometry. Its existing viewer displays video availability text rather than an Android-style Media3 player; actual desktop video playback remains a separate, explicitly unimplemented parity improvement. This exception must not be used to claim Windows full-screen video parity.
+- **Verification:** Android-specific animation, fast swipes, pause/resume, orientation, font scaling and navigation insets need runtime visual checks. Shared/reel metadata and both platform build gates still apply. No production merge until current-head checks pass.
+
+## 2026-10-25 — Refer & Grow follow-up: four requested capabilities
+
+- **Birthday position and privacy:** Android, Windows and web registration now place Birthday immediately before the optional referrer picker. Android/Windows validate exact YYYY-MM-DD with a strict shared date policy; web uses a date field. Upon authenticated signup, birthday is saved only to `profile_private_details` (not public profile or referral metadata). If email confirmation withholds a session, web requests completion during private profile onboarding rather than persisting sensitive DOB in browser storage.
+- **Coin milestones:** A separate additive SQL migration provides configurable milestones (1/5/10/25/50/100), one-time wallet credit, audit ledger and owner-only earnings summaries. Draft amounts: 5/25/50/100/250/500 BLINK Coins. ALL default disabled, because no final owner economics approval or hosted fraud-validation is available. No production Coins granted or DB updated.
+- **Source attribution:** A server-controlled actor-authenticated RPC records one public profile open per viewer/profile/source/day, with self/private/blocked checks and hourly limits. Sources are Search and new-student recommendations; only aggregated seven-day counts are displayed to owners in Android, Windows and web. These are navigations, not fabricated total impressions. Android Search and new-member card profile taps and web Search taps record the source; Windows displays analytics but currently has no target-profile navigation from its Search person card.
+- **Username selection:** Pure shared username policy + tested trailing-mention replacement, reusable public username autocomplete component for @mentions, and a 30-person group/community selection surface. Android message composer uses the autocomplete. Actual invitations to conversations/communities are NOT sent: current social-app screens need separate secure invite/accept endpoints and group/community membership UI before they can consume the selection. Do not auto-add students.
+- **Safety/release:** PostgreSQL-16 disposable integration assertions cover Coin controls/idempotence, source attribution and anti-forgery. Real Supabase referral objects remain undeployed and no staging project exists. Current PR is a draft on `main`, and complete Android+Windows latest-SHA CI, authenticated hosting tests and per-SHA owner approval are still required. The consolidated patch must not be published prematurely.
+
+## 2026-10-25 — BLINK Refer & Grow scoped main integration (PR #540, draft)
+
+- **Shared:** `BlinkReferralPolicy` controls lifetime badge thresholds, 30-day referral boost decay and canonical invitations. `BlinkMenuDestination.REFER_GROW` is identical for Android and Windows. The server owns all credit, ranking and notification records.
+- **Android:** Registration includes optional referrer autocomplete; signed-in Search has a referral promo with real count, relevance-first ranked public profile search and new-student suggestions. Refer & Grow is accessible from Profile and Menu. Share and Copy invitation actions have server-throttled metrics. Verified accounts and universities appear in selection. HTTPS invite links from blink.com.ng/www are validated and pre-select the referrer on signup without changing an already signed-in account.
+- **Windows:** Equivalent registration selection, search promotion/ranking, My Referrals dashboard, Menu route, profile suggestions, verification labels, and invite-copy/share-action tracking. Desktop cannot claim Android App Link verification: browser handles invite URLs.
+- **Web:** Public /invite/username signup preselection, auto-suggest, Search promotion and confirmed-referral counter, real growth and leaderboard details, link sharing actions.
+- **Backend (not deployed):** Versioned SQL referral confirmations, no self-referral or duplicate credits, RLS, eligibility/privacy filters, at most 3 featured profiles, 30-day fading visibility, verified public suggestion fields, relevance-first user Search, weekly privacy-filtered connector board and real growth/share counts.
+- **Known limitations / mandatory hold:** Live Supabase has NO new referral objects and no staging branch. Offline push timing, hosted email-confirmation trigger behavior, app-link verification and actual runtime E2E have not been demonstrated. No Coins are minted by referrals; reward values and anti-abuse/payment controls require separate approval. Source-level Search/new-user attribution and reuse in mentions, group/community invitations are not wired, and Android birthday remains in the later profile-onboarding stage. Public release still requires a verified backend gate and exact-SHA owner approval under AGENTS.md; PR #540 is draft, not production.
+- **Scope safety:** Main's newer auth, Paystack, notification and website implementations were preserved. This is one consolidated PR; no direct production migration, account change, or APK publication occurred in the candidate branch.
+
+## 2026-10-24 — Production Windows Kotlin compiler OOM follow-up (candidate)
+
+## 2026-10-24 — Phase 5 scoped foreground feed freshness
+
+- **Android:** Home and Reels revalidate after a per-surface one-minute cooldown when the app returns to the foreground or a primary route is revisited, while Messages, Market and Connect retain the existing conservative three-minute stale interval. This is a quiet data update, not a forced scroll-to-top or full-app reload. User-initiated feed refresh now updates only its own cooldown, rather than postponing other route refreshes.
+- **Android Following lane:** Opening Following schedules its own throttled request for accounts with online data, retaining existing content and scroll position while fresh rows arrive. Existing New Posts affordance is preserved.
+- **Recommendation diversity:** On an explicit ranked refresh, newly discovered *organic* posts are gently spaced when the same creator would occupy three adjacent slots; older posts retain server order, Following remains chronological, and paid/promoted placements are never displaced. No content is fabricated or dropped. Unit tests cover sponsor pinning and creator diversity.
+- **PARITY-EXCEPTION: android-foreground-feed-quiet-refresh-20261024** — Android foreground lifecycle uses Activity `onResume` and Compose navigation events, which have no direct desktop equivalent. **Windows equivalent** is existing explicit reload/search and live post updates in `DesktopFeedPostCard` / `HomeScreen` of `ContentScreens.kt`; no Windows event loop or caching semantics are modified.
+- **Validation:** `BlinkRefreshPolicyTest` covers first visit, repeated resumes and one-minute threshold; `test_home_reference_contract.py` checks that the screen and ViewModel retain the quiet scoped routing. Full Android/Windows CI and real-screen QA are still release gates.
+
+
+
+- **Root cause from actual main CI:** Windows `desktopApp` is an independent Gradle root (`gradle -p desktopApp`), lacking a local `gradle.properties`; the massive generated `MessagesScreen$lambda$93` failed JVM bytecode transformation with `OOMErrorException`. The previous green Testlab build compiled a different (shorter) messaging screen; it did not validate this production file.
+- **Windows scope:** Extract inbox rendering to `DesktopInboxPanel` to reduce the Kotlin/Compose method body. Preserve the existing message data, callback wiring, receipts, tabs and controls. Give desktop's independent Gradle root a 4 GiB heap with one worker and in-process Kotlin compilation so the runner does not exhaust its default compiler memory.
+- **Android:** No Android UI/backend changes. The intro repairs from main SHA `0554aa5578fda4129d4871f3b242f84a8efa754b` are already merged; the signed APK publisher must verify this SHA separately.
+- **Promotion gate:** Compile full Windows desktop, run desktop tests and package EXE/MSI, plus Android parity/safety checks. Do not treat a build-process retry as proof of a code fix. The Testlab messaging baseline differs significantly from main, so port only isolated safety settings to Testlab if needed; do not overwrite its messaging implementation with the production copy.
+
+## 2026-10-24 — Startup intro optical alignment and startup responsiveness (Testlab candidate)
+
+- **Android + Windows:** Both platforms use `BlinkBeyondLinkIntro` from shared code; no platform-specific clone, auth/session routing change or database modification.
+- **Repair:** Render the approved B with blue dot and LINK vectors in a unified Canvas; baseline-align all five "eyond" letters, reduce the optical oversize of B, remove the original LINK vector's 27-unit left inset, introduce explicit separation between the three dots and the brand B, keep the final BLINK word tightly joined, and make the opening artwork visible on the first Compose frame.
+- **Timing:** Remove the former 230–560ms forced blank fade, streamline from 6.4s to 3.2s with the same ordered collapse, continuous B and one enlarged wordmark.
+- **Evidence:** Robolectric screenshots of first, transition and final frames at 320, 412 and 600 dp must be checked against the requested baseline and optical balance; Android/Windows CI and cold-start real-device smoothness/navigation still must pass. Testlab first, main/published APK unchanged until verified.
+
+## 2026-10-24 — Beyond Link animated startup: scoped Testlab → main promotion candidate
+
+## 2026-10-24 — Feed post footer, preview and opening behavior (Android and Windows)
+
+- **Android:** Normal feed posts preview four lines before `See more`; the xFeed action row now shows Like → Comment → Repost → Save → Share for all text/image posts. True backend view count appears as small muted text below actions, not as an eye icon. Header whitespace, university and time metadata open full post while profile/Follow/options keep their own routes. Preserve media interaction, poll controls, saved state and author-hidden likes.
+- **Windows equivalent:** `DesktopFeedPostCard` adopts the same Like → Comment → Repost → Save → Share order, four-line excerpts and small views label beneath. Desktop's xFeed card surface now follows the chosen app colour scheme rather than always painting black.
+- **Regression tests:** Android screenshot interaction test covers liking an image post and tapping university metadata; shared Home static contract asserts action order and Windows/Android counts. Required device screenshot and actual link handling verification remain release gates.
+- **Safety:** No Supabase or ranking modifications; backend-provided counts only. No claimed user engagement changes.
+
+
+## 2026-10-24 — Feed viewport fills space while phone nav is hidden
+
+- **Android:** `MainActivity` passes the Home bottom-rail scroll visibility into `PremiumFeedScreen`. When the overlaid 64dp navigation bar scrolls away, the feed no longer reserves its invisible footprint; preserve Android's system-navigation inset so posts and gesture targets remain accessible. Move the create FAB toward the safe-area bottom while the nav is hidden and restore it smoothly when the bar reappears, respecting reduced motion.
+- **PARITY-EXCEPTION: android-feed-scroll-away-bottom-rail-20261024** — This corrects Android's phone-only scroll-away overlay navigation and gesture insets. **Windows equivalent:** `DesktopShell.kt` already uses desktop navigation with no vertically overlaid 64dp Android bar, so it needs no viewport-space adjustment and retains existing route behavior.
+- **Validation:** Regression contract asserts state is passed to viewport and FAB, Android compile and runtime smoke, screenshot comparison while scrolling on small phones, with both system gesture and button navigation. No backend, chat or release changes.
+
+
+## 2026-10-24 — Android Items respects active Light/Dark appearance
+
+- **Android header responsiveness:** Keep Search, Items, Notifications and Menu in a compact single row on 320–389dp devices when they physically fit; reserve two rows for extremely narrow or large-accessibility-font layouts. Avoids the unwanted top gap from the old below-390dp mandatory split.
+- **PARITY-EXCEPTION: android-feed-header-breakpoint-fix-20261024** — The Android reference feed header uses dp-specific phone gestures/insets, unlike Windows' desktop-native navigation. **Windows equivalent remains** its existing spacious drawer/toolbar in `DesktopShell.kt`. No Windows features or control routes are changed.
+- **Android:** Replace legacy dark-only `FeedBackground`, `FeedElevatedSurface`, `FeedBorder`, `FeedTextPrimary`, and `FeedTextSecondary` references across Items' tools with Material3's active semantic palette. Preserves Game, Boost, Drops, Update Center, Weather, Steps, private location UI and existing functionality.
+- **PARITY-EXCEPTION: android-items-semantic-palette-fix-20261024** — Items includes Android-specific phone utilities (sensor pedometer, Android permission-based live location, phone-specific APK updater) and is not a one-to-one desktop window. **Windows equivalent already present:** `BlinkDesktopTheme` provides Light/Dark semantics to desktop Items-like tools; this repair fixes an Android-only regression without adding, removing or diverging Windows behavior.
+- **Validation:** Android compilation, static token regression test, Windows parity, and device screenshots in both appearances still required before release.
+
+
+## 2026-10-24 — Restore Android Message tab and Items header routing on current main
+
+- **Android navigation fix:** The reference phone bottom bar accidentally replaced the fifth **Message** destination with **Menu**. Restore the canonical Home → Reels → Market → Connect → Message order, selected state, unread indication, and working Message tap in the Menu overlay; preserve access to Menu via the top-right header.
+- **Android header consistency:** Search, Inbox and Menu headers were showing Game directly where the approved four-square **Items** destination belongs. Use the Items grid and route it to the Items hub, where Game remains available, without altering other Game shortcuts.
+- **PARITY-EXCEPTION: android-reference-phone-nav-restoration-20261024** — This is a correction to Android's compact five-icon edge-to-edge bottom navigation and phone-specific Items header controls. **Windows equivalent already exists**: `DesktopShell.kt` has a dedicated **Messages** drawer destination (before **Games**) and separate **Menu**, **Games**, and other utility destinations. Windows does not use a five-icon bottom bar or the Android Items sheet; it keeps its desktop-native navigation and existing functionality. No Windows feature is intentionally removed or deferred by this repair.
+- **Release validation:** Scoped to a main-based staging branch to avoid clobbering the heavily divergent Testlab branch; verify Android builds, Windows parity, Search/Inbox/Menu route behavior and screenshot parity before reconciliation and main release.
+
+
+- Source: Testlab PR #509, merged at `6c40b906bd55060ce5ef4e50a71047d806aac545`.
+- Android and Windows now share the same 6.4 s black-background Compose launch sequence, turning `...beyond link` into `blink` with a white lowercase b and blue eye dot.
+- Android replaces its 120 ms splash call, paints black edge-to-edge and removes the system's static icon flash. Windows overlays the intro only on initial process launch.
+- Production port starts from the latest `main` instead of merging 589 unrelated Testlab commits and overwriting newer production functionality. Shared/Supabase business contracts are unchanged.
+- Passing Android/Windows static and build checks does not establish pixel-exact match against the MP4 or prove on-device post-animation navigation. Device visual and launch-path sign-off must precede production merge/publish.
+- Keep the current `main` branch intact until current-head PR checks and required owner SHA approval.
+
+## 2026-10-24 — Scoped production logo asset promotion (PR #507 from Testlab)
+
+- Official lowercase white **b** with electric-blue center dot and black rounded-square background applied via shared Android launcher/drawables, Windows Compose/taskbar/installer art, and web favicon/PWA/social metadata and website UI image.
+- Assets are a visually faithful optimized raster of the user's supplied reference, rather than the original unmodified 1254px JPEG. Exact master stays in the chat asset package for future repro exports.
+- Main's existing Android permissions/services, website SEO structured data, mobile feed, privacy-safe caching, and desktop packaging must remain unchanged except narrowly scoped brand references.
+- Platform parity: the same approved mark is included in both Android and Windows assets. iOS AppIcon assets are staged but iOS release remains independently gated.
+- Android small notifications use a platform-required monochrome icon (full-color logo is inappropriate there).
+- Manual third-party vendor branding, store listings, hosted email templates and any unreferenced UI surfaces remain separate verification work; no claims of their publication from this code PR.
+
+## 2026-10-24 — Search production candidate resynced with current main after auth upgrade
+
+- Main advanced to d1c559f05d1fa24f19bf9ae88b3bf3354afb7a36 with approved auth routing (PR #503) while the previous Search production candidate PR #504 was open. The prior PR developed a genuine conflict with MainActivity and must not be force-merged.
+- This fresh main-based candidate ports only Search landing, history submission behavior, matching Android/Windows search improvements, Search visual tests, and scoped MainActivity Search callback additions. It keeps the approved auth routes and MainActivity changes intact.
+- Provenance: Search PR #500 was merged into Testlab at fd5dd79b383bb8e920ab9703c7f105b8ffb1cec5; all four post-merge Testlab gates passed.
+- Do not merge to main until all current-head CI is green, runtime behavior verified, and repository-owner production approval is posted exactly as `BLINK APPROVE <PR-head-SHA>` on the active production PR.
+- No backend or production APK deployment performed by the branch creation.
+
+## 2026-10-24 — Android approved Auth welcome was unreachable in production
+
+- **Root cause:** the approved `BlinkAuthReferenceLanding` was already wired through `OnboardingScreen`, and the Testlab shell used it, but the production `MainActivity` destination still invoked the older dark `BlinkWelcomeScreen`. Passing standalone reference screenshots did not test the production entry route.
+- **Android repair:** route `AppDestination.ONBOARDING` to `OnboardingScreen` with the existing sign-in, sign-up and Google callbacks; align status-bar appearance and avoid double top insets while keeping bottom gesture/navigation space.
+- **PARITY-EXCEPTION: auth-welcome-entrypoint** — This repairs Android's Activity-level navigation to the approved welcome; Windows has no Android Activity route and already shows the corresponding reference welcome screen with functional login, registration and Google actions. No new feature or changed shared backend contract needs a Windows code change. This exception is specific to the Android entry-point bug.
+- **Regression protection:** an Android unit test asserts the actual app destination selects the approved screen, in addition to existing Compose click and screenshot tests at 100–200% font scaling. A signed APK must only be published after the latest candidate's release and navigation checks pass. Existing signed-in users normally go straight to Home instead of onboarding.
+
+## 2026-10-24 — Only items 4, 5 and 7 from BLINK Auth follow-up
+
+- **4 · Faster, safer login (Android):** Preserve the authenticated Supabase session instead of re-prompting after every login; remember the identifier only; stop refilling or persisting an account password, migrate and erase legacy encrypted remembered-password entries on auth screen; block duplicate credentials/Google submits, show early offline errors and a slow-connection hint. Do not bypass server identity validation. Existing logout/account-switch logic remains authoritative.
+- **4 · Windows equivalent:** Keep DesktopAppState's existing provider session logic; add a local auth-in-flight gate for credential, reset and Google actions and slow-connection hint, without changing token format.
+- **5 · University chooser:** All existing NigerianUniversities entries remain selectable offline; add fast case-insensitive search with vetted campus acronyms, grouped filters by Nigerian state, and an honest "Other / nationwide" group for institutions without verified campus location. Reuse the same chooser in Android signup and profile onboarding. No NUC accreditation or university list completeness claim.
+- **7 · Optional post-onboarding monetization discovery:** After successful account onboarding **only**, offer a dismissible once-per-account guide to existing Blue/Gold verification, Coins and Boost screens. No automatic payment, permission changes, checkout bypass, enrollment or auto-renewal changes. Windows existing account and payment surfaces remain unchanged, as this is a one-time Android orientation overlay rather than a new purchase flow.
+- **QA:** Focused alias, state, directory preservation and one-time modal preference unit tests; Android and Windows gate checks. Changes stage on a short-lived Testlab-based review branch from main before merge. All other recommended items are explicitly out of scope.
+
 ## 2026-10-23 — Responsive reference-form repair (staging)
 
 - **Problem found:** The previous Android auth update used one heavily compressed campus photo for both login and three sign-up portraits, added unapproved visible controls, and had fixed-size image crops that did not adapt to narrow phones.
@@ -1140,3 +1261,99 @@ publisher-signed APK directly from any of up to 10 compatible past releases.
 Windows does not use APKs or Android's installer; its native desktop update
 and distribution flow is unchanged. Full APK and Google Play update routes
 remain independent and intact. QA and Testlab approval required before main.
+
+
+## 2026-10-24 — Main reconciliation candidate: complete five-repair code port (DRAFT)
+
+- **Scope:** Safely port all five Testlab repair code paths onto main's newer implementation rather than merge divergent branches or overwrite additional profile, inbox, realtime, authentication and desktop features. This is an **unverified production candidate**, not a production deployment.
+- **Profile (Android/Windows):** The reference dashboard restores real cover, handle, headline, academic context, streak, post/follower stats, profile completion and Follow→Interact while retaining advanced profile actions behind the existing details control. Add the same identity data to Windows without stretching the phone layout. Extend shared phone-breakpoint policy *without removing main's existing adaptive APIs*.
+- **Notifications:** Preserve main's `NotificationMessageHistory` and `NotificationIdentity`; add account-scoped silent grouping and a summary that opens Messages without replacing quick actions or storing message previews to disk.
+- **Payments:** Reconcile V2 checkout at most once per minute, without repetitive pending toasts or unconfirmed benefit grants. Provider-verified abandoned/failed/reversed responses clear only local reminders. Preserve pending orders and signed-webhook idempotency, shared status policy and desktop typed response adapter. Existing legacy cash-order checkout is unchanged.
+- **Messages (Android/Windows):** Chat owns overlapping navigation/IME insets exactly once; composer no longer adds another bottom safe-area strip. Shared receipt policy expresses server-evidenced ✓ / ✓✓ / blue ✓✓; Android and Windows inboxes show only the actual latest **outgoing** receipt, with lazy membership-protected metadata loading. Background chat or disabled read-receipt settings cannot cause read acknowledgements; Windows retains advanced message controls, pagination, drafting and privacy settings.
+- **Backend and release gate:** No production Supabase schema/Edge Function was deployed, and no real payment was attempted. Relevant Android/Windows/shared tests, Paystack provider test-mode/late signed-webhook verification, and two-account online/offline/foreground Android 15 runtime checks must all pass before changing main or publishing one signed APK. No paid hosted staging without user approval.
+
+---
+
+PARITY-EXCEPTION: android-home-navigation-and-create-idle-20261024
+Date: 2026-10-24
+Feature: Fix Android touch-first Home navigation, video playback visibility and single-action Create Post affordance.
+Android behavior: The bottom tab rail is fully hidden on downward scrolling and restored on upward scrolling, with system insets respected; Home Create launches the composer directly while its label reveals after six seconds without user interaction. ExoPlayer Reels and inline previews pause when the parent horizontal pager is no longer the foreground settled destination.
+Why Android-specific: These problems are caused by Android Compose horizontal/vertical pagers, Android's mobile bottom nav and Media3 ExoPlayer touch-oriented playback. A desktop window does not show a floating Android-style nav bar or six-second idle FAB, and does not run Android Media3.
+Windows equivalent: The desktop Compose app already uses visible sidebar/window navigation and direct composer actions. Video playback must remain tied to the actively visible desktop surface; no change to the shared posting, engagement, ranking, video entitlement or API contract is introduced.
+Shared Android/Windows login behavior: Both clients now use the same BlinkAuthFeedback classification; failed password login retains safe, specific feedback and never falls back from email to an unrelated username-login request.
+Validation: Android unit and build gates, Windows build/parity, scroll+video lifecycle tests on actual Android phones and separate main-vs-Testlab verification are required before merge.
+
+
+## 2026-10-25 — Consolidated 13-phase stabilization progress (DRAFT #541)
+
+- **Post composer (Android/Windows):** Shared `BlinkPostGrowthTips` supplies context-aware, non-promissory creation guidance and one canonical set of feed categories. Both clients remove Marketplace from regular post category controls; Android scheduled/legacy drafts and both direct feed API adapters refuse the removed category. **Production database RLS/RPC restrictions and marketplace-redirect UX still require a separate staging-validated integration before release.** Existing client-side sales-intent warnings remain; ordinary product discussions must not be automatically censored.
+- **User mentions (Android):** Comments rank available candidate accounts by exact handle, then handle prefix and name; show up to 10, with local See more. `BlinkUserSuggestionPolicy` is shared and paginates deterministically. **Not universal yet:** current comments use existing visible candidates; server-backed discoverability, account blocking/privacy enforcement, Windows equivalent picker and other invitation surfaces remain release blockers for Phase 7.
+- **Admin menu (Android/Windows):** Verified admin capability enables an obvious top-level `Switch to Admin Profile` entry on both clients. Android navigates through its existing admin handler; Windows routes to the existing admin workspace, which is independently guarded by `DesktopShell` and server capability. No client-only permission grant.
+- **Message swipe (Android):** A deliberate 76dp activation with beyond-threshold resistance, drag-following motion, spring return, and optional OS haptic feedback replaces the abrupt 70ms reply slide. The shared `BlinkReplySwipePhysics` contract has JVM tests. **Platform exception:** Windows already offers Reply through the message context menu and the same server-side reply association; touch-only horizontal drag is not required for a desktop mouse. Windows should retain context-action and quote navigation tests.
+- **Status / release:** All changes remain in draft review branch PR #541. Android compile/unit/emulator, Windows compile/parity, mobile 320/360/390/412dp screenshots, Supabase safety, messaging runtime, and branch reconciliation must be verified on the final SHA. This is not a completed 13-phase release, not a production backend migration, and not a published APK.
+
+
+## 2026-10-25 — Follow-on 13-phase candidate (STAGING ONLY, not parity-complete)
+
+- **Navigation:** Android ViewModel now records account-scoped bounded LIFO snapshots for primary tabs, opened profiles and private chats; Android Back uses the stack before discarding those surfaces. Shared immutable history policy with JVM tests. Still requires Back arrows, nested overlay history, process recreation, deep links and Android gesture tests. Windows retains its desktop sidebar/window navigation; desktop Back/Escape parity and state restoration are not yet verified.
+- **Username selection:** Existing Supabase `search_profiles_page` RPC was inspected read-only on the live Blink project: authenticated, masks presence and excludes both directions of block relationships. Android comments now debounce actual server lookup and offer paged See more; a reusable multi-select picker is connected to New Message. Windows already uses the same RPC for global search; new-message and group-invite recipient UX parity remains an explicit outstanding blocker, not an exception.
+- **Groups:** `BlinkGroupCreationPolicy` and Android/Windows adapters validate and call the existing authenticated 3–50 person `create_group_conversation` RPC, but remain UNEXPOSED until end-to-end grouping works. Live `get_conversation_summaries_page` repeats the group for each other participant and shows DM metadata, so public group creation UI cannot ship safely yet. Staged SQL for group summary and community tables/RLS lives in `docs/integration/groups-communities-staging-20261025.sql`; it has NOT been run against production.
+- **Market:** `docs/integration/marketplace-feed-server-policy-staging-20261025.sql` stages a Postgres trigger rejecting non-trusted Marketplace feed categories while retaining server-owned labelled sponsored placements. This is not a deployed or tested migration. Hosted Supabase has no dev branches available, and owner disallowed paid staging.
+- **Adaptive performance:** Both clients share `BlinkPerformancePolicy` decisions; Android replaces forced 120Hz with Automatic OS scheduling, Balanced <=90Hz, Power Saving <=60Hz, with persisted Settings choices and reduced decoration. Windows desktop does not control system refresh rate; equivalent desktop animation/CPU-saving preference is pending.
+- **Screenshots:** Expanded actual configuration-width snapshots at 320/360/390/412dp, light/dark, accessibility font scales, for Home and Notifications. These are test definitions, not inspected/approved captured artifacts.
+- **Auth image blocker:** Checked repository bytes: existing approved hero is JPEG 240x177 (6,631 bytes); login photo is WebP 472x302. Interpolation does not restore missing facial/photo detail. Original high-resolution approved artwork is required for a faithful replacement. Do not substitute an unapproved photo.
+- **Release:** PR #541 remains draft, not merged, not signed/published. Android/Windows/backend/privacy/CI evidence must be reviewed on final head SHA. No production data, Paystack or deployment changes made here.
+
+
+## 2026-10-25 — Additional scoped implementation (PR #541, staging only)
+
+- **Android navigation:** Profile → Direct Message now opens the message directly without pre-closing Profile or artificially opening the Messages tab. In-app Back uses the bounded route stack for profiles, private chats and product details. A source-level regression contract checks Profile→DM→Back. Full nested overlay restoration, predictive Back gestures and process death remain release blockers.
+- **Android/Windows post mentions:** Both composers now use shared `BlinkMentionTokenPolicy`, shared `BlinkUserSuggestionPolicy.rank`, server-authoritative `search_profiles_page`, 220ms debounce, first ten suggestions, paged See more and selected @username insertion. Android additionally has server-backed Comment and New Message suggestions. Group-member selection uses the Android multi-select picker. Windows group-invitation and reply composer surfaces still require integration.
+- **Private group messaging:** `BlinkGroupRoute` is shared JVM logic. Android now reads member-visible group metadata, distinguishes real groups from direct conversations, suppresses synthetic user profile and call actions, loads group history by conversation ID and sends text through the existing authenticated group RPC. It does NOT silently send a group message through the DM RPC and does not automatically retry ambiguous sends. Windows already distinguishes and sends group messages using the same backend. Group media, unread/read receipts, leave/member management and live two-account privacy verification remain open.
+- **Supabase:** Added `supabase/tests/staged-market-community-contract-tests.mjs`, a disposable PGlite PostgreSQL contract suite wired into the existing backend CI. Tests apply **draft SQL from docs only** to a synthetic database, checking spoofed sponsored feed placements, user-created Market posts, benign discussions, community owner/private visibility, single-row group summaries and departed-member suppression. These scripts have NOT modified hosted Supabase; no production policy has been applied.
+- **Admin:** Android administrative workspace menu explicitly says “Switch to Personal Profile” while retaining server authorization and no logout. Windows equivalent uses existing Admin route navigation.
+- **Auth assets:** Existing approved low-resolution hero remains unchanged in GitHub. A higher-resolution crop from the approved design exists as a local draft but has NOT been installed, reviewed on device, or approved as original source quality.
+- **Quality:** Only per-commit CI results on the final head SHA count. An earlier green SHA is not certification of new group/mention changes. No main, Testlab, signed APK or production migrations changed. Full production release approval and all integration gates remain mandatory.
+
+- **Windows private group creation:** `DesktopNewGroupDialog` now provides the same verified 3–50 member backend flow as Android: server-filtered account search with ranked 10-result pages, removal chips, group name, and creation via the existing authenticated RPC. The Messages inbox exposes New Group and refreshes conversation summaries after creation. No mock members or synthetic group identities are used. Still requires real multi-account runtime, group permissions, invite/leave and group attachments verification.
+
+
+## 2026-10-25 — Communities foundation and welcome-photo upgrade (PR #541)
+
+- **Communities parity:** Shared `BlinkCommunityPolicy` validates names, descriptions, categories, universities and rules. Android `BlinkCommunityRepository` and `BlinkCommunitiesPanel` use the actual authenticated `blink_communities` table for discovery, public/private creation, joining, owner invitations and leaving. Android Connect Hub has an explicit Explore/Create Communities action, and the Professional Center can open the Communities tab directly. Windows `DesktopCommunitiesScreen` exposes equivalent real-data discovery, creation, joining, invitations and leaving on a first-class navigation route, using `DesktopSupabaseClient` and the same policy. Server moderation RPCs are drafted, but member management UI/notifications/cover picker are NOT complete.
+- **Backend hold:** draft `docs/integration/groups-communities-staging-20261025.sql` now contains owner RLS, invited/private member visibility, no raw authenticated membership writes, and server-checked join/invite/leave/moderate RPCs. `group-membership-security-staging-20261025.sql` proposes protections against private group self-joining, privilege escalation, departure reads, and guarded group-message sends/invites/management. Disposable PGlite tests were expanded. None of these drafts has been deployed as a hosted migration or proven against an isolated full production-compatible baseline, so **the new Communities route is not releasable**.
+- **Authentication hero:** Android now reuses the *already tracked* higher-resolution approved campus photo `blink_auth_reference_login_photo.webp` in the welcome screen rather than rescaling `blink_auth_campus_hero.jpg` (240 × 177). The BLINK wordmark is rendered separately as crisp Compose text. Original source and exact pixel-match to approved screenshots still require manual high-DPI review; do not represent this as having recovered the full-resolution photographer original. Desktop's form/campus imagery is an intentional desktop-layout variation.
+- **Testing:** Relevant Android/Windows CI and local PGlite syntax/RLS checks must pass on the final SHA; no phone screenshots, real two-account role moderation E2E, producer permissions, latency/memory or production backend checks have been passed or claimed.
+
+
+## 2026-10-25 — Group/community administration parity and current hold
+
+- **Android Groups:** Real group roster management is wired into Professional Center Groups via `BlinkGroupManagementPanel`. It loads only the current member's RLS-visible conversations and calls staged role-checked `blink_group_members`, `blink_group_invite`, `blink_group_leave` and `blink_group_manage_member` RPCs for active members, join/leave and admin role changes. Existing New Group creation is preserved.
+- **Windows Groups:** `DesktopGroupManagementDialog` in Messages opens the real active-member roster rather than interpreting a group as an individual's contact card. Owner can remove/promote/demote, members can leave, admins can invite via live filtered account search. Desktop client calls the same staged backend RPCs. **Hosted RPCs do not yet exist** and these screens are not functionally live; final cross-device tests required.
+- **Communities:** Both Android and Windows now support requesting membership in private spaces (pending until approval), owner member/request rosters and approving/removing/banning/promoting/demoting through the same staged server permission model. Live data sources only; no fake members or balances.
+- **SQL local QA:** Corrected a real staged-community SQL unterminated `$$;` delimiter. Expanded synthetic PGlite fixtures to include production-like group fields; tests for requests, private visibility, owner approvals, post-ban denial, owner-only roster, blocked users, departure read denial and founder-leave guard. The exact head commit must pass CI to validate these edits; previous completed jobs on outdated commits do not count.
+- **Release hold:** Production Supabase migration not deployed; no connected Supabase preview branches; no green CI evidence for final head, and Android/Windows real two-user runtime, media, image visual signoff and Paystack regression unverified. No Testlab/main merge or APK publication. Do not enable new UI in a production APK until backend permissions and availability are validated.
+
+
+## 2026-10-25 — Group ownership transfer parity (PR #541; staging only)
+
+- **Shared backend contract:** Added `blink_group_transfer_owner(p_conversation_id, p_new_owner_id)` to staged group security SQL. Only the authenticated creator can transfer to an already active member; new owner receives admin role atomically, and former owner can then leave. Unauthorized and nonmember successor attempts are covered in the disposable security suite.
+- **Android:** Professional Repository exposes `transferGroupOwnership`, and the group management panel presents a confirmation dialog for the existing owner before transferring to a chosen member. Following confirmation it refreshes roster and current ownership.
+- **Windows:** Desktop Supabase Client and group-management dialog use the same RPC, owner restriction, confirmation and membership refresh. No temporary client-side ownership state substitutes for the server.
+- **Release blocker:** This is a staged, **not deployed or verified** backend contract. It remains unreleasable pending CI on the final SHA, full database staging/RLS proof, real two-account tests, all required user-facing parity checks and safe Testlab reconciliation. No signed APK has been published.
+
+
+## 2026-10-25 — Private DM and consent-first group foundation (staging only)
+
+- **Direct messages:** Staged SECURITY DEFINER replacements for `send_message` and `get_or_create_direct_conversation` now require BOTH participants active (`left_at IS NULL`), preserve the legacy RPC signatures and block rules, and create a new chat rather than silently restoring departed history. Group notification trigger is staged to fan out to all active recipients only.
+- **Group consent:** Staged `create_group_conversation` still validates the selected 3–50 accounts but activates ONLY the founder; other selected users receive server-owned pending invitations. `blink_group_invite` now queues, not instantly enrolls, a new member. `blink_group_pending_invitations` and `blink_group_respond_invitation` enforce self-only accept/decline, existing server rights, blocks, and 50-member cap. Declined members remain outside group history.
+- **Android parity:** `ProfessionalRepository` and `BlinkGroupManagementPanel` display actual pending invitations with Accept/Decline; new-group feedback describes recipient consent.
+- **Windows parity:** `DesktopSupabaseClient`, `DesktopGroupInvitationsDialog`, and `MessagesScreen` expose an equivalent recipient inbox and decisions. New Group and invitations dialogs are outside `AnimatedContent`, so the inbox's early return cannot suppress them. Creation UI clarifies invitations.
+- **Risk / gating:** All backend files remain in `docs/integration/*-staging-20261025.sql`, not migrations or hosted production. Synthetic PGlite tests have been extended, but final-head CI and end-to-end live multi-account verification have NOT passed. A full production-compatible staged RLS rollout, true message media/receipt parity and regression testing remain mandatory.
+
+## 2026-10-25 consolidated release integration
+
+- Integrates PRs #540, #541, #542, #543 and #544 on the current-main-based Testlab candidate. Both Android and Windows retain referrals, community/group controls, and private chat-media implementations.
+- Unifies group invitations into the conversation_id/invitee_id/inviter_id schema. Referral RPCs retain their wire response names through compatibility wrappers; acceptance shares the hardened group consent function.
+- Preserves group retry/profile/call safeguards while adding attachment cancellation, durable retries, albums and view-once adapters. Removes duplicated desktop account/invitation state from overlapping branches.
+- Local PostgreSQL fixture tests are distinct from full hosted Auth/Storage/device verification; this candidate must pass final-head Android/Windows CI and release/backend gates before promotion.

@@ -1,6 +1,6 @@
 // BLINK Phase 3: predictable offline shell, fresh UI assets, and privacy-safe caching.
 // Never store user-specific routes, query-string links, Supabase data or API responses.
-const CACHE='blink-web-v26-mobile-lean-shell';
+const CACHE='blink-web-v27-approved-blink-logo';
 const CACHE_PREFIX='blink-web-';
 const SHELL=[
   './',
@@ -16,6 +16,8 @@ const SHELL=[
   './parity.js',
   './blink-icon.svg',
   './blink-logo-v2.png',
+  './favicon-32.png',
+  './apple-touch-icon.png',
   './manifest.webmanifest'
 ];
 const SHELL_PATHS=new Set(SHELL.map(path=>new URL(path,self.registration.scope).pathname));

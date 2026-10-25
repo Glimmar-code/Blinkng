@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
 private val authInk = Color(0xFF080808)
@@ -44,9 +45,37 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
+    var birthday by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var authActionPending by remember { mutableStateOf(false) }
+    var slowAuthAction by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(authActionPending) {
+        slowAuthAction = false
+        if (authActionPending) {
+            delay(8_000L)
+            slowAuthAction = true
+        }
+    }
+
+    // Desktop parity: the busy flag can be updated after click handling.
+    // Guard locally so rapid taps never initiate duplicate provider calls.
+    fun runAuthOnce(action: suspend () -> Unit) {
+        if (authActionPending || state.busy) return
+        authActionPending = true
+        state.clearError()
+        scope.launch {
+            try {
+                action()
+            } catch (error: Exception) {
+                notice = error.message ?: "Unable to connect. Please try again."
+            } finally {
+                authActionPending = false
+            }
+        }
+    }
     val textColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = authInk,
         unfocusedTextColor = authInk,
@@ -112,10 +141,9 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     ) { Text("Create Account", color = authInk) }
                     OutlinedButton(
                         onClick = {
-                            state.clearError()
-                            scope.launch { runCatching { state.signInWithGoogle() } }
+                            runAuthOnce { state.signInWithGoogle() }
                         },
-                        enabled = !state.busy,
+                        enabled = !state.busy && !authActionPending,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         border = BorderStroke(1.dp, authLine),
                         shape = RoundedCornerShape(12.dp),
@@ -184,6 +212,19 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     )
                 }
                 if (mode == AuthMode.SIGN_UP) {
+                    OutlinedTextField(
+                        value = birthday,
+                        onValueChange = { birthday = it.filter { c -> c.isDigit() || c == '-' }.take(10) },
+                        label = { Text("Birthday (YYYY-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    DesktopReferrerPicker(
+                        state = state,
+                        selected = selectedReferrer,
+                        onSelected = { selectedReferrer = it },
+                    )
                     Text(
                         "Choose your university when completing your campus profile.",
                         color = authHint, fontSize = 12.sp,
@@ -206,25 +247,34 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 notice?.let {
                     Text(it, color = Color(0xFF3B3B3B), fontSize = 13.sp)
                 }
+                if (slowAuthAction && authActionPending) {
+                    Text(
+                        "Connection is slower than usual. Check your network.",
+                        color = authHint, fontSize = 12.sp
+                    )
+                }
 
                 Button(
                     onClick = {
-                        state.clearError()
                         notice = null
-                        scope.launch {
-                            runCatching {
-                                when (mode) {
-                                    AuthMode.SIGN_IN -> state.signIn(email, password)
-                                    AuthMode.SIGN_UP -> state.signUp(email, password, fullName)
-                                    AuthMode.RESET -> {
-                                        state.sendPasswordReset(email)
-                                        notice = "Password reset email sent. Check your inbox."
-                                    }
+                        runAuthOnce {
+                            when (mode) {
+                                AuthMode.SIGN_IN -> state.signIn(email, password)
+                                AuthMode.SIGN_UP -> {
+                                    if (!com.blinkng.shared.discovery.BlinkBirthdayPolicy.isValid(birthday))
+                                        notice = "Enter a valid birthday (YYYY-MM-DD)."
+                                    else state.signUpWithReferral(
+                                        email, password, fullName, selectedReferrer?.id, birthday
+                                    )
+                                }
+                                AuthMode.RESET -> {
+                                    state.sendPasswordReset(email)
+                                    notice = "Password reset email sent. Check your inbox."
                                 }
                             }
                         }
                     },
-                    enabled = !state.busy,
+                    enabled = !state.busy && !authActionPending,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = authInk, contentColor = Color.White,
                         disabledContainerColor = Color(0xFF6E6E6E),
@@ -259,10 +309,9 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     }
                     OutlinedButton(
                         onClick = {
-                            state.clearError()
-                            scope.launch { runCatching { state.signInWithGoogle() } }
+                            runAuthOnce { state.signInWithGoogle() }
                         },
-                        enabled = !state.busy,
+                        enabled = !state.busy && !authActionPending,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, authInk),

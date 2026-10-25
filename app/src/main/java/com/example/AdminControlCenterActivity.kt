@@ -194,7 +194,7 @@ private fun AdminDashboardV3(
                                 onClick = { showMoreActions = false; showHistory = true }
                             )
                             DropdownMenuItem(
-                                text = { Text("Back to BLINK") },
+                                text = { Text("Switch to Personal Profile") },
                                 onClick = { showMoreActions = false; onExit() }
                             )
                         }
