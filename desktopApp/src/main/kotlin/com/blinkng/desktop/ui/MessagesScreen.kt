@@ -24,7 +24,7 @@ import javax.swing.filechooser.FileNameExtensionFilter
 import java.io.File
 import java.io.FileOutputStream
 import org.jetbrains.skia.Image as SkiaImage
-import org.jetbrains.skiko.toComposeImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
