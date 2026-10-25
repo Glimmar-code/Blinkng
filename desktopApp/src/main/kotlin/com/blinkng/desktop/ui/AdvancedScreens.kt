@@ -1054,6 +1054,9 @@ fun AdminProScreen(state: DesktopAppState) {
     var showLiveContentManager by remember { mutableStateOf(false) }
     var showCampaignStudio by remember { mutableStateOf(false) }
     var announcementStatus by remember { mutableStateOf<String?>(null) }
+    var finance by remember { mutableStateOf<JSONObject?>(null) }
+    var financeLoading by remember { mutableStateOf(false) }
+    var financeError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
 
@@ -1066,7 +1069,17 @@ fun AdminProScreen(state: DesktopAppState) {
         loading = false
     }
 
+    suspend fun loadFinance() {
+        if (!capability.isOwner) return
+        financeLoading = true
+        runCatching { actions.adminPaystackFinance() }
+            .onSuccess { finance = it; financeError = null }
+            .onFailure { financeError = "Payment reporting is currently unavailable or not deployed." }
+        financeLoading = false
+    }
+
     LaunchedEffect(capability.allowed) { loadDashboard() }
+    LaunchedEffect(capability.isOwner) { if (capability.isOwner) loadFinance() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1088,6 +1101,38 @@ fun AdminProScreen(state: DesktopAppState) {
         }
 
         item { DesktopBugReportPanel(state, admin = true) }
+        if (capability.isOwner) {
+            item {
+                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                    Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("Paystack Finance · 30 days", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                            OutlinedButton(onClick = { scope.launch { loadFinance() } }, enabled = !financeLoading) {
+                                Text("Refresh")
+                            }
+                        }
+                        if (financeLoading) CircularProgressIndicator()
+                        financeError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        finance?.let { report ->
+                            val summary = report.optJSONObject("summary") ?: JSONObject()
+                            Text("Collected: ₦${summary.optLong("revenue_ngn", 0)}", fontWeight = FontWeight.Bold)
+                            Text("Paid ${summary.optInt("paid_orders", 0)} · Pending ${summary.optInt("pending_orders", 0)} · " +
+                                "Failed ${summary.optInt("failed_orders", 0)} · Refund flagged ${summary.optInt("refund_flagged_orders", 0)}")
+                            Text("Figures reflect server-recorded orders, not verified bank settlements.",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val recent = report.optJSONArray("recent") ?: JSONArray()
+                            for (i in 0 until minOf(recent.length(), 12)) {
+                                val entry = recent.optJSONObject(i) ?: continue
+                                Text("${entry.optString("created_at").take(10)} · ${entry.optString("purchase_kind")} · " +
+                                    "₦${entry.optLong("amount_ngn")} · ${entry.optString("status")}", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
                 Row(
