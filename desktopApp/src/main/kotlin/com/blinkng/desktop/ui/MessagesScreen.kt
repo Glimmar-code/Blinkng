@@ -103,6 +103,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var olderLoading by remember { mutableStateOf(false) }
     var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewGroup by remember { mutableStateOf(false) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
     var controlsBusy by remember { mutableStateOf(false) }
@@ -287,6 +288,7 @@ fun MessagesScreen(state: DesktopAppState) {
             onShowAllChange = { inboxShowAll = it },
             onInboxChange = { inbox = it },
             onRefresh = { scope.launch { loadConversations() } },
+            onNewGroup = { showNewGroup = true },
         )
         return@AnimatedContent
     }
@@ -845,6 +847,19 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    if (showNewGroup) {
+        DesktopNewGroupDialog(
+            state = state,
+            onDismiss = { showNewGroup = false },
+            onCreated = { id ->
+                showNewGroup = false
+                scope.launch {
+                    loadConversations()
+                    selected = conversations.firstOrNull { it.id == id }
+                }
+            }
+        )
+    }
     editingMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) editingMessage = null },
@@ -985,6 +1000,7 @@ private fun DesktopInboxPanel(
     onShowAllChange: (Boolean) -> Unit,
     onInboxChange: (BlinkMessageInbox) -> Unit,
     onRefresh: () -> Unit,
+    onNewGroup: () -> Unit,
 ) {
     val filtered = remember(conversations, query, inbox) {
         conversations.filter {
@@ -1010,6 +1026,7 @@ private fun DesktopInboxPanel(
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                TextButton(onClick = onNewGroup) { Text("New Group") }
                 IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
                     Icon(Icons.Rounded.Search, contentDescription = "Search messages")
                 }
