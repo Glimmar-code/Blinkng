@@ -13,6 +13,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image as ComposeImage
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.runtime.DisposableEffect
+import coil.compose.AsyncImage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -77,6 +84,13 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.desktop.data.DesktopChatImageOutbox
+import com.blinkng.desktop.data.DesktopChatPhotoWorker
+import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
+import javax.swing.JFileChooser
+import java.util.UUID
+import org.jetbrains.skia.Image as SkiaImage
 import com.blinkng.shared.BlinkChatInboxPolicy
 import com.blinkng.shared.BlinkConversationSearchPolicy
 import com.blinkng.shared.BlinkMessageScrollAction
@@ -115,6 +129,10 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
+    var privatePicture by remember { mutableStateOf<SkiaImage?>(null) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var outboxPending by remember { mutableStateOf(0) }
+    var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
@@ -179,6 +197,84 @@ fun MessagesScreen(state: DesktopAppState) {
             .onFailure {
                 if (state.session?.userId == owner && selected?.id == target.id) error = it.message
             }
+    }
+
+    fun chooseChatPhoto(viewOnce: Boolean) {
+        val account = state.session?.userId ?: return
+        val target = selected ?: return
+        if (target.isGroup || target.requestStatus == "pending") {
+            error = "Photos are available in accepted direct chats."
+            return
+        }
+        val chooser = JFileChooser().apply {
+            dialogTitle = if (viewOnce) "Choose a view-once picture" else "Choose a chat picture"
+            fileSelectionMode = JFileChooser.FILES_ONLY
+            isMultiSelectionEnabled = false
+        }
+        if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
+        val picture = chooser.selectedFile?.takeIf { it.isFile } ?: return
+        if (photoBusy) return
+        if (viewOnce) {
+            photoBusy = true
+            scope.launch {
+                runCatching {
+                    state.client.sendViewOnceImage(target.id, picture, "")
+                }.onSuccess { sent ->
+                    if (state.session?.userId == account && selected?.id == target.id) {
+                        messages = messages.filterNot { it.id == sent.id } + sent
+                    }
+                }.onFailure { failure ->
+                    if (state.session?.userId == account) error = failure.message
+                }
+                photoBusy = false
+            }
+        } else {
+            runCatching {
+                DesktopChatImageOutbox.enqueue(
+                    account, target.id, UUID.randomUUID().toString(), picture,
+                    "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single()
+                )
+            }.onSuccess { staged ->
+                outboxPending = DesktopChatImageOutbox.pending(account).size
+                if (!DesktopChatPhotoWorker.start(account)) {
+                    // Development/non-Windows fallback: durable staged payload remains
+                    // available after interruption, with a fixed client message ID.
+                    scope.launch {
+                        runCatching {
+                            state.client.sendChatImage(
+                                staged.conversationId, staged.file, staged.caption, staged.quality,
+                                clientMessageId = staged.messageId, album = staged.album,
+                                onProgress = { outboxPercent = it }
+                            )
+                        }.onSuccess { sent ->
+                            DesktopChatImageOutbox.complete(staged)
+                            if (state.session?.userId == account && selected?.id == target.id) {
+                                messages = messages.filterNot { it.id == sent.id } + sent
+                            }
+                        }.onFailure { failure ->
+                            if (state.session?.userId == account) error = failure.message
+                        }
+                        outboxPending = DesktopChatImageOutbox.pending(account).size
+                    }
+                }
+            }.onFailure { error = it.message }
+        }
+    }
+
+    LaunchedEffect(myUserId) {
+        if (myUserId.isNotBlank()) {
+            val staged = DesktopChatImageOutbox.pending(myUserId)
+            if (staged.isNotEmpty()) DesktopChatPhotoWorker.start(myUserId)
+            while (state.session?.userId == myUserId && myUserId.isNotBlank()) {
+                val pending = DesktopChatImageOutbox.pending(myUserId).size
+                if (pending != outboxPending) {
+                    outboxPending = pending
+                    if (pending == 0 && selected != null) loadMessages(selected)
+                }
+                outboxPercent = DesktopChatImageOutbox.pendingProgress(myUserId)
+                kotlinx.coroutines.delay(2500)
+            }
+        }
     }
 
     fun loadOlderMessages() {
@@ -636,11 +732,27 @@ fun MessagesScreen(state: DesktopAppState) {
                     TextButton(onClick = { replyingTo = null }) { Text("Cancel") }
                 }
             }
+            if (outboxPending > 0) {
+                Text(
+                    "Uploading ${outboxPending} photo(s)" +
+                        (outboxPercent?.let { " · $it%" } ?: ""),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp)
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                TextButton(
+                    enabled = !photoBusy && myUserId.isNotBlank(),
+                    onClick = { chooseChatPhoto(false) }
+                ) { Text("Photo") }
+                TextButton(
+                    enabled = !photoBusy && myUserId.isNotBlank(),
+                    onClick = { chooseChatPhoto(true) }
+                ) { Text("View once") }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draftsByConversation[active.id] = it },
