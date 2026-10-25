@@ -19,6 +19,7 @@ create index if not exists blink_group_invitations_invitee_status
 alter table public.blink_group_invitations enable row level security;
 revoke all on table public.blink_group_invitations from public,anon,authenticated;
 grant select on table public.blink_group_invitations to authenticated;
+grant select, insert, update, delete on table public.blink_group_invitations to service_role;
 drop policy if exists blink_group_invitation_read_own on public.blink_group_invitations;
 create policy blink_group_invitation_read_own
 on public.blink_group_invitations for select to authenticated
