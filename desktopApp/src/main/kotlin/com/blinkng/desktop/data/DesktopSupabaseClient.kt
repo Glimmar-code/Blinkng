@@ -709,6 +709,9 @@ class DesktopSupabaseClient(
         isDisappearing: Boolean = false,
         clientRequestId: String = UUID.randomUUID().toString(),
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
+        require(!com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+            "Item sales belong in BLINK Market."
+        }
         val active = requireSession()
         val clean = text.trim()
         val effectiveTags = BlinkSmartTags.allTags(clean, tags)
