@@ -7276,6 +7276,16 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun logout() {
+        // Account-scoped, queued private picture drafts must never be sent by the
+        // next user who signs in on this device.
+        WorkManager.getInstance(appContext).cancelAllWorkByTag("blink_chat_picture")
+        pendingAttachments.values.forEach { attachment ->
+            cleanupPrivatePictureSource(attachment.uri)
+        }
+        pendingAttachments.clear()
+        cancelledImageUploads.clear()
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .listFiles()?.forEach { runCatching { it.delete() } }
         realtimeManager.disconnect()
         viewModelScope.launch {
             runCatching { supabaseService.setMyPresence(false) }
