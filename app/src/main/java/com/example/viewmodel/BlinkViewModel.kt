@@ -3059,6 +3059,8 @@ private suspend fun restoreSupabaseSession() {
             rawTimestamp = java.time.Instant.now().toString(),
             isRead = false,
             isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+            attachedImageUrl = uri.toString().takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+            uploadProgress = 0,
             status = MessageStatus.SENDING
         ))
         dispatchAttachment(partner, tempId)
@@ -3074,9 +3076,20 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch(Dispatchers.IO) {
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
+                var reportedProgress = -5
                 MessageMediaService.sendAttachment(
                     appContext, partner, pending.uri, pending.kind, pending.durationMs,
-                    tempId.removePrefix("temp_attachment_")
+                    tempId.removePrefix("temp_attachment_"),
+                    onUploadProgress = { percent ->
+                        if (percent == 100 || percent >= reportedProgress + 5) {
+                            reportedProgress = percent
+                            viewModelScope.launch(Dispatchers.Main) {
+                                if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                    updateAttachmentProgressInState(partner, tempId, percent)
+                                }
+                            }
+                        }
+                    }
                 ).fold(
                     onSuccess = { message ->
                         pendingAttachments.remove(tempId)
@@ -3936,6 +3949,20 @@ private suspend fun restoreSupabaseSession() {
         )
         persistConversations()
     }
+    /** Keep upload percentages in memory only; never persist a fake delivery status. */
+    private fun updateAttachmentProgressInState(partnerUsername: String, messageId: String, percent: Int) {
+        val state = _uiState.value
+        val conversations = state.conversations.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else conversation.copy(messages = conversation.messages.map { message ->
+                if (message.id == messageId && message.status == MessageStatus.SENDING)
+                    message.copy(uploadProgress = percent.coerceIn(0, 100))
+                else message
+            }.toMutableList())
+        }
+        _uiState.value = state.copy(conversations = conversations)
+    }
+
     private fun updateMessageStatusInState(
         partnerUsername: String,
         messageId: String,
