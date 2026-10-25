@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   drain:
-    if: ${{ vars.BLINK_REFERRAL_PUSH_ENABLED == 'true' }}
+    if: github.ref == 'refs/heads/main' && github.actor == 'Glimmar-code' && vars.BLINK_REFERRAL_PUSH_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
