@@ -293,6 +293,15 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(hardening);
+    // The untrusted client role must never bypass the validated group
+    // creation RPC by inserting an arbitrary "is_group" conversation.
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      insert into public.conversations(id,created_by,is_group,title)
+      values('12345678-1234-4234-8234-123456789abc','${other}',true,'Forged group')`),
+      'BLINK_GROUP_CREATION_REQUIRES_SERVER');
+    await db.exec('reset role');
     const receiptGuard = fs.readFileSync(
       new URL('../../docs/integration/departed-member-rpc-hardening-staging-20261025.sql', import.meta.url),
       'utf8'
