@@ -35,6 +35,19 @@ class BlinkChatAttachmentPolicyTest {
         assertEquals(100, BlinkChatUploadProgress.percent(Long.MAX_VALUE, Long.MAX_VALUE))
     }
 
+    @Test fun albumMetadataValidatesLimitsAndKeepsSinglesBackwardCompatible() {
+        val id = "f4ba69ec-814a-41e7-ac11-14d994d4f402"
+        assertFalse(BlinkChatPhotoAlbum.single().grouped)
+        assertTrue(BlinkChatPhotoAlbum.of(id, 0, 2).grouped)
+        assertTrue(BlinkChatPhotoAlbum.of(id, 9, 10).grouped)
+        assertThrows(IllegalArgumentException::class.java) {
+            BlinkChatPhotoAlbum.of(id, 10, 10)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BlinkChatPhotoAlbum.of(id, 0, 11)
+        }
+    }
+
     @Test fun photoQualitySupportsStandardAndOriginalWithoutNewMediaType() {
         assertEquals(2, BlinkChatImageQuality.entries.size)
         assertTrue(BlinkChatImageQuality.STANDARD != BlinkChatImageQuality.ORIGINAL)
