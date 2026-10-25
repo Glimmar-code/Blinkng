@@ -390,8 +390,10 @@ object MessageMediaService {
             val id = UUID.fromString(conversationId).toString()
             require(offset in 0..100000) { "Invalid gallery page." }
             val pageSize = limit.coerceIn(1, 48)
+            val metadataFields = if (photoMetadataSupported())
+                ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
             val url = "/rest/v1/messages?select=id,conversation_id,sender_id,content,media_url," +
-                "created_at,delivered_at,read_at,deleted_for_everyone" +
+                "created_at,delivered_at,read_at,deleted_for_everyone" + metadataFields +
                 "&conversation_id=eq.$id&message_type=eq.image" +
                 "&deleted_for_everyone=eq.false&order=created_at.desc,id.desc" +
                 "&limit=$pageSize&offset=$offset"
@@ -419,7 +421,14 @@ object MessageMediaService {
                             row.optString("delivered_at").isNotBlank() -> MessageStatus.DELIVERED
                             else -> MessageStatus.SENT
                         },
-                        attachedImageUrl = url
+                        attachedImageUrl = url,
+                        imageAlbumId = row.optString("image_album_id")
+                            .takeIf { runCatching { UUID.fromString(it) }.isSuccess },
+                        imageAlbumPosition = row.optInt("image_album_position", 0),
+                        imageAlbumSize = row.optInt("image_album_size", 1),
+                        imagePreviewUrl = row.optString("image_preview_url").takeIf {
+                            it.startsWith(prefix)
+                        }?.removePrefix("$PRIVATE_BUCKET:")?.let(::signedUrl)
                     ))
                 }
             }
