@@ -105,7 +105,7 @@ begin
     where community_id=p_community_id and user_id=v_user for update;
   if v_status='banned' then raise exception 'COMMUNITY_MEMBERSHIP_BANNED'; end if;
   if v_status='active' then return 'active'; end if;
-  if v_visibility='private' and v_status <> 'invited' then
+  if v_visibility='private' and v_status is distinct from 'invited' then
     raise exception 'COMMUNITY_INVITE_REQUIRED';
   end if;
   insert into public.blink_community_members(community_id,user_id,role,status)
