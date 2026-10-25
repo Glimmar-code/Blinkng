@@ -26,6 +26,7 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
     var growth by remember { mutableStateOf<BlinkReferralGrowthStats?>(null) }
     var coins by remember { mutableStateOf<BlinkReferralCoinStatus?>(null) }
     var sources by remember { mutableStateOf<BlinkReferralSourceStats?>(null) }
+    var impressions by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralImpressionStats?>(null) }
     var linkStats by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralLinkStats?>(null) }
     var leaders by remember { mutableStateOf<List<BlinkReferralLeaderboardEntry>>(emptyList()) }
     var error by remember { mutableStateOf(false) }
@@ -37,6 +38,7 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
         growth = runCatching { state.client.referralGrowthStats() }.getOrNull()
         coins = runCatching { state.client.referralCoinRewardStatus() }.getOrNull()
         sources = runCatching { state.client.referralSourceStats() }.getOrNull()
+        impressions = runCatching { state.client.referralImpressionStats() }.getOrNull()
         linkStats = runCatching { state.client.referralLinkStats() }.getOrNull()
         leaders = runCatching { state.client.referralLeaderboard() }.getOrDefault(emptyList())
     }
@@ -61,7 +63,7 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                     Text("Real profile views this week: ${it.profileViewsThisWeek}")
                     Text("Followers gained this week: ${it.followersGainedThisWeek}")
                     Text("Referral link share actions: ${it.shareActions}")
-                    Text("Search/recommendation attribution is not tracked separately.",
+                    Text("Discovery opens and visible-card impressions are counted separately.",
                         style = MaterialTheme.typography.labelSmall)
                 }
                 sources?.let {
@@ -72,6 +74,12 @@ internal fun DesktopReferGrowDialog(state: DesktopAppState, onDismiss: () -> Uni
                     Text("Unique invite-browser opens (30 days, estimated): ${it.estimatedUniqueOpens30Days}")
                     Text("Confirmed referral signups (30 days): ${it.confirmedSignups30Days}")
                     Text("These counts are approximate; only confirmed accounts earn referral credit.",
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                impressions?.let {
+                    Text("Estimated viewed Search cards (7 days): ${it.searchImpressions7d}")
+                    Text("Estimated viewed recommendation cards (7 days): ${it.recommendationImpressions7d}")
+                    Text("Only sustained on-screen cards count; repeated same-day views are deduplicated.",
                         style = MaterialTheme.typography.labelSmall)
                 }
                 coins?.let {
