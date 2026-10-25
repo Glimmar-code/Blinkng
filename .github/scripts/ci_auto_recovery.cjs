@@ -16,13 +16,14 @@ const CHECKS = new Set([
   'Android release smoke test',
   'Windows desktop quality gate',
   'APK delivery integrity',
-  'Web parity test',
+  'Web Parity Testlab Gate',
+  'Supabase safety gate',
   'Secret leak guard',
   'Signed Android release',
   'Publish latest APK',
 ]);
 const PRODUCTION = new Set(['Signed Android release', 'Publish latest APK']);
-const NON_RETRYABLE = new Set(['Secret leak guard']);
+const NON_RETRYABLE = new Set(['Secret leak guard', 'Supabase safety gate']);
 const BAD = new Set(['failure', 'timed_out', 'startup_failure', 'action_required']);
 const BAD_JOB = new Set(['failure', 'timed_out', 'startup_failure', 'action_required']);
 const SHORT = input => String(input || '').slice(0, 240);
