@@ -1258,6 +1258,10 @@ class DesktopSupabaseClient(
         deliveredAt = row.optNullableString("delivered_at"),
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
+        imageAlbumId = row.optNullableString("image_album_id"),
+        imageAlbumPosition = row.optInt("image_album_position", 0),
+        imageAlbumSize = row.optInt("image_album_size", 1),
+        imagePreviewUrl = row.optNullableString("image_preview_url"),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
