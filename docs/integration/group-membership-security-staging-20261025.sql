@@ -119,7 +119,7 @@ with check (
 -- Server-owned row counters/timestamps remain compatible with legacy triggers.
 create or replace function public.blink_guard_group_metadata()
 returns trigger language plpgsql security invoker set search_path=public,pg_temp
-as $
+as $$
 begin
   if current_user='authenticated' and (
     old.is_group or new.is_group
@@ -141,7 +141,7 @@ begin
     end if;
   end if;
   return new;
-end $;
+end $$;
 drop trigger if exists blink_guard_group_metadata_trigger on public.conversations;
 create trigger blink_guard_group_metadata_trigger
 before update on public.conversations
@@ -154,7 +154,7 @@ create or replace function public.send_group_message(
   p_conversation_id uuid, p_content text
 ) returns uuid language plpgsql security invoker
 set search_path = public, pg_temp
-as $
+as $$
 declare v_id uuid; v_uid uuid := auth.uid();
 begin
   if v_uid is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -174,7 +174,7 @@ begin
   values (p_conversation_id,v_uid,trim(p_content),'text')
   returning id into v_id;
   return v_id;
-end $;
+end $$;
 revoke all on function public.send_group_message(uuid,text) from public,anon;
 grant execute on function public.send_group_message(uuid,text) to authenticated;
 
@@ -183,7 +183,7 @@ grant execute on function public.send_group_message(uuid,text) to authenticated;
 create or replace function public.blink_group_invite(
   p_conversation_id uuid, p_user_id uuid
 ) returns boolean language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_actor uuid := auth.uid();
 begin
   if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -222,7 +222,7 @@ begin
   insert into public.conversation_participants(conversation_id,user_id,is_admin)
   values(p_conversation_id,p_user_id,false);
   return true;
-end $;
+end $$;
 revoke all on function public.blink_group_invite(uuid,uuid) from public,anon;
 grant execute on function public.blink_group_invite(uuid,uuid) to authenticated;
 
@@ -234,7 +234,7 @@ returns table (
   is_admin boolean, joined_at timestamptz
 )
 language plpgsql stable security definer set search_path = ''
-as $
+as $$
 begin
   if auth.uid() is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
   if not exists(
@@ -251,13 +251,13 @@ begin
     where cp.conversation_id=p_conversation_id and cp.left_at is null
     order by cp.is_admin desc,cp.joined_at asc,cp.user_id asc
     limit 50;
-end $;
+end $$;
 revoke all on function public.blink_group_members(uuid) from public,anon;
 grant execute on function public.blink_group_members(uuid) to authenticated;
 
 create or replace function public.blink_group_leave(p_conversation_id uuid)
 returns boolean language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_user uuid:=auth.uid(); v_owner uuid;
 begin
   if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -268,14 +268,14 @@ begin
   update public.conversation_participants set left_at=now(),is_admin=false
    where conversation_id=p_conversation_id and user_id=v_user and left_at is null;
   return found;
-end $;
+end $$;
 revoke all on function public.blink_group_leave(uuid) from public,anon;
 grant execute on function public.blink_group_leave(uuid) to authenticated;
 
 create or replace function public.blink_group_manage_member(
   p_conversation_id uuid, p_user_id uuid, p_action text
 ) returns boolean language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_actor uuid:=auth.uid(); v_owner uuid; v_admin boolean;
 begin
   if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -304,7 +304,7 @@ begin
         and user_id=p_user_id and left_at is null;
   end if;
   return found;
-end $;
+end $$;
 revoke all on function public.blink_group_manage_member(uuid,uuid,text) from public,anon;
 grant execute on function public.blink_group_manage_member(uuid,uuid,text) to authenticated;
 
