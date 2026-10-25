@@ -19,6 +19,7 @@ const BLOCKED_LABELS = new Set([
   'needs-review', 'needs-staging', 'needs-device-verification',
 ]);
 const promo = require('./testlab_auto_promotion.cjs');
+const status = require('./testlab_batch_status.cjs');
 
 const WORKFLOW = Object.freeze({
   validate: 'android-build-check.yml',
@@ -145,13 +146,14 @@ async function dispatch(github, pr, paths, core) {
   return true;
 }
 
-async function processBatch(github, pr, core) {
+async function processBatch(github, pr, core, onStatus = () => {}) {
   // A newer main always invalidates previous results; never reuse CI from
   // a different integration baseline.
   const comparison = (await github.rest.repos.compareCommits({
     ...repoArgs, base: 'main', head: pr.head.sha
   })).data;
   if (comparison.behind_by > 0) {
+    onStatus(pr, 'batch-refresh');
     // Remove stale opt-in *before* touching the code. A GITHUB_TOKEN update
     // will not fire a pull_request_target synchronize event.
     for (const name of ['auto-promote', 'staging-verified', 'device-verified']) {
@@ -173,6 +175,7 @@ async function processBatch(github, pr, core) {
     } catch (error) {
       if (error.status === 409) {
         core.warning('Batch #' + pr.number + ' conflicts with current main; no production merge');
+        onStatus(pr, 'conflict');
         return;
       }
       throw error;
@@ -183,11 +186,15 @@ async function processBatch(github, pr, core) {
   const files = await allFiles(github, pr.number);
   if (pr.changed_files > files.length || !files.length) {
     core.warning('Batch file list is incomplete; refusing promotion');
+    onStatus(pr, 'incomplete-files');
     return;
   }
   // Explicitly run workflow_dispatch checks (a PR made with GITHUB_TOKEN
   // cannot automatically trigger a pull_request build).
-  if (await dispatch(github, pr, files, core)) return;
+  if (await dispatch(github, pr, files, core)) {
+    onStatus(pr, 'batch-checks', 'New combined CI was dispatched');
+    return;
+  }
 
   const required = promo.requiredChecks(files);
   const checks = await github.paginate(github.rest.checks.listForRef, {
@@ -195,21 +202,28 @@ async function processBatch(github, pr, core) {
   });
   const result = promo.checkGate(checks, required, pr.number,
     pr.base.sha, pr.head.sha, {allowDispatchForBatch: true});
-  if (result) { core.info('Batch #' + pr.number + ': ' + result); return; }
+  if (result) {
+    core.info('Batch #' + pr.number + ': ' + result);
+    onStatus(pr, 'batch-checks', result);
+    return;
+  }
 
   if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
     core.warning('Batch #' + pr.number +
       ' needs genuine staging verification of the combined revision');
+    onStatus(pr, 'batch-staging');
     return;
   }
   if (promo.requiresDeviceVerification(files, labels(pr)) &&
       !labels(pr).has('device-verified')) {
     core.warning('Batch #' + pr.number +
       ' needs independent real-device evidence for combined revision');
+    onStatus(pr, 'batch-device');
     return;
   }
   if (pr.mergeable !== true || pr.mergeable_state === 'dirty') {
     core.warning('Batch #' + pr.number + ' not mergeable; leave main unchanged');
+    onStatus(pr, 'conflict');
     return;
   }
   // Confirm immutable SHA / base right before releasing the candidate.
@@ -219,6 +233,7 @@ async function processBatch(github, pr, core) {
     ...repoArgs, branch: 'main'})).data.commit.sha;
   if (fresh.head.sha !== pr.head.sha || fresh.base.sha !== current) {
     core.info('Batch changed after testing; waiting for latest revision');
+    onStatus(pr, 'changed-head');
     return;
   }
   const marker = '<!-- BLINK_AGENT_VERIFIED_SHA: ' + fresh.head.sha + ' -->';
@@ -238,9 +253,10 @@ async function processBatch(github, pr, core) {
     core.info('Batch #' + pr.number + ' green at ' + fresh.head.sha +
       '; enrolled in existing fail-closed Testlab -> main auto-promotion');
   }
+  onStatus(pr, 'batch-promoting');
 }
 
-async function selectVerified(github, candidates, core) {
+async function selectVerified(github, candidates, core, onStatus = () => {}) {
   const ready = [];
   for (const summary of candidates.slice(0, MAX_SCAN)) {
     if (ready.length >= MAX_BATCH) break;
@@ -251,6 +267,7 @@ async function selectVerified(github, candidates, core) {
     const files = await allFiles(github, pr.number);
     if (!files.length || pr.changed_files > files.length) {
       core.info('Skipping #' + pr.number + ': incomplete changed-file list');
+      onStatus(pr, 'incomplete-files');
       continue;
     }
     // A write-enabled dispatcher must not execute altered workflow, action
@@ -258,39 +275,48 @@ async function selectVerified(github, candidates, core) {
     if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p) ||
         /^scripts\/(?:ci_change_scope\.py|check_[^/]+|test_[^/]+)$/.test(p))) {
       core.info('Skipping #' + pr.number + ': CI policy or testing changes require separate review');
+      onStatus(pr, 'unsafe-ci-changes');
       continue;
     }
     if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
       core.info('Skipping #' + pr.number + ': hosted staging evidence missing');
+      onStatus(pr, 'staging-required');
       continue;
     }
     if (promo.requiresDeviceVerification(files, labels(pr)) &&
         !labels(pr).has('device-verified')) {
       core.info('Skipping #' + pr.number + ': device evidence missing');
+      onStatus(pr, 'device-required');
       continue;
     }
     const checks = await github.paginate(github.rest.checks.listForRef, {
       ...repoArgs, ref: pr.head.sha, per_page: 100, filter: 'latest'
     });
     const reason = sourceChecksGreen(checks, pr, files);
-    if (reason) { core.info('Skipping #' + pr.number + ': ' + reason); continue; }
+    if (reason) {
+      core.info('Skipping #' + pr.number + ': ' + reason);
+      onStatus(pr, 'source-ci', reason);
+      continue;
+    }
     const reviews = await github.paginate(github.rest.pulls.listReviews, {
       ...repoArgs, pull_number: pr.number, per_page: 100
     });
     if (hasBlockingReview(reviews)) {
       core.info('Skipping #' + pr.number + ': requested review changes unresolved');
+      onStatus(pr, 'review-changes');
       continue;
     }
     ready.push({pr, files});
+    onStatus(pr, 'queued');
     core.info('Eligible PR #' + pr.number + ': current-head CI green; will retest against main');
   }
   return ready;
 }
 
-async function makeBatch(github, candidates, context, core) {
+async function makeBatch(github, candidates, context, core, onStatus = () => {}) {
   // Select + check source PRs before creating the integration branch so
   // empty/noncompliant PR collections cannot generate repeated empty branches.
-  const approved = await selectVerified(github, candidates, core);
+  const approved = await selectVerified(github, candidates, core, onStatus);
   if (!approved.length) {
     core.info('No recent, green, ready-for-production PRs found; no changes made');
     return;
@@ -311,6 +337,7 @@ async function makeBatch(github, candidates, context, core) {
     if (!isCandidate(latest) || latest.head.sha !== pr.head.sha ||
         latest.base.ref !== 'main') {
       core.warning('Skipping #' + pr.number + ': PR changed after source verification');
+      onStatus(pr, 'changed-head');
       continue;
     }
     try {
@@ -321,6 +348,7 @@ async function makeBatch(github, candidates, context, core) {
       });
       if (result.status === 204) {
         core.info('Skipping #' + pr.number + ': already present in main or prior batch');
+        onStatus(pr, 'already-integrated');
         continue;
       }
       added.push(pr.number);
@@ -329,6 +357,7 @@ async function makeBatch(github, candidates, context, core) {
     } catch (error) {
       if (error.status === 409) {
         core.warning('PR #' + pr.number + ': merge conflict, left open and untouched');
+        onStatus(pr, 'conflict');
         continue;
       }
       throw error;
@@ -357,10 +386,20 @@ async function makeBatch(github, candidates, context, core) {
   });
   const pr = response.data;
   core.info('Opened Testlab batch PR #' + pr.number + ' for ' + added.join(', '));
+  for (const {pr: source} of approved) {
+    if (added.includes(source.number)) onStatus(source, 'batched', 'Testlab batch #' + pr.number);
+  }
   await dispatch(github, pr, [...allChangedPaths], core);
 }
 
 async function run({github, context, core}) {
+  const notices = new Map();
+  const onStatus = (pr, code, detail = '') => {
+    if (pr?.number) notices.set(pr.number, status.statusEntry(pr, code, detail));
+  };
+  const flush = async () => {
+    await status.publishReport(github, core, [...notices.values()]);
+  };
   if (context.eventName === 'pull_request_target' &&
       !['opened', 'reopened', 'synchronize', 'ready_for_review', 'labeled'].includes(
         context.payload.action)) return;
@@ -368,12 +407,23 @@ async function run({github, context, core}) {
   const list = await github.paginate(github.rest.pulls.list, {
     ...repoArgs, state: 'open', base: 'main', per_page: 100
   });
+  // Explain skip reasons even for PRs that never enter the integration queue.
+  // The reason and actual eligibility use the SAME fail-closed predicate.
+  const visible = list.filter(pr => pr.state === 'open' && pr.base?.ref === 'main' &&
+    pr.head?.repo?.full_name === OWNER + '/' + REPO && !isBatch(pr))
+    .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+    .slice(0, MAX_SCAN);
+  for (const pr of visible) {
+    const reason = candidateBlockReason(pr);
+    if (reason) onStatus(pr, reason);
+  }
   const existing = list.filter(isBatch).sort((a, b) => b.number - a.number);
   if (existing.length) {
     // One batch at a time prevents overlapping rollouts and protects main.
     await processBatch(github, (await github.rest.pulls.get({
       ...repoArgs, pull_number: existing[0].number
-    })).data, core);
+    })).data, core, onStatus);
+    await flush();
     return;
   }
   // Array.filter passes the numeric index as argument 2; do not
@@ -384,9 +434,11 @@ async function run({github, context, core}) {
     .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
   if (!eligible.length) {
     core.info('No recent, ready, internal main-targeting PRs found');
+    await flush();
     return;
   }
-  await makeBatch(github, eligible, context, core);
+  await makeBatch(github, eligible, context, core, onStatus);
+  await flush();
 }
 
 module.exports = run;

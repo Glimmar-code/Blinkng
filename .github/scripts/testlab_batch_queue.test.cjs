@@ -147,3 +147,105 @@ test('the scheduled scanner evaluates unlabeled PRs rather than treating array i
   assert.ok(logs.some(m => m.includes('Skipping #' + p.number) &&
     m.includes('No verifiable current-head CI checks')));
 });
+
+const status = require('./testlab_batch_status.cjs');
+
+test('PR #517 explanation is a description hold, NOT an Update branch failure', () => {
+  const pr = {...base, number: 517, head: {...base.head, sha: 'a'.repeat(40)},
+    body: 'This is **draft** and must not be merged without UI acceptance.'};
+  assert.equal(queue.candidateBlockReason(pr, NOW), 'body-hold');
+  const entry = status.statusEntry(pr, 'body-hold');
+  assert.match(status.renderComment(entry), /description says this must not be merged yet/);
+  assert.match(status.renderComment(entry), /Update branch/);
+  assert.match(status.renderComment(entry), /remove draft\/hold wording only when ready/);
+});
+
+test('safety decisions and status reasons agree across every excluded PR', () => {
+  const candidates = [
+    {...base, draft: true},
+    {...base, title: '[Superseded by #541] old'},
+    {...base, body: '- [ ] must pass device test'},
+    {...base, body: 'Do not auto-merge'},
+    {...base, labels: [{name:'hold'}]},
+    {...base, head: {...base.head, repo: {full_name:'other/repo'}}},
+  ];
+  for (const pr of candidates) {
+    assert.equal(queue.isCandidate(pr, NOW), false);
+    assert.ok(queue.candidateBlockReason(pr, NOW));
+  }
+  assert.equal(queue.candidateBlockReason(base, NOW), null);
+});
+
+test('status notices never merge, post once, deduplicate, then update resolution', async () => {
+  const pr = {...base, number: 517, head: {...base.head, sha:'a'.repeat(40)},
+    body:'This is draft and must not be merged', updated_at:new Date().toISOString()};
+  let existing = [], created = 0, updated = 0;
+  const github = {rest: {
+    pulls: {get: async()=>({data:pr})},
+    issues: {
+      listComments: async()=>existing,
+      createComment: async({body})=>{
+        created++;
+        existing = [{id:500,body,user:{login:'github-actions[bot]',type:'Bot'}}];
+      },
+      updateComment: async({comment_id,body})=>{
+        assert.equal(comment_id,500);
+        updated++;
+        existing[0].body = body;
+      }
+    }
+  },paginate: async(fn,args)=>fn(args)};
+  const held = status.statusEntry(pr,'body-hold');
+  assert.equal(await status.syncComment(github,held),'created');
+  assert.equal(await status.syncComment(github,held),'unchanged');
+  const green = status.statusEntry(pr,'queued');
+  assert.equal(await status.syncComment(github,green),'updated');
+  assert.equal(await status.syncComment(github,green),'unchanged');
+  assert.equal(created,1);
+  assert.equal(updated,1);
+  assert.match(existing[0].body,/eligible for Testlab/);
+  assert.equal(status.isOurComment({
+    body:status.renderComment(held),user:{login:'an-untrusted-user',type:'User'}
+  }),false);
+});
+
+test('safety: stale SHA and newly green PRs do not receive unsolicited new comments', async()=>{
+  const pr = {...base,number:517,head:{...base.head,sha:'a'.repeat(40)}};
+  let writes=0;
+  const github={rest:{
+    pulls:{get:async()=>({data:pr})},
+    issues:{
+      listComments:async()=>[],
+      createComment:async()=>{writes++;}
+    }
+  },paginate:async(fn,args)=>fn(args)};
+  const green=status.statusEntry(pr,'queued');
+  assert.equal(await status.syncComment(github,green),'no-comment-needed');
+  pr.head.sha='b'.repeat(40);
+  assert.equal(await status.syncComment(github,status.statusEntry(
+    {...pr,head:{...pr.head,sha:'c'.repeat(40)}},'body-hold')),'stale');
+  assert.equal(writes,0);
+});
+
+test('status report on excluded PR #517 produces one useful sticky notice', async()=>{
+  const pr={...base,number:517,updated_at:new Date().toISOString(),
+    body:'This is draft and must not be merged',head:{...base.head,sha:'a'.repeat(40)}};
+  let body='',branchWrites=0,summaryRows=[];
+  const github={rest:{
+    pulls:{list:async()=>[pr],get:async()=>({data:pr})},
+    issues:{
+      listComments:async()=>[],
+      createComment:async({body:comment})=>{body=comment;},
+    },
+    git:{createRef:async()=>{branchWrites++}}
+  },paginate:async(fn,args)=>fn(args)};
+  const summary={addHeading(){return this},addRaw(){return this},
+    addTable(rows){summaryRows=rows;return this},async write(){}};
+  const logs=[];
+  await queue({github,context:{eventName:'schedule',runId:321},
+    core:{info:s=>logs.push(s),warning:s=>logs.push(s),summary}});
+  assert.equal(branchWrites,0);
+  assert.match(body,/description says this must not be merged yet/);
+  assert.ok(summaryRows.some(row=>row[0]==='#517'));
+  assert.ok(logs.some(s=>s.includes('#517:')));
+});
