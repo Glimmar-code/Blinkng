@@ -521,16 +521,18 @@ private fun ReelsContent(
     LaunchedEffect(initialReelId) {
         if (!initialReelId.isNullOrBlank()) expanded = true
     }
-    LaunchedEffect(expanded) {
-        onBottomBarVisibilityChange(!expanded)
+    LaunchedEffect(expanded, isScreenActive) {
+        if (isScreenActive) onBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
             animationSpec = tween(300, easing = FastOutSlowInEasing)
         )
     }
     // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
-    DisposableEffect(onBottomBarVisibilityChange) {
-        onDispose { onBottomBarVisibilityChange(true) }
+    DisposableEffect(expanded, isScreenActive, onBottomBarVisibilityChange) {
+        onDispose {
+            if (expanded && isScreenActive) onBottomBarVisibilityChange(true)
+        }
     }
     BackHandler(enabled = expanded && !isInteractionOverlayOpen) { expanded = false }
 
@@ -555,7 +557,7 @@ private fun ReelsContent(
 
         // Pager-at-start downward overscroll reveals the preview progressively.
         // The pager is allowed to consume other gestures (including all next-reel swipes).
-        val collapseConnection = remember(pager, expanded, viewportHeightPx) {
+        val collapseConnection = remember(pager, expanded, viewportHeightPx, isInteractionOverlayOpen) {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                     if (source != NestedScrollSource.UserInput || !expanded ||
@@ -570,7 +572,7 @@ private fun ReelsContent(
 
                 override suspend fun onPreFling(available: Velocity): Velocity {
                     if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
-                        expanded = expansion.value >= 0.84f
+                        expanded = shouldKeepReelFullscreen(expansion.value)
                         return available
                     }
                     return Velocity.Zero
@@ -596,7 +598,9 @@ private fun ReelsContent(
                                 }
                             },
                             onDragEnd = {
-                                expanded = distance >= 65.dp.toPx() || expansion.value >= 0.16f
+                                expanded = shouldExpandReelPreview(
+                                    expansion.value, distance, 65.dp.toPx()
+                                )
                             },
                             onDragCancel = { expanded = expansion.value >= 0.5f }
                         )
