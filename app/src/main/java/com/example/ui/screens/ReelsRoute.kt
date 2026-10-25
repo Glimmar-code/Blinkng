@@ -72,6 +72,7 @@ fun FeedScreen(
     isScreenActive: Boolean = true,
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     initialReelId: String? = null,
     initialReelPositionMs: Long = 0L
 ) {
@@ -118,6 +119,7 @@ fun FeedScreen(
             onSearchClick = onSearchClick,
             onNotificationsClick = onOpenActivity,
             onMenuClick = onOpenMenu,
+            hasUnreadNotifications = hasUnreadNotifications,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange
         )
     } else {
