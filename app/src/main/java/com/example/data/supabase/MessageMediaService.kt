@@ -93,6 +93,33 @@ object MessageMediaService {
         }.getOrNull()
     }
 
+    /** Re-fetch the private object reference through messages RLS immediately before
+     * the picture is viewed or saved. Never reuse an expired URL or sign arbitrary paths. */
+    suspend fun freshImageUrl(messageId: String, conversationId: String): String? =
+        withContext(Dispatchers.IO) {
+            val id = runCatching { UUID.fromString(messageId).toString() }.getOrNull()
+                ?: return@withContext null
+            val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
+                ?: return@withContext null
+            if (!SupabaseService().restoreSession()) return@withContext null
+            runCatching {
+                client.newCall(
+                    builder("/rest/v1/messages?id=eq.$id&conversation_id=eq.$convo&" +
+                        "select=id,conversation_id,message_type,media_url&limit=1")
+                        .get().build()
+                ).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val row = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+                        .optJSONObject(0) ?: return@use null
+                    if (row.optString("message_type") != "image") return@use null
+                    val ref = row.optString("media_url")
+                    val prefix = "$PRIVATE_BUCKET:conversations/$convo/users/"
+                    if (!ref.startsWith(prefix)) return@use null
+                    signedUrl(ref.removePrefix("$PRIVATE_BUCKET:"))
+                }
+            }.getOrNull()
+        }
+
     suspend fun sendVideoMessage(
         context: Context,
         receiverUsername: String,
