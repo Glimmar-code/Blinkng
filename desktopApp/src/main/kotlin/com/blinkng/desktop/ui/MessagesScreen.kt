@@ -381,7 +381,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                         contentDescription = "Shared picture. Click to enlarge.",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.width(280.dp).height(175.dp)
-                                            .clickable { expandedPicture = message.mediaUrl }
+                                            .clickable {
+                                                scope.launch {
+                                                    expandedPicture = state.client.freshChatImageUrl(
+                                                        message.id, message.conversationId
+                                                    ) ?: message.mediaUrl
+                                                }
+                                            }
                                     )
                                     if (message.content.isNotBlank() &&
                                         !message.content.equals("Image", true)) {
@@ -700,7 +706,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                 contentDescription = "Open shared photo",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.width(230.dp).height(120.dp)
-                                    .clickable { expandedPicture = photo.mediaUrl }
+                                    .clickable {
+                                        scope.launch {
+                                            expandedPicture = state.client.freshChatImageUrl(
+                                                photo.id, photo.conversationId
+                                            ) ?: photo.mediaUrl
+                                        }
+                                    }
                             )
                         }
                     }
