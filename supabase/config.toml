@@ -123,3 +123,7 @@ verify_jwt = false
 # Authenticated users may request delivery/refund; owner-only financial actions are checked server-side.
 [functions.paystack-market-ops]
 verify_jwt = true
+
+# Private view-once media requires a valid user JWT and service-side one-use claim.
+[functions.blink-view-once-image]
+verify_jwt = true

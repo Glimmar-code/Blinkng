@@ -64,8 +64,40 @@ enum class BlinkChatAttachmentKind(
     }
 }
 
+/** Quality selection is an explicit cross-platform contract. */
+enum class BlinkChatImageQuality {
+    STANDARD, ORIGINAL
+}
+
+/** Pure, reusable percentage mapping for Android and Windows media upload indicators. */
+object BlinkChatUploadProgress {
+    fun percent(bytesSent: Long, totalBytes: Long): Int {
+        if (totalBytes <= 0L) return 0
+        return ((bytesSent.coerceIn(0L, totalBytes).toDouble() /
+            totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+    }
+}
+
 fun safeChatFilename(raw: String): String {
     val basename = raw.substringAfterLast('/').substringAfterLast('\\')
     return basename.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
         .trim().trim('.').take(96).ifBlank { "Document" }
+}
+
+/** Album members remain individually addressable message rows for old-client parity. */
+data class BlinkChatPhotoAlbum(
+    val id: String?,
+    val position: Int,
+    val size: Int
+) {
+    val grouped: Boolean get() = id != null && size in 2..10 && position in 0 until size
+
+    companion object {
+        fun single() = BlinkChatPhotoAlbum(null, 0, 1)
+        fun of(id: String, position: Int, size: Int): BlinkChatPhotoAlbum {
+            require(size in 2..10 && position in 0 until size)
+            require(runCatching { java.util.UUID.fromString(id) }.isSuccess)
+            return BlinkChatPhotoAlbum(id, position, size)
+        }
+    }
 }
