@@ -7,6 +7,8 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatUploadProgress
 import okhttp3.RequestBody
+import okhttp3.MultipartBody
+import java.io.ByteArrayOutputStream
 import okio.BufferedSink
 import java.io.File
 import java.io.FileInputStream
@@ -709,6 +711,11 @@ class DesktopSupabaseClient(
         }.getOrDefault(false)
     }
 
+    private fun supportsViewOnceSchema(): Boolean = runCatching {
+        getArray("/rest/v1/messages?select=image_view_once&limit=0")
+        true
+    }.getOrDefault(false)
+
     /** Full-history paginated photo gallery, respecting the messages conversation RLS. */
     suspend fun fetchChatImagePage(conversationId: String, offset: Int = 0):
         List<DesktopMessage> = withContext(Dispatchers.IO) {
@@ -737,10 +744,11 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        val viewOnceField = if (supportsViewOnceSchema()) ",image_view_once" else ""
         val extra = if (supportsPhotoSchema())
             ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
         val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at" + extra +
+            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at" + extra + viewOnceField +
                 "&order=created_at.asc&limit=300"
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
@@ -907,6 +915,80 @@ class DesktopSupabaseClient(
                 )
             }
         }
+    }
+
+    /** Separate JWT-authenticated one-time photo endpoint, never Storage links. */
+    suspend fun sendViewOnceImage(
+        conversationId: String, picture: File, caption: String,
+        messageId: String = UUID.randomUUID().toString()
+    ): DesktopMessage = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        val conversation = UUID.fromString(conversationId).toString()
+        val owner = requireSession().userId
+        val mime = when (picture.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
+            else -> throw IllegalArgumentException("Unsupported view-once image.")
+        }
+        BlinkChatAttachmentKind.IMAGE.verify(mime, picture.length())
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("conversation_id", conversation)
+            .addFormDataPart("message_id", id)
+            .addFormDataPart("caption", caption.trim().take(1024))
+            .addFormDataPart("photo", picture.name,
+                picture.asRequestBody(mime.toMediaType())).build()
+        val result = JSONObject(execute(authenticatedRequest(
+            "/functions/v1/blink-view-once-image").post(body).build()))
+        require(result.optString("messageId") == id) {
+            "Server did not confirm the private picture."
+        }
+        DesktopMessage(
+            id = id, conversationId = conversation, senderId = owner,
+            content = caption.trim().take(1024).ifBlank { "View once photo" },
+            mediaUrl = null, messageType = "image", isRead = false,
+            deliveredAt = null, readAt = null,
+            createdAt = Instant.now().toString(), imageViewOnce = true)
+    }
+
+    /** A single authorized server read. The payload remains in memory. */
+    suspend fun openViewOnceImage(messageId: String): ByteArray = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        http.newCall(authenticatedRequest(
+            "/functions/v1/blink-view-once-image?message_id=$id").get().build())
+            .execute().use { response ->
+                check(response.isSuccessful) {
+                    if (response.code == 410) "Picture already opened."
+                    else "Private picture unavailable."
+                }
+                val mime = response.header("Content-Type").orEmpty()
+                    .substringBefore(';').lowercase()
+                require(BlinkChatAttachmentKind.IMAGE.accepts(mime)) {
+                    "Unexpected private image type."
+                }
+                val file = response.body ?: throw IllegalStateException("Empty picture.")
+                require(file.contentLength() <= 15L * 1024L * 1024L) {
+                    "Picture exceeds safe size limit."
+                }
+                ByteArrayOutputStream().use { output ->
+                    val chunk = ByteArray(64 * 1024)
+                    var bytes = 0
+                    file.byteStream().use { input ->
+                        while (true) {
+                            val n = input.read(chunk)
+                            if (n < 0) break
+                            bytes += n
+                            require(bytes <= 15 * 1024 * 1024) {
+                                "Picture exceeds safe size limit."
+                            }
+                            output.write(chunk, 0, n)
+                        }
+                    }
+                    output.toByteArray()
+                }
+            }
     }
 
     suspend fun sendChatImage(
@@ -1387,6 +1469,7 @@ class DesktopSupabaseClient(
         imageAlbumPosition = row.optInt("image_album_position", 0),
         imageAlbumSize = row.optInt("image_album_size", 1),
         imagePreviewUrl = row.optNullableString("image_preview_url"),
+        imageViewOnce = row.optBoolean("image_view_once", false),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
