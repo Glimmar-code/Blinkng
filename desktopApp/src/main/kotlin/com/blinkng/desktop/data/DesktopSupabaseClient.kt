@@ -265,7 +265,7 @@ class DesktopSupabaseClient(
         (0 until rows.length()).map { i ->
             val row = rows.getJSONObject(i)
             BlinkReferralLeaderboardEntry(
-                position = row.optLong("position"), id = row.getString("id"),
+                position = row.optLong("rank_position"), id = row.getString("id"),
                 username = row.getString("username"), fullName = row.optString("full_name"),
                 avatarUrl = row.optString("avatar_url").takeIf(String::isNotBlank),
                 university = row.optString("university").takeIf(String::isNotBlank),

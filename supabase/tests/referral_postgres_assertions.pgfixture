@@ -228,7 +228,7 @@ declare
   weekly_followers bigint;
   actions bigint;
 begin
-  select position into current_rank from public.blink_referral_leaderboard(7,10)
+  select rank_position into current_rank from public.blink_referral_leaderboard(7,10)
    where username='alpha';
   if current_rank<>1 then raise exception 'Unexpected weekly connector rank: %',current_rank; end if;
   select profile_views_this_week,followers_gained_this_week,share_actions

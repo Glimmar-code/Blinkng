@@ -145,7 +145,7 @@ object BlinkReferralClient {
         (0 until rows.length()).map { index ->
             val item = rows.getJSONObject(index)
             BlinkReferralLeaderboardEntry(
-                position = item.optLong("position"),
+                position = item.optLong("rank_position"),
                 id = item.getString("id"),
                 username = item.getString("username"),
                 fullName = item.optString("full_name"),

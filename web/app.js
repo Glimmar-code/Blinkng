@@ -1015,7 +1015,7 @@
       if(lead?.isConnected && leaderResult.status==='fulfilled'){
         const rows=Array.isArray(leaderResult.value)?leaderResult.value:[];
         if(rows.length)lead.textContent='Top connectors this week: '+
-          rows.map(x=>'#'+x.position+' @'+x.username+' ('+fmt(x.successful_referrals)+')').join(' · ');
+          rows.map(x=>'#'+x.rank_position+' @'+x.username+' ('+fmt(x.successful_referrals)+')').join(' · ');
       }
     });
     document.getElementById('share-referral')?.addEventListener('click',async()=>{
