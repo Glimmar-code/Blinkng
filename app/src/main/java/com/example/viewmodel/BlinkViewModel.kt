@@ -47,6 +47,7 @@ import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkDeliveryReceipt
@@ -212,7 +213,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private data class PendingAttachment(
         val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long,
-        val ownerId: String, val caption: String, val imageQuality: BlinkChatImageQuality
+        val ownerId: String, val caption: String, val imageQuality: BlinkChatImageQuality,
+        val album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
     )
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
@@ -3101,14 +3103,15 @@ private suspend fun restoreSupabaseSession() {
         kind: BlinkChatAttachmentKind,
         durationMs: Long = 0L,
         caption: String = "",
-        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD,
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
     ) {
         val partner = partnerUsername.trim().removePrefix("@")
         if (partner.isBlank()) return
         val tempId = "temp_attachment_${UUID.randomUUID()}"
         val senderId = supabaseService.getCurrentUserId().orEmpty()
         if (senderId.isBlank()) { showToast("Sign in before sharing a file."); return }
-        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId, caption.trim().take(1024), imageQuality)
+        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId, caption.trim().take(1024), imageQuality, album)
         val currentConversation = _uiState.value.conversations
             .firstOrNull { it.partnerUsername.equals(partner, true) }
             ?.id?.takeUnless { it.startsWith("local_") }
@@ -3125,6 +3128,9 @@ private suspend fun restoreSupabaseSession() {
             isRead = false,
             isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
             attachedImageUrl = uri.toString().takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+            imageAlbumId = album.id.takeIf { kind == BlinkChatAttachmentKind.IMAGE && album.grouped },
+            imageAlbumPosition = if (album.grouped) album.position else 0,
+            imageAlbumSize = if (album.grouped) album.size else 1,
             uploadProgress = 0,
             status = MessageStatus.SENDING
         ))
@@ -3164,7 +3170,14 @@ private suspend fun restoreSupabaseSession() {
                 }.getOrDefault(BlinkChatImageQuality.STANDARD)
                 pendingAttachments["temp_attachment_$id"] = PendingAttachment(
                     Uri.fromFile(imageFile), BlinkChatAttachmentKind.IMAGE, 0L, uid,
-                    obj.optString("caption").take(1024), kind
+                    obj.optString("caption").take(1024), kind,
+                    runCatching {
+                        val albumId = obj.optString("albumId")
+                        if (albumId.isBlank()) BlinkChatPhotoAlbum.single()
+                        else BlinkChatPhotoAlbum.of(
+                            albumId, obj.optInt("albumPosition"), obj.optInt("albumSize")
+                        )
+                    }.getOrDefault(BlinkChatPhotoAlbum.single())
                 )
             }.onFailure { Log.w(TAG, "Skipped invalid local picture draft", it) }
         }
@@ -3214,6 +3227,9 @@ private suspend fun restoreSupabaseSession() {
                     .put("caption", pending.caption)
                     .put("imageQuality", pending.imageQuality.name)
                     .put("filename", durableFile.name)
+                    .put("albumId", pending.album.id ?: "")
+                    .put("albumPosition", pending.album.position)
+                    .put("albumSize", pending.album.size)
                 val writing = java.io.File(outbox, "$messageId.pending.tmp")
                 writing.writeText(json.toString())
                 check(writing.renameTo(record)) { "Could not persist picture upload." }
@@ -3226,7 +3242,10 @@ private suspend fun restoreSupabaseSession() {
                         "messageId" to messageId,
                         "filename" to durableFile.name,
                         "caption" to pending.caption,
-                        "imageQuality" to pending.imageQuality.name
+                        "imageQuality" to pending.imageQuality.name,
+                        "albumId" to (pending.album.id ?: ""),
+                        "albumPosition" to pending.album.position,
+                        "albumSize" to pending.album.size
                     ))
                     .addTag("blink_chat_picture").build()
                 WorkManager.getInstance(appContext).enqueueUniqueWork(
@@ -3319,7 +3338,8 @@ private suspend fun restoreSupabaseSession() {
                         }
                     },
                     caption = pending.caption,
-                    imageQuality = pending.imageQuality
+                    imageQuality = pending.imageQuality,
+                    album = pending.album
                 ).fold(
                     onSuccess = { message ->
                         pendingAttachments.remove(tempId)
