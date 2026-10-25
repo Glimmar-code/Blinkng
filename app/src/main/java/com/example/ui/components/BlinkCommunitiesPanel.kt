@@ -46,23 +46,25 @@ fun BlinkCommunitiesPanel(
     val backend = remember { BlinkCommunityRepository() }
     val service = remember { SupabaseService() }
     val scope = rememberCoroutineScope()
-    var communities by remember { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var success by remember { mutableStateOf<String?>(null) }
-    var showCreate by rememberSaveable { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
-    var description by rememberSaveable { mutableStateOf("") }
-    var university by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("Academic") }
-    var coverUrl by rememberSaveable { mutableStateOf("") }
-    var rules by rememberSaveable { mutableStateOf("") }
-    var isPrivate by rememberSaveable { mutableStateOf(false) }
-    var inviteTo by remember { mutableStateOf<BlinkCommunity?>(null) }
-    var managing by remember { mutableStateOf<String?>(null) }
-    var roster by remember { mutableStateOf<List<BlinkCommunityMember>>(emptyList()) }
     val ownerId = service.getCurrentUserId().orEmpty()
+    // Never carry a previous account's private communities, roster or draft
+    // through a logout/login or Switch Account transition.
+    var communities by remember(ownerId) { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
+    var loading by remember(ownerId) { mutableStateOf(true) }
+    var saving by remember(ownerId) { mutableStateOf(false) }
+    var error by remember(ownerId) { mutableStateOf<String?>(null) }
+    var success by remember(ownerId) { mutableStateOf<String?>(null) }
+    var showCreate by rememberSaveable(ownerId) { mutableStateOf(false) }
+    var name by rememberSaveable(ownerId) { mutableStateOf("") }
+    var description by rememberSaveable(ownerId) { mutableStateOf("") }
+    var university by rememberSaveable(ownerId) { mutableStateOf("") }
+    var category by rememberSaveable(ownerId) { mutableStateOf("Academic") }
+    var coverUrl by rememberSaveable(ownerId) { mutableStateOf("") }
+    var rules by rememberSaveable(ownerId) { mutableStateOf("") }
+    var isPrivate by rememberSaveable(ownerId) { mutableStateOf(false) }
+    var inviteTo by remember(ownerId) { mutableStateOf<BlinkCommunity?>(null) }
+    var managing by remember(ownerId) { mutableStateOf<String?>(null) }
+    var roster by remember(ownerId) { mutableStateOf<List<BlinkCommunityMember>>(emptyList()) }
 
     suspend fun refresh() {
         loading = true
@@ -73,7 +75,9 @@ fun BlinkCommunitiesPanel(
             error = cause.message ?: "Communities are not currently available."
         } finally { loading = false }
     }
-    LaunchedEffect(ownerId) { if (ownerId.isNotBlank()) refresh() }
+    LaunchedEffect(ownerId) {
+        if (ownerId.isNotBlank()) refresh() else loading = false
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
