@@ -118,6 +118,9 @@ class BlinkCommunityRepository {
         return rpc("blink_community_join", JSONObject().put("p_community_id", communityId))
     }
 
+    suspend fun requestJoin(communityId: String): String =
+        rpc("blink_community_request_join", JSONObject().put("p_community_id", communityId))
+
     suspend fun invite(communityId: String, memberId: String): String =
         rpc("blink_community_invite",
             JSONObject().put("p_community_id", communityId).put("p_user_id", memberId))
