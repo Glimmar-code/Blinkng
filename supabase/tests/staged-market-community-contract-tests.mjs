@@ -122,6 +122,104 @@ export async function stagedMarketCommunityContractTests() {
     assert.equal(departed.rows.length, 0, 'Departed members cannot list groups');
     await db.exec('reset role');
     console.log('PASS staged one-row group inbox and departed-member suppression');
+
+    // Model currently deployed permissive membership policies, apply the
+    // proposed replacement policies locally, and assert authenticated users
+    // cannot self-invite, self-promote or keep reading after leaving.
+    await db.exec(`
+      create table public.messages (
+        id uuid primary key default gen_random_uuid(),
+        conversation_id uuid references public.conversations(id),
+        sender_id uuid, content text,
+        created_at timestamptz default now()
+      );
+      grant select,insert,update on public.conversation_participants to authenticated;
+      grant select,update on public.conversations to authenticated;
+      grant select,insert on public.messages to authenticated;
+      alter table public.conversations enable row level security;
+      alter table public.conversation_participants enable row level security;
+      alter table public.messages enable row level security;
+      create policy cp_select_own on public.conversation_participants
+        for select to authenticated using (user_id=auth.uid());
+      create policy cp_update_own on public.conversation_participants
+        for update to authenticated using (user_id=auth.uid())
+        with check (user_id=auth.uid());
+      create policy cp_insert_own on public.conversation_participants
+        for insert to authenticated with check (user_id=auth.uid());
+      create policy conv_select_member on public.conversations
+        for select to authenticated using (exists (
+          select 1 from public.conversation_participants cp
+          where cp.conversation_id=conversations.id and cp.user_id=auth.uid()
+        ));
+      create policy conv_update_member on public.conversations
+        for update to authenticated using (exists (
+          select 1 from public.conversation_participants cp
+          where cp.conversation_id=conversations.id and cp.user_id=auth.uid()
+        ));
+      create policy messages_select_member on public.messages
+        for select to authenticated using (exists (
+          select 1 from public.conversation_participants cp
+          where cp.conversation_id=messages.conversation_id
+            and cp.user_id=auth.uid()
+        ));
+      create policy messages_insert_member on public.messages
+        for insert to authenticated with check (
+          sender_id=auth.uid() and exists (
+            select 1 from public.conversation_participants cp
+            where cp.conversation_id=messages.conversation_id
+              and cp.user_id=auth.uid()
+          )
+        );
+    `);
+    const hardening = fs.readFileSync(
+      new URL('../../docs/integration/group-membership-security-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(hardening);
+
+    const privateGroup = '66666666-6666-4666-8666-666666666666';
+    const dm = '77777777-7777-4777-8777-777777777777';
+    await db.exec(`
+      insert into public.conversations(id,title,is_group) values
+        ('${privateGroup}','Private Readers',true),
+        ('${dm}','Legacy Direct',false);
+      insert into public.conversation_participants(conversation_id,user_id)
+        values ('${privateGroup}','${owner}');
+      insert into public.messages(conversation_id,sender_id,content)
+        values ('${group}','${owner}','Group history');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      insert into public.conversation_participants(conversation_id,user_id)
+      values ('${privateGroup}','${other}')`), 'row-level security');
+    await db.exec(`
+      insert into public.conversation_participants(conversation_id,user_id)
+      values ('${dm}','${other}')`);
+    await rejects(() => db.exec(`
+      update public.conversation_participants set is_admin=true
+        where conversation_id='${group}' and user_id='${other}'`),
+      'BLINK_MEMBERSHIP_CHANGE_REQUIRES_SERVER');
+
+    await db.exec(`
+      update public.conversation_participants set left_at=now()
+        where conversation_id='${group}' and user_id='${other}'`);
+    await rejects(() => db.exec(`
+      update public.conversation_participants set left_at=null
+        where conversation_id='${group}' and user_id='${other}'`),
+      'BLINK_MEMBERSHIP_CHANGE_REQUIRES_SERVER');
+    const groupView = await db.query(`
+      select id from public.conversations where id='${group}'`);
+    assert.equal(groupView.rows.length, 0, 'Departed user cannot view group');
+    const messageView = await db.query(`
+      select id from public.messages where conversation_id='${group}'`);
+    assert.equal(messageView.rows.length, 0, 'Departed user cannot read old group messages');
+    await rejects(() => db.exec(`
+      insert into public.messages(conversation_id,sender_id,content)
+      values ('${group}','${other}','Unauthorized after leaving')`),
+      'row-level security');
+    await db.exec('reset role');
+    console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
     console.log('PASS independent offline staged Marketplace + Community contracts');
   } finally {
     await db.close();
