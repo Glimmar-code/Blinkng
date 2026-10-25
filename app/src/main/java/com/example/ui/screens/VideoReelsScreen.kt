@@ -706,6 +706,7 @@ private fun ReelsContent(
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
                         onSwipeToProfile = onOpenConnectHub,
+                        isPreview = !expanded,
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
                         onInitialPositionConsumed = {
                             if (pendingLaunchReelId == reel.id) {
@@ -759,6 +760,7 @@ private fun ReelsContent(
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
                         onSwipeToProfile = onOpenConnectHub,
+                        isPreview = !expanded,
                         initialPositionMs = 0L,
                         onInitialPositionConsumed = {},
                         trackExposure = false,
@@ -1061,6 +1063,7 @@ private fun ReelPage(
     onSwipeToProfile: () -> Unit,
     initialPositionMs: Long,
     onInitialPositionConsumed: () -> Unit,
+    isPreview: Boolean = false,
     trackExposure: Boolean = true,
 ) {
     val context = LocalContext.current
@@ -1312,10 +1315,8 @@ private fun ReelPage(
         Column(
             Modifier
                 .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                // Main tab bar is 56dp plus the Android gesture inset.
-                // Keep all four actions out of the navigation tap region.
-                .padding(end = 10.dp, bottom = 92.dp)
+                .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
+                .padding(end = 8.dp, bottom = if (isPreview) 10.dp else 30.dp)
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1350,19 +1351,21 @@ private fun ReelPage(
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 56.dp, end = 6.dp),
+                .then(if (isPreview) Modifier else Modifier.statusBarsPadding())
+                .padding(top = if (isPreview) 4.dp else 56.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {
-                onToggleMuted()
-                showMuteHint = true
-            }) {
-                Icon(
-                    if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                    contentDescription = if (isMuted) "Unmute reel" else "Mute reel",
-                    tint = Color.White
-                )
+            if (!isPreview) {
+                IconButton(onClick = {
+                    onToggleMuted()
+                    showMuteHint = true
+                }) {
+                    Icon(
+                        if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        contentDescription = if (isMuted) "Unmute reel" else "Mute reel",
+                        tint = Color.White
+                    )
+                }
             }
             IconButton(onClick = { onOpenOptions(reel) }) {
                 Icon(Icons.Default.MoreHoriz, contentDescription = "More reel actions", tint = Color.White)
@@ -1371,10 +1374,15 @@ private fun ReelPage(
 
         Column(
             Modifier
-                .align(Alignment.BottomStart)
+                .align(if (isPreview) Alignment.TopStart else Alignment.BottomStart)
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 15.dp, end = 88.dp, bottom = 108.dp)
+                .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
+                .padding(
+                    start = 15.dp,
+                    end = if (isPreview) 50.dp else 88.dp,
+                    top = if (isPreview) 12.dp else 0.dp,
+                    bottom = if (isPreview) 0.dp else 45.dp
+                )
                 .entranceEffect(delayMillis = 120)
         ) {
             Row(
@@ -1410,7 +1418,7 @@ private fun ReelPage(
                         size = 13.dp
                     )
                 }
-                if (!isAuthor && authorId.isNotBlank()) {
+                if (!isPreview && !isAuthor && authorId.isNotBlank()) {
                     Spacer(Modifier.width(8.dp))
                     ProfileFollowInteractButton(
                         isFollowing = authorId in followingIds,
@@ -1462,11 +1470,22 @@ private fun ReelPage(
                     )
                 }
             }
-            if (reel.text.isNotBlank()) {
+            if (isPreview) {
+                val locationAndTime = listOfNotNull(
+                    reel.location?.takeIf(String::isNotBlank),
+                    reel.timeAgo.takeIf(String::isNotBlank)
+                ).joinToString(" · ")
+                if (locationAndTime.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(locationAndTime, color = Color.White.copy(alpha = .85f),
+                        fontSize = 11.sp, maxLines = 1)
+                }
+            }
+            if (!isPreview && reel.text.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 ExpandableCaption(reel.text)
             }
-            reel.audioTitle?.takeIf { it.isNotBlank() }?.let { audio ->
+            reel.audioTitle?.takeIf { !isPreview && it.isNotBlank() }?.let { audio ->
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -1476,13 +1495,37 @@ private fun ReelPage(
             }
         }
 
+        if (isPreview && reel.text.isNotBlank()) {
+            Column(
+                Modifier.align(Alignment.BottomStart)
+                    .padding(start = 14.dp, end = 85.dp, bottom = 18.dp)
+            ) {
+                Text(
+                    reel.text,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2
+                )
+                if (reel.tags.isNotEmpty()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        reel.tags.take(3).joinToString(" ") { "#${it.removePrefix("#")}" },
+                        color = Color.White.copy(alpha = .9f),
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
         VideoProgressBar(
             progress = progress,
             onSeek = { fraction -> seekToFraction = fraction },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 62.dp, start = 10.dp, end = 10.dp)
+                .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
+                .padding(bottom = if (isPreview) 0.dp else 6.dp, start = 10.dp, end = 10.dp)
         )
     }
 }
