@@ -43,7 +43,8 @@ export async function stagedMarketCommunityContractTests() {
         id uuid primary key, title text, description text, avatar_url text,
         is_group boolean not null default false, created_by uuid,
         updated_at timestamptz not null default now(),
-        created_at timestamptz not null default now()
+        created_at timestamptz not null default now(),
+        last_message_at timestamptz
       );
       create table public.conversation_participants (
         conversation_id uuid references public.conversations(id), user_id uuid,
@@ -312,6 +313,11 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(dmSummaries);
+    const dmSend = fs.readFileSync(
+      new URL('../../docs/integration/direct-message-send-security-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(dmSend);
 
     const privateGroup = '66666666-6666-4666-8666-666666666666';
     const dm = '77777777-7777-4777-8777-777777777777';
@@ -484,6 +490,44 @@ export async function stagedMarketCommunityContractTests() {
       select public.blink_group_leave('${managed}') as ok`);
     assert.equal(ownerLeave.rows[0].ok,true,'Previous owner can leave after transfer');
     await db.exec('reset role');
+    // SECURITY DEFINER send_message must not silently revive history from a
+    // direct conversation after one participant has left that conversation.
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const newChat = await db.query(
+      "select public.get_or_create_direct_conversation('testowner') as id");
+    const newId = newChat.rows[0].id;
+    assert.notEqual(newId,dm,'Departed users get a new DM instead of old chat access');
+    const freshMessage = await db.query(
+      "select public.send_message('testowner','New direct message') as id");
+    const freshLocation = await db.query(
+      `select conversation_id from public.messages where id='${freshMessage.rows[0].id}'`);
+    assert.equal(freshLocation.rows[0].conversation_id,newId,
+      'DM send reuses active newly established chat only');
+    const oldMember = await db.query(`
+      select left_at from public.conversation_participants
+      where conversation_id='${dm}' and user_id='${other}'`);
+    assert.ok(oldMember.rows[0].left_at,
+      'Server-side DM sending must never silently rejoin departed chats');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const reply = await db.query(
+      "select public.send_message('testreader','Response from original account') as id");
+    const replyLocation = await db.query(
+      `select conversation_id from public.messages where id='${reply.rows[0].id}'`);
+    assert.equal(replyLocation.rows[0].conversation_id,newId,
+      'Both participants reuse only the active conversation');
+    await db.exec('reset role');
+    await db.exec(`
+      insert into public.blocks(blocker_id,blocked_id) values ('${owner}','${other}')`);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      select public.send_message('testowner','Not permitted')`),'USER_BLOCKED');
+    await rejects(() => db.exec(`
+      select public.get_or_create_direct_conversation('testowner')`),'USER_BLOCKED');
+    await db.exec('reset role');
+    console.log('PASS staged DM send re-entry boundaries, active reuse and block enforcement');
+
     console.log('PASS staged group owner transfer, successor authorization and safe leave');
     console.log('PASS active and departed direct-chat history/read-receipt authorization');
     console.log('PASS staged founder cannot silently abandon group via raw UPDATE');
@@ -493,6 +537,7 @@ export async function stagedMarketCommunityContractTests() {
     await db.exec(hardening);
     await db.exec(receiptGuard);
     await db.exec(dmSummaries);
+    await db.exec(dmSend);
     await db.exec(groupCommunity);
     await db.exec(market);
     console.log('PASS staged SQL replay (idempotency, triggers and policies)');
