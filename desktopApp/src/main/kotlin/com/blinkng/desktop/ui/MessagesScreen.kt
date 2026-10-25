@@ -130,6 +130,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember { mutableStateOf<SkiaImage?>(null) }
+    val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var photoBusy by remember { mutableStateOf(false) }
     var outboxPending by remember { mutableStateOf(0) }
     var outboxPercent by remember { mutableStateOf<Int?>(null) }
@@ -575,7 +576,58 @@ fun MessagesScreen(state: DesktopAppState) {
                                             )
                                         }
                                     }
-                                    Text(message.content)
+                                    if (message.imageViewOnce) {
+                                        Text(
+                                            if (mine) "🔒 Private photo sent"
+                                            else if (viewedOncePhotos[message.id] == true)
+                                                "Private photo already opened"
+                                            else "🔒 View-once photo",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (!mine && viewedOncePhotos[message.id] != true) {
+                                            TextButton(onClick = {
+                                                val owner = myUserId
+                                                val selectedId = selected?.id
+                                                scope.launch {
+                                                    runCatching {
+                                                        val bytes = state.client.openViewOnceImage(message.id)
+                                                        try {
+                                                            SkiaImage.makeFromEncoded(bytes)
+                                                        } finally {
+                                                            bytes.fill(0)
+                                                        }
+                                                    }.onSuccess { picture ->
+                                                        if (state.session?.userId == owner &&
+                                                            selected?.id == selectedId) {
+                                                            viewedOncePhotos[message.id] = true
+                                                            privatePicture = picture
+                                                        } else picture.close()
+                                                    }.onFailure { failure ->
+                                                        if (failure.message?.contains("already", true) == true) {
+                                                            viewedOncePhotos[message.id] = true
+                                                        }
+                                                        error = failure.message
+                                                    }
+                                                }
+                                            }) { Text("Open once") }
+                                        }
+                                    } else {
+                                        if (message.messageType == "image" &&
+                                            !message.mediaUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = message.mediaUrl,
+                                                contentDescription = "Shared private picture",
+                                                contentScale = ContentScale.Fit,
+                                                modifier = Modifier.widthIn(max = 330.dp)
+                                                    .heightIn(max = 270.dp)
+                                            )
+                                        }
+                                        if (message.content.isNotBlank() &&
+                                            !(message.messageType == "image" &&
+                                                message.content in setOf("Image", "Photo"))) {
+                                            Text(message.content)
+                                        }
+                                    }
                                     if (message.reactionCounts.isNotEmpty()) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             message.reactionCounts.forEach { (emoji, count) ->
@@ -651,6 +703,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Forward") },
+                                    enabled = !message.imageViewOnce,
                                     onClick = {
                                         forwardMessageId = message.id
                                         forwardUsername = ""
@@ -956,6 +1009,26 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+    privatePicture?.let { picture ->
+        DisposableEffect(picture) {
+            onDispose { picture.close() }
+        }
+        AlertDialog(
+            onDismissRequest = { privatePicture = null },
+            title = { Text("View-once private photo") },
+            text = {
+                ComposeImage(
+                    bitmap = picture.toComposeImageBitmap(),
+                    contentDescription = "View-once private photo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.widthIn(max = 660.dp).heightIn(max = 540.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { privatePicture = null }) { Text("Close") }
+            }
+        )
     }
     editingMessage?.let { target ->
         AlertDialog(
