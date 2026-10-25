@@ -3130,6 +3130,19 @@ private suspend fun restoreSupabaseSession() {
         dispatchAttachment(partner, tempId)
     }
 
+    /** Only delete captures or editor/forward copies created inside BLINK's own cache. */
+    private fun cleanupPrivatePictureSource(uri: Uri) {
+        if (uri.scheme != "file") return
+        val photo = java.io.File(uri.path.orEmpty())
+        val allowed = (photo.parentFile == appContext.cacheDir &&
+            (photo.name.startsWith("blink-forward-") ||
+                photo.name.startsWith("blink-edited-"))) ||
+            (photo.parentFile?.name == "blink-camera" &&
+                photo.parentFile?.parentFile == appContext.cacheDir &&
+                photo.name.startsWith("blink-camera-"))
+        if (allowed) runCatching { photo.delete() }
+    }
+
     /** Restore the original message ID and private local file after process restart,
      * so manual retry/cancel can refer to the same server-side idempotency key. */
     private fun restoreDurablePictureDrafts() {
@@ -3226,11 +3239,7 @@ private suspend fun restoreSupabaseSession() {
                             if (supabaseService.getCurrentUserId() != pending.ownerId) return
                             if (info.state == WorkInfo.State.SUCCEEDED) {
                                 pendingAttachments.remove(tempId)
-                                if (pending.uri.scheme == "file") {
-                                    val sourceFile = java.io.File(pending.uri.path.orEmpty())
-                                    if (sourceFile.parentFile?.name == "blink-camera" &&
-                                        sourceFile.name.startsWith("blink-camera-")) sourceFile.delete()
-                                }
+                                cleanupPrivatePictureSource(pending.uri)
                                 viewModelScope.launch(Dispatchers.IO) {
                                     val remoteId = info.outputData.getString("serverMessageId")
                                     val remote = runCatching {
@@ -3343,6 +3352,7 @@ private suspend fun restoreSupabaseSession() {
             pending.ownerId != supabaseService.getCurrentUserId()) return
         cancelledImageUploads.add(tempId)
         pendingAttachments.remove(tempId)
+        cleanupPrivatePictureSource(pending.uri)
         java.io.File(appContext.filesDir, "blink-chat-image-outbox")
             .resolve("${tempId.removePrefix("temp_attachment_")}.pending").delete()
         WorkManager.getInstance(appContext).cancelUniqueWork(
@@ -4504,14 +4514,8 @@ private suspend fun restoreSupabaseSession() {
     fun logout() {
         // Drop in-memory picker grants and private recordings on account change.
         pendingAttachments.values.forEach { attachment ->
-            if (attachment.kind == BlinkChatAttachmentKind.IMAGE &&
-                attachment.uri.scheme == "file") {
-                runCatching {
-                    java.io.File(attachment.uri.path.orEmpty()).takeIf {
-                        it.parentFile?.name == "blink-camera" &&
-                            it.name.startsWith("blink-camera-")
-                    }?.delete()
-                }
+            if (attachment.kind == BlinkChatAttachmentKind.IMAGE) {
+                cleanupPrivatePictureSource(attachment.uri)
             }
             if (attachment.kind == BlinkChatAttachmentKind.VOICE && attachment.uri.scheme == "file") {
                 runCatching {
