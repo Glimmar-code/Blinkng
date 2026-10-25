@@ -1310,6 +1310,9 @@ fun MainAppContent(
                         onSendAttachment = { partner, uri, kind, duration, caption, quality, album ->
                             viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality, album)
                         },
+                        onSendViewOncePicture = { partner, uri, caption, quality ->
+                            viewModel.sendViewOncePicture(partner, uri, caption, quality)
+                        },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
@@ -1784,6 +1787,9 @@ fun MainAppContent(
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
                     onSendAttachment = { uri, kind, duration, caption, quality, album ->
                         viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality, album)
+                    },
+                    onSendViewOncePicture = { uri, caption, quality ->
+                        viewModel.sendViewOncePicture(convo.partnerUsername, uri, caption, quality)
                     },
                     onCancelAttachment = { message ->
                         viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
