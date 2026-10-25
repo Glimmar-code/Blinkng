@@ -44,6 +44,7 @@ import com.blinkng.shared.live.BlinkLiveCampaign
 import com.blinkng.shared.live.BlinkLiveSnapshot
 import com.example.data.supabase.BlinkPaystackCheckoutService
 import com.example.data.supabase.BlinkPaystackReceipt
+import com.example.data.supabase.BlinkReferralClient
 import com.example.ads.BlinkAdConsentManager
 import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPaystackRefreshJob: Job? = null
     private var paymentInProgress by mutableStateOf(false)
     private var showCoinPackChooser by mutableStateOf(false)
+    private var showNewStudentSuggestions by mutableStateOf(false)
     private var showPaystackReceipts by mutableStateOf(false)
     private var loadingPaystackReceipts by mutableStateOf(false)
     private var paystackReceiptError by mutableStateOf<String?>(null)
@@ -519,7 +521,8 @@ class MainActivity : ComponentActivity() {
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
         )
         adConsentManager = BlinkAdConsentManager(this)
-        // Let the first launch frames render before requesting consent or ads.
+        // Avoid UMP/WebView startup work on the intro animation's first frames.
+        // The required consent flow still runs after the intro completes.
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -532,8 +535,7 @@ class MainActivity : ComponentActivity() {
             var showStartupIntro by remember { mutableStateOf(true) }
             LaunchedEffect(showStartupIntro) {
                 if (!showStartupIntro) {
-                    // UMP can initialize WebViews; starting it during the splash
-                    // can monopolize the same main thread used by Compose frames.
+                    // Ads remain gated on UMP consent, after the startup animation.
                     delay(300L)
                     if (!isFinishing && !isDestroyed) {
                         adConsentManager.gatherConsent {
@@ -612,6 +614,9 @@ class MainActivity : ComponentActivity() {
                         avatarUrl = uiState.myProfile.avatarUrl
                     )
                     BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    // New member explicitly authored this confirmed referral; dispatch its push
+                    // with their JWT (the recipient does not need the app open).
+                    runCatching { BlinkReferralClient.dispatchConfirmedReferralPushes() }
                     viewModel.refreshProfileRewards()
                     if (
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -662,6 +667,7 @@ class MainActivity : ComponentActivity() {
                         // Other main tabs retain their original bottom safe area.
                         WindowInsets.safeDrawing.only(
                             if (uiState.viewingProfile != null ||
+                                uiState.isMenuOpen ||
                                 (uiState.activeConversationPartner != null &&
                                     (uiState.selectedTab == MainTab.MESSAGES || uiState.isConversationFullScreen))
                             ) {
@@ -740,8 +746,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     SignUpScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onSuccess = { name, user, email, pass, uni, type ->
-                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type)
+                                        onSuccess = { name, user, email, pass, uni, type, referrerId ->
+                                            viewModel.signUp(name, user, email, pass, university = uni, accountType = type, referrerId = referrerId)
                                         },
                                         onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
                                         onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
@@ -764,6 +770,7 @@ class MainActivity : ComponentActivity() {
                                         initialUniversity = uiState.myProfile.university,
                                         initialAccountType = uiState.myProfile.accountType,
                                         onComplete = { uni, faculty, dept, level, type, bio, skills ->
+                                            showNewStudentSuggestions = true
                                             viewModel.completeProfileOnboarding(uni, faculty, dept, level, type, bio, skills)
                                         }
                                     )
@@ -800,6 +807,12 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN && showNewStudentSuggestions) {
+                            BlinkNewStudentSuggestionsDialog(
+                                onDismiss = { showNewStudentSuggestions = false }
+                            )
                         }
 
                         if (uiState.destination == AppDestination.MAIN) {
@@ -907,8 +920,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
+// Centralized website route for in-app Menu Update Center and Help pages.
+private fun openOfficialBlinkWebsite(context: android.content.Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(WebsiteApkUpdateCoordinator.DOWNLOAD_PAGE))
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+        )
+    }
+}
+
 // MESSAGING_RELIABILITY_AUDIT_V3
+@Composable
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
@@ -941,6 +964,7 @@ fun MainAppContent(
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showEarning by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var liveSnapshot by remember { mutableStateOf(BlinkLiveSnapshot()) }
     // Update only presentation content while BLINK is open. Never download executable code.
@@ -1305,8 +1329,20 @@ fun MainAppContent(
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onSendAttachment = { partner, uri, kind, duration, caption, quality, album ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind, duration, caption, quality, album)
+                        },
+                        onSendViewOncePicture = { partner, uri, caption, quality ->
+                            viewModel.sendViewOncePicture(partner, uri, caption, quality)
+                        },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
+                        },
+                        onCancelAttachment = { partner, message ->
+                            viewModel.cancelAttachmentMessage(partner, message)
+                        },
+                        onForwardPicture = { target, message ->
+                            viewModel.forwardPictureMessage(target, message)
                         },
                         hasMoreMessages = { conversationId ->
                             uiState.messageHistoryHasMore[conversationId] ?: true
@@ -1603,11 +1639,12 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
+                    initialTab = if (isMyProfile && showSavedProfile) 3 else 0,
                     userPosts = profilePosts,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
                     userMarketItems = userMarketItems,
-                    onBack = { viewModel.closeProfile() },
+                    onBack = { showSavedProfile = false; viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
                         viewModel.closeProfile()
@@ -1771,6 +1808,18 @@ fun MainAppContent(
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
+                    onSendAttachment = { uri, kind, duration, caption, quality, album ->
+                        viewModel.sendAttachmentMessage(convo.partnerUsername, uri, kind, duration, caption, quality, album)
+                    },
+                    onSendViewOncePicture = { uri, caption, quality ->
+                        viewModel.sendViewOncePicture(convo.partnerUsername, uri, caption, quality)
+                    },
+                    onCancelAttachment = { message ->
+                        viewModel.cancelAttachmentMessage(convo.partnerUsername, message)
+                    },
+                    onForwardPicture = { target, message ->
+                        viewModel.forwardPictureMessage(target, message)
+                    },
                     onProfileClick = { username ->
                         viewModel.openProfileFromChat(username)
                     },
@@ -1998,48 +2047,172 @@ fun MainAppContent(
             )
         }
 
-        // Modals: 3-Dot App Menu Sheet
+        // Full-screen BLINK Menu reference. Keep existing real destinations and account semantics.
         if (uiState.isMenuOpen) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            AppMenuSheet(
+            BlinkReferenceMenuScreen(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
+                hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                appVersion = BuildConfig.VERSION_NAME,
                 onDismiss = { viewModel.openMenu(false) },
-                onViewProfile = { viewModel.openProfile("you") },
-                onEditProfile = { viewModel.openEditProfile(true) },
-                onOpenMarket = { viewModel.setTab(MainTab.MARKET) },
-                onOpenPostItem = { viewModel.openPostItem(true) },
-                onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
-                onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
-                onOpenActivity = { viewModel.openActivity(true) },
-                onFindFriends = onFindFriends,
-                onOpenEarning = { showEarning = true },
+                onViewProfile = {
+                    showSavedProfile = false
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onLeaderboard = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onWallet = {
+                    viewModel.openMenu(false)
+                    showEarning = true
+                },
+                onNotifications = {
+                    viewModel.openMenu(false)
+                    viewModel.openActivity(true)
+                },
+                onSaved = {
+                    showSavedProfile = true
+                    viewModel.openMenu(false)
+                    viewModel.openProfile("you")
+                },
+                onVerification = {
+                    viewModel.openMenu(false)
+                    viewModel.openGetVerified(true)
+                },
+                onSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivity(
+                        Intent(context, ProfessionalCenterActivity::class.java)
+                            .putExtra("section", "privacy")
+                    )
+                },
                 onToggleTheme = { viewModel.toggleDarkMode() },
-                onLogout = { viewModel.logout() },
-                onShowToast = { viewModel.showToast(it) },
+                onCallSettings = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context,
+                        com.example.notification.NotificationAndCallSettingsActivity::class.java))
+                },
+                onSwitchAccount = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context,
+                        com.example.auth.AccountSwitcherActivity::class.java))
+                },
+                onOpenAdmin = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
+                },
+                onMessages = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                onEditProfile = {
+                    viewModel.openMenu(false)
+                    viewModel.openEditProfile(true)
+                },
+                onFindFriends = {
+                    viewModel.openMenu(false)
+                    onFindFriends()
+                },
+                onPostItem = {
+                    viewModel.openMenu(false)
+                    viewModel.openPostItem(true)
+                },
+                onSellerHub = {
+                    viewModel.openMenu(false)
+                    viewModel.openBecomeSeller(true)
+                },
+                onScheduledPosts = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "scheduled"))
+                },
+                onGroups = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "groups"))
+                },
+                onOrdersAndWishlist = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, ProfessionalCenterActivity::class.java)
+                        .putExtra("section", "market"))
+                },
+                onCallHistory = {
+                    viewModel.openMenu(false)
+                    context.startActivity(Intent(context, com.example.call.CallHistoryActivity::class.java))
+                },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
-                onAdPrivacyOptions = onAdPrivacyOptions,
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+                onAdPrivacyOptions = {
+                    viewModel.openMenu(false)
+                    onAdPrivacyOptions()
+                },
+                onLogOut = {
+                    viewModel.openMenu(false)
+                    viewModel.logout()
+                },
+                onSearch = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.SEARCH)
+                },
+                onGames = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(3)
+                },
+                onOpenUpdateWebsite = { openOfficialBlinkWebsite(context) },
+                onOpenHelpWebsite = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.blink.com.ng"))
+                                .addCategory(Intent.CATEGORY_BROWSABLE)
+                        )
+                    }
+                },
+                onHome = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(0)
+                },
+                onReels = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(1)
+                },
+                onMarket = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.MARKET)
+                },
+                onConnect = {
+                    viewModel.openMenu(false)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(2)
+                }
             )
         }
 
-        // Menu → Earning: account-bound earned balances and actual transactions.
+        // Menu → Wallet & Coins: a real full-page destination, not the old Earning sheet.
+        // Account-bound state is loaded from the authenticated store RPC.
         if (showEarning && uiState.myProfile.id.isNotBlank()) {
-            BlinkEarningSheet(
+            BlinkWalletScreen(
                 accountId = uiState.myProfile.id,
-                balance = uiState.blinkCoinBalance,
+                lastKnownBalance = uiState.blinkCoinBalance,
                 dailyStreak = uiState.myProfile.dailyStreak,
                 adsToday = uiState.rewardedAdsToday,
                 policy = uiState.economyPolicy,
                 missions = uiState.dailyMissions,
                 loadingMissions = uiState.isDailyMissionsLoading,
-                onDismiss = { showEarning = false },
+                isDark = uiState.isDarkMode,
+                onBack = { showEarning = false; viewModel.openMenu(true) },
                 onRefresh = { viewModel.refreshProfileRewards() },
                 onClaimMission = { viewModel.claimDailyMission(it) },
                 onWatchOptionalAd = onWatchAdForCoins,
                 onOpenVerification = {
                     showEarning = false
                     viewModel.openGetVerified(true)
+                },
+                onOpenStore = {
+                    context.startActivity(Intent(context, BlinkStoreActivity::class.java))
                 },
             )
         }

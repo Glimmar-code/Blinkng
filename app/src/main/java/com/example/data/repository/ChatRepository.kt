@@ -199,8 +199,21 @@ class ChatRepository(
                             else -> MessageStatus.SENT
                         },
                         isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        voiceDuration = o.optString("content").removePrefix("Voice note: ")
+                            .takeIf { it.matches(Regex("^\\d+s$")) }.orEmpty(),
+                        voiceAudioUrl = mediaUrl.takeIf { mediaType.equals("voice", true) || mediaType.equals("audio", true) },
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
+                        imagePreviewUrl = o.optString("image_preview_url")
+                            .takeIf { mediaType.equals("image", true) && it.isNotBlank() && it != "null" },
+                        imageAlbumId = o.optString("image_album_id")
+                            .takeIf { mediaType.equals("image", true) &&
+                                runCatching { java.util.UUID.fromString(it) }.isSuccess },
+                        imageAlbumPosition = o.optInt("image_album_position", 0),
+                        imageAlbumSize = o.optInt("image_album_size", 1),
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        attachedDocumentUrl = mediaUrl.takeIf { mediaType.equals("document", true) },
+                        attachedDocumentName = o.optString("content").removePrefix("Document: ")
+                            .takeIf { mediaType.equals("document", true) },
                         replyToMessageId = o.optString("reply_to_message_id")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) },
                         editedAt = o.optString("edited_at")
@@ -211,7 +224,10 @@ class ChatRepository(
             }
         }
         val visibleMessages = filterClearedMessages(conversationId, baseMessages)
-        enrichMessageActions(visibleMessages)
+        val viewOnceMessages = com.example.data.supabase.MessageMediaService
+            .hydrateViewOnceFlags(visibleMessages, conversationId)
+        val enrichedMessages = enrichMessageActions(viewOnceMessages)
+        com.example.data.supabase.MessageMediaService.hydrateMediaPage(enrichedMessages, conversationId)
     }
 
     /**

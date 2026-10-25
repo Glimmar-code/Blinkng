@@ -99,6 +99,11 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false,
 )
 
 data class DesktopNotification(

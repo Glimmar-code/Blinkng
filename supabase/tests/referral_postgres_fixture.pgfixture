@@ -1,0 +1,48 @@
+-- Disposable, synthetic PostgreSQL fixture. Not a production migration.
+create role anon nologin;
+create role authenticated nologin;
+create schema auth;
+create or replace function auth.uid() returns uuid
+language sql stable as $$
+  select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+$$;
+create table auth.users(
+  id uuid primary key,
+  created_at timestamptz not null default now(),
+  email_confirmed_at timestamptz,
+  raw_user_meta_data jsonb not null default '{}'::jsonb
+);
+create table public.profiles(
+  id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique,
+  full_name text not null default '',
+  university text not null default '',
+  avatar_url text,
+  onboarding_completed boolean not null default false
+);
+create table public.user_settings(
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  private_account boolean not null default false
+);
+create table public.blocks(
+  blocker_id uuid not null references auth.users(id),
+  blocked_id uuid not null references auth.users(id),
+  primary key (blocker_id,blocked_id)
+);
+create table public.notifications(
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id),
+  actor_id uuid references auth.users(id),
+  type text not null,
+  target_type text,
+  target_id uuid,
+  text text,
+  sub_text text,
+  is_read boolean not null default false,
+  metadata jsonb not null default '{}'::jsonb
+);
+grant usage on schema public, auth to authenticated, anon;
+grant select on public.profiles, public.user_settings, public.blocks, public.notifications to authenticated;
+grant select on public.profiles to anon;
+alter table public.profiles enable row level security;
+create policy profiles_read_for_fixture on public.profiles for select to authenticated,anon using (true);

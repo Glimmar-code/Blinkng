@@ -1,7 +1,27 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
+import okhttp3.RequestBody.Companion.asRequestBody
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatUploadProgress
+import okhttp3.RequestBody
+import okhttp3.MultipartBody
+import java.io.ByteArrayOutputStream
+import okio.BufferedSink
+import java.io.File
+import java.io.FileInputStream
+import java.io.OutputStream
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import javax.imageio.ImageIO
+import java.awt.image.BufferedImage
+import java.util.UUID
+import com.blinkng.shared.BlinkAuthFeedback
 import com.blinkng.shared.discovery.BlinkCampusAccountType
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
+import com.blinkng.shared.discovery.BlinkReferralStats
+import com.blinkng.shared.discovery.BlinkReferralPolicy
 import com.blinkng.shared.discovery.BlinkUniversitySearch
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
@@ -68,17 +88,19 @@ class DesktopSupabaseClient(
         require(identifier.isNotBlank()) { "Email or username is required." }
         require(password.isNotBlank()) { "Password is required." }
         val body = JSONObject().put("username", identifier.removePrefix("@")).put("password", password)
-        val response = if (identifier.contains("@") && !identifier.startsWith("@")) {
-            // Preserve standard Supabase email login. Owner aliases are resolved
-            // server-side only after normal email authentication fails.
-            runCatching {
+        val response = try {
+            if (identifier.contains("@") && !identifier.startsWith("@")) {
                 authPost("/auth/v1/token?grant_type=password",
                     JSONObject().put("email", identifier).put("password", password))
-            }.getOrElse {
+            } else {
                 authPost("/functions/v1/username-login", body)
             }
-        } else {
-            authPost("/functions/v1/username-login", body)
+        } catch (error: Exception) {
+            // Keep the same user-safe login feedback as Android; do not retry
+            // a rejected email/password against a different username endpoint.
+            throw IllegalStateException(
+                BlinkAuthFeedback.friendly(error.message, "Unable to sign in."), error
+            )
         }
         saveAuthResponse(response, identifier)
     }
@@ -90,6 +112,7 @@ class DesktopSupabaseClient(
         fullName: String,
         university: String,
         accountType: String,
+        referrerId: String? = null,
     ): DesktopSession = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
@@ -114,7 +137,11 @@ class DesktopSupabaseClient(
                     .put("name", fullName.trim().ifBlank { cleanUsername })
                     .put("university", canonicalUniversity)
                     .put("university_id", BlinkUniversitySearch.idOf(canonicalUniversity))
-                    .put("account_type", accountType),
+                    .put("account_type", accountType)
+                    .apply {
+                        referrerId?.takeIf { it.matches(Regex("[0-9a-fA-F-]{36}")) }
+                            ?.let { put("blink_referrer_id", it) }
+                    },
             )
         val response = authPost("/auth/v1/signup", body)
         if (response.optString("access_token").isBlank()) {
@@ -138,6 +165,81 @@ class DesktopSupabaseClient(
             "Account created, but university details were not saved. Sign in and complete your profile."
         }
         enrolled
+    }
+
+
+    /** Public sign-up autocomplete; the server only returns discoverable profile fields. */
+    suspend fun findReferrers(query: String, offset: Int = 0): List<BlinkReferralSuggestion> =
+        withContext(Dispatchers.IO) {
+            val clean = BlinkReferralPolicy.normalizedQuery(query)
+            if (clean.isBlank()) return@withContext emptyList()
+            val payload = JSONObject().put("p_query", clean).put("p_limit", 10)
+                .put("p_offset", offset.coerceIn(0, 500))
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/blink_referrer_suggestions")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $anonKey")
+                .header("Accept", "application/json")
+                .post(payload.toString().toRequestBody(jsonMedia))
+                .build()
+            val rows = JSONArray(execute(request))
+            (0 until rows.length()).map { i ->
+                val x = rows.getJSONObject(i)
+                BlinkReferralSuggestion(
+                    id = x.getString("id"),
+                    username = x.getString("username"),
+                    fullName = x.optString("full_name"),
+                    avatarUrl = x.optString("avatar_url").takeIf(String::isNotBlank),
+                    university = x.optString("university").takeIf(String::isNotBlank),
+                )
+            }
+        }
+
+    suspend fun dispatchConfirmedReferralPushes() = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_my_referral_push_ids",
+            JSONObject(), "return=representation",
+        )
+        for (i in 0 until rows.length().coerceAtMost(3)) {
+            val notificationId = rows.getJSONObject(i).optString("notification_id")
+            if (notificationId.isBlank()) continue
+            execute(authenticatedRequest("/functions/v1/send-activity-notification")
+                .post(JSONObject().put("notification_id", notificationId).toString()
+                    .toRequestBody(jsonMedia))
+                .build())
+        }
+    }
+
+    suspend fun referralRecommendations(): List<BlinkReferralSuggestion> = withContext(Dispatchers.IO) {
+        val rows = postArray(
+            "/rest/v1/rpc/blink_referral_recommendations",
+            JSONObject().put("p_limit", 10),
+            "return=representation",
+        )
+        (0 until rows.length()).map { i ->
+            val person = rows.getJSONObject(i)
+            BlinkReferralSuggestion(
+                id = person.getString("id"),
+                username = person.getString("username"),
+                fullName = person.optString("full_name"),
+                avatarUrl = person.optString("avatar_url").takeIf(String::isNotBlank),
+                university = person.optString("university").takeIf(String::isNotBlank),
+            )
+        }
+    }
+
+    suspend fun referralDashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
+        val rows = postArray("/rest/v1/rpc/blink_referral_dashboard", JSONObject(), "return=representation")
+        val row = rows.optJSONObject(0) ?: return@withContext BlinkReferralStats()
+        BlinkReferralStats(
+            total = row.optLong("total_referrals"),
+            activeLast30Days = row.optLong("active_referrals"),
+            visibilityPoints = row.optInt("visibility_points"),
+            visibilityLabel = row.optString("visibility_label", "Normal discovery"),
+            achievementTier = row.optString("achievement_tier", "New member"),
+            nextAchievementTarget = if (row.isNull("achievement_next_target"))
+                null else row.optInt("achievement_next_target", 1),
+        )
     }
 
     suspend fun sendPasswordReset(email: String) = withContext(Dispatchers.IO) {
@@ -243,7 +345,11 @@ class DesktopSupabaseClient(
     }
 
     fun signOut() {
-        clearSession()
+        val previousOwner = session?.userId
+        clearSession() // Persist logout before touching queued media.
+        previousOwner?.let { owner ->
+            runCatching { DesktopChatImageOutbox.discardOwner(owner) }
+        }
     }
 
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
@@ -608,11 +714,416 @@ class DesktopSupabaseClient(
         }.getOrDefault(false)
     }
 
-    suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
+    private fun supportsViewOnceSchema(): Boolean = runCatching {
+        getArray("/rest/v1/messages?select=image_view_once&limit=0")
+        true
+    }.getOrDefault(false)
+
+    /** Full-history paginated photo gallery, respecting the messages conversation RLS. */
+    suspend fun fetchChatImagePage(conversationId: String, offset: Int = 0):
+        List<DesktopMessage> = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(conversationId).toString()
+        require(offset in 0..100000) { "Invalid gallery offset." }
+        val extra = if (supportsPhotoSchema())
+            ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
         val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
+            "/rest/v1/messages?select=id,conversation_id,sender_id,content,media_url," +
+                "message_type,is_read,delivered_at,read_at,created_at" + extra +
+                "&conversation_id=eq.$id" +
+                "&message_type=eq.image&deleted_for_everyone=eq.false" +
+                "&order=created_at.desc,id.desc&limit=36&offset=$offset"
+        )
+        (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { row ->
+                val ref = row.optNullableString("media_url")
+                val url = ref?.let { signedChatImageUrl(it, id) }
+                if (url == null) null else parseMessage(row).copy(
+                    mediaUrl = url,
+                    imagePreviewUrl = row.optNullableString("image_preview_url")
+                        ?.let { signedChatImageUrl(it, id) }
+                )
+            }
+        }
+    }
+
+    suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        val viewOnceField = if (supportsViewOnceSchema()) ",image_view_once" else ""
+        val extra = if (supportsPhotoSchema())
+            ",image_album_id,image_album_position,image_album_size,image_preview_url" else ""
+        val rows = getArray(
+            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at" + extra + viewOnceField +
+                "&order=created_at.asc&limit=300"
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+            .map { item ->
+                if (item.messageType == "image" && item.mediaUrl != null)
+                    item.copy(
+                        mediaUrl = signedChatImageUrl(item.mediaUrl, conversationId),
+                        imagePreviewUrl = item.imagePreviewUrl?.let {
+                            signedChatImageUrl(it, conversationId)
+                        }
+                    )
+                else item
+            }
+    }
+
+    /** Never expose a private storage key as a public URL. */
+    private fun signedChatImageUrl(reference: String, conversationId: String): String? {
+        val expectedPrefix = "message-media:conversations/$conversationId/users/"
+        if (!reference.startsWith(expectedPrefix)) return null
+        val objectPath = reference.removePrefix("message-media:")
+        val encoded = objectPath.split('/').joinToString("/") { encode(it) }
+        val url = runCatching {
+            val response = postObject(
+                "/storage/v1/object/sign/message-media/$encoded",
+                JSONObject().put("expiresIn", 3600)
+            ) as? JSONObject
+            response?.optString("signedURL").orEmpty()
+                .ifBlank { response?.optString("signedUrl").orEmpty() }
+        }.getOrDefault("")
+        return when {
+            url.startsWith("/storage/v1/") -> baseUrl + url
+            url.startsWith("/object/") -> baseUrl + "/storage/v1" + url
+            url.startsWith("$baseUrl/storage/v1/") -> url
+            else -> null
+        }
+    }
+
+    suspend fun freshChatImageUrl(messageId: String, conversationId: String): String? =
+        withContext(Dispatchers.IO) {
+            val id = runCatching { UUID.fromString(messageId).toString() }.getOrNull()
+                ?: return@withContext null
+            val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
+                ?: return@withContext null
+            runCatching {
+                val row = getArray(
+                    "/rest/v1/messages?id=eq.$id&conversation_id=eq.$convo&" +
+                        "select=id,message_type,media_url&limit=1"
+                ).optJSONObject(0)
+                if (row?.optString("message_type") != "image") null
+                else signedChatImageUrl(row.optString("media_url"), convo)
+            }.getOrNull()
+        }
+
+    /** Save a fresh private image through messages RLS and a time-limited storage URL.
+     * Only whitelisted image MIME types and at most 15 MiB can reach the output file. */
+    suspend fun copyChatImageTo(messageId: String, conversationId: String, output: OutputStream):
+        Pair<Long, String> = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        val convo = UUID.fromString(conversationId).toString()
+        val row = getArray(
+            "/rest/v1/messages?id=eq.$id&conversation_id=eq.$convo&" +
+                "select=id,message_type,media_url&limit=1"
+        ).optJSONObject(0) ?: throw SecurityException("Picture is not accessible.")
+        require(row.optString("message_type") == "image") { "Not an image message." }
+        val reference = row.optString("media_url")
+        val url = signedChatImageUrl(reference, convo)
+            ?: throw SecurityException("Picture is no longer accessible.")
+        val expected = baseUrl.toHttpUrlOrNull() ?: error("Invalid server host.")
+        val actual = url.toHttpUrlOrNull() ?: error("Invalid picture link.")
+        require(actual.scheme == "https" && actual.host == expected.host &&
+            actual.port == expected.port) { "Picture host did not match." }
+        http.newCall(Request.Builder().url(actual).get().build()).execute().use { response ->
+            check(response.isSuccessful) { "Picture download failed." }
+            val mime = response.header("Content-Type").orEmpty()
+                .substringBefore(';').trim().lowercase()
+            require(BlinkChatAttachmentKind.IMAGE.accepts(mime)) {
+                "Unsupported picture content type."
+            }
+            val body = response.body ?: error("Image had no content.")
+            require(body.contentLength() <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                "Image exceeded limit."
+            }
+            val buffer = ByteArray(64 * 1024)
+            var downloaded = 0L
+            body.byteStream().use { input ->
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    downloaded += n
+                    check(downloaded <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                        "Image exceeded limit."
+                    }
+                    output.write(buffer, 0, n)
+                }
+            }
+            output.flush()
+            downloaded to mime
+        }
+    }
+
+    /** Desktop uses the same user-owned private bucket and messages RLS as Android. */
+    @Volatile private var photoSchemaAvailable: Boolean? = null
+    private fun supportsPhotoSchema(): Boolean {
+        photoSchemaAvailable?.let { return it }
+        val supported = runCatching {
+            getArray("/rest/v1/messages?select=image_album_id,image_album_position," +
+                "image_album_size,image_preview_url&limit=0")
+            true
+        }.getOrDefault(false)
+        if (supported) photoSchemaAvailable = true
+        return supported
+    }
+
+    /** Decode a pixel-bounded preview, without allocating the full original bitmap. */
+    private fun readResampledPhoto(file: File, maxSide: Int): BufferedImage? =
+        ImageIO.createImageInputStream(file)?.use { source ->
+            val decoders = ImageIO.getImageReaders(source)
+            if (!decoders.hasNext()) return@use null // HEIC may lack a native decoder.
+            val decoder = decoders.next()
+            try {
+                decoder.input = source
+                val width = decoder.getWidth(0)
+                val height = decoder.getHeight(0)
+                require(width in 1..20000 && height in 1..20000) {
+                    "Picture dimensions are not supported."
+                }
+                val stride = maxOf(1, (maxOf(width, height) + maxSide - 1) / maxSide)
+                val options = decoder.defaultReadParam
+                options.setSourceSubsampling(stride, stride, 0, 0)
+                decoder.read(0, options)
+            } finally {
+                decoder.dispose()
+            }
+        }
+
+    private fun makeSmallChatPreview(original: File): File? {
+        val source = runCatching { readResampledPhoto(original, 320) }
+            .getOrNull() ?: return null
+        val ratio = minOf(1.0, 320.0 / maxOf(source.width, source.height))
+        val w = (source.width * ratio).toInt().coerceAtLeast(1)
+        val h = (source.height * ratio).toInt().coerceAtLeast(1)
+        val target = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        val graphics = target.createGraphics()
+        try {
+            graphics.color = java.awt.Color.WHITE
+            graphics.fillRect(0, 0, w, h)
+            graphics.drawImage(source, 0, 0, w, h, null)
+        } finally { graphics.dispose() }
+        val small = File.createTempFile("blink-preview-", ".jpg")
+        return try {
+            if (ImageIO.write(target, "jpg", small) && small.length() in 1..180000) small
+            else { small.delete(); null }
+        } catch (_: Exception) { small.delete(); null }
+    }
+
+    /** A retry may reach Storage after a previous attempt succeeded but before
+     * the corresponding message row was committed. A deterministic owner-scoped
+     * object name makes that retry safe without creating orphan duplicates. */
+    private fun uploadPrivateChatObject(request: Request) {
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 409) {
+                throw IllegalStateException(
+                    "Private picture upload failed (${response.code})."
+                )
+            }
+        }
+    }
+
+    /** Separate JWT-authenticated one-time photo endpoint, never Storage links. */
+    suspend fun sendViewOnceImage(
+        conversationId: String, picture: File, caption: String,
+        messageId: String = UUID.randomUUID().toString()
+    ): DesktopMessage = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        val conversation = UUID.fromString(conversationId).toString()
+        val owner = requireSession().userId
+        val mime = when (picture.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
+            else -> throw IllegalArgumentException("Unsupported view-once image.")
+        }
+        BlinkChatAttachmentKind.IMAGE.verify(mime, picture.length())
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("conversation_id", conversation)
+            .addFormDataPart("message_id", id)
+            .addFormDataPart("caption", caption.trim().take(1024))
+            .addFormDataPart("photo", picture.name,
+                picture.asRequestBody(mime.toMediaType())).build()
+        val result = JSONObject(execute(authenticatedRequest(
+            "/functions/v1/blink-view-once-image").post(body).build()))
+        require(result.optString("messageId") == id) {
+            "Server did not confirm the private picture."
+        }
+        DesktopMessage(
+            id = id, conversationId = conversation, senderId = owner,
+            content = caption.trim().take(1024).ifBlank { "View once photo" },
+            mediaUrl = null, messageType = "image", isRead = false,
+            deliveredAt = null, readAt = null,
+            createdAt = Instant.now().toString(), imageViewOnce = true)
+    }
+
+    /** A single authorized server read. The payload remains in memory. */
+    suspend fun openViewOnceImage(messageId: String): ByteArray = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        http.newCall(authenticatedRequest(
+            "/functions/v1/blink-view-once-image?message_id=$id").get().build())
+            .execute().use { response ->
+                check(response.isSuccessful) {
+                    if (response.code == 410) "Picture already opened."
+                    else "Private picture unavailable."
+                }
+                val mime = response.header("Content-Type").orEmpty()
+                    .substringBefore(';').lowercase()
+                require(BlinkChatAttachmentKind.IMAGE.accepts(mime)) {
+                    "Unexpected private image type."
+                }
+                val file = response.body ?: throw IllegalStateException("Empty picture.")
+                require(file.contentLength() <= 15L * 1024L * 1024L) {
+                    "Picture exceeds safe size limit."
+                }
+                ByteArrayOutputStream().use { output ->
+                    val chunk = ByteArray(64 * 1024)
+                    var bytes = 0
+                    file.byteStream().use { input ->
+                        while (true) {
+                            val n = input.read(chunk)
+                            if (n < 0) break
+                            bytes += n
+                            require(bytes <= 15 * 1024 * 1024) {
+                                "Picture exceeds safe size limit."
+                            }
+                            output.write(chunk, 0, n)
+                        }
+                    }
+                    output.toByteArray()
+                }
+            }
+    }
+
+    suspend fun sendChatImage(
+        conversationId: String, file: File, caption: String,
+        quality: BlinkChatImageQuality,
+        onProgress: (Int) -> Unit = {},
+        clientMessageId: String = UUID.randomUUID().toString(),
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
+    ): DesktopMessage = withContext(Dispatchers.IO) {
+        require(UUID.fromString(conversationId).toString() == conversationId) { "Invalid conversation." }
+        val userId = requireSession().userId
+        val messageId = UUID.fromString(clientMessageId).toString()
+        val existing = getArray(
+            "/rest/v1/messages?id=eq.$messageId&select=id,conversation_id,sender_id," +
+                "content,media_url,message_type,is_read,delivered_at,read_at,created_at&limit=1"
+        ).optJSONObject(0)
+        if (existing != null) {
+            require(existing.optString("sender_id") == userId &&
+                existing.optString("conversation_id") == conversationId &&
+                existing.optString("message_type") == "image") {
+                "This message ID belongs to a different attachment."
+            }
+            val previous = parseMessage(existing)
+            return@withContext previous.copy(
+                mediaUrl = previous.mediaUrl?.let { signedChatImageUrl(it, conversationId) }
+            )
+        }
+        val mime = when (file.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
+            else -> throw IllegalArgumentException("Choose a JPEG, PNG, GIF, WebP or HEIC/HEIF photo.")
+        }
+        BlinkChatAttachmentKind.IMAGE.verify(mime, file.length())
+        var prepared = file
+        var uploadMime = mime
+        var extension = file.extension.lowercase().let { if (it == "jpeg") "jpg" else it }
+        try {
+            if (quality == BlinkChatImageQuality.STANDARD && mime != "image/gif" &&
+                mime != "image/webp" && mime != "image/heic" && mime != "image/heif") {
+                val original = readResampledPhoto(file, 1600)
+                    ?: throw IllegalArgumentException("This picture cannot be decoded.")
+                val factor = minOf(1.0, 1600.0 / maxOf(original.width, original.height))
+                val w = (original.width * factor).toInt().coerceAtLeast(1)
+                val h = (original.height * factor).toInt().coerceAtLeast(1)
+                val scaled = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+                val painter = scaled.createGraphics()
+                try {
+                    painter.color = java.awt.Color.WHITE
+                    painter.fillRect(0, 0, w, h)
+                    painter.drawImage(original, 0, 0, w, h, null)
+                } finally { painter.dispose() }
+                prepared = File.createTempFile("blink-chat-standard-", ".jpg")
+                check(ImageIO.write(scaled, "jpg", prepared)) { "Could not prepare picture." }
+                uploadMime = "image/jpeg"
+                extension = "jpg"
+                BlinkChatAttachmentKind.IMAGE.verify(uploadMime, prepared.length())
+            }
+            val objectPath = "conversations/$conversationId/users/$userId/image/$messageId.$extension"
+            val encoded = objectPath.split('/').joinToString("/") { encode(it) }
+            val inputFile = prepared
+            val body = object : RequestBody() {
+                override fun contentType() = uploadMime.toMediaType()
+                override fun contentLength() = inputFile.length()
+                override fun writeTo(sink: BufferedSink) {
+                    FileInputStream(inputFile).use { input ->
+                        var sent = 0L
+                        val block = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(block)
+                            if (n < 0) break
+                            sink.write(block, 0, n)
+                            sent += n
+                            onProgress(BlinkChatUploadProgress.percent(sent, contentLength()))
+                        }
+                    }
+                }
+            }
+            uploadPrivateChatObject(authenticatedRequest("/storage/v1/object/message-media/$encoded")
+                .header("x-upsert", "false").post(body).build())
+            val supportsMetadata = supportsPhotoSchema()
+            var previewRef: String? = null
+            if (supportsMetadata) {
+                val thumb = makeSmallChatPreview(prepared)
+                if (thumb != null) {
+                    try {
+                        val thumbPath = "conversations/$conversationId/users/$userId/preview/" +
+                            "$messageId.jpg"
+                        val encodedThumb = thumbPath.split('/').joinToString("/") { encode(it) }
+                        val uploaded = runCatching {
+                            uploadPrivateChatObject(authenticatedRequest(
+                                "/storage/v1/object/message-media/$encodedThumb"
+                            ).header("x-upsert", "false")
+                                .post(thumb.asRequestBody("image/jpeg".toMediaType())).build())
+                            true
+                        }.getOrDefault(false)
+                        if (uploaded) previewRef = "message-media:$thumbPath"
+                    } finally { thumb.delete() }
+                }
+            }
+            val payload = JSONObject().put("id", messageId)
+                .put("conversation_id", conversationId)
+                .put("sender_id", userId)
+                .put("content", caption.trim().take(1024).ifBlank { "Image" })
+                .put("message_type", "image")
+                .put("media_url", "message-media:$objectPath")
+                .put("is_read", false)
+            if (supportsMetadata) {
+                if (album.grouped) {
+                    payload.put("image_album_id", album.id)
+                        .put("image_album_position", album.position)
+                        .put("image_album_size", album.size)
+                }
+                previewRef?.let { payload.put("image_preview_url", it) }
+            }
+            val row = postArray(
+                "/rest/v1/messages", payload,
+                prefer = "return=representation"
+            ).optJSONObject(0) ?: throw IllegalStateException("Picture not confirmed by server.")
+            parseMessage(row).copy(
+                mediaUrl = signedChatImageUrl("message-media:$objectPath", conversationId),
+                imagePreviewUrl = previewRef?.let { signedChatImageUrl(it, conversationId) },
+                imageAlbumId = album.id.takeIf { supportsMetadata && album.grouped },
+                imageAlbumPosition = if (supportsMetadata) album.position else 0,
+                imageAlbumSize = if (supportsMetadata) album.size else 1
+            )
+        } finally {
+            if (prepared != file) prepared.delete()
+        }
     }
 
     suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
@@ -957,6 +1468,11 @@ class DesktopSupabaseClient(
         deliveredAt = row.optNullableString("delivered_at"),
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
+        imageAlbumId = row.optNullableString("image_album_id"),
+        imageAlbumPosition = row.optInt("image_album_position", 0),
+        imageAlbumSize = row.optInt("image_album_size", 1),
+        imagePreviewUrl = row.optNullableString("image_preview_url"),
+        imageViewOnce = row.optBoolean("image_view_once", false),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
