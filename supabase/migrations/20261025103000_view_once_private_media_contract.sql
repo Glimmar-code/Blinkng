@@ -34,7 +34,7 @@ values (
 -- A restrictive policy prevents any older broad/permissive Storage policy
 -- from exposing one-time image bytes to anonymous or authenticated clients.
 -- Service-role Storage operations bypass RLS; all clients must use the Edge API.
-do $
+do $$
 begin
     if not exists (
         select 1 from pg_policies
@@ -46,7 +46,7 @@ begin
         using (bucket_id <> 'message-view-once')
         with check (bucket_id <> 'message-view-once');
     end if;
-end $;
+end $$;
 
 alter table public.messages
     add column if not exists image_view_once boolean not null default false;
