@@ -8,6 +8,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
 
 import com.example.data.local.PersistentTextDraftStore
@@ -174,7 +175,8 @@ fun CreatePostSheet(
     onPublishScheduledPostNow: (String) -> Unit = {},
     onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
-    isSubmitting: Boolean = false
+    isSubmitting: Boolean = false,
+    searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -225,14 +227,7 @@ fun CreatePostSheet(
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
-    val categories = listOf(
-        "Campus Life",
-        "Academic",
-        "Events",
-        "Sports",
-        "Entertainment",
-        "Marketplace"
-    )
+    val categories = BlinkPostGrowthTips.feedCategories
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
@@ -506,6 +501,10 @@ fun CreatePostSheet(
     }
 
     fun scheduleAt(timeMillis: Long) {
+        if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+            Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
+            return
+        }
         if (!canSubmit) return
         if (!tagsValid) {
             showScheduleDialog = false
@@ -560,6 +559,11 @@ fun CreatePostSheet(
     }
 
     fun submit() {
+        // Older saved drafts may still contain the removed Marketplace category.
+        if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
+            Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
+            return
+        }
         if (canSubmit && !tagsValid) {
             tagWarning = if (allTags.isEmpty()) "Include at least one relevant hashtag. 1–3 works best."
                          else "Use no more than 5 unique hashtags, including tags in the caption."
@@ -776,6 +780,33 @@ fun CreatePostSheet(
                     )
                 }
 
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                        Text("✨ Make your post stand out",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface)
+                        Text(
+                            BlinkPostGrowthTips.suggestion(
+                                hasImages = selectedImages.isNotEmpty(),
+                                hasVideo = selectedVideo != null,
+                                hasPoll = showPoll
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(BlinkPostGrowthTips.hashtagHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(BlinkPostGrowthTips.marketHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
                 if (textOnlyComposer) {
                     Row(
@@ -861,6 +892,12 @@ fun CreatePostSheet(
                         shape = RoundedCornerShape(20.dp)
                     )
                 }
+
+                BlinkPostMentionSuggestions(
+                    text = text,
+                    onTextChanged = { text = it.take(5000) },
+                    searchProfiles = searchMentions
+                )
 
                 if (selectedImages.isNotEmpty()) {
                     LazyRow(

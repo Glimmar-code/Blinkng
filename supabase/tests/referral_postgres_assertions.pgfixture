@@ -461,7 +461,10 @@ begin
   select * into item from public.blink_my_group_invitations(10) limit 1;
   if item.group_id is null or item.inviter_username<>'alpha' then
     raise exception 'Invitation not visible to its actual recipient'; end if;
-  if not public.blink_respond_to_group_invite(item.group_id,true)
+  if not exists(select 1 from public.blink_group_pending_invitations(50) canonical
+      where canonical.conversation_id=item.group_id)
+  then raise exception 'Both invitation APIs must expose the same pending record'; end if;
+  if not public.blink_group_respond_invitation(item.group_id,true)
   then raise exception 'Recipient cannot accept'; end if;
   if not exists(select 1 from public.conversation_participants
      where conversation_id=item.group_id and user_id='00000000-0000-0000-0000-000000000007')

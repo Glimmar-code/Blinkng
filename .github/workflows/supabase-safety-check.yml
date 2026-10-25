@@ -79,6 +79,12 @@ jobs:
         if: steps.scope.outputs.backend == 'true'
         run: npm test --prefix supabase/tests
 
+      - name: Verify combined referral and private-media contracts
+        if: steps.scope.outputs.backend == 'true'
+        run: |
+          node supabase/tests/run-referral-integration.mjs
+          node supabase/tests/run-chat-media-integration.mjs
+
       - name: Detect complete local schema baseline
         if: steps.scope.outputs.backend == 'true'
         id: baseline

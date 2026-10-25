@@ -13,6 +13,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image as ComposeImage
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.runtime.DisposableEffect
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -77,6 +84,13 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.desktop.data.DesktopChatImageOutbox
+import com.blinkng.desktop.data.DesktopChatPhotoWorker
+import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
+import javax.swing.JFileChooser
+import java.util.UUID
+import org.jetbrains.skia.Image as SkiaImage
 import com.blinkng.shared.BlinkChatInboxPolicy
 import com.blinkng.shared.BlinkConversationSearchPolicy
 import com.blinkng.shared.BlinkMessageScrollAction
@@ -90,19 +104,22 @@ import java.time.Instant
 
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
-    var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
-    var selected by remember { mutableStateOf<DesktopConversation?>(null) }
-    var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
+    val myUserId = state.session?.userId.orEmpty()
+    var conversations by remember(myUserId) { mutableStateOf<List<DesktopConversation>>(emptyList()) }
+    var selected by remember(myUserId) { mutableStateOf<DesktopConversation?>(null) }
+    var messages by remember(myUserId) { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var inboxShowSearch by remember { mutableStateOf(false) }
     var inboxShowAll by remember { mutableStateOf(false) }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
+    var showGroupMembers by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var olderLoading by remember { mutableStateOf(false) }
     var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewGroup by remember { mutableStateOf(false) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
     var controlsBusy by remember { mutableStateOf(false) }
@@ -114,10 +131,14 @@ fun MessagesScreen(state: DesktopAppState) {
     var deleteForEveryone by remember { mutableStateOf(false) }
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
-    var showGroupInvitations by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
+    var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var outboxPending by remember { mutableStateOf(0) }
+    var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    val myUserId = state.session?.userId.orEmpty()
+    var showGroupInvitations by remember(myUserId) { mutableStateOf(false) }
+    val viewedOncePhotos = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
     var latestInboxReceipts by remember(myUserId) { mutableStateOf<Map<String, DesktopMessage>>(emptyMap()) }
     var receiptRefreshEpoch by remember(myUserId) { mutableStateOf(0) }
     // Drafts must never cross conversations or accounts, including after switching chats.
@@ -180,6 +201,84 @@ fun MessagesScreen(state: DesktopAppState) {
             .onFailure {
                 if (state.session?.userId == owner && selected?.id == target.id) error = it.message
             }
+    }
+
+    fun chooseChatPhoto(viewOnce: Boolean) {
+        val account = state.session?.userId ?: return
+        val target = selected ?: return
+        if (target.isGroup || target.requestStatus == "pending") {
+            error = "Photos are available in accepted direct chats."
+            return
+        }
+        val chooser = JFileChooser().apply {
+            dialogTitle = if (viewOnce) "Choose a view-once picture" else "Choose a chat picture"
+            fileSelectionMode = JFileChooser.FILES_ONLY
+            isMultiSelectionEnabled = false
+        }
+        if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
+        val picture = chooser.selectedFile?.takeIf { it.isFile } ?: return
+        if (photoBusy) return
+        if (viewOnce) {
+            photoBusy = true
+            scope.launch {
+                runCatching {
+                    state.client.sendViewOnceImage(target.id, picture, "")
+                }.onSuccess { sent ->
+                    if (state.session?.userId == account && selected?.id == target.id) {
+                        messages = messages.filterNot { it.id == sent.id } + sent
+                    }
+                }.onFailure { failure ->
+                    if (state.session?.userId == account) error = failure.message
+                }
+                photoBusy = false
+            }
+        } else {
+            runCatching {
+                DesktopChatImageOutbox.enqueue(
+                    account, target.id, UUID.randomUUID().toString(), picture,
+                    "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single()
+                )
+            }.onSuccess { staged ->
+                outboxPending = DesktopChatImageOutbox.pending(account).size
+                if (!DesktopChatPhotoWorker.start(account)) {
+                    // Development/non-Windows fallback: durable staged payload remains
+                    // available after interruption, with a fixed client message ID.
+                    scope.launch {
+                        runCatching {
+                            state.client.sendChatImage(
+                                staged.conversationId, staged.file, staged.caption, staged.quality,
+                                clientMessageId = staged.messageId, album = staged.album,
+                                onProgress = { outboxPercent = it }
+                            )
+                        }.onSuccess { sent ->
+                            DesktopChatImageOutbox.complete(staged)
+                            if (state.session?.userId == account && selected?.id == target.id) {
+                                messages = messages.filterNot { it.id == sent.id } + sent
+                            }
+                        }.onFailure { failure ->
+                            if (state.session?.userId == account) error = failure.message
+                        }
+                        outboxPending = DesktopChatImageOutbox.pending(account).size
+                    }
+                }
+            }.onFailure { error = it.message }
+        }
+    }
+
+    LaunchedEffect(myUserId) {
+        if (myUserId.isNotBlank()) {
+            val staged = DesktopChatImageOutbox.pending(myUserId)
+            if (staged.isNotEmpty()) DesktopChatPhotoWorker.start(myUserId)
+            while (state.session?.userId == myUserId && myUserId.isNotBlank()) {
+                val pending = DesktopChatImageOutbox.pending(myUserId).size
+                if (pending != outboxPending) {
+                    outboxPending = pending
+                    if (pending == 0 && selected != null) loadMessages(selected)
+                }
+                outboxPercent = DesktopChatImageOutbox.pendingProgress(myUserId)
+                kotlinx.coroutines.delay(2500)
+            }
+        }
     }
 
     fun loadOlderMessages() {
@@ -288,6 +387,7 @@ fun MessagesScreen(state: DesktopAppState) {
             onShowAllChange = { inboxShowAll = it },
             onInboxChange = { inbox = it },
             onRefresh = { scope.launch { loadConversations() } },
+            onNewGroup = { showNewGroup = true },
             onGroupInvitations = { showGroupInvitations = true },
         )
         return@AnimatedContent
@@ -380,15 +480,20 @@ fun MessagesScreen(state: DesktopAppState) {
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.clickable { showContactCard = true }) {
+                    Box(modifier = Modifier.clickable {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
                         PresenceAvatar(
                             name = active.title,
                             isOnline = if (active.isGroup) null else active.isOnline,
                             size = 40.dp
                         )
                     }
-                    IconButton(onClick = { showContactCard = true }) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "Chat profile and options")
+                    IconButton(onClick = {
+                        if (active.isGroup) showGroupMembers = true else showContactCard = true
+                    }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription =
+                            if (active.isGroup) "Group members and options" else "Chat profile and options")
                     }
                 }
             }
@@ -481,7 +586,58 @@ fun MessagesScreen(state: DesktopAppState) {
                                             )
                                         }
                                     }
-                                    Text(message.content)
+                                    if (message.imageViewOnce) {
+                                        Text(
+                                            if (mine) "🔒 Private photo sent"
+                                            else if (viewedOncePhotos[message.id] == true)
+                                                "Private photo already opened"
+                                            else "🔒 View-once photo",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (!mine && viewedOncePhotos[message.id] != true) {
+                                            TextButton(onClick = {
+                                                val owner = myUserId
+                                                val selectedId = selected?.id
+                                                scope.launch {
+                                                    runCatching {
+                                                        val bytes = state.client.openViewOnceImage(message.id)
+                                                        try {
+                                                            SkiaImage.makeFromEncoded(bytes)
+                                                        } finally {
+                                                            bytes.fill(0)
+                                                        }
+                                                    }.onSuccess { picture ->
+                                                        if (state.session?.userId == owner &&
+                                                            selected?.id == selectedId) {
+                                                            viewedOncePhotos[message.id] = true
+                                                            privatePicture = picture
+                                                        } else picture.close()
+                                                    }.onFailure { failure ->
+                                                        if (failure.message?.contains("already", true) == true) {
+                                                            viewedOncePhotos[message.id] = true
+                                                        }
+                                                        error = failure.message
+                                                    }
+                                                }
+                                            }) { Text("Open once") }
+                                        }
+                                    } else {
+                                        if (message.messageType == "image" &&
+                                            !message.mediaUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = message.mediaUrl,
+                                                contentDescription = "Shared private picture",
+                                                contentScale = ContentScale.Fit,
+                                                modifier = Modifier.widthIn(max = 330.dp)
+                                                    .heightIn(max = 270.dp)
+                                            )
+                                        }
+                                        if (message.content.isNotBlank() &&
+                                            !(message.messageType == "image" &&
+                                                message.content in setOf("Image", "Photo"))) {
+                                            Text(message.content)
+                                        }
+                                    }
                                     if (message.reactionCounts.isNotEmpty()) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             message.reactionCounts.forEach { (emoji, count) ->
@@ -557,6 +713,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Forward") },
+                                    enabled = !message.imageViewOnce,
                                     onClick = {
                                         forwardMessageId = message.id
                                         forwardUsername = ""
@@ -638,11 +795,27 @@ fun MessagesScreen(state: DesktopAppState) {
                     TextButton(onClick = { replyingTo = null }) { Text("Cancel") }
                 }
             }
+            if (outboxPending > 0) {
+                Text(
+                    "Uploading ${outboxPending} photo(s)" +
+                        (outboxPercent?.let { " · $it%" } ?: ""),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp)
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                TextButton(
+                    enabled = !photoBusy && myUserId.isNotBlank(),
+                    onClick = { chooseChatPhoto(false) }
+                ) { Text("Photo") }
+                TextButton(
+                    enabled = !photoBusy && myUserId.isNotBlank(),
+                    onClick = { chooseChatPhoto(true) }
+                ) { Text("View once") }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draftsByConversation[active.id] = it },
@@ -729,7 +902,20 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
 
-        if (showContactCard) {
+        if (showGroupMembers && active.isGroup) {
+            DesktopGroupManagementDialog(
+                state = state,
+                conversation = active,
+                onDismiss = { showGroupMembers = false },
+                onLeft = {
+                    showGroupMembers = false
+                    selected = null
+                    messages = emptyList()
+                    scope.launch { loadConversations() }
+                }
+            )
+        }
+        if (showContactCard && !active.isGroup) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -847,6 +1033,26 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    privatePicture?.let { picture ->
+        DisposableEffect(picture) {
+            onDispose { picture.close() }
+        }
+        AlertDialog(
+            onDismissRequest = { privatePicture = null },
+            title = { Text("View-once private photo") },
+            text = {
+                ComposeImage(
+                    bitmap = picture.toComposeImageBitmap(),
+                    contentDescription = "View-once private photo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.widthIn(max = 660.dp).heightIn(max = 540.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { privatePicture = null }) { Text("Close") }
+            }
+        )
+    }
     editingMessage?.let { target ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) editingMessage = null },
@@ -960,11 +1166,26 @@ fun MessagesScreen(state: DesktopAppState) {
         )
     }
     }
+    // Dialogs must be OUTSIDE AnimatedContent: the empty-inbox branch
+    // returns early, so children inside its lambda cannot display.
     if (showGroupInvitations) {
         DesktopGroupInvitationsDialog(
             state = state,
             onDismiss = { showGroupInvitations = false },
-            onRefreshMessages = { scope.launch { loadConversations() } },
+            onMembershipChanged = { scope.launch { loadConversations() } }
+        )
+    }
+    if (showNewGroup) {
+        DesktopNewGroupDialog(
+            state = state,
+            onDismiss = { showNewGroup = false },
+            onCreated = { id ->
+                showNewGroup = false
+                scope.launch {
+                    loadConversations()
+                    selected = conversations.firstOrNull { it.id == id }
+                }
+            }
         )
     }
 }
@@ -994,6 +1215,7 @@ private fun DesktopInboxPanel(
     onShowAllChange: (Boolean) -> Unit,
     onInboxChange: (BlinkMessageInbox) -> Unit,
     onRefresh: () -> Unit,
+    onNewGroup: () -> Unit,
     onGroupInvitations: () -> Unit,
 ) {
     val filtered = remember(conversations, query, inbox) {
@@ -1020,6 +1242,8 @@ private fun DesktopInboxPanel(
                 modifier = Modifier.align(Alignment.CenterStart)
             )
             Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+                TextButton(onClick = onGroupInvitations) { Text("Invites") }
+                TextButton(onClick = onNewGroup) { Text("New Group") }
                 IconButton(onClick = { onSearchVisibleChange(!inboxShowSearch); if (inboxShowSearch) onQueryChange("") }) {
                     Icon(Icons.Rounded.Search, contentDescription = "Search messages")
                 }

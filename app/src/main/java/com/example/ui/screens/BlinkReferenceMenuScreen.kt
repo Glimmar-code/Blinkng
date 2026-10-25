@@ -10,7 +10,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import com.example.performance.HighRefreshRateController
+import com.blinkng.shared.BlinkPerformanceMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -93,6 +98,10 @@ fun BlinkReferenceMenuScreen(
     val muted = if (isDark) Color(0xFFAAAAAA) else Color(0xFF7F7F7F)
     val border = if (isDark) Color(0xFF333333) else Color(0xFFECECEC)
     val surface = if (isDark) Color(0xFF181818) else Color.White
+    val context = LocalContext.current
+    var performanceMode by remember(context) {
+        mutableStateOf(HighRefreshRateController.mode(context))
+    }
     val compact = LocalConfiguration.current.screenWidthDp < 350 ||
         LocalDensity.current.fontScale >= 1.5f
     var page by rememberSaveable(profile.id) { mutableStateOf("menu") }
@@ -148,7 +157,7 @@ fun BlinkReferenceMenuScreen(
                 )
             }
             HeaderAction(Icons.Rounded.Search, "Search", foreground, onSearch)
-            HeaderAction(Icons.Rounded.SportsEsports, "BLINK LIFE games", foreground, onGames)
+            HeaderAction(Icons.Rounded.GridView, "Open Items", foreground, onGames)
             Box {
                 HeaderAction(Icons.Rounded.NotificationsNone, "Notifications", foreground, onNotifications)
                 if (hasUnreadNotifications) {
@@ -229,6 +238,28 @@ fun BlinkReferenceMenuScreen(
                     }
                 }
                 Spacer(Modifier.height(5.dp))
+                if (adminModeAvailable) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(surface)
+                            .border(1.dp, border, RoundedCornerShape(15.dp))
+                            .clickable(onClick = onOpenAdmin)
+                            .heightIn(min = 54.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("menu_switch_to_admin"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null,
+                            tint = MenuPurple, modifier = Modifier.size(25.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text("Switch to Admin Profile", color = foreground,
+                            modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Rounded.ChevronRight, contentDescription = "Open admin workspace",
+                            tint = foreground)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
                 BlinkMenuDestination.entries.forEach { item ->
                     val icon: ImageVector
                     val tint: Color
@@ -328,6 +359,22 @@ fun BlinkReferenceMenuScreen(
                     OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth()) {
                         Text(if (isDark) "Switch to light theme" else "Switch to dark theme")
                     }
+                    DetailCard("Performance", "Automatic lets Android choose the refresh rate. Balanced limits the request to 90Hz; Power Saving targets 60Hz and reduces decorative motion.", surface, border, foreground, muted)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BlinkPerformanceMode.entries.forEach { option ->
+                            FilterChip(
+                                selected = performanceMode == option,
+                                onClick = {
+                                    HighRefreshRateController.setMode(context, option)
+                                    performanceMode = option
+                                },
+                                label = { Text(option.label) }
+                            )
+                        }
+                    }
                     DetailCard("Privacy & account", "Manage private messaging, safety, blocked users, account settings, and data controls.", surface, border, foreground, muted)
                     OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
                         Text("Open privacy and security settings")
@@ -362,11 +409,6 @@ fun BlinkReferenceMenuScreen(
                             Text(title)
                         }
                     }
-                    if (adminModeAvailable) {
-                        OutlinedButton(onClick = onOpenAdmin, modifier = Modifier.fillMaxWidth()) {
-                            Text("Open BLINK Administration")
-                        }
-                    }
                 } else {
                     DetailCard("Account and profile", "Open My Profile to update your account details. Use Settings for privacy and security controls.", surface, border, foreground, muted)
                     DetailCard("Notifications and coins", "Notification preferences live in Settings. Your Wallet & Coins page shows real BLINK Coins and reward history.", surface, border, foreground, muted)
@@ -385,7 +427,7 @@ fun BlinkReferenceMenuScreen(
             onReelsClick = onReels,
             onMarketClick = onMarket,
             onConnectClick = onConnect,
-            onMessageClick = {},
+            onMessageClick = onMessages,
             isDark = isDark,
             isMenuOpen = true,
             onMenuClick = { page = "menu" }
