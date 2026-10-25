@@ -242,7 +242,10 @@ export async function stagedMarketCommunityContractTests() {
     // proposed replacement policies locally, and assert authenticated users
     // cannot self-invite, self-promote or keep reading after leaving.
     await db.exec(`
-      create table public.notifications (user_id uuid, actor_id uuid, is_read boolean default false, text text);
+      create table public.notifications (
+        user_id uuid, actor_id uuid, is_read boolean default false,
+        text text, type text, sub_text text
+      );
       create table public.messages (
         id uuid primary key default gen_random_uuid(),
         conversation_id uuid references public.conversations(id),
@@ -528,6 +531,53 @@ export async function stagedMarketCommunityContractTests() {
     await db.exec('reset role');
     console.log('PASS staged DM send re-entry boundaries, active reuse and block enforcement');
 
+    // The hosted legacy notification trigger only picks one recipient for
+    // every group message (LIMIT 1). The stage candidate must fan out to all
+    // active recipients, while never alerting a departed group participant.
+    const groupFanout = fs.readFileSync(
+      new URL('../../docs/integration/group-notification-fanout-staging-20261025.sql', import.meta.url),
+      'utf8'
+    );
+    await db.exec(groupFanout);
+    const fanoutGroup = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    await db.exec(`
+      create trigger trg_notify_message_created after insert on public.messages
+        for each row execute function public.notify_message_created();
+      insert into public.conversations(id,title,is_group,created_by)
+        values('${fanoutGroup}','Notify Readers',true,'${owner}');
+      insert into public.conversation_participants(conversation_id,user_id,is_admin)
+        values('${fanoutGroup}','${owner}',true),
+              ('${fanoutGroup}','${other}',false),
+              ('${fanoutGroup}','${applicant}',false);
+      insert into public.messages(conversation_id,sender_id,content)
+        values('${fanoutGroup}','${owner}','All active members');
+    `);
+    const firstFanout = await db.query(`
+      select user_id,count(*)::integer as n from public.notifications
+      where actor_id='${owner}' and text like '% sent you a message%'
+      group by user_id order by user_id`);
+    assert.equal(firstFanout.rows.length,2,
+      'One group notification must reach each of two active recipients');
+    assert.equal(firstFanout.rows.reduce((n,row)=>n+row.n,0),2);
+    await db.exec(`
+      update public.conversation_participants set left_at=now()
+      where conversation_id='${fanoutGroup}' and user_id='${other}';
+      insert into public.messages(conversation_id,sender_id,content)
+        values('${fanoutGroup}','${owner}','Remaining member only');
+    `);
+    const afterLeaveFanout = await db.query(`
+      select user_id,count(*)::integer as n from public.notifications
+      where actor_id='${owner}' and text like '% sent you a message%'
+      group by user_id`);
+    const memberCount = Object.fromEntries(
+      afterLeaveFanout.rows.map(row=>[row.user_id,row.n]));
+    assert.equal(memberCount[other],1,
+      'Departed group member must not receive the second notification');
+    assert.equal(memberCount[applicant],2,
+      'Remaining active member must receive both notifications');
+    await db.exec(groupFanout);
+    console.log('PASS staged active-only group notification fan-out and replay');
+
     console.log('PASS staged group owner transfer, successor authorization and safe leave');
     console.log('PASS active and departed direct-chat history/read-receipt authorization');
     console.log('PASS staged founder cannot silently abandon group via raw UPDATE');
@@ -538,6 +588,7 @@ export async function stagedMarketCommunityContractTests() {
     await db.exec(receiptGuard);
     await db.exec(dmSummaries);
     await db.exec(dmSend);
+    await db.exec(groupFanout);
     await db.exec(groupCommunity);
     await db.exec(market);
     console.log('PASS staged SQL replay (idempotency, triggers and policies)');
