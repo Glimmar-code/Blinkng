@@ -2267,7 +2267,11 @@ private suspend fun restoreSupabaseSession() {
                         previous = previous,
                         fetched = page,
                         idOf = { it.id },
-                        prioritizeNew = !following
+                        prioritizeNew = !following,
+                        // Offer a fairer mix of newly discovered organic creators.
+                        // Never reorder a paid placement or Following chronology.
+                        organicAuthorKey = { it.authorProfileId.ifBlank { it.authorUsername } },
+                        isPromoted = { it.isSponsored }
                     )
                     _uiState.value = when {
                         following -> now.copy(
