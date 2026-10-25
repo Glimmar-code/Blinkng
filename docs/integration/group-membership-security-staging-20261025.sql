@@ -333,7 +333,7 @@ grant execute on function public.blink_group_manage_member(uuid,uuid,text) to au
 create or replace function public.blink_group_transfer_owner(
   p_conversation_id uuid, p_new_owner_id uuid
 ) returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_actor uuid:=auth.uid(); v_owner uuid;
 begin
   if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -358,7 +358,7 @@ begin
   if not found then raise exception 'GROUP_OWNER_CHANGED'; end if;
   return true;
 end;
-$;
+$$;
 revoke all on function public.blink_group_transfer_owner(uuid,uuid)
   from public,anon;
 grant execute on function public.blink_group_transfer_owner(uuid,uuid)
