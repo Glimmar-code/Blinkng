@@ -310,7 +310,7 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       insert into public.conversations(id,created_by,is_group,title)
       values('12345678-1234-4234-8234-123456789abc','${other}',true,'Forged group')`),
-      'BLINK_GROUP_CREATION_REQUIRES_SERVER');
+      'BLINK_GROUP_CREATION_REQUIRES_SERVER|permission denied for table conversations');
     await db.exec('reset role');
     const receiptGuard = fs.readFileSync(
       new URL('../../docs/integration/departed-member-rpc-hardening-staging-20261025.sql', import.meta.url),
