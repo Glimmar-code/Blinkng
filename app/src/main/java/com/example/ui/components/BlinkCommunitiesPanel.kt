@@ -184,13 +184,14 @@ fun BlinkCommunitiesPanel(
                                 scope.launch {
                                     saving = true
                                     try {
-                                        backend.join(community.id)
-                                        success = "Joined " + community.name
+                                        val result = backend.requestJoin(community.id)
+                                        success = if (result == "pending") "Join request sent to " + community.name
+                                            else "Joined " + community.name
                                     } catch (cause: Exception) {
                                         error = cause.message
                                     } finally { saving = false }
                                 }
-                            }) { Text("Join / Accept Invite") }
+                            }) { Text(if (community.visibility == "private") "Request / Accept Invite" else "Join") }
                             TextButton(enabled = !saving, onClick = {
                                 scope.launch {
                                     saving = true
