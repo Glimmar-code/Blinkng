@@ -82,6 +82,12 @@ create table public.notifications(
 );
 grant usage on schema public, auth to authenticated, anon;
 grant select on public.profiles, public.user_settings, public.blocks, public.notifications, public.follows to authenticated;
+-- Match the production access contract: a signed-in student can only inspect
+-- their own membership. The invitation tests must not run as superuser.
+grant select on public.conversation_participants to authenticated;
+alter table public.conversation_participants enable row level security;
+create policy fixture_participants_read_own on public.conversation_participants
+  for select to authenticated using (user_id = (select auth.uid()));
 grant select on public.profiles to anon;
 alter table public.profiles enable row level security;
 create policy profiles_read_for_fixture on public.profiles for select to authenticated,anon using (true);
