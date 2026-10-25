@@ -22,6 +22,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import java.io.OutputStream
 import java.util.concurrent.TimeUnit
 
 object MessageMediaService {
@@ -119,6 +120,48 @@ object MessageMediaService {
                 }
             }.getOrNull()
         }
+
+    /** Streams a fresh authenticated private image without ever exposing a shareable
+     * signed URL outside the app. 15 MiB limit applies to received bytes as well. */
+    suspend fun copyPrivateImage(
+        messageId: String, conversationId: String, output: OutputStream
+    ): Result<Long> = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = freshImageUrl(messageId, conversationId)
+                ?: throw SecurityException("Picture access was not authorized.")
+            val host = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(SupabaseConfig.url)
+                ?: throw SecurityException("Invalid storage configuration.")
+            val signed = okhttp3.HttpUrl.Companion.toHttpUrlOrNull(url)
+                ?: throw SecurityException("Invalid picture link.")
+            require(signed.scheme == "https" && signed.host == host.host &&
+                signed.port == host.port) { "Private picture host did not match." }
+            client.newCall(Request.Builder().url(signed).get().build()).execute().use { response ->
+                check(response.isSuccessful) { "Could not download picture." }
+                require(response.header("Content-Type").orEmpty().startsWith("image/")) {
+                    "The selected attachment is not an image."
+                }
+                val image = response.body ?: error("Picture was empty.")
+                require(image.contentLength() <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                    "Picture exceeds the allowed size."
+                }
+                var written = 0L
+                image.byteStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        written += n
+                        check(written <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                            "Picture exceeded the allowed size."
+                        }
+                        output.write(buffer, 0, n)
+                    }
+                }
+                output.flush()
+                written
+            }
+        }
+    }
 
     suspend fun sendVideoMessage(
         context: Context,
