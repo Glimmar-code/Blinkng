@@ -3837,7 +3837,7 @@ internal fun DesktopFeedPostCard(
                     modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
                         .clickable(enabled = onOpenPost != null) { onOpenPost?.invoke() },
                     fontSize = 15.sp,
-                    maxLines = if (expandedText) Int.MAX_VALUE else if (xFeedStyle) 4 else 7,
+                    maxLines = if (expandedText) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis,
                     onTextLayout = { result ->
                         if (!expandedText && result.hasVisualOverflow) textCanExpand = true
