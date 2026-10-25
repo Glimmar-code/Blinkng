@@ -1,11 +1,6 @@
 name: Apply bottom nav and black premium messages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_bottom_nav_message_black_premium.py'
-      - '.github/workflows/apply-bottom-nav-message-black-premium.yml'
   workflow_dispatch:
 
 permissions:

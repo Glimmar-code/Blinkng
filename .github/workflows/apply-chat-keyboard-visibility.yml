@@ -1,11 +1,6 @@
 name: Apply chat keyboard visibility fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/fix_chat_keyboard_visibility.py'
-      - '.github/workflows/apply-chat-keyboard-visibility.yml'
   workflow_dispatch:
 
 permissions:

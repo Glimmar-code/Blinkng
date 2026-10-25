@@ -1,10 +1,6 @@
 name: Apply Connect and auth login fix
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-connect-auth-login-fix.yml'
   workflow_dispatch:
 
 permissions:

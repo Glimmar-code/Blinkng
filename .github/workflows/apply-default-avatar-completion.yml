@@ -1,10 +1,6 @@
 name: Complete default avatar coverage
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/apply-default-avatar-completion.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,11 +1,6 @@
 name: Apply account-scoped chat cache v4
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_account_scoped_chat_cache_v4.py'
-      - '.github/workflows/apply-account-scoped-chat-cache-v4.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,12 +1,6 @@
 name: Apply exact feed and reel resume position
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/apply_exact_position_resume.py'
-      - '.github/scripts/fix_exact_resume_context.py'
-      - '.github/workflows/apply-exact-position-resume.yml'
   workflow_dispatch:
 
 permissions:
