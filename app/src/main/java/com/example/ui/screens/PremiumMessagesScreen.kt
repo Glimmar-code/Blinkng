@@ -1519,6 +1519,17 @@ private fun PremiumChatDetail(
         matchesSearch && matchesPinned && matchesStarred
     }
 
+    val imageGroups = visibleMessages
+        .filter {
+            !it.deletedForEveryone && it.imageAlbumId != null &&
+                it.imageAlbumSize in 2..10 && !it.attachedImageUrl.isNullOrBlank()
+        }
+        .groupBy { it.imageAlbumId }
+    val renderedMessages = visibleMessages.filter { message ->
+        val group = message.imageAlbumId?.let(imageGroups::get).orEmpty()
+        group.size < 2 || group.first().id == message.id
+    }
+
     fun submitMessage(value: String = text) {
         val clean = value.trim()
         if (clean.isEmpty()) return
@@ -1534,10 +1545,10 @@ private fun PremiumChatDetail(
         showEmojiRail = false
     }
 
-    val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    val latestVisibleMessageId = renderedMessages.lastOrNull()?.id
     LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
         if (visibleMessages.isNotEmpty()) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
+            listState.animateScrollToItem(renderedMessages.lastIndex)
         }
     }
 
@@ -1648,7 +1659,74 @@ private fun PremiumChatDetail(
                         }
                     }
 
-                    items(visibleMessages, key = { it.id }) { message ->
+                    items(renderedMessages, key = { it.id }) { message ->
+                        val members = message.imageAlbumId?.let(imageGroups::get).orEmpty()
+                            .sortedBy { it.imageAlbumPosition }
+                        if (members.size > 1) {
+                            Column(
+                                horizontalAlignment = if (message.isFromMe)
+                                    Alignment.End else Alignment.Start,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.width(256.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(palette.incomingBubble)
+                                        .padding(4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    members.take(4).chunked(2).forEachIndexed { rowIndex, pair ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            pair.forEachIndexed { colIndex, photo ->
+                                                val photoIndex = rowIndex * 2 + colIndex
+                                                Box(
+                                                    modifier = Modifier.size(122.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .pointerInput(photo.id) {
+                                                            detectTapGestures(
+                                                                onTap = {
+                                                                    galleryPhotos = members
+                                                                    galleryPreviewIndex = photoIndex
+                                                                    galleryPreviewUri = photo.attachedImageUrl
+                                                                },
+                                                                onLongPress = { selectedMessage = photo }
+                                                            )
+                                                        }
+                                                ) {
+                                                    AsyncImage(
+                                                        model = photo.imagePreviewUrl
+                                                            ?: photo.attachedImageUrl,
+                                                        contentDescription = "Album photo ${photoIndex + 1}",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                    if (photoIndex == 3 && members.size > 4) {
+                                                        Box(
+                                                            modifier = Modifier.fillMaxSize()
+                                                                .background(Color.Black.copy(alpha = .5f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text("+${members.size - 4}",
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                members.map { it.text }.filter {
+                                    it.isNotBlank() && it != "Image"
+                                }.take(2).forEach {
+                                    Text(it, color = palette.textPrimary, fontSize = 11.sp)
+                                }
+                                Text(
+                                    "${members.size} pictures · ${members.last().status}",
+                                    color = palette.textSecondary, fontSize = 10.sp
+                                )
+                            }
+                        } else {
                         val replyTarget = message.replyToMessageId?.let { replyId ->
                             conversation.messages.firstOrNull { it.id == replyId }
                         }
@@ -1667,6 +1745,7 @@ private fun PremiumChatDetail(
                             onCancelUpload = { onCancelUpload(message) },
                             onStoryReferenceClick = onStoryReferenceClick,
                         )
+                        }
                     }
                 }
             }
