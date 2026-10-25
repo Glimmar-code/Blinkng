@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.gradle.api.tasks.Sync
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     kotlin("jvm") version "2.4.10"
@@ -36,6 +37,13 @@ dependencies {
 
     // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
     implementation("net.java.dev.jna:jna-platform:5.17.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.4")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.4")
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
 
 val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION")
