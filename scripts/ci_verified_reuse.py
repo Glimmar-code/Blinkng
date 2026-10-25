@@ -14,6 +14,7 @@ deliberately avoids transitive, stale, or forgeable cache attestations.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -45,6 +46,8 @@ REQUIRED_STEPS = {
     ),
 }
 JOB_NAME = {"android": "validate", "windows": "windows-build"}
+DIGEST_LABEL = "BLINK verified {scope} input sha256 {digest}"
+
 
 # Include every known source, test, asset, build tool, and backend contract
 # that could affect compiled code. Anything unknown or policy-sensitive
@@ -128,6 +131,33 @@ def relevant(path: str, scope: str) -> bool:
     return True
 
 
+def fingerprint_inputs(scope: str) -> str:
+    """Digest EXACT Git objects in the checked-out integration tree.
+
+    Compare this rather than a prior PR source tree: pull_request jobs might
+    test a synthetic merge containing newer base-branch code.
+    """
+    if scope not in REQUIRED_STEPS:
+        raise ValueError("Unknown input scope")
+    data = subprocess.check_output(
+        ["git", "ls-tree", "-rz", "--full-tree", "HEAD"],
+        stderr=subprocess.PIPE, timeout=18
+    )
+    digest = hashlib.sha256(("blink-verified-input-v2:" + scope + "\0").encode())
+    included = 0
+    for record in data.split(b"\0"):
+        if not record:
+            continue
+        meta, path_bytes = record.split(b"\t", 1)
+        path = path_bytes.decode("utf-8", errors="surrogateescape")
+        if relevant(path, scope):
+            digest.update(meta + b"\t" + path_bytes + b"\0")
+            included += 1
+    if not included:
+        raise ValueError("Empty tested input tree")
+    return digest.hexdigest()
+
+
 def run_git(*args: str) -> str:
     return subprocess.check_output(
         ["git", *args], stderr=subprocess.PIPE, text=True, timeout=18
@@ -160,8 +190,8 @@ def event_source(event: str, payload: dict[str, Any], head: str,
 
 
 def validate_evidence(checks: list[dict], job: dict, tested_sha: str,
-                      scope: str, pr_number: int | None) -> bool:
-    if not SHA_RE.fullmatch(tested_sha):
+                      scope: str, pr_number: int | None, digest: str) -> bool:
+    if not SHA_RE.fullmatch(tested_sha) or not re.fullmatch(r"[a-f0-9]{64}", digest):
         return False
     linked = [
         c for c in checks
@@ -184,7 +214,9 @@ def validate_evidence(checks: list[dict], job: dict, tested_sha: str,
         return False
     successful = {step["name"] for step in job.get("steps", [])
                   if step.get("status") == "completed" and step.get("conclusion") == "success"}
-    return set(REQUIRED_STEPS[scope]).issubset(successful)
+    required = set(REQUIRED_STEPS[scope])
+    required.add(DIGEST_LABEL.format(scope=scope, digest=digest))
+    return required.issubset(successful)
 
 
 def request_api(path: str, token: str) -> dict:
@@ -202,7 +234,7 @@ def request_api(path: str, token: str) -> dict:
 
 
 def decide(scope: str, event: str, payload: dict, head: str, token: str,
-           fetch=request_api, git=run_git) -> tuple[bool, str]:
+           fetch=request_api, git=run_git, fingerprint=fingerprint_inputs) -> tuple[bool, str]:
     if scope not in REQUIRED_STEPS or not SHA_RE.fullmatch(head):
         return False, "Unknown suite or SHA"
     if not token or os.getenv("GITHUB_REPOSITORY") != REPO:
@@ -214,6 +246,7 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
         tested_sha, pr_number = event_source(event, payload, head, git)
         if not SHA_RE.fullmatch(tested_sha) or tested_sha == head:
             return False, "Invalid predecessor"
+        current_digest = fingerprint(scope)
         history = git("rev-list", "--first-parent", "--max-count=24", tested_sha).splitlines()
         if not history or history[0] != tested_sha:
             return False, "Cannot establish safe ancestor chain"
@@ -243,7 +276,8 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
             if newest.get("status") != "completed" or newest.get("conclusion") != "success":
                 return False, "Newer required check pending/failed on " + candidate[:12]
             prior_job = fetch("/actions/jobs/" + str(newest["id"]), token)
-            if validate_evidence(results, prior_job, candidate, scope, pr_number):
+            if validate_evidence(results, prior_job, candidate, scope, pr_number,
+                                 current_digest):
                 return True, ("Verified prior full " + scope + " suite on " +
                               candidate[:12] + "; identical inputs across ancestor chain")
         return False, "No complete previously successful " + scope + " suite in bounded ancestor history"
@@ -254,6 +288,14 @@ def decide(scope: str, event: str, payload: dict, head: str, token: str,
 
 def main() -> None:
     scope = os.getenv("BLINK_CI_SCOPE", "")
+    if len(sys.argv) == 2 and sys.argv[1] == "--fingerprint":
+        digest = fingerprint_inputs(scope)
+        label = DIGEST_LABEL.format(scope=scope, digest=digest)
+        print(label)
+        if os.getenv("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                f.write("fingerprint=" + digest + "\n")
+        return
     head = run_git("rev-parse", "HEAD")
     try:
         payload = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
