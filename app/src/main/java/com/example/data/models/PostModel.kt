@@ -113,7 +113,12 @@ data class Story(
     val isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val isVip: Boolean = false,
-    val displayName: String = ""
+    val displayName: String = "",
+    val createdAt: String = "",
+    val isVideo: Boolean = false,
+    val authorId: String = "",
+    val allowReposts: Boolean = false,
+    val repostedFromId: String? = null,
 ) {
     val displayLabel: String
         get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
@@ -246,14 +251,25 @@ data class ChatMessage(
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
     val attachedImageUrl: String? = null,
+    // Transient UI percentage; never written as a server delivery receipt.
+    val uploadProgress: Int? = null,
     val attachedVideoUrl: String? = null,
+    val voiceAudioUrl: String? = null,
+    val attachedDocumentUrl: String? = null,
+    val attachedDocumentName: String? = null,
     val replyToMessageId: String? = null,
     val editedAt: String? = null,
     val deletedForEveryone: Boolean = false,
     val reactionCounts: Map<String, Int> = emptyMap(),
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    /** True only when the server owns one-time picture access. */
+    val imageViewOnce: Boolean = false
 )
 
 data class ChatConversation(
@@ -273,5 +289,10 @@ data class ChatConversation(
     val faculty: String = "SIMME",
     val lastSeen: String = "Last seen recently",
     val isMuted: Boolean = false,
-    val messages: MutableList<ChatMessage> = mutableListOf()
+    val messages: MutableList<ChatMessage> = mutableListOf(),
+    // Null means latest message was incoming, there is no message, or its
+    // direction/receipt has not yet been verified. Never manufacture two ticks
+    // based only on the other person's online indicator.
+    val lastOutgoingStatus: MessageStatus? = null,
+    val lastReceiptMessageId: String = ""
 )

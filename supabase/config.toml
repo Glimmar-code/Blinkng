@@ -54,6 +54,17 @@ verify_jwt = true
 [functions.send-call-notification]
 verify_jwt = true
 
+# Signed-in iPhones register or revoke their own encrypted-in-transit
+# VoIP tokens; server feature flag defaults OFF until Apple provisioning.
+[functions.ios-voip-register]
+verify_jwt = true
+
+# Internal-only APNs dispatcher. Supabase JWT is OFF because this function
+# accepts ONLY a strong service-to-service secret header and validates the
+# actual server-side ringing call before every push. Never expose to clients.
+[functions.ios-voip-dispatch]
+verify_jwt = false
+
 # Server-issued short-lived TURN credentials require a signed-in call participant.
 [functions.get-call-ice-config]
 verify_jwt = true
@@ -106,3 +117,30 @@ content_path = "./supabase/templates/password_changed_notification.html"
 enabled = true
 subject = "BLINK security: your email was changed"
 content_path = "./supabase/templates/email_changed_notification.html"
+
+# User-initiated Paystack checkout and post-checkout confirmation require BLINK JWTs.
+[functions.paystack-checkout]
+verify_jwt = true
+
+[functions.paystack-confirm]
+verify_jwt = true
+
+[functions.paystack-history]
+verify_jwt = true
+
+# Opt-in subscriptions require a signed-in owner. No default opt-ins.
+[functions.paystack-autorenew]
+verify_jwt = true
+
+# An isolated secret header authorizes internal Brevo payment email deliveries.
+[functions.paystack-payment-email]
+verify_jwt = false
+
+# Paystack webhooks are authenticated by HMAC-SHA512 of their raw payload.
+[functions.paystack-webhook]
+verify_jwt = false
+
+# View-once media has a separate no-public-read bucket and an atomic
+# service-role-only claim. OFF until staging security and two-account tests pass.
+[functions.blink-view-once-image]
+verify_jwt = true

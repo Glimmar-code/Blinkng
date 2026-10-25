@@ -11,6 +11,15 @@ const WORLD_LIMIT: float = 26.0
 const HOME_START_X: float = 53.0
 const HOME_Z: float = 32.0
 const HOME_GAP: float = 16.0
+## Public staging connection budgets, not full anti-DDoS protection.
+const AUTH_DEADLINE_MS: int = 10000
+const MAX_PENDING_AUTH: int = 4
+const ACTION_MIN_INTERVAL_MS: int = 250
+const INVITE_MIN_INTERVAL_MS: int = 5000
+const MAX_WALK_SPEED_MPS: float = 8.0
+const MOVE_JITTER_METRES: float = 1.0
+const MAX_MOVE_DELTA_SECONDS: float = 0.50
+const HEALTH_PULSE_INTERVAL_SECONDS: float = 5.0
 
 var world: Node3D
 var local_player: CharacterBody3D
@@ -44,6 +53,7 @@ var secure_dedicated: bool = false
 var joining_secure: bool = false
 var auth_secret: String = ""
 var online_ticket: String = ""
+var online_transport: String = "wss"
 var ticket_input: LineEdit
 var online_host_input: LineEdit
 var online_port_input: LineEdit
@@ -53,6 +63,16 @@ var is_connected_to_authoritative_server: bool = false
 var persistent_store: RefCounted
 var last_work_ms: Dictionary = {}
 var account_status: Label
+var pending_auth_ms: Dictionary = {}
+var last_action_ms: Dictionary = {}
+var last_invite_ms: Dictionary = {}
+## Server-only peer-session invitation restrictions. Account-backed persistent
+## blocking must be provided by the future privacy service before launch.
+var blocked_invites: Dictionary = {}
+## Only the dedicated server's container receives this filesystem path.
+## No open metrics port, account information or secrets are exposed.
+var server_health_file: String = ""
+var server_health_elapsed: float = 0.0
 
 
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
@@ -62,6 +82,7 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
     multiplayer.connection_failed.connect(_on_connection_failed)
     multiplayer.server_disconnected.connect(_on_server_lost)
     multiplayer.peer_disconnected.connect(_on_peer_left)
+    multiplayer.peer_connected.connect(_on_peer_arrived)
     _build_ui()
     var args := OS.get_cmdline_user_args()
     if args.has("--blink-dedicated"):
@@ -74,6 +95,8 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
                 online_port_input.text = arg.trim_prefix("--blink-port=")
             elif arg.begins_with("--blink-ticket="):
                 ticket_input.text = arg.trim_prefix("--blink-ticket=")
+            elif arg.begins_with("--blink-transport="):
+                online_transport = arg.trim_prefix("--blink-transport=")
         # A ticket is only useful after deliberate Play; it must never trigger
         # a network connection merely because the main BLINK app opens.
         if not ticket_input.text.is_empty():
@@ -87,10 +110,23 @@ func _start_dedicated_server() -> void:
     if auth_secret.length() < 32 or port < 1024 or port > 65535:
         push_error("Dedicated server disabled: missing secret or invalid configured port.")
         return
-    var peer := ENetMultiplayerPeer.new()
-    var result := peer.create_server(port, MAX_PLAYERS)
+    # Internet connections MUST be TLS-authenticated WebSocket. Do not
+    # accept public tickets over the old unencrypted LAN-only ENet socket.
+    var certificate_path: String = OS.get_environment("BLINK_LIFE_TLS_CERT_PATH")
+    var key_path: String = OS.get_environment("BLINK_LIFE_TLS_KEY_PATH")
+    if certificate_path.is_empty() or key_path.is_empty():
+        push_error("Dedicated WSS server disabled: missing TLS certificate/key paths.")
+        return
+    var certificate := X509Certificate.new()
+    var key := CryptoKey.new()
+    if certificate.load(certificate_path) != OK or key.load(key_path) != OK:
+        push_error("Dedicated WSS server disabled: invalid TLS certificate or key.")
+        return
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.max_queued_packets = 128
+    var result := peer.create_server(port, "*", TLSOptions.server(key, certificate))
     if result != OK:
-        push_error("Dedicated server unable to bind UDP port (code: %d)." % result)
+        push_error("Dedicated WSS server unable to bind TCP port (code: %d)." % result)
         return
     multiplayer.multiplayer_peer = peer
     secure_dedicated = true
@@ -98,11 +134,26 @@ func _start_dedicated_server() -> void:
     var store_script: Script = load("res://scripts/persistent_state.gd")
     persistent_store = store_script.new()
     persistent_store.call("load_from_disk")
+    if bool(persistent_store.get("write_blocked")):
+        # Do not open an authoritative world with unknown ownership and
+        # fictional balances. Keep the normal BLINK app and solo game safe.
+        push_error("BLINK LIFE dedicated server disabled: account storage unavailable.")
+        multiplayer.multiplayer_peer.close()
+        multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+        secure_dedicated = false
+        is_online = false
+        persistent_store = null
+        status_label.text = "Dedicated world offline: property storage needs repair."
+        return
+    pending_auth_ms.clear()
     people.clear()
     slot_counter = 0
+    server_health_file = OS.get_environment("BLINK_LIFE_HEALTH_FILE")
+    server_health_elapsed = 0.0
+    _emit_server_health()
     status_label.text = "Dedicated session online: authenticated tickets required."
     # No fake host appears in the roster; only authenticated human peers.
-    print("BLINK LIFE dedicated session listening on UDP port %d" % port)
+    print("BLINK LIFE dedicated authenticated WSS listening on TCP port %d" % port)
 
 
 func _make_button(title: String, callback: Callable, container: Node) -> Button:
@@ -321,6 +372,18 @@ func _join_lan() -> void:
     status_label.text = "Connecting to trusted LAN host %s..." % address
 
 
+func _trusted_online_tls_options(host: String) -> TLSOptions:
+    # Production always validates the public CA chain AND host name.
+    # A local loopback-only CA override enables ephemeral certs in CI.
+    # Never use TLSOptions.client_unsafe() with signed BLINK tickets.
+    var dev_ca_file: String = OS.get_environment("BLINK_LIFE_TEST_CA_FILE")
+    if host == "localhost" and not dev_ca_file.is_empty():
+        var local_ca := X509Certificate.new()
+        if local_ca.load(dev_ca_file) == OK:
+            return TLSOptions.client(local_ca)
+    return TLSOptions.client()
+
+
 func _join_online() -> void:
     if is_online:
         status_label.text = "Disconnect first before opening another world."
@@ -329,15 +392,20 @@ func _join_online() -> void:
     var port := int(online_port_input.text) if online_port_input.text.is_valid_int() else 0
     var ticket := ticket_input.text.strip_edges()
     if host.is_empty() or host.length() > 253 or host.contains("/") or host.contains(" ") or port < 1024 or port > 65535:
-        status_label.text = "The dedicated game host or UDP port is invalid."
+        status_label.text = "The dedicated secure game hostname or TCP port is invalid."
+        return
+    if online_transport != "wss":
+        status_label.text = "This game version only accepts encrypted public worlds."
         return
     if ticket.length() < 110 or ticket.length() > 240 or ticket.split(".").size() != 4:
         status_label.text = "Request a new short-lived ticket while signed into BLINK."
         return
-    var peer := ENetMultiplayerPeer.new()
-    var code := peer.create_client(host, port)
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.max_queued_packets = 128
+    var code := peer.create_client("wss://%s:%d" % [host, port],
+        _trusted_online_tls_options(host))
     if code != OK:
-        status_label.text = "Could not connect to the dedicated game server."
+        status_label.text = "Could not connect securely to the dedicated game server."
         return
     joining_secure = true
     online_ticket = ticket
@@ -363,7 +431,37 @@ func _on_server_lost() -> void:
     status_label.text = "Host disconnected. BLINK LIFE remains playable offline."
 
 
+static func auth_timed_out(joined_ms: int, current_ms: int) -> bool:
+    return current_ms >= joined_ms and current_ms - joined_ms >= AUTH_DEADLINE_MS
+
+
+func _on_peer_arrived(peer_id: int) -> void:
+    if not secure_dedicated or not multiplayer.is_server() or peer_id < 2:
+        return
+    if pending_auth_ms.size() >= MAX_PENDING_AUTH:
+        multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+        return
+    pending_auth_ms[peer_id] = Time.get_ticks_msec()
+
+
+func _expire_authentication(current_ms: int) -> void:
+    if not secure_dedicated or not multiplayer.is_server():
+        return
+    for peer_id in pending_auth_ms.keys():
+        if auth_timed_out(int(pending_auth_ms[peer_id]), current_ms):
+            pending_auth_ms.erase(peer_id)
+            multiplayer.multiplayer_peer.disconnect_peer(int(peer_id))
+
+
 func _on_peer_left(peer_id: int) -> void:
+    pending_auth_ms.erase(peer_id)
+    blocked_invites.erase(peer_id)
+    for blocker in blocked_invites.keys():
+        var blocked: Dictionary = blocked_invites[blocker]
+        blocked.erase(peer_id)
+        blocked_invites[blocker] = blocked
+    last_action_ms.erase(peer_id)
+    last_invite_ms.erase(peer_id)
     if not multiplayer.is_server():
         return
     if not people.has(peer_id):
@@ -390,6 +488,9 @@ func _on_peer_left(peer_id: int) -> void:
 
 
 func _disconnect() -> void:
+    if secure_dedicated and not server_health_file.is_empty():
+        DirAccess.remove_absolute(server_health_file)
+        server_health_file = ""
     if multiplayer.multiplayer_peer != null:
         multiplayer.multiplayer_peer.close()
     multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
@@ -403,6 +504,10 @@ func _disconnect() -> void:
     used_ticket_nonces.clear()
     persistent_store = null
     last_work_ms.clear()
+    pending_auth_ms.clear()
+    last_action_ms.clear()
+    last_invite_ms.clear()
+    blocked_invites.clear()
     people.clear()
     cars.clear()
     visit_requests.clear()
@@ -449,6 +554,11 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
         return
     var id := multiplayer.get_remote_sender_id()
     if id < 2 or people.has(id) or people.size() >= MAX_PLAYERS:
+        if secure_dedicated and id >= 2:
+            multiplayer.multiplayer_peer.disconnect_peer(id)
+        return
+    if secure_dedicated and not pending_auth_ms.has(id):
+        multiplayer.multiplayer_peer.disconnect_peer(id)
         return
     var actual_name := _clean_name(display_name)
     if secure_dedicated:
@@ -460,16 +570,25 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
             multiplayer.multiplayer_peer.disconnect_peer(id)
             return
         peer_auth_ids[id] = account_id
+        pending_auth_ms.erase(id)
         # The editable nickname cannot impersonate a verified BLINK profile.
         actual_name = "BLINK-" + account_id.substr(0, 8)
     var member := _make_profile(actual_name, slot_counter)
     if secure_dedicated and persistent_store != null:
         var saved: Dictionary = persistent_store.call("get_profile", peer_auth_ids[id])
-        member["home_owned"] = bool(saved.get("house_owned", false))
-        member["furniture"] = int(saved.get("furniture", 0))
+        if saved.is_empty():
+            peer_auth_ids.erase(id)
+            multiplayer.multiplayer_peer.disconnect_peer(id)
+            return
+        member["home_owned"] = bool(saved["house_owned"])
+        member["furniture"] = int(saved["furniture"])
+        # Session ordering must not move an account's permanent property.
+        # Unowned players have no plot and cannot enter another player's home.
+        member["slot"] = int(saved["home_slot"]) if bool(saved["house_owned"]) else -id
     else:
         member["home_owned"] = true # LAN demonstration has free temporary homes.
     people[id] = member
+    last_motion_ms[id] = Time.get_ticks_msec()
     slot_counter += 1
     if secure_dedicated:
         _send_private_wallet(id)
@@ -515,7 +634,8 @@ func _reconcile_people() -> void:
             remote_avatars[id].queue_free()
             remote_avatars.erase(id)
     for id in home_models.keys():
-        if not people.has(id):
+        if not people.has(id) or ((secure_dedicated or joining_secure) and not
+                bool(people[id].get("home_owned", false))):
             home_models[id].queue_free()
             home_models.erase(id)
     for id in vehicle_models.keys():
@@ -524,7 +644,8 @@ func _reconcile_people() -> void:
             vehicle_models.erase(id)
 
     for id in people.keys():
-        if not home_models.has(id):
+        if not home_models.has(id) and (not (secure_dedicated or joining_secure) or
+                bool(people[id].get("home_owned", false))):
             _create_home(id, int(people[id]["slot"]))
         if id != my_id and not remote_avatars.has(id):
             remote_avatars[id] = _create_remote_avatar(id, str(people[id]["name"]))
@@ -645,7 +766,30 @@ func _create_vehicle() -> Node3D:
     return vehicle
 
 
+## Container-only readiness heartbeat. Only emitted after TLS listener
+## creation AND successful persistent ledger verification. Never contains
+## player identities, signed tickets or game balance.
+func _emit_server_health() -> void:
+    if not secure_dedicated or not multiplayer.is_server() or server_health_file.is_empty():
+        return
+    if persistent_store == null or bool(persistent_store.get("write_blocked")):
+        return
+    var file := FileAccess.open(server_health_file, FileAccess.WRITE)
+    if file == null:
+        push_warning("Dedicated health file cannot be written.")
+        return
+    file.store_string("ready\n")
+    file.flush()
+    file.close()
+
+
 func _process(delta: float) -> void:
+    if secure_dedicated and multiplayer.is_server():
+        _expire_authentication(Time.get_ticks_msec())
+        server_health_elapsed += delta
+        if server_health_elapsed >= HEALTH_PULSE_INTERVAL_SECONDS:
+            server_health_elapsed = 0.0
+            _emit_server_health()
     if not is_online or local_player == null:
         return
     var my_id := multiplayer.get_unique_id()
@@ -703,10 +847,11 @@ func _send_position(position: Vector3, yaw: float) -> void:
     var previous: Dictionary = people[sender]
     var earlier := int(last_motion_ms.get(sender, 0))
     if earlier > 0:
-        var elapsed := maxf(float(now - earlier) / 1000.0, 0.01)
+        var elapsed := clampf(float(now - earlier) / 1000.0, 0.01,
+            MAX_MOVE_DELTA_SECONDS)
         var previous_position: Vector3 = previous["pos"]
         var distance: float = position.distance_to(previous_position)
-        if distance > elapsed * 24.0 + 2.0:
+        if distance > elapsed * MAX_WALK_SPEED_MPS + MOVE_JITTER_METRES:
             return
     last_motion_ms[sender] = now
     previous["pos"] = position
@@ -716,14 +861,16 @@ func _send_position(position: Vector3, yaw: float) -> void:
 
 
 func _allowed_position(sender: int, position: Vector3) -> bool:
-    if position.y < -2.0 or position.y > 9.0:
+    if not position.is_finite() or position.y < -0.5 or position.y > 2.0:
         return false
     if absf(position.x) < WORLD_LIMIT and absf(position.z) < WORLD_LIMIT:
         return true
     var profile: Dictionary = people[sender]
     var own_slot := int(profile["slot"])
     var visiting := int(profile.get("visiting", -1))
-    return _near_home(position, own_slot) or (visiting >= 0 and _near_home(position, visiting))
+    var permitted_own: bool = (not (secure_dedicated or joining_secure) or
+        bool(profile.get("home_owned", false))) and _near_home(position, own_slot)
+    return permitted_own or (visiting >= 0 and _near_home(position, visiting))
 
 
 func _near_home(position: Vector3, slot: int) -> bool:
@@ -781,11 +928,71 @@ func _request_action(kind: String, target: int) -> void:
     _server_action(multiplayer.get_remote_sender_id(), kind, target)
 
 
+func _invitations_allowed(sender: int, recipient: int) -> bool:
+    if sender == recipient or not people.has(sender) or not people.has(recipient):
+        return false
+    return not blocked_invites.get(sender, {}).has(recipient) and not (
+        blocked_invites.get(recipient, {}).has(sender))
+
+
+func _block_invitations(sender: int, target: int, block: bool) -> bool:
+    if sender == target or not people.has(sender) or not people.has(target):
+        return false
+    var blocked: Dictionary = blocked_invites.get(sender, {})
+    if block:
+        blocked[target] = true
+        if int(visit_requests.get(sender, -1)) == target:
+            visit_requests.erase(sender)
+        if int(visit_requests.get(target, -1)) == sender:
+            visit_requests.erase(target)
+        if int(ride_requests.get(sender, -1)) == target:
+            ride_requests.erase(sender)
+        if int(ride_requests.get(target, -1)) == sender:
+            ride_requests.erase(target)
+    else:
+        blocked.erase(target)
+    blocked_invites[sender] = blocked
+    # Blocking a guest also revokes already-granted access immediately.
+    # Otherwise an accepted invitation would remain active indefinitely.
+    if block:
+        var target_profile: Dictionary = people[target]
+        if int(target_profile.get("visiting", -1)) == int(people[sender]["slot"]):
+            target_profile["visiting"] = -1
+            people[target] = target_profile
+            if is_online and multiplayer.is_server():
+                _teleport(target, -1, false)
+        if cars.has(sender) and int(cars[sender]) == target:
+            cars[sender] = -1
+        if cars.has(target) and int(cars[target]) == sender:
+            cars[target] = -1
+    return true
+
+
 func _server_action(sender: int, kind: String, target: int) -> void:
     if not people.has(sender):
         return
+    # Server-owned throttling limits packet floods/duplicate purchases.
+    # Trusted LAN demos preserve the existing immediate interactions.
+    if secure_dedicated:
+        var now_ms: int = Time.get_ticks_msec()
+        if last_action_ms.has(sender) and now_ms - int(last_action_ms[sender]) < ACTION_MIN_INTERVAL_MS:
+            return
+        last_action_ms[sender] = now_ms
+        if kind in ["visit", "ride"]:
+            if last_invite_ms.has(sender) and now_ms - int(last_invite_ms[sender]) < INVITE_MIN_INTERVAL_MS:
+                return
+            last_invite_ms[sender] = now_ms
     var profile: Dictionary = people[sender]
     match kind:
+        "block":
+            if _block_invitations(sender, target, true):
+                _notify(sender, "This session's visits, rides and invitations are blocked.")
+                _broadcast_roster()
+            return
+        "unblock":
+            if _block_invitations(sender, target, false):
+                _notify(sender, "This player's visit and ride requests are allowed again.")
+            return
         "location":
             profile["map_opt_in"] = not bool(profile["map_opt_in"])
             people[sender] = profile
@@ -808,7 +1015,7 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             people[sender] = profile
             _teleport(sender, -1, false)
         "visit":
-            if target == sender or not people.has(target):
+            if not _invitations_allowed(sender, target):
                 return
             if secure_dedicated and not bool(people[target].get("home_owned", false)):
                 _notify(sender, "This player has not bought a virtual home yet.")
@@ -817,7 +1024,7 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             _deliver_request(target, sender, "home")
             return
         "approve_visit":
-            if int(visit_requests.get(sender, -1)) != target or not people.has(target):
+            if int(visit_requests.get(sender, -1)) != target or not _invitations_allowed(target, sender):
                 return
             visit_requests.erase(sender)
             var guest: Dictionary = people[target]
@@ -825,7 +1032,7 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             people[target] = guest
             _teleport(target, int(profile["slot"]), true)
         "ride":
-            if target == sender or not people.has(target) or not cars.has(target):
+            if not _invitations_allowed(sender, target) or not cars.has(target):
                 return
             var source_pos: Vector3 = people[sender]["pos"]
             var driver_pos: Vector3 = people[target]["pos"]
@@ -836,7 +1043,7 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             _deliver_request(target, sender, "ride")
             return
         "approve_ride":
-            if int(ride_requests.get(sender, -1)) != target or not people.has(target) or not cars.has(sender):
+            if int(ride_requests.get(sender, -1)) != target or not _invitations_allowed(target, sender) or not cars.has(sender):
                 return
             if cars[sender] != -1:
                 return
@@ -871,7 +1078,12 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             if not bool(persistent_store.call("update_profile", account, saved)):
                 _notify(sender, "Save failed; ask the game server operator to check storage.")
                 return
+            var committed: Dictionary = persistent_store.call("get_profile", account)
+            if committed.is_empty() or int(committed.get("home_slot", -1)) < 0:
+                _notify(sender, "Purchased home could not be verified after saving.")
+                return
             profile["home_owned"] = true
+            profile["slot"] = int(committed["home_slot"])
             people[sender] = profile
             _send_private_wallet(sender)
         "furnish":
@@ -928,7 +1140,8 @@ func _teleport(peer_id: int, slot: int, to_home: bool) -> void:
     var profile: Dictionary = people[peer_id]
     profile["pos"] = location
     people[peer_id] = profile
-    last_motion_ms.erase(peer_id)
+    # Server-driven teleport is an explicit, authoritative movement reset.
+    last_motion_ms[peer_id] = Time.get_ticks_msec()
     if peer_id == 1:
         local_player.global_position = location
         local_player.velocity = Vector3.ZERO
@@ -990,20 +1203,24 @@ func _send_private_wallet(peer_id: int) -> void:
     if saved.is_empty():
         return
     if peer_id == 1:
-        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]))
+        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]),
+            int(saved["furniture"]), int(saved.get("home_slot", -1)))
     else:
         _receive_private_wallet.rpc_id(
-            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"])
+            peer_id, int(saved["cash"]), bool(saved["house_owned"]),
+            int(saved["furniture"]), int(saved.get("home_slot", -1))
         )
 
 
 @rpc("authority", "reliable")
-func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int) -> void:
+func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int,
+        plot_slot: int = -1) -> void:
     if multiplayer.get_remote_sender_id() != 1:
         return
     if account_status != null:
-        account_status.text = "My private Game Cash: %d GC · Home: %s · Furniture: %d" % [
-            cash, "owned" if owns_home else "not owned", furnishing
+        account_status.text = "Game Cash: %d GC · Home: %s · Furniture: %d · Plot: %s" % [
+            cash, "owned" if owns_home else "not owned", furnishing,
+            str(plot_slot + 1) if owns_home and plot_slot >= 0 else "none"
         ]
 
 
@@ -1029,6 +1246,10 @@ func _wave(peer_id: int) -> void:
 
 
 func _send_chat_from_ui() -> void:
+    if joining_secure:
+        status_label.text = "Public world chat is disabled until moderation is ready."
+        chat_input.clear()
+        return
     if not is_online:
         status_label.text = "Join a trusted LAN session to chat."
         return
@@ -1050,6 +1271,11 @@ func _send_chat(message: String) -> void:
 
 func _server_chat(sender: int, message: String) -> void:
     if not people.has(sender):
+        return
+    # One-to-many free-text chat is a production moderation blocker.
+    # Keep it disabled for dedicated public sessions; LAN preview only.
+    if secure_dedicated:
+        _notify(sender, "Public chat is disabled until player safety checks are ready.")
         return
     var now := Time.get_ticks_msec()
     if last_chat_ms.has(sender) and now - int(last_chat_ms[sender]) < 1500:
@@ -1095,6 +1321,8 @@ func _refresh_player_rows() -> void:
         if peer_id != my_id:
             _make_button("VISIT", func(): _action("visit", peer_id), row)
             _make_button("RIDE", func(): _action("ride", peer_id), row)
+            _make_button("BLOCK INVITES", func(): _action("block", peer_id), row)
+            _make_button("ALLOW INVITES", func(): _action("unblock", peer_id), row)
             var muted := muted_peers.has(peer_id)
             _make_button("UNMUTE" if muted else "MUTE", func(): _toggle_mute(peer_id), row)
     if is_online:

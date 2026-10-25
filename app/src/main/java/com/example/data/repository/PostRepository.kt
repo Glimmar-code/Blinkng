@@ -6,6 +6,7 @@ import com.example.data.models.Comment
 import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,22 +16,78 @@ internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
+/**
+ * SQLSTATE 57014 is also used for user cancellations, so require the database's
+ * specific statement-timeout message rather than classifying every cancellation
+ * or unrelated network failure as a ranked-feed timeout.
+ */
+internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }
+        .any { cause -> cause.message.orEmpty().contains("statement timeout", ignoreCase = true) }
+
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
     private val likeMutationMutexGuard = Mutex()
     private val likeMutationMutexes = mutableMapOf<String, Mutex>()
 
-    suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
+    // Ranked Home/Reels/realtime requests can arrive together; avoid hammering
+    // the expensive discovery RPC concurrently from this repository instance.
+    private val rankedFeedMutex = Mutex()
+    private val chronologicalFallbackTypes = mutableSetOf<String>()
+
+    /**
+     * If the first ranked page times out, switch this lane to the existing,
+     * authenticated chronological RPC for the rest of its pagination session.
+     * Switching back to ranked happens only when a NEW first ranked page succeeds.
+     * This prevents cursor mismatches, duplicates and missing posts.
+     *
+     * All initial Home/Reels/realtime ranked loads share a mutex, preventing
+     * simultaneous heavy ranking requests from this repository instance.
+     * A second failed RPC is allowed to propagate so the ViewModel keeps the
+     * last available cached feed; SQLSTATE 57014 alone is not sufficient to retry.
+     */
+    private suspend fun fetchRankedPageSafely(
+        limit: Int,
+        feedType: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null
+    ): List<FeedPost> = rankedFeedMutex.withLock {
+        val firstPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+        if (!firstPage && feedType in chronologicalFallbackTypes) {
+            return@withLock supabaseService.fetchFeedPage(
+                limit = limit,
+                beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId,
+                feedType = feedType
+            )
+        }
+
         try {
-            when (isReel) {
-                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
-                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
-                null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFeed error: ${e.message}")
-            emptyList()
+            val rankedPage = supabaseService.fetchFeedPage(
+                limit = limit,
+                beforeCreatedAt = beforeCreatedAt,
+                beforeId = beforeId,
+                feedType = "ranked_$feedType"
+            )
+            if (firstPage) chronologicalFallbackTypes.remove(feedType)
+            rankedPage
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (!firstPage || !isRecoverableRankedFeedTimeout(error)) throw error
+            Log.w("PostRepository", "Ranked $feedType timed out; using one authenticated chronological fallback", error)
+            val page = supabaseService.fetchFeedPage(limit = limit, feedType = feedType)
+            chronologicalFallbackTypes.add(feedType)
+            page
+        }
+    }
+
+    suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
+        when (isReel) {
+            true -> fetchRankedPageSafely(30, "reels")
+            false -> fetchRankedPageSafely(30, "posts")
+            null -> fetchRankedPageSafely(60, "all")
         }
     }
 
@@ -44,11 +101,11 @@ class PostRepository(
         beforeId: String? = null,
         limit: Int = 30
     ): List<FeedPost> = withContext(Dispatchers.IO) {
-        supabaseService.fetchFeedPage(
+        fetchRankedPageSafely(
             limit = limit,
+            feedType = if (isReel) "reels" else "posts",
             beforeCreatedAt = beforeCreatedAt,
-            beforeId = beforeId,
-            feedType = if (isReel) "ranked_reels" else "ranked_posts"
+            beforeId = beforeId
         )
     }
 

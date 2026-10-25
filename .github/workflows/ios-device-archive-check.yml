@@ -1,0 +1,56 @@
+name: iOS unsigned device archive quality gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'scripts/ios_testflight_preflight.py'
+      - 'scripts/prepare_ios_icon.sh'
+      - '.github/workflows/ios-device-archive-check.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/ios_testflight_preflight.py'
+      - 'scripts/prepare_ios_icon.sh'
+      - '.github/workflows/ios-device-archive-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-device:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check TestFlight source and safe release defaults
+        run: python3 scripts/ios_testflight_preflight.py --mode source
+      - name: Prepare BLINK's current brand icon for unsigned device archive
+        shell: bash
+        run: bash scripts/prepare_ios_icon.sh
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate iOS project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Compile and archive arm64 iPhone app WITHOUT signing
+        shell: bash
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild -project BLINKiOS.xcodeproj -scheme BLINKiOS \
+            -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/BLINK-unsigned.xcarchive" \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+          APP="$RUNNER_TEMP/BLINK-unsigned.xcarchive/Products/Applications/BLINKiOS.app"
+          test -d "$APP" || { echo "::error::Archive has no iOS app"; exit 1; }
+          APP_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          test "$APP_BUNDLE" = 'ng.com.blink.ios' || {
+            echo "::error::Unexpected iOS bundle identifier"; exit 1;
+          }
+          echo "✅ iOS device architecture built. This is unsigned and cannot be submitted to TestFlight."

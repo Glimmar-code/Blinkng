@@ -41,7 +41,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
     private val anonKey = SupabaseConfig.anonKey
 
-    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "", university: String = "", accountType: String = ""): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "", university: String = "", accountType: String = "", referrerId: String? = null): AuthResult = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().removePrefix("@"); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) return@withContext AuthResult.failure("Please complete all required fields.")
         if (!cleanUsername.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
@@ -54,7 +54,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         if (availability?.usernameAvailable == false) {
             return@withContext AuthResult.failure("That username is already taken. Please choose another one.")
         }
-        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty, university, accountType); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Sign up failed.")) } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Sign up failed.")) }
+        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty, university, accountType, referrerId); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Sign up failed.")) } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Sign up failed.")) }
     }
 
     suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {
@@ -62,6 +62,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         try {
             val isEmail = cleanInput.contains("@") && !cleanInput.startsWith("@")
             val result = if (isEmail) {
+                // Never mask Supabase's invalid-email credentials error with the
+                // secondary username Edge Function; it is only for username logins.
                 supabaseService.authenticateUser(cleanInput, password)
             } else {
                 authenticateWithUsername(cleanInput, password)
@@ -90,7 +92,13 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     val serverMessage = runCatching { JSONObject(raw).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
-                    return@withContext Result.failure(Exception(serverMessage ?: "Invalid email/username or password."))
+                    val safeMessage = when (response.code) {
+                        400, 401 -> "Invalid email/username or password."
+                        429 -> "Too many requests."
+                        in 500..599 -> "Authentication service temporarily unavailable."
+                        else -> serverMessage ?: "Unable to sign in."
+                    }
+                    return@withContext Result.failure(Exception(safeMessage))
                 }
 
                 val auth = JSONObject(raw)
@@ -111,7 +119,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                 }
 
                 val metadata = user.optJSONObject("user_metadata")
-                val resolvedUsername = metadata?.optString("username", "")?.trim()?.takeIf { it.isNotBlank() } ?: cleanUsername
+                val resolvedUsername = metadata?.optString("username", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: userEmail.substringBefore('@')
                 val fullName = metadata?.optString("full_name", "")?.trim()?.takeIf { it.isNotBlank() }
                     ?: metadata?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() }
                     ?: resolvedUsername

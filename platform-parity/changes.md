@@ -1,8 +1,129 @@
-## 2026-10-18 — Universal university directory depends on latest campus registration integration
+## 2026-10-25 — Cold-start consent deferral reconciled with Testlab intro (PR #519)
 
-- Ported NUC-reviewed shared institution search and stable university IDs, Android picker with moderated missing-institution requests, Windows shared registration, canonical Connect and campus leaderboard comparisons. Based on Feature 5 integration branch and not the stale original feature branch.
-- Versioned SQL migration is committed for later staging. It cannot be safely applied to the live Supabase project until environment-compatible, cross-account and existing-user data tests are completed; NUC completeness and school programme accreditations still require official reconciliation.
-- Requires full Android/Windows CI and staging RLS tests prior to main release. Testlab integration may follow Feature 5 once its CI passes and database migration strategy is accepted.
+- **Conflict resolution:** Preserve the newer 3.2 s single-B, blue-dot Canvas intro and its baseline alignment from Testlab. Do not restore the older 6.4 s glyphs/spacing from the original optimization branch.
+- **Android:** Move UMP consent gathering and subsequent consent-gated rewarded-ad loading until 300 ms after the intro completes. Keep the existing privacy gate and destruction check; no ad loads before consent allows it.
+- **PARITY-EXCEPTION: android-ump-consent-after-intro** — The change to `MainActivity.kt` schedules Android's UMP/WebView consent work after the splash to avoid blocking its first frames. UMP and rewarded-ad SDK initialization exist only in Android; Windows uses the same existing shared 3.2 s `BlinkBeyondLinkIntro` and has no UMP/Android Activity startup step. The Windows equivalent is already the unchanged shared animation, so introducing a Windows-specific ad consent delay would be incorrect. Keep both platform builds, intro visuals, and Android privacy gating in verification.
+- **Timeline verification:** Update introductory timing unit tests to the latest Testlab 3.2 s duration and five exit windows, rather than obsolete 6.4 s assertions.
+- **Release hold:** Android/Windows current-head compilation, timeline tests, real-device frame tracing, returning from background, consent/ad behavior, font-scale screenshots and startup/session restore must pass before any promotion into main or APK publication.
+
+## 2026-10-24 — Startup intro optical alignment and startup responsiveness (Testlab candidate)
+
+- **Android + Windows:** Both platforms use `BlinkBeyondLinkIntro` from shared code; no platform-specific clone, auth/session routing change or database modification.
+- **Repair:** Render the approved B with blue dot and LINK vectors in a unified Canvas; baseline-align all five "eyond" letters, reduce the optical oversize of B, remove the original LINK vector's 27-unit left inset, introduce explicit separation between the three dots and the brand B, keep the final BLINK word tightly joined, and make the opening artwork visible on the first Compose frame.
+- **Timing:** Remove the former 230–560ms forced blank fade, streamline from 6.4s to 3.2s with the same ordered collapse, continuous B and one enlarged wordmark.
+- **Evidence:** Robolectric screenshots of first, transition and final frames at 320, 412 and 600 dp must be checked against the requested baseline and optical balance; Android/Windows CI and cold-start real-device smoothness/navigation still must pass. Testlab first, main/published APK unchanged until verified.
+
+## 2026-10-24 — Referral achievement permanence versus temporary discovery boost (Testlab draft)
+
+- **Lifetime, permanent achievements:** A confirmed referral atomically increments a private server-owned `blink_referral_achievements` aggregate (no referred-user identity stored in that aggregate). It is unaffected by age or referred-member deletion. The referring member retains earned badges **Starter 1 / Builder 5 / Advocate 10 / Connector 25 / Champion 50 / Ambassador 100** as long as their own account exists.
+- **Temporary discovery:** Every fresh confirmed referral contributes **3 points for days 0–9, 2 for days 10–19, 1 for days 20–29, 0 after day 30**; summed points are capped at 30 and recalculated at read time, without recurring cron or writing expired state. Fresh referrals add new points without changing historical earned achievements.
+- **Android, Windows and web:** Dashboard now explicitly distinguishes lifetime count, achievement badge and next milestone from active referrals/temporary points. Search suggestions select a maximum of three boosted profiles using the same decaying server-side scores. The already shared Kotlin policy defines milestones and age boundaries.
+- **Verification:** Disposable PostgreSQL fixtures test confirmation credit, decline at 11/21/31 days, new-referral replenishment, exact milestone tiers, prevention of duplicate credit, RLS and deletion permanence. Shared Kotlin tests cover the same policy boundaries. No production Supabase changes, merge or APK publication are authorized without real checks.
+
+## 2026-10-24 — BLINK Refer & Grow (Testlab-only candidate)
+
+- **Shared contract:** `BlinkReferralPolicy` defines referral signup display, search matching priority, exact-usernames-first ordering, invitation URL and non-guaranteed discovery copy for both Android and Windows.
+- **Android:** Optional referrer search at signup with 260ms debounce, 10 paged real public profiles, exact selection and optional skip; the selected UUID is passed through ViewModel/Repository/Auth metadata. Search has a persistent invitation card, authenticated real dashboard, share action and discoverable suggested students with real Follow RPC.
+- **Windows:** Equivalent optional referrer autocomplete, signup metadata, Search promotion, progress dashboard and copy-to-clipboard invitation; native desktop conventions, same Supabase RPC contracts.
+- **Web:** Public `/invite/@username`-style route is `/invite/username`; it lands in the real web signup form, resolves the selected existing referrer, offers 10-name autocomplete and passes the same signup metadata through the Auth API. Existing `404.html` SPA rewrite is reused, not replaced.
+- **Backend:** New SQL migration (not deployed) with a one-referrer-per-account table, confirmed-only credit, auth-signup-trigger processing, RLS-protected own stats, public minimal-fields signup autocomplete, capped 30-day discovery recommendations and a single notification through existing in-app/push pipeline. **No Coins or guaranteed followers awarded.**
+- **Security:** Referrer metadata is only a suggestion, not permission; self-referrals, nonexistent/unonboarded referrers, retroactive credit and duplicate credit are rejected server-side. Public lookup never returns email/contact/birthday. Search relevance and referral reward decay require real integration verification.
+- **Release hold:** GitHub CI + backend migration/schema tests and Android/Windows signup UI tests must pass on the final commit; verify staging before any production Supabase migration and then Testlab before `main`. No paid Supabase staging or production changes authorized automatically.
+
+## 2026-10-24 — Private DM attachments (Testlab candidate, PR #523)
+
+- **Android:** Photo, video, voice-note and document actions appear in both full Messages and the direct chat overlay. The system file picker requires no blanket storage permission. The microphone requests RECORD_AUDIO only when recording; voice notes show active-recording, finish/discard, and a send confirmation, with a two-minute hard duration limit. Backgrounding stops recording and leaving the conversation destroys unsent cached recordings. Speech-to-text remains available separately.
+- **Transport:** `MessageMediaService.sendAttachment` uses existing authenticated private `message-media` bucket and server-owned `messages` rows with `message_type`, `media_url` and content. Input is copied in bounded 64 KiB segments into app-private temporary storage, so videos are not loaded entirely into RAM. Limits: images 15 MB, videos 80 MB, voice 15 MB, documents 25 MB. Unknown/executable MIME types and empty files are rejected. Each message has a persistent UUID reused for retries, with a lookup before duplicate sending.
+- **Receiving:** Message-page hydration creates short-lived signed URLs per conversation; image and video cards, voice playback and documents are available to permitted chat participants. The recipient cannot open private storage without the existing RLS permission. Signed URLs may need refresh after expiry; refreshing the conversation loads new links.
+- **Production gap:** The `message_attachments` supplementary metadata table is not present in current production. This implementation deliberately does not require or write it: message type, private reference, document name and recorded voice duration use the existing deployed `messages` wire contract. Production bucket is private with conversation membership and upload ownership RLS (read-only verified). No production schema migration was run.
+- **Windows/iOS:** The shared attachment MIME/size policy compiles for desktop, but native Windows file sending, voice recording and inline playback are **not yet implemented**. iOS is unchanged. Desktop and iOS text messaging must remain functional; do not describe attachment parity as complete.
+- **Release hold:** Draft targeting Testlab. Required: Android compile/unit tests, permission denial/background/resume, sender and receiver on two test accounts, file sizes/mime validation and offline/retry idempotency, blocked/non-participant read tests, download after reopen, unread/read receipts, network timeout and account switch, portrait/landscape + font scaling. Additional backend scanning, bucket-level upload limits and production deployment decisions must be explicitly verified before a public release. Not merged into main or published.
+
+## 2026-10-24 — PARITY-EXCEPTION: android-cold-start-brand-route
+
+- PR #515 repairs an Android Activity/ViewModel timing bug: restored sessions may leave the SPLASH destination before its Composable renders, skipping the approved shared intro. Android now overlays the already-shared intro on the root Activity for one cold launch and prevents intro-time tap-through.
+- **Why Android-only:** Windows already overlays exactly the same shared intro during its own process launch in `DesktopShell.kt`, and it has no Android Activity SPLASH destination or ViewModel race to repair. The closest Windows equivalent (a once-per-process startup overlay) is already implemented in Testlab PR #509; shared animation remains unchanged.
+- Android's splash route now performs normal fast session handoff beneath the independent overlay. No Windows UI/behavior change is required.
+- Visual frame screenshots (320/412/600dp) and launch-path verification remain required before production promotion.
+
+## 2026-10-24 — BLINK Search reference screenshot review and action parity (Phase 4)
+
+- **Real screenshot evidence:** Reviewed CI-generated `search-reference-light.png`, `search-reference-dark.png` and `search-reference-320dp-font200.png` for the previous Search candidate. Dark and light mode were distinct and category layout matched the reference direction. The 320dp/200% capture exposed a People-name/Follow-button collision and a two-line Recent searches header; approval withheld.
+- **Android corrections:** For font scale >= 160%, show the Follow button beneath the profile identity; constrain titles and section labels to avoid action overlap, preserve large readable type, keep clear-recents accessible and reduce section-header whitespace. Real online status is displayed on matching People avatars.
+- **Post actions:** Show like, comment, repost/share and bookmark controls, forwarding to existing post callbacks. Post menu uses the existing options callback; tapping the card still opens its post. No simulated backend actions.
+- **Status:** These corrections require a fresh compile and captured screenshots from the **final** candidate; earlier passing screenshots/checks do not prove this commit. Testlab promotion only after latest CI and rendering verification. Main and production APK untouched.
+
+## 2026-10-24 — Reference Search Phase 2 navigation and authenticated actions
+
+- **Android header:** BLINK wordmark, signed-in profile avatar and online dot, existing Home game route, and real notification center route/unread indicator. No duplicate overlay or invented notification data.
+- **Android results:** User cards share the existing FollowStateStore server-backed follow/unfollow transaction with rollback and progress state. Own account never receives a Follow button. Marketplace cards use genuine in-memory listings as fallback, open actual product details whenever the listing can be resolved, and use a seller/detail fallback for a search-only item.
+- **Android regression repair:** The Testlab baseline contained an invalid `BlinkUiState.chatPrivacySettings` reference in the chat-foreground read acknowledgement guard. Removed only the dangling reference; foreground, connectivity and active-conversation checks stay in place, consistent with the repository's existing read-receipt acknowledgement when message history hydrates. This compile fix should not be interpreted as a new chat privacy controls feature.
+- **Windows:** Existing market category and listing parity from Phase 1 remains in scope; no Android-only backend contract introduced. Game and notification shortcuts use existing Android app shell routes; desktop navigation stays native.
+- **Verification:** Android/Windows compile, actual follow/market navigation, large-font and narrow-screen screenshots remain required. PR targets Testlab only; main and release remain untouched.
+
+## 2026-10-24 — Reference-inspired campus Search landing (Phase 1, Testlab candidate)
+
+- **Android:** New white/black responsive Search landing based on the approved phone reference: centered BLINK mark, real account avatar, pill search field, filter entry, All/People/Posts/Market/Communities chips, horizontally scrollable recent-search chips, grouped real results and See all actions. Actual Discover/Phase 3 data is used when the capability is available; local real feed/profiles are the fallback. No sample users, prices or fake communities are rendered. Advanced/Explore and visual/voice search remain reachable via the filter entry.
+- **Android interactions:** Actual profile and post navigation, the existing community membership toggle, live market details and seller navigation, on-device recent-query clearing and private-history guard. The Follow button, dedicated market detail navigation, synced-history deletion, game/notification header shortcuts and precise screenshot match remain for subsequent phases; current person-card action is honestly labelled View. No server schema change and no production rollout.
+- **Windows:** Preserve Windows's native responsive Search/Trending/Places routes, filters and API results; align search branding, placeholder and category chip treatments, show actual marketplace results and explicitly mark Communities as awaiting the shared discovery integration instead of fabricating listings.
+- **Required verification:** Android Compose compile plus screen capture compared against supplied reference at compact/regular widths and 100/130/150/200% font scaling, Windows compile/parity checks and search navigation/regression checks. Existing production main and Supabase stay unchanged until verified Testlab checks pass.
+
+## 2026-10-23 — Reference-matched authentication welcome screen (Testlab candidate)
+
+- **Android:** Replace the animated purple onboarding illustration with a real, clickable welcome layout matching the approved BLINK auth reference: campus-student hero image, full-width rounded white card, four colored campus benefits, black Log In button, outlined Create Account, light Continue with Google and branded G icon, plus the subtitle "Connect, discover and grow Beyond LINK" with "Beyond LINK" underlined.
+- **Behavior:** Preserve the existing sign-in, registration and Google auth callbacks, including the in-flight Google launch guard; no Supabase or credential changes. Keep the real buttons interactive; this is not a flat screenshot used as a login screen.
+- **Windows:** Introduce an equivalent welcome/action state before the existing login form. Preserve native desktop email, sign-up, reset-password and Supabase Google authentication flows. Desktop does not include the promotional phone bezel or surrounding ad collage.
+- **Tests:** Scope changes to auth; verify Android Compose buttons, 100–200% font sizes and screenshots, Android debug compilation, Windows desktop compilation. Compare rendered Android screen with the provided phone-screen reference. Do not merge into main until required CI passes.
+
+## 2026-10-23 — Restore all ranked BLINK students without weakening private profiles
+
+- **Root cause:** `public.game_leaderboard` was a `security_invoker` view directly over `profiles`, whose authenticated SELECT policy allows only `auth.uid() = profiles.id`. The ranking query therefore returned just the signed-in account despite the underlying database containing 21 profiles (12 with positive points). This was a public-data visibility issue, not missing scoring data.
+- **Backend:** A narrowly projected, authenticated-only, read-only SECURITY DEFINER function returns leaderboard-safe fields. The `game_leaderboard` security-invoker view retains its existing 12-column ABI and appends verification and campus rank. `profiles` RLS remains owner-only. No email, phone, birthday, balance or private profile columns are returned. Explicit REVOKE for PUBLIC/anon and auth.uid() guard apply. Campus ranking uses normalized university punctuation. This is live from current points, not hourly snapshots.
+- **Android:** Existing published clients continue to query `game_leaderboard` without an APK requirement; log non-success responses for diagnostics. Existing shared university canonicalization already handles FUTA aliases.
+- **Windows:** Switch from history snapshot results (which duplicate users across hours) to the same authenticated live `game_leaderboard` source. Normalize campus matching via existing shared university directory.
+- **Validation:** Simulate authenticated and anonymous SQL roles after deploying migration: authenticated sees all expected users, anonymous sees none; assert no private columns are exposed, scoring and campus grouping are unchanged, desktop unique user count matches Android, and owner-only `profiles` SELECT policy remains. No staging database purchased.
+- **Promotion:** Merge this feature into Testlab after CI, then port only scoped commits to latest main. Deploy migration and verify in production before claiming the published Android APK is fixed.
+
+## 2026-10-23 — Reference-inspired leaderboard (feature branch → Testlab)
+
+- **Android:** Uses the supplied BLINK leaderboard reference for the title, three-segment switch, current account card, real world/campus ranks, earned XP level, featured Top 3 campus podium, and ranking table. Keeps the existing 10-student cap, Top 10 search, verified filtering, Faculty and Academic Level scope, refresh, help, share menu and profile navigation; values are bound to live Supabase rather than sample names in the picture. The Global table contains its full Top 10 when the campus podium is featured so no global student is silently hidden.
+- **Windows:** Equivalent reference-inspired responsive layout with live current-user ranks, campus podium and global table, while retaining its existing fetch/refresh and verified-name behavior. Avatar initials replace profile photos because the existing desktop leaderboard DTO does not expose avatars.
+- **Backend:** No migration, new permission, fabricated rank movement or coin/verification changes. Points are labelled as points, not incorrectly called XP. Friends remains visibly disabled until a follow-relationship-filtered leaderboard can be obtained securely on both platforms.
+- **Release hold:** This is a visual candidate, not proof of a screenshot-perfect match or a published APK. Require Android compile, Windows compile, 100/130/150/200% font screenshot comparisons (including navigation shell) and live-data verification before promotion to main. Testlab/main branches diverge heavily; do not merge Testlab wholesale to main.
+
+## 2026-10-22 — Full-screen reference profile redesign (feature branch to Testlab)
+
+- **Android:** Replaces the former 95%-width rounded profile drawer with a full-width edge-to-edge profile surface. A screenshot-inspired header, true backend-owned rank and Coin values, XP progression, earned/locked badge indicators, verification rows, and working 5-tab bottom navigation precede the existing posts/growth/liked/saved/market/skills/about tabs. Account data is never copied from the visual reference.
+- **Android compatibility:** All existing Supabase auth, wallet, verification, XP, follower and post APIs remain unchanged. Buttons continue to call established handlers; other-user profile reporting/options remain accessible from its top-right menu. This is a visual/layout stage, not a new student-verification backend or a released APK.
+- **Windows:** Existing profile shows real Coin balance, XP progression, verified identity, and subscription pathways. The profile also shows the five new **achievement categories** with a clear label that earned status is unavailable on the desktop profile response; no awards are fabricated.
+- **Platform exception (mobile viewport):** Phone edge-to-edge status/navigation bars and a fixed 5-icon bottom navigation are Android-specific. Windows retains desktop navigation and window chrome. Earned-badge indicators await safe backend hydration on Windows; categories are visible meanwhile.
+- **Verification needed before main:** Android Kotlin compile/unit checks, Windows compile/parity checks, profile navigation and other-user permission checks, large-font screenshot comparison against the approved image at matching viewport, dark/light contrast, and merge reconciliation against main. Keep the APK unpublished until gates pass; no manual temporary download required.
+
+## 2026-10-22 — Paystack Phase 3 Android recovery (Testlab only)
+
+- PARITY-EXCEPTION: paystack-android-deep-link — Android receives `blink://payment` from its browser and receives activity foreground callbacks. It reconciles only the account's locally saved Paystack reference through authenticated server verification; successful Coin purchases refresh the authoritative wallet without reloading the Feed. Other purchase kinds still refresh the full account to update verification/boost entitlements.
+- Windows equivalent (existing main implementation): desktop `initializePaystackCoinCheckout` launches the provider checkout, `verifyPaystackCoinCheckout` verifies the order on "Check payment", and `reload()` fetches server wallet updates. Windows does not use Android's activity-return deep link and has no automatic retry in this staged change.
+- Follow-up parity debt: safely add Windows window-focus retry only after validating its older checkout endpoints and preserving customer-specific pending-order state. Do not label desktop as having automatic recovery until implemented.
+- Release gate: confirm Android compile, account-switch cancellation, replay/idempotency, retained pending references, Windows desktop tests, and no live merchant enablement. Never merge Testlab wholesale into the divergent main branch.
+
+## 2026-10-21 — Message inbox reference visual upgrade (Testlab-only staging)
+
+- Android: isolated Compose inbox UI with avatar/BLINK/search/game/notification header, Stories and notes-style entry, real story rings, flat rows, previews, verified badges and real unread counts. Chat detail and WebRTC calling remain as-is; no database migrations. The text "Your note" currently triggers existing story creation, not a fabricated notes backend.
+- Windows: shared messaging behavior and real online contacts in the reference-inspired desktop inbox; no fake story rings or unread counters where Testlab desktop lacks those server fields. Conversation detail unchanged.
+- This Testlab-based candidate is distinct from the main-based PR #459 because Testlab and main have extensive unrelated divergence. Never merge the old Testlab code wholesale onto main; promote only the verified scoped inbox change against the latest main tree and rerun Android/Windows gates.
+- Acceptance: Android compile, lint, relevant instrumentation on Android 15, screenshot compared with owner reference, Windows build/parity, intact existing conversations. Remain isolated until successful.
+
+## 2026-10-19 — Final combined Testlab integration: Feature 6 Stories + Feature 8 universities
+
+- Based on the latest Testlab with Features 2,3,4,5,7,9 already merged; combines real 24-hour Messages stories, media, owner insights, opt-in reposts and DM previews with normalized campus IDs, FUTA alias directory, moderated school additions and campus leaderboard matching.
+- Both Story and university database migrations are source-only until tested in a disposable Supabase staging branch. Supabase branching requires explicit user approval for billed compute; no live schema changes or merchant charges were made.
+- Complete fresh Android+Windows builds, CI, real-device playback, RLS, anti-spam and campus backfill testing before any production main merge or published signed APK.
+
+## 2026-10-18 — Verification plan pricing integrated on current Testlab
+
+- Adds shared Blue ₦800/month and Gold ₦2,000/month prices, 1/3/6/12-month quotes and 0/10/20/30% duration discounts. Free remains free. Both Android and Windows show previews.
+- Cash checkout and automatic renew remain OFF until Paystack server-side signed initialization, verified webhook fulfillment, customer consent and provider mandate cancellation are fully tested. Legacy 3,000-Coin Blue purchase is a separate 30-day option.
+- Migrated Supabase subscription ledger and read-only quote RPC are committed for staged validation but **not deployed**. Do not publish cash-subscription UI claiming checkout works.
 
 ## 2026-10-18 — Integration of Feature 5 on latest Testlab (PR #375 replacement)
 
@@ -322,3 +443,109 @@ Server behavior: Verified-account welcome events and server-owned social digest 
 Platform-specific exception: None needed. Both clients have equivalent social email preference controls; native push-notification channels are independent of email.
 Safety & tests: Testlab PR #299; SQL migration, strict RLS, no client enqueue, no message bodies, idempotent digests, unsubscribe on signed POST, deterministic sender source, email-sending daily cap, HTML safety regression tests. Production changes blocked until staging migrations, signup-policy checks, Brevo keys/sender verification, end-to-end Gmail/Outlook and Android/Windows CI validation.
 
+
+
+## Paystack checkout parity — October 2026 (Testlab candidate)
+
+- **Android:** authenticated Supabase `paystack-checkout` and `paystack-confirm` for paid Blue/Gold badges and the five current Blink Coin bundles; pending reference saved for recovery.
+- **Windows:** `DesktopPaystackCheckoutPanel` and `DesktopSupabaseClient` expose the same products and backend functions, open the provider-hosted payment URL in the browser, preserve pending references per signed-in BLINK account, and require server-side confirmation before refreshing the user profile.
+- **Shared/backend rule:** price and products are verified server-side; clients never credit funds or activate benefits. No merchant secret keys are embedded in either client. Both surfaces remain behind the checkout kill switches.
+- **Production gate:** do not merge/enable cash checkout until staging migration and real Paystack **test** webhook + replay/failure checks, merchant approval, and Windows/Android build checks pass. Subscription renewal, refund/dispute reversal, paid boosts and seller payouts remain separate unimplemented features.
+
+## 2026-10-21 — Preserve Testlab calls while fixing Android 15 JNI startup
+
+- **PARITY-EXCEPTION: android15-webrtc-jni-startup** — Android WebRTC JNI_OnLoad, R8 minification, Firebase Cloud Messaging call-invite handling and Android audio-device routing are Android-only APIs. **Windows equivalent:** the existing Windows desktop calling path continues to use its own WebRTC and signaling transport and shows call setup failures through its native UI; it does not load Android JNI libraries, shrink Android APKs or launch Android call activities. Both platforms retain the same server-authoritative Supabase call states, SDP/ICE signaling and permission boundaries. This repair does not remove or replace Windows calling behavior.
+- **Testlab preservation:** Port the minimal WebRTC keep rules, outbound push-before-Activity ordering, missed invite warnings, and bounded call-setup failures onto existing Testlab. Preserve preexisting Testlab call signaling retries, dynamic TURN settings, camera quality/recovery, UI and notification ledger. Do not replace Testlab wholesale with divergent main sources.
+- **Verification:** Android unit/lint/minified release JNI audit and Windows parity/build; Android 15 runtime; hosted Supabase call state inspection and two physical Android devices for incoming/outgoing voice/video calls, including background notifications. No production backend writes from this candidate.
+
+
+## 2026-10-23 — Delivery, read and inbox receipt parity (Testlab candidate)
+
+- **Shared contract:** `BlinkDeliveryReceipt` maps server-evidenced `SENT` → `DELIVERED` → `READ` to one/two/blue-tick semantics and keeps receipt transitions monotonic. Neither online presence nor an internet-enabled device alone constitutes a delivery acknowledgement. Shared JVM tests cover status text and monotonicity.
+- **Android:** Existing `ack_message_delivered` on FCM/realtime receipt and `ack_pending_message_deliveries` on reconnect remain the receipt writers. The sender now applies UPDATE events to the inbox even with no message history loaded and preserves read/delivered statuses against stale sends/history pages; non-INSERT incoming UPDATE events cannot show duplicate message alerts/unread increments. Only foreground-visible conversations send read acknowledgements. Each visible inbox row obtains its latest sender/delivered/read status via the existing signed-in, membership-protected `get_conversation_messages_page(p_limit=1)` RPC. Requests are lazy, briefly rate-limited, and account-scoped; unverified/failed status remains hidden rather than claiming delivery.
+- **Windows:** The desktop inbox performs a latest-message RLS query for visible conversations and displays the same sent/delivered/read indicators for outgoing messages; it acknowledges queued deliveries when the inbox syncs and sends read receipts only for a selected, displayed one-to-one chat. Group conversations do not infer per-recipient DM receipts.
+- **No schema changes:** RPC signatures, RLS, backend user identities, event payloads and payment handling are unchanged. A device with mobile data but without a running/receiving BLINK client cannot truthfully claim message delivery; two ticks require a positive recipient acknowledgement.
+- **Verification required:** Android + Windows compile, shared receipt tests, account switch, FCM and realtime acknowledgements, sender inbox without chat opening, receiver offline/reconnect, read only when foreground chat visible, delayed/out-of-order events, high font scaling and metadata tap targets. Verify on Android 15 emulator and backend sandbox. Do not promote to main before checks and real two-account confirmation.
+
+
+## 2026-10-23 — Chat composer keyboard spacing and Android edge-to-edge insets (Testlab candidate)
+
+- **Android:** When the Messages tab shows an active conversation, the root `Scaffold` no longer reserves a second bottom navigation inset. `PremiumChatDetail` applies status bar, navigation bar and IME insets in one Compose modifier chain, so inset consumption handles overlap as the keyboard animates. `MessageComposer` no longer adds its own bottom navigation bar padding; its row uses 6dp vertical content padding rather than 8dp. Stable test tags identify chat root, composer and typing field.
+- **Windows:** Desktop chat is laid out using desktop window resizing and native text input; it does not use Android system-navigation bars or Android IME insets. **PARITY-EXCEPTION: android-chat-ime-safe-area** — keyboard inset handling is intrinsically Android-specific. Message editing, send, attachments and conversation state remain unchanged on both clients.
+- **QA:** Inspect on Android 15 (including gesture and three-button navigation), Gboard and alternate IME, with keyboard closed/open and during transition; replies, emoji rail, dictation, attachment sheet and 1–4 input lines; small and tall devices and 100/130/150/200% text scaling. Run Android relevant unit/build/lint and existing desktop parity checks. No production backend, database or payment changes.
+
+
+## 2026-10-23 — Cancelled Paystack checkout UX (Testlab candidate)
+
+- **Shared status contract:** `BlinkCheckoutStatusPolicy` explicitly distinguishes fulfilled, abandoned, failed, reversed, pending, ongoing, processing and unknown. The UI never treats provider `success` or a browser callback as a fulfilled payment; only the server's `fulfilled` response can unlock benefits.
+- **Server:** `paystack-confirm` still checks the authenticated account and calls trusted Paystack verification. For non-successful checks it reports the provider's normalized status without changing the pending database order; a late, signed successful webhook can still fulfil idempotently.
+- **Android:** New checkout and restored app sessions no longer raise mandatory "Check Paystack Payment" modals. Saved references reconcile silently, at most once per minute per reference; uncertain/network-failed outcomes remain locally recorded. Local reminders clear after a server-verified abandoned/failed/reversed state or fulfilled order, with success refreshing Coins/verification only after backend fulfillment. Manual checks remain available through existing verification controls.
+- **Windows:** Desktop checkout retains user-initiated confirmation, shows the same normalized states, and permits dismissing a local checkout reminder without modifying the backend order.
+- **Security:** No Paystack secret on clients, no client-reported payment status used for fulfillment, no checkout flag toggled, no database schema changes, no live transaction tests. Test with mocked provider responses and sandbox only; verify webhook replay protection and late-success recovery before deployment.
+
+
+## 2026-10-23 — Android grouped DM notification presentation (Testlab candidate)
+
+- **Shared behavior:** Message delivery, read state, server identity, recipient binding, deduplication, and notification text sanitization are unchanged. Group summaries never acknowledge receipt or advance read state.
+- **Android:** For recipient-bound FCM direct messages, each conversation retains its stable notification ID and existing quick actions. A bounded, account-scoped **RAM-only** recent-preview list powers MessagingStyle expansion. Once two distinct active direct-message notifications exist, add a silent group summary; its tap opens the Messages inbox. No disk-cached private preview or network/avatar fetch in the FCM callback.
+- **Windows:** The desktop notification activity remains individually accessible in the existing notification list, with its own operating-system notification layout. **PARITY-EXCEPTION: android-system-notification-group-summary** — Android NotificationManager channel/group and PendingIntent are Android-only, and Windows does not use Android's notification shade.
+- **Verification:** JVM/Android compile + notification quick-action regression, Android 13/15 device/emulator grouping/tap/reply/mark-read, account-switch isolation, dismissal, and disabled-notification behavior; Windows parity CI. No server schema changes or production payments involved.
+
+
+## 2026-10-23 — Single profile identity restoration (Testlab candidate)
+
+- **Android:** Extend the existing single full-screen BLINK dashboard instead of reinstating a duplicate legacy profile. Show optional cover, @username, professional headline, university/academic level, department, streak, actual post count and owner-only profile completion. Restore Follow → Interact as a compact menu containing only connected Message/Unfollow actions; no fake gift or Connect callbacks.
+- **Windows:** Desktop profile continues using its native resizable layout and existing Posts/Followers/Following, online presence and XP. Extend the same Supabase profile projection for the cover, headline and academic level; render cover/headline/academic info without embedding the mobile design.
+- **Existing semantics:** Backend data, verification, Coin balances, rewards, chat routing, FollowStateStore and profile privacy are unchanged. This PR does not assert follower lists, advanced gifting or other not-yet-wired UI features are complete.
+- **Verification gate:** Run relevant Android build/unit/UI and Windows compile/parity checks on the final head; screenshot compare at large font sizes. Testlab and main are divergent: do not merge this branch or cherry-pick profile files directly into main without carefully reconciling later changes and satisfying release safeguards.
+
+## 2026-10-23 — Android screen-size resilience and ranked-feed timeout recovery (Testlab only)
+
+- **Shared policy:** `BlinkAdaptiveLayoutPolicy.useCompactPhoneLayout` identifies narrow layouts and enlarged text without relying on physical pixel resolutions. Shared code is JVM-only and safe for future desktop reuse.
+- **Android:** Auth feature tiles reorganize into two columns on compact phones; button heights can grow with accessible text. Inbox branding and actions use a narrower compact header while preserving Search, Games and Notifications, with the messages title protected against clipping. Leaderboard heading adapts with the info/refresh actions and Android bottom navigation honors gesture-system insets.
+- **Backend/behavior:** Android ranked feed requests that hit the specific PostgreSQL statement-timeout condition may make one authenticated first-page chronological fallback through the existing RLS-protected `get_feed_page` RPC. Subsequent pages stay in chronological mode until a new ranked first page succeeds (no cursor mixing). A repository mutex serializes concurrent heavyweight ranking RPCs; unrelated failures and cancellations never trigger fallback. Secondary realtime errors are caught to preserve loaded content.
+- **Windows parity:** No feature or backend contract changed. Windows already uses desktop window sizing rather than Android's status bars, phone width breakpoints and mobile auth/header composition; it continues using the same Supabase feed/post permissions and ranking endpoints. Do not stretch the Android mobile layout onto desktop.
+- **Release gate:** Unit tests for error classification and breakpoints, Android assemble/lint/unit checks, visual capture at 320/360/393/412dp and 100/130/150/200% font scaling, Windows parity, and read-only production timeout monitoring. Production ranking migration is not applied by this patch. This PR alone does not establish the root-cause SQL performance fix.
+
+
+## 2026-10-24 — Beyond Link launch animation (Android + Windows)
+- Added one shared 6.4-second, black-background Compose animation, transitioning `...beyond link` into `blink` with the white lowercase-b logo and blue center dot.
+- Android replaces the existing 120ms SplashScreen with the shared intro and paints its launch window/Scaffold black to avoid light flashes; runs on cold launch, not on every resume or deep-link.
+- Windows uses the same shared animation in an initial window overlay. Both platforms continue normal account/session initialization independently and dismiss the intro on its normal completion.
+- No backend contracts, authentication routes, analytics, permissions, payment flows, or stored data changed. Verify rendering at multiple phone/window sizes and confirm navigation after the intro before production promotion.
+
+
+## 2026-10-25 — DM picture send experience (PR #523, Testlab candidate)
+
+- **Shared:** `BlinkChatUploadProgress.percent` clamps actual streamed byte counts into 0–100 for both supported clients; zero/unknown totals remain 0. The progress indicator is not a delivery receipt.
+- **Android:** The image picker now offers a review/Send/Cancel preview. On Send, the locally selected `content://` image is immediately visible in the outgoing chat bubble while the private bucket upload streams in 64 KiB bounded chunks. Its dimmed preview shows true upload percentage and an explicit failed/retry overlay. Successful uploads replace the local URI with the existing private signed URL; users can open pictures full-screen with pinch-to-zoom. No new public bucket, unrestricted permissions, database schema, or insecure media links.
+- **Windows parity BLOCKER:** The shared percentage policy is reusable on desktop, but PR #523 has not yet implemented equivalent native image selection, transfer progress, preview or full-screen image viewer in Windows. Per AGENTS.md, this user-facing parity is REQUIRED before production promotion; do not treat the feature as complete.
+- **Outstanding:** Multiple image selection/grid, camera capture, editable captions, standard/HD choice, on-demand smaller derivatives, send cancel, persistent transfer retry after process death, save/share/view-once privacy semantics and media browser are NOT implemented by this slice. A full-resolution image is still downloaded for a remote thumbnail unless a backend thumbnail service is added.
+- **Release hold:** PR #523 already conflicts with divergent Testlab. Do not force reset Testlab/main or merge/release until conflicts are reconciled non-destructively, Android/Windows builds pass on final SHA, two-account/slow-network/expired-link/security runtime tests pass, and server-side private storage size/MIME restrictions are verified in safe staging.
+
+
+## 2026-10-25 — Secure chat photo workflow expansion (single PR #523; DRAFT ONLY)
+
+- **Shared contract:** Image types remain `message_type=image` in the existing server messages table; `BlinkChatImageQuality` explicitly defines STANDARD versus ORIGINAL. The existing 15 MiB image size/MIME allow-list and signed private URLs remain in force at the client boundary. Media upload percentage describes bytes streamed, not a sent/read receipt.
+- **Android:** Gallery can select up to 10 images, preview each, attach an optional caption on the first and select Standard JPEG (max decoded dimensions 1600px, quality 82) or Original bytes. Take a full-resolution camera image through a non-exported FileProvider and review it before sending. The conversation now has a Shared photos browser for **loaded messages**. The upload is staged inside app-private files then enqueued with network constraints in WorkManager, per-message UUID, per-account owner checking, at-most-three automatic retries, percentage UI and failure/retry option. The WorkManager job can continue if the Activity leaves the screen and is designed to survive ordinary process recreation. Cancel-on-demand and queued-message UI reconstruction on a different process are not fully covered yet.
+- **Windows:** Native file chooser for up to 10 photos, optional caption, Standard/Original selection, per-batch progress, same private bucket plus server RLS, retry-stable message IDs, verified participant-scoped short-lived signed URLs for display, enlarged viewer and media list for loaded conversations. Windows uses desktop file selection, not an Android camera Intent. Windows background/process-restart upload persistence is not implemented; do not imply Android WorkManager is cross-platform.
+- **Compatibility:** Android and Windows both preserve the production-compatible `messages.media_url` object reference and real sender/conversation UUIDs; multiple selections produce separate media messages, **not** a grouped database attachment album. Neither client silently makes the private bucket public. Windows support for videos/voice/documents remains a separately unfinished parity item.
+- **Release blockers:** PR #523 head currently diverges/conflicts with Testlab; do not overwrite Testlab or main. Android/Windows compilation and actual two-account uploads, 15MB boundary, reconnect/retry, camera permissions, HEIC, PNG alpha and GIF cases, signed-URL expiry, profile switch during transfer, photo bucket/RLS isolation and background process-loss behavior still require real checks. Production Supabase private bucket currently lacks server-enforced per-type MIME and byte limits; validate any proposed changes in no-cost isolated staging before promoting. No production migration, signed APK publication, or main merge authorized by this document.
+
+
+## 2026-10-25 — Picture editor, cancel/retry, secure export/forward (PR #523)
+
+### Code added on this feature branch
+- **Android:** Bounded, non-destructive crop-to-square and clockwise rotation (does not flatten animated source files), per-photo captions for up to ten selected images, cancel button backed by per-message WorkManager cancellation, app-private queued preview copies, account-bound outbox metadata enabling manual retries after a process restart, and cleanup of BLINK-created temporary files. The original file is never edited.
+- **Android + Windows:** Saving images streams a *fresh*, membership-authorized signed private image download to a user-chosen file, with MIME checks, 64-KiB chunks and a 15-MiB receive limit; it never forwards or exposes the expiring source link as chat text.
+- **Android:** Picture sharing grants temporary read-only access to a private FileProvider URI through the system share sheet. Viewers re-sign through authorized message IDs before displaying expired pictures. Forwarding securely downloads and re-uploads the actual image bytes under a new target-conversation path; other media forwarding is not falsely represented as completed.
+- **Windows:** Per-image captions, a save-as action, expiring picture-link renewal, recipient picker and secure image-byte forwarding. Its native file chooser is the desktop equivalent of Android's photo picker. There is no native Windows share-sheet implementation and no durable Windows background photo-upload queue.
+- **Tests committed, not executed:** Robolectric crop/rotate tests plus JVM policy tests.
+
+### Non-negotiable blockers before production
+- **Album grouping:** ten selected photos are stored as separate backward-compatible messages, not a single persisted album. No schema for stable album IDs is deployed.
+- **Hybrid media delivery:** remote chat thumbnails still fetch full-sized images; there are no validated server-generated private thumbnails or independently selectable on-demand original downloads. No data-saver / mobile-data control has been verified.
+- **Privacy:** view-once is NOT implemented or guaranteed. Never simulate it solely by hiding the UI; it needs server-authoritative one-time access and tests. No assertion of end-to-end encryption or screenshot prevention.
+- **Transfer durability:** Android WorkManager may continue in the background and manual retry metadata survives an ordinary process restart, but full pending-bubble rehydration, exact resumable upload byte offsets, and all cancellation race conditions remain unverified. Windows foreground uploads still stop on application exit.
+- **Storage security:** Read-only inspection of the existing private `message-media` bucket shows `file_size_limit = null` and `allowed_mime_types = null`. Client limits alone do not protect it. Bucket supports other media types, so applying a single image-only bucket restriction would break voice/video/docs. Design separate private buckets or a trusted upload validation service and verify in isolated no-cost staging before production.
+- **Integration:** this branch still diverges from `Testlab`, Android/Windows builds have not passed on the final commit, real two-account delivery/read and Supabase storage-policy tests have not been performed, and the signed APK has not been published. Leave `main`, release artifacts, and the production backend untouched.

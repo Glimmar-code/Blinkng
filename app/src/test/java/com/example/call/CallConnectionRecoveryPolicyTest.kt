@@ -22,6 +22,18 @@ class CallConnectionRecoveryPolicyTest {
     }
 
     @Test
+    fun `an unanswered caller eventually exits Calling without interrupting answered calls`() {
+        val limit = CallConnectionRecoveryPolicy.MAX_UNANSWERED_RINGING_MS
+        assertTrue(CallConnectionRecoveryPolicy.unansweredCallTimedOut(CallStatus.RINGING, limit))
+        org.junit.Assert.assertFalse(
+            CallConnectionRecoveryPolicy.unansweredCallTimedOut(CallStatus.RINGING, limit - 1)
+        )
+        org.junit.Assert.assertFalse(
+            CallConnectionRecoveryPolicy.unansweredCallTimedOut(CallStatus.CONNECTED, limit * 2)
+        )
+    }
+
+    @Test
     fun `realtime reconnect delay increases but stays capped`() {
         assertEquals(1_500L, CallConnectionRecoveryPolicy.realtimeReconnectDelayMillis(1))
         assertEquals(3_000L, CallConnectionRecoveryPolicy.realtimeReconnectDelayMillis(2))

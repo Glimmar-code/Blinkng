@@ -25,9 +25,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Groups
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Storefront
@@ -71,6 +75,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.blinkng.shared.BlinkSwipeNavigation
+import com.blinkng.shared.brand.BlinkBeyondLinkIntro
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -98,8 +103,13 @@ import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.BlinkDesktopMenuScreen
+import com.blinkng.desktop.ui.BlinkDesktopWalletScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.DesktopDiscoveryGuide
+import com.blinkng.desktop.ui.DesktopNewStudentSuggestionsDialog
+import com.blinkng.desktop.ui.DesktopPaystackCheckoutPanel
+import com.blinkng.desktop.ui.DesktopLiveStrip
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -148,6 +158,8 @@ private val desktopDestinations = listOf(
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
+    DesktopDestination("menu", "Menu", Icons.Rounded.Menu),
+    DesktopDestination("wallet", "Wallet & Coins", Icons.Rounded.AccountBalanceWallet),
 )
 
 fun runBlinkDesktopApplication() = application {
@@ -157,6 +169,7 @@ fun runBlinkDesktopApplication() = application {
     val rpc = remember(appState.client) { DesktopRpcActions(appState.client) }
     val trayState = rememberTrayState()
     var isWindowVisible by remember { mutableStateOf(true) }
+    var showStartupIntro by remember { mutableStateOf(true) }
     var incomingCall by remember { mutableStateOf<DesktopCall?>(null) }
     var incomingCallerName by remember { mutableStateOf("Blink user") }
     var lastNotifiedCallId by remember { mutableStateOf<String?>(null) }
@@ -177,6 +190,11 @@ fun runBlinkDesktopApplication() = application {
     }
 
     LaunchedEffect(Unit) { appState.initialize() }
+
+    LaunchedEffect(appState.session?.userId) {
+        if (appState.session?.userId != null)
+            runCatching { appState.client.dispatchConfirmedReferralPushes() }
+    }
 
     LaunchedEffect(appState.session?.userId) {
         incomingCall = null
@@ -296,6 +314,13 @@ fun runBlinkDesktopApplication() = application {
                             }
                         }
 
+                        if (appState.session != null && appState.showNewStudentSuggestions) {
+                            DesktopNewStudentSuggestionsDialog(
+                                state = appState,
+                                onDismiss = { appState.showNewStudentSuggestions = false },
+                            )
+                        }
+
                         // Shared guide sequence; Windows uses native dialog and per-account
                         // desktop preferences instead of Android's SharedPreferences.
                         if (appState.session != null) {
@@ -321,6 +346,15 @@ fun runBlinkDesktopApplication() = application {
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
                         }
+                    }
+
+                    // Android/Windows brand parity: the same 6.4 s shared
+                    // sequence overlays the app only on initial process launch.
+                    if (showStartupIntro) {
+                        BlinkBeyondLinkIntro(
+                            onFinished = { showStartupIntro = false },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -469,6 +503,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
         }
     }) {
         DesktopTopBar(state)
+        DesktopLiveStrip(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
@@ -500,6 +535,8 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
+                        "menu" -> BlinkDesktopMenuScreen(state, onNavigate = { state.selectedRoute = it })
+                        "wallet" -> BlinkDesktopWalletScreen(state, onNavigate = { state.selectedRoute = it })
                         "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
@@ -604,7 +641,7 @@ private fun DesktopSidebar(
 private fun DesktopRightPanel(state: DesktopAppState) {
     val profile = state.profile
     Column(
-        modifier = Modifier.width(300.dp).fillMaxHeight().padding(20.dp),
+        modifier = Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Your Blink", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -614,6 +651,14 @@ private fun DesktopRightPanel(state: DesktopAppState) {
         Text("${profile?.followingCount ?: 0} following", fontWeight = FontWeight.SemiBold)
         Text("${profile?.coinBalance ?: 0} Blink Coins", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         HorizontalDivider()
+        state.session?.userId?.let { userId ->
+            DesktopPaystackCheckoutPanel(
+                client = state.client,
+                userId = userId,
+                onPaymentConfirmed = { state.refreshProfile() },
+            )
+            HorizontalDivider()
+        }
         Text("Windows status", fontWeight = FontWeight.Bold)
         Text(
             "Closing the window keeps Blinkng in the system tray so calls and notifications can continue while the desktop client is running.",

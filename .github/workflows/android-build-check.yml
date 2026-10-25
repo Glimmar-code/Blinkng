@@ -20,18 +20,86 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Android-affecting changes
+        id: scope
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci_change_scope.py >> "$GITHUB_OUTPUT"
+
+      - name: Explain intentionally skipped Android work
+        if: steps.scope.outputs.android != 'true'
+        run: echo "No Android build inputs changed; the Android quality gate is not applicable."
 
       - uses: actions/setup-java@v5
+        if: steps.scope.outputs.android == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.scope.outputs.android == 'true'
 
       - name: Unit tests
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
+      - name: Capture BLINK profile visual snapshots
+        if: steps.scope.outputs.android == 'true'
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkProfileReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark large-fonts 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/profile-reference-${name}.png" || {
+              echo "::error::Missing profile-reference-${name}.png"
+              exit 1
+            }
+          done
+          # LEGACY/headless semantics placeholder previously generated IDENTICAL
+          # light and dark PNGs; reject another false-positive visual gate.
+          if cmp -s app/src/test/screenshots/profile-reference-light.png app/src/test/screenshots/profile-reference-dark.png; then
+            echo "::error::Identical light/dark profile captures are not valid visual evidence."
+            exit 1
+          fi
+          find . -name 'profile-reference-*.png' -print
+
+      - name: Upload BLINK profile visual snapshots
+        if: steps.scope.outputs.android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-profile-reference-screenshots-${{ github.sha }}
+          path: '**/profile-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
+      # Targeted visual evidence for the Search reference, not a global test gate.
+      - name: Capture BLINK Search reference snapshots
+        if: steps.scope.outputs.search_visual == 'true'
+        run: |
+          gradle :app:testDebugUnitTest --tests com.example.ui.screens.BlinkSearchReferenceScreenshotTest -Proborazzi.test.record=true --no-daemon
+          for name in light dark 320dp-font200 360dp-font130; do
+            test -s "app/src/test/screenshots/search-reference-${name}.png" || {
+              echo "::error::Missing search-reference-${name}.png"
+              exit 1
+            }
+          done
+          if cmp -s app/src/test/screenshots/search-reference-light.png app/src/test/screenshots/search-reference-dark.png; then
+            echo "::error::Search light/dark screenshots are identical."
+            exit 1
+          fi
+
+      - name: Upload BLINK Search reference snapshots
+        if: steps.scope.outputs.search_visual == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-search-reference-screenshots-${{ github.sha }}
+          path: '**/search-reference-*.png'
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Android lint
+        if: steps.scope.outputs.android == 'true'
         shell: bash
         run: |
           set +e
@@ -47,12 +115,15 @@ jobs:
           exit "$status"
 
       - name: Compile instrumentation tests
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
 
       - name: Build debug APK
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Verify native BLINK LIFE is actually packaged
+        if: steps.scope.outputs.android == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -74,9 +145,11 @@ jobs:
           echo "BLINK LIFE native Godot Android binary, scene, and activity are bundled."
 
       - name: Build debug App Bundle
+        if: steps.scope.outputs.android == 'true'
         run: gradle :app:bundleDebug --stacktrace --no-daemon
 
       - name: Upload debug App Bundle
+        if: steps.scope.outputs.android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-aab-${{ github.sha }}
@@ -85,6 +158,7 @@ jobs:
           retention-days: 14
 
       - name: Upload latest debug APK
+        if: steps.scope.outputs.android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-debug-${{ github.sha }}

@@ -1,0 +1,76 @@
+name: BLINK feature schema staging integration
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql'
+      - 'supabase/migrations/20261018041000_campus_registration_account_type.sql'
+      - 'supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql'
+      - 'supabase/migrations/20261018063000_blink_verification_subscription_contract.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/feature_schema_staging_*'
+      - 'supabase/tests/stories_universities_*'
+      - '.github/workflows/blink-feature-schema-staging.yml'
+  push:
+    branches: [Testlab]
+    paths:
+      - 'supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql'
+      - 'supabase/migrations/20261018041000_campus_registration_account_type.sql'
+      - 'supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql'
+      - 'supabase/migrations/20261018063000_blink_verification_subscription_contract.sql'
+      - 'supabase/migrations/20261018073500_nigerian_university_directory.sql'
+      - 'supabase/tests/feature_schema_staging_*'
+      - 'supabase/tests/stories_universities_*'
+      - '.github/workflows/blink-feature-schema-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-feature-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: temporary_ci_only
+          POSTGRES_DB: blink_staging
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: temporary_ci_only
+      PGDATABASE: blink_staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create isolated representative app schema and fake users
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_schema_staging_fixture.pgfixture
+      - name: Deploy profile visitor consent and security migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018025000_opt_in_profile_visitor_history.sql
+      - name: Deploy campus account-type migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018041000_campus_registration_account_type.sql
+      - name: Deploy story insights and safe repost migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018050000_story_insights_and_safe_reposts.sql
+      - name: Deploy verification subscription contract migration (NO billing)
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018063000_blink_verification_subscription_contract.sql
+      - name: Deploy Nigerian university directory migration
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261018073500_nigerian_university_directory.sql
+      - name: Assert account/privacy/ledger permissions and existing story safeguards
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feature_schema_staging_assertions.pgfixture
+      - name: Deployment gate summary
+        run: |
+          echo "These were disposable CI database tests only."
+          echo "Production Supabase was not changed and payment flags are not enabled."
+          echo "Real Supabase staging branch, device tests, production backup, and live release approval are separate gates."

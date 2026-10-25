@@ -34,6 +34,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -48,6 +52,7 @@ private enum class AuthMode { SIGN_IN, SIGN_UP, RESET }
 @Composable
 fun BlinkAuthScreen(state: DesktopAppState) {
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
+    var showWelcome by remember { mutableStateOf(true) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -55,6 +60,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var universityQuery by remember { mutableStateOf("") }
     var chosenUniversity by remember { mutableStateOf("") }
     var accountType by remember { mutableStateOf("") }
+    var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
     var showUniversities by remember { mutableStateOf(false) }
     var showAccountTypes by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -70,6 +76,47 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 modifier = Modifier.padding(28.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (showWelcome) {
+                    BlinkDesktopLogo(size = 46.dp, showText = true)
+                    Text("Welcome to BLINK", fontSize = 32.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        buildAnnotatedString {
+                            append("Connect, discover and grow ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline)) {
+                                append("Beyond LINK")
+                            }
+                        },
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Meet Students     •     Join Communities     •     Attend Events     •     Buy & Sell on Campus",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_IN; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("Log In") }
+                    OutlinedButton(
+                        onClick = { showWelcome = false; mode = AuthMode.SIGN_UP; state.clearError() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("Create Account") }
+                    OutlinedButton(
+                        onClick = {
+                            state.clearError()
+                            scope.launch { runCatching { state.signInWithGoogle() } }
+                        },
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) {
+                        Text("G", color = androidx.compose.ui.graphics.Color(0xFF4285F4), fontWeight = FontWeight.Bold)
+                        Text("  Continue with Google")
+                    }
+                    HorizontalDivider()
+                    Text("Already a student?  Join your campus community today.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
                 BlinkDesktopLogo(size = 46.dp, showText = true)
                 Text(
                     when (mode) {
@@ -154,6 +201,11 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             }
                         }
                     }
+                    DesktopReferrerPicker(
+                        state = state,
+                        selected = selectedReferrer,
+                        onSelected = { selectedReferrer = it },
+                    )
                 }
 
                 OutlinedTextField(
@@ -161,7 +213,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text("Email") },
+                    label = { Text(if (mode == AuthMode.SIGN_IN) "Email or username" else "Email") },
                 )
 
                 if (mode != AuthMode.RESET) {
@@ -192,7 +244,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                                     AuthMode.SIGN_IN -> state.signIn(email, password)
                                     AuthMode.SIGN_UP -> state.signUp(
                                         email, password, username, fullName,
-                                        chosenUniversity, accountType,
+                                        chosenUniversity, accountType, selectedReferrer?.id,
                                     )
                                     AuthMode.RESET -> {
                                         state.sendPasswordReset(email)
@@ -257,6 +309,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                 )
+                }
             }
         }
     }

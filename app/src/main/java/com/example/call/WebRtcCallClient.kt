@@ -385,12 +385,17 @@ class WebRtcCallClient(
     }
 
     private fun initializeFactoryOnce() {
-        if (factoryInitialized.compareAndSet(false, true)) {
+        if (factoryInitialized.get()) return
+        synchronized(factoryInitialized) {
+            if (factoryInitialized.get()) return
+            // Publish initialized=true only after JNI successfully loads.
+            // A recoverable loading error must not permanently block retry.
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(appContext)
                     .setEnableInternalTracer(false)
                     .createInitializationOptions()
             )
+            factoryInitialized.set(true)
         }
     }
 

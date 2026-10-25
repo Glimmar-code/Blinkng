@@ -1,0 +1,130 @@
+-- Run only after staged migrations on a disposable CI database.
+do $test$
+declare
+  v jsonb;
+  v_error text;
+  v_id uuid;
+begin
+  -- Campus account type is self-reported and limited to known values.
+  update public.profiles set account_type='STUDENT' where username='alice';
+  begin
+    update public.profiles set account_type='FAKE_ADMIN' where username='alice';
+    raise exception 'TEST_FAILED: invalid campus account type accepted';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error not like '%profiles_account_type_allowed%' then raise; end if;
+  end;
+
+  -- Plan amounts are calculated on the trusted server. No user writes to ledgers.
+  v := public.blink_verification_plan_quote('BLUE',3);
+  if (v->>'total_ngn')::int <> 2160 or (v->>'total_kobo')::int <> 216000 then
+    raise exception 'Blue three-month plan quote failed: %', v;
+  end if;
+  v := public.blink_verification_plan_quote('GOLD',12);
+  if (v->>'total_ngn')::int <> 16800 or (v->>'discount_percent')::int <> 30 then
+    raise exception 'Gold yearly discount plan quote failed: %', v;
+  end if;
+  if has_table_privilege('authenticated','public.blink_verification_subscriptions','INSERT')
+     or has_table_privilege('authenticated','public.blink_verification_subscription_events','INSERT')
+     or has_table_privilege('anon','public.blink_verification_subscriptions','SELECT') then
+    raise exception 'Untrusted user can access subscription ledger';
+  end if;
+  if not (select relrowsecurity from pg_class where oid='public.blink_verification_subscriptions'::regclass)
+     or not (select relrowsecurity from pg_class where oid='public.blink_verification_subscription_events'::regclass) then
+    raise exception 'Verification subscriptions missing RLS';
+  end if;
+  begin
+    perform public.blink_verification_plan_quote('GOLD',2);
+    raise exception 'TEST_FAILED: unsupported subscription duration accepted';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'INVALID_VERIFICATION_PLAN' then raise; end if;
+  end;
+
+  -- Consent MUST be bilateral, and visits are not collected by default.
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  v := public.get_my_profile_visit_settings();
+  if (v->>'participate')::boolean then
+    raise exception 'Visitor participation not opt-in by default';
+  end if;
+  if public.record_opt_in_profile_visit('00000000-0000-4000-8000-000000000001') then
+    raise exception 'Visit recorded without viewer consent';
+  end if;
+  v := public.set_my_profile_visit_settings(true,false);
+  if not (v->>'participate')::boolean then raise exception 'Cannot opt into profile visits'; end if;
+  if public.record_opt_in_profile_visit('00000000-0000-4000-8000-000000000001') then
+    raise exception 'Visit recorded without profile owner consent';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  perform public.set_my_profile_visit_settings(true,true);
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  if not public.record_opt_in_profile_visit('00000000-0000-4000-8000-000000000001') then
+    raise exception 'Eligible profile visit was not recorded';
+  end if;
+  if public.record_opt_in_profile_visit('00000000-0000-4000-8000-000000000001') then
+    raise exception 'Duplicate visitor event counted';
+  end if;
+  if (select count(*) from public.profile_visit_events where viewer_id='00000000-0000-4000-8000-000000000002') <> 1 then
+    raise exception 'Visitor deduplication failed';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  v := public.list_my_profile_visitors();
+  if jsonb_array_length(v->'visitors') <> 1
+     or v->'visitors'->0->>'username' <> 'bob'
+     or public.count_my_new_profile_visitors() <> 1 then
+    raise exception 'Owner-only visitor history/count mismatch: %', v;
+  end if;
+  if not public.ack_my_profile_visitors_seen((v->>'seen_through')::timestamptz) then
+    raise exception 'Visitor seen acknowledgment failed';
+  end if;
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',true);
+  v := public.list_my_profile_visitors();
+  if jsonb_array_length(v->'visitors') <> 0 then
+    raise exception 'Viewer can read another user''s visitor list';
+  end if;
+  -- The same-SQL-statement MVCC snapshot need not expose an update to a STABLE
+  -- counter function. Confirm the receipt is written here, then check the
+  -- rendered counter in a separate top-level SQL statement below.
+  if not exists (
+     select 1 from public.profile_visit_receipts r
+     where r.user_id='00000000-0000-4000-8000-000000000001'
+       and r.last_seen_at >= (select min(last_visited_at) from public.profile_visit_events)
+  ) then
+    raise exception 'Visitor receipt was not committed correctly';
+  end if;
+  -- Withdrawal must erase identifiable visit history, not merely hide it.
+  perform public.set_my_profile_visit_settings(false,false);
+  if exists(select 1 from public.profile_visit_events where viewer_id='00000000-0000-4000-8000-000000000002')
+     or exists(select 1 from public.profile_views where viewer_id='00000000-0000-4000-8000-000000000002') then
+    raise exception 'Visitor privacy withdrawal failed to erase history';
+  end if;
+  if has_table_privilege('authenticated','public.profile_visit_events','SELECT')
+     or has_table_privilege('authenticated','public.profile_visit_settings','UPDATE')
+     or has_table_privilege('anon','public.profile_visit_receipts','SELECT') then
+    raise exception 'Private visitor data was exposed to clients';
+  end if;
+  if not (select relrowsecurity from pg_class where oid='public.profile_visit_events'::regclass)
+     or not (select relrowsecurity from pg_class where oid='public.profile_visit_settings'::regclass) then
+    raise exception 'Visitor tables missing RLS';
+  end if;
+  -- Existing Android versions must NOT circumvent consent through legacy inserts.
+  insert into public.profile_views(profile_id,viewer_id)
+   values('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002');
+  if exists(select 1 from public.profile_views where viewer_id='00000000-0000-4000-8000-000000000002') then
+    raise exception 'Legacy client bypassed profile visitor consent';
+  end if;
+  raise notice 'Passed: account type, discounted quotes, subscription RLS, mutual visitor opt-in, duplicate prevention, owner-only history, seen counter, opt-out erasure, legacy guard.';
+end
+$test$;
+
+-- Mimic Android's next authenticated RPC after the acknowledge write committed.
+do $test$
+begin
+  perform set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',true);
+  if public.count_my_new_profile_visitors() <> 0 then
+    raise exception 'Visitor unread count remained high after acknowledgment';
+  end if;
+end
+$test$;
+
+\i supabase/tests/stories_universities_assertions.pgfixture

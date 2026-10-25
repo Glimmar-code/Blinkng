@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -117,6 +118,7 @@ class CallActivity : ComponentActivity() {
     private var answerRequested = false
     private var isCaller = false
     private var connectingSinceMillis = 0L
+    private var ringingSinceElapsedRealtimeMs = 0L
 
     private var statusText by mutableStateOf("Loading call…")
     private var callType by mutableStateOf(CallType.AUDIO)
@@ -189,7 +191,14 @@ class CallActivity : ComponentActivity() {
                     },
                     onSwitchCamera = { rtcClient?.switchCamera() },
                     onToggleSpeaker = {
-                        speakerOn = rtcClient?.toggleSpeaker() ?: speakerOn
+                        if (mediaReady) {
+                            val before = speakerOn
+                            speakerOn = rtcClient?.toggleSpeaker() ?: before
+                            // Report a rejected device route rather than claiming a change.
+                            errorText = if (speakerOn == before) {
+                                "Audio output is unavailable. Try again once connected."
+                            } else null
+                        }
                     }
                 )
             }
@@ -280,10 +289,15 @@ class CallActivity : ComponentActivity() {
         peerUsername = sourceIntent.getStringExtra(EXTRA_PEER_USERNAME).orEmpty()
         peerAvatar = sourceIntent.getStringExtra(EXTRA_PEER_AVATAR).orEmpty()
         if (peerId.isNotBlank() && (peerName == "Blink user" || peerUsername.isBlank())) {
-            repository.fetchPeer(peerId).getOrNull()?.let { peer ->
-                peerName = peer.name
-                peerUsername = peer.username
-                peerAvatar = peer.avatar
+            // Name/avatar loading must never block receiver signaling or outgoing SDP.
+            lifecycleScope.launch {
+                repository.fetchPeer(peerId).getOrNull()?.let { peer ->
+                    if (call?.id == loaded.id && !ending.get()) {
+                        peerName = peer.name
+                        peerUsername = peer.username
+                        peerAvatar = peer.avatar
+                    }
+                }
             }
         }
 
@@ -297,6 +311,8 @@ class CallActivity : ComponentActivity() {
         }
         speakerOn = callType == CallType.VIDEO
         cameraOn = callType == CallType.VIDEO
+        ringingSinceElapsedRealtimeMs =
+            if (isCaller && loaded.status == CallStatus.RINGING) SystemClock.elapsedRealtime() else 0L
 
         startRealtime(loaded.id)
         startReconciliationLoop(loaded.id)
@@ -369,15 +385,31 @@ class CallActivity : ComponentActivity() {
         rtcClient = try {
             WebRtcCallClient(this, callType, rtcListener, relays)
         } catch (error: Exception) {
+            Log.e("BlinkCalls", "WebRTC media initialization failed", error)
             mediaStarted = false
-            errorText = "Unable to initialize call media."
+            errorText = "Unable to initialize call media. Try again."
+            failAndFinish("failed")
+            return
+        } catch (error: LinkageError) {
+            // JNI fatal aborts still require repairing the actual released APK;
+            // this catch handles only recoverable Java linkage failures.
+            Log.e("BlinkCalls", "WebRTC native library loading failed", error)
+            mediaStarted = false
+            errorText = "This BLINK build cannot start calls. Update BLINK and try again."
             failAndFinish("failed")
             return
         }
         mediaReady = true
         cameraOn = rtcClient?.isCameraEnabled() ?: false
         speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
-        startForegroundCall(active.id)
+        try {
+            startForegroundCall(active.id)
+        } catch (error: RuntimeException) {
+            Log.e("BlinkCalls", "Android rejected the call foreground service", error)
+            errorText = "Call audio could not start. Check microphone permission and retry."
+            failAndFinish("failed")
+            return
+        }
 
         val queued = pendingSignals.sortedBy { it.id }.toList()
         pendingSignals.clear()
@@ -419,6 +451,18 @@ class CallActivity : ComponentActivity() {
                     System.currentTimeMillis() - connectingSinceMillis > 35_000L
                 ) {
                     failAndFinish("connection_timeout")
+                    break
+                }
+                if (
+                    isCaller &&
+                    ringingSinceElapsedRealtimeMs > 0L &&
+                    CallConnectionRecoveryPolicy.unansweredCallTimedOut(
+                        call?.status,
+                        SystemClock.elapsedRealtime() - ringingSinceElapsedRealtimeMs
+                    )
+                ) {
+                    errorText = "The other phone did not answer. Check its connection and notifications."
+                    failAndFinish("no_answer")
                     break
                 }
             }
@@ -478,6 +522,7 @@ class CallActivity : ComponentActivity() {
         when (updated.status) {
             CallStatus.RINGING -> statusText = if (isCaller) "Calling…" else "Incoming call"
             CallStatus.CONNECTING -> {
+                ringingSinceElapsedRealtimeMs = 0L
                 incomingRinging = false
                 statusText = when {
                     rtcConnected -> "Connected"
@@ -488,6 +533,7 @@ class CallActivity : ComponentActivity() {
                 if (!isCaller && !mediaStarted) requestMediaPermissions(incomingAnswer = true)
             }
             CallStatus.CONNECTED -> {
+                ringingSinceElapsedRealtimeMs = 0L
                 incomingRinging = false
                 // Server call state can lag a dropped peer connection. Only
                 // show "Connected" when WebRTC has actually recovered.

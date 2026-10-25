@@ -994,6 +994,8 @@ fun AdminProScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var showAnnouncementManager by remember { mutableStateOf(false) }
+    var showCampaignStudio by remember { mutableStateOf(false) }
+    var showLiveContentManager by remember { mutableStateOf(false) }
     var announcementStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val capability = state.adminCapability
@@ -1056,6 +1058,38 @@ fun AdminProScreen(state: DesktopAppState) {
                         )
                     }
                     Button(onClick = { showAnnouncementManager = true }) { Text("Create") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Live Content", fontWeight = FontWeight.Bold)
+                        Text("Edit, preview, publish or pause in-app banners without another APK.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Button(onClick = { showLiveContentManager = true }) { Text("Manage") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Campaign Studio", fontWeight = FontWeight.Bold)
+                        Text("Target campuses, schedule content, approve drafts, review analytics and restore revisions.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Button(onClick = { showCampaignStudio = true }) { Text("Open") }
                 }
             }
         }
@@ -1129,6 +1163,22 @@ fun AdminProScreen(state: DesktopAppState) {
                 }
             }
         }
+    }
+
+    if (showCampaignStudio && capability.allowed) {
+        DesktopAdminCampaignManager(
+            actions = actions,
+            isOwner = capability.isOwner,
+            onDismiss = { showCampaignStudio = false },
+        )
+    }
+
+    if (showLiveContentManager && capability.allowed) {
+        DesktopAdminLiveContentManager(
+            actions = actions,
+            isOwner = capability.isOwner,
+            onDismiss = { showLiveContentManager = false },
+        )
     }
 
     if (showAnnouncementManager && capability.allowed) {

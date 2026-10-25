@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
+    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar">
+        <!-- Prevent a light flash before Compose paints the black BLINK intro. -->
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 
     <style name="Theme.Blink.IncomingCallBanner" parent="Theme.MyApplication">
         <item name="android:windowIsTranslucent">true</item>

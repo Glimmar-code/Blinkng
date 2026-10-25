@@ -16,6 +16,17 @@ import org.json.JSONObject
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
+/**
+ * A direction-sensitive receipt for the actual latest server message. If status is null
+ * the latest message was incoming; do not display the sender's ticks in that inbox row.
+ */
+data class LatestConversationReceipt(
+    val conversationId: String,
+    val messageId: String,
+    val createdAt: String,
+    val outgoingStatus: MessageStatus?
+)
+
 class ChatRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
@@ -111,6 +122,45 @@ class ChatRepository(
         )
     }
 
+    /**
+     * Read just the newest message using the existing authenticated, membership-protected
+     * pagination RPC. This is intentionally lightweight: no media downloads, message
+     * action enrichment or full conversation hydration when browsing the inbox.
+     *
+     * Called lazily for visible inbox rows, never for every conversation at launch.
+     */
+    suspend fun fetchLatestConversationReceipt(conversationId: String): LatestConversationReceipt? =
+        withContext(Dispatchers.IO) {
+            if (!isServerUuid(conversationId)) return@withContext null
+            val owner = supabaseService.getCurrentUserId().orEmpty()
+            if (owner.isBlank()) return@withContext null
+            val raw = postAuthenticatedRpc(
+                "get_conversation_messages_page",
+                JSONObject()
+                    .put("p_conversation_id", conversationId)
+                    .put("p_limit", 1)
+                    .put("p_before", JSONObject.NULL)
+                    .put("p_before_id", JSONObject.NULL)
+            )
+            val rows = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
+            val latest = rows.optJSONObject(0) ?: return@withContext null
+            val mine = latest.optString("sender_id") == owner
+            val hasRead = latest.optBoolean("is_read", false) ||
+                latest.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) }
+            val hasDelivered = latest.optString("delivered_at")
+                .let { it.isNotBlank() && !it.equals("null", true) }
+            LatestConversationReceipt(
+                conversationId = conversationId,
+                messageId = latest.optString("id"),
+                createdAt = latest.optString("created_at"),
+                outgoingStatus = if (!mine) null else when {
+                    hasRead -> MessageStatus.READ
+                    hasDelivered -> MessageStatus.DELIVERED
+                    else -> MessageStatus.SENT
+                }
+            )
+        }
+
     suspend fun fetchMessagePage(
         conversationId: String,
         beforeCreatedAt: String? = null,
@@ -149,8 +199,21 @@ class ChatRepository(
                             else -> MessageStatus.SENT
                         },
                         isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        voiceDuration = o.optString("content").removePrefix("Voice note: ")
+                            .takeIf { it.matches(Regex("^\\d+s$")) }.orEmpty(),
+                        voiceAudioUrl = mediaUrl.takeIf { mediaType.equals("voice", true) || mediaType.equals("audio", true) },
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
+                        imagePreviewUrl = o.optString("image_preview_url")
+                            .takeIf { mediaType.equals("image", true) && it.isNotBlank() && it != "null" },
+                        imageAlbumId = o.optString("image_album_id")
+                            .takeIf { mediaType.equals("image", true) &&
+                                runCatching { java.util.UUID.fromString(it) }.isSuccess },
+                        imageAlbumPosition = o.optInt("image_album_position", 0),
+                        imageAlbumSize = o.optInt("image_album_size", 1),
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        attachedDocumentUrl = mediaUrl.takeIf { mediaType.equals("document", true) },
+                        attachedDocumentName = o.optString("content").removePrefix("Document: ")
+                            .takeIf { mediaType.equals("document", true) },
                         replyToMessageId = o.optString("reply_to_message_id")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) },
                         editedAt = o.optString("edited_at")
@@ -161,7 +224,10 @@ class ChatRepository(
             }
         }
         val visibleMessages = filterClearedMessages(conversationId, baseMessages)
-        enrichMessageActions(visibleMessages)
+        val viewOnceMessages = com.example.data.supabase.MessageMediaService
+            .hydrateViewOnceFlags(visibleMessages, conversationId)
+        val enrichedMessages = enrichMessageActions(viewOnceMessages)
+        com.example.data.supabase.MessageMediaService.hydrateMediaPage(enrichedMessages, conversationId)
     }
 
     /**

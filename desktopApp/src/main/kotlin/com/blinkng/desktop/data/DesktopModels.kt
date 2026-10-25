@@ -33,7 +33,11 @@ data class DesktopProfile(
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
-    val accountType: String? = null
+    val accountType: String? = null,
+    val coverPhotoUrl: String? = null,
+    val professionalHeadline: String? = null,
+    val academicLevel: String? = null,
+    val dailyStreak: Int = 0,
 )
 
 data class DesktopFeedPost(
@@ -81,6 +85,7 @@ data class DesktopConversation(
     val lastMessageAt: String?,
     val isOnline: Boolean = false,
     val lastSeenAt: String? = null,
+    val partnerUsername: String = "",
 )
 
 data class DesktopMessage(
@@ -94,6 +99,11 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val imageAlbumId: String? = null,
+    val imageAlbumPosition: Int = 0,
+    val imageAlbumSize: Int = 1,
+    val imagePreviewUrl: String? = null,
+    val imageViewOnce: Boolean = false,
 )
 
 data class DesktopNotification(

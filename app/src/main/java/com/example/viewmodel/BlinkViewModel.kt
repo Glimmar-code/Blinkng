@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.blinkng.shared.discovery.BlinkCampusRegistrationPolicy
 import com.blinkng.shared.discovery.BlinkCampusAccountType
 import com.example.data.models.NigerianUniversitySearch
+import com.blinkng.shared.notification.BlinkStoryPresentation
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
@@ -26,6 +27,16 @@ import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatImageUploadWorker
+import com.example.data.supabase.BoundedMessageAttachment
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import androidx.lifecycle.Observer
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkInAppNotification
 import com.example.notification.BlinkInAppNotificationCenter
@@ -34,12 +45,17 @@ import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkChatAttachmentKind
+import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkDeliveryReceipt
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -195,6 +211,20 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val messageOutboxMutex = Mutex()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private data class PendingAttachment(
+        val uri: Uri, val kind: BlinkChatAttachmentKind, val durationMs: Long,
+        val ownerId: String, val caption: String, val imageQuality: BlinkChatImageQuality,
+        val album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
+    )
+    private val pendingAttachments =
+        java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
+    private val cancelledImageUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val chatImageObservers = mutableListOf<
+        Pair<androidx.lifecycle.LiveData<WorkInfo?>, Observer<WorkInfo?>>
+    >()
+    private var chatUiForeground = false
+    private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val inboxReceiptInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
@@ -216,6 +246,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         if (hasLocalSession) restoreLocalSession()
 
         observeCachedContent()
+        restoreDurablePictureDrafts()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
             restoreResumableRouteFromCurrentState()
@@ -895,6 +926,71 @@ private suspend fun restoreSupabaseSession() {
      * Never replace the local list outright: doing so erases visible chat history
      * and optimistic/offline messages whenever a realtime summary event arrives.
      */
+    private fun strongestReceipt(existing: MessageStatus, incoming: MessageStatus): MessageStatus =
+        MessageStatus.valueOf(BlinkDeliveryReceipt.strongest(existing.name, incoming.name))
+
+    private fun sameMessageTime(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        if (a == b) return true
+        return runCatching {
+            java.time.OffsetDateTime.parse(a).toInstant() ==
+                java.time.OffsetDateTime.parse(b).toInstant()
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Fetch only a visible inbox row's latest receipt with the membership-scoped
+     * Supabase RPC. This does not load the chat or mark anything as read.
+     * Cache briefly so Compose recomposition/scrolling cannot flood the backend.
+     */
+    fun refreshVisibleInboxReceipt(conversationId: String, expectedTimestamp: String) {
+        if (conversationId.isBlank() || conversationId.startsWith("local_")) return
+        val snapshot = _uiState.value
+        val owner = snapshot.myProfile.id
+        if (owner.isBlank() || !snapshot.isOnline) return
+        val key = "$owner:$conversationId:$expectedTimestamp"
+        val now = SystemClock.elapsedRealtime()
+        val previous = inboxReceiptFetchedAt[key]
+        if (previous != null && now - previous in 0 until 45_000L) return
+        if (!inboxReceiptInFlight.add(key)) return
+        inboxReceiptFetchedAt[key] = now
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val receipt = chatRepository.fetchLatestConversationReceipt(conversationId)
+                withContext(Dispatchers.Main) {
+                    val latest = _uiState.value
+                    if (latest.myProfile.id != owner) return@withContext
+                    val updated = latest.conversations.map { conversation ->
+                        if (conversation.id != conversationId ||
+                            !sameMessageTime(conversation.lastMessageRawTime, expectedTimestamp)
+                        ) return@map conversation
+                        if (receipt == null ||
+                            !sameMessageTime(conversation.lastMessageRawTime, receipt.createdAt)
+                        ) return@map conversation
+                        val incoming = receipt.outgoingStatus
+                        val status = if (incoming != null &&
+                            conversation.lastReceiptMessageId == receipt.messageId &&
+                            conversation.lastOutgoingStatus != null
+                        ) strongestReceipt(conversation.lastOutgoingStatus, incoming) else incoming
+                        conversation.copy(
+                            lastOutgoingStatus = status,
+                            lastReceiptMessageId = receipt.messageId
+                        )
+                    }
+                    if (updated != latest.conversations) {
+                        _uiState.value = latest.copy(conversations = updated)
+                        persistConversations()
+                    }
+                }
+            } catch (e: Exception) {
+                // An offline/error state is not evidence of delivery or reading.
+                Log.w(TAG, "Inbox receipt could not be refreshed", e)
+            } finally {
+                inboxReceiptInFlight.remove(key)
+            }
+        }
+    }
+
     private fun mergeConversationSummaries(
         summaries: List<ChatConversation>,
         local: List<ChatConversation>
@@ -905,7 +1001,14 @@ private suspend fun restoreSupabaseSession() {
                 val cached = local.firstOrNull {
                     it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
                 }
-                summary.copy(messages = cached?.messages?.toMutableList() ?: mutableListOf())
+                summary.copy(
+                    messages = cached?.messages?.toMutableList() ?: mutableListOf(),
+                    lastOutgoingStatus = cached?.lastOutgoingStatus
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) },
+                    lastReceiptMessageId = cached?.lastReceiptMessageId
+                        ?.takeIf { sameMessageTime(cached.lastMessageRawTime, summary.lastMessageRawTime) }
+                        .orEmpty()
+                )
             }
 
         val localOnly = local.filter { cached ->
@@ -919,6 +1022,24 @@ private suspend fun restoreSupabaseSession() {
         return localOnly + server
     }
 
+
+    /** Refresh just the authenticated Coin wallet after verified Paystack fulfillment.
+     * No feed reload, client-side credit, or extra checkout is involved.
+     */
+    fun refreshCoinBalanceAfterPayment() {
+        val accountId = _uiState.value.myProfile.id
+        if (accountId.isBlank() || !_uiState.value.isOnline) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                .onFailure { Log.w(TAG, "Payment wallet refresh failed", it) }
+                .getOrNull() ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (_uiState.value.myProfile.id != accountId) return@withContext
+                _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                persistExtendedCache()
+            }
+        }
+    }
 
     fun refreshProfileRewards() {
         val before = _uiState.value
@@ -1760,6 +1881,7 @@ private suspend fun restoreSupabaseSession() {
         faculty: String = "",
         university: String = "",
         accountType: String = "",
+        referrerId: String? = null,
     ) {
         if (fullName.trim().length < 2 || username.trim().length < 3) {
             showToast("Enter a valid full name and username."); return
@@ -1787,7 +1909,7 @@ private suspend fun restoreSupabaseSession() {
             try {
                 val result = authRepository.signUpWithEmail(
                     cleanEmail, password, cleanUsername, cleanName,
-                    faculty.trim(), canonicalUniversity, accountType,
+                    faculty.trim(), canonicalUniversity, accountType, referrerId,
                 )
                 if (result.isSuccess && result.userProfile != null) {
                     // Auth database triggers may create the profile before metadata
@@ -2617,6 +2739,21 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Mark as read only while the chat is genuinely visible in the foreground. */
+    fun setChatUiForeground(isForeground: Boolean) {
+        chatUiForeground = isForeground
+        val current = _uiState.value
+        val partner = current.activeConversationPartner
+        // BlinkUiState has no chatPrivacySettings field. Keep the same visible-chat
+        // read acknowledgement rule used by message-history hydration below.
+        if (isForeground && !partner.isNullOrBlank() && current.isOnline &&
+            (current.selectedTab == MainTab.MESSAGES || current.isConversationFullScreen)) {
+            viewModelScope.launch {
+                runCatching { chatRepository.markConversationRead(partner) }
+            }
+        }
+    }
+
     fun openChatWithUser(username: String, sellerName: String? = null, sellerAvatar: String? = null) {
         val clean = username.trim().removePrefix("@")
         if (clean.isBlank() || clean.equals("null", true)) {
@@ -2788,7 +2925,13 @@ private suspend fun restoreSupabaseSession() {
                     // Server rows win for matching IDs so delivery/read status is refreshed.
                     page.forEach { message ->
                         val key = message.id.ifBlank { "server:${message.rawTimestamp}:${message.text}" }
-                        merged[key] = message.copy(conversationId = resolvedConversationId)
+                        val cached = merged[key]
+                        merged[key] = message.copy(
+                            conversationId = resolvedConversationId,
+                            status = cached?.let { strongestReceipt(it.status, message.status) }
+                                ?: message.status,
+                            isRead = message.isRead || cached?.isRead == true
+                        )
                     }
                     val messages = merged.values
                         .sortedWith(compareBy<ChatMessage> { it.rawTimestamp.ifBlank { "9999" } }.thenBy { it.id })
@@ -2811,7 +2954,14 @@ private suspend fun restoreSupabaseSession() {
             // Make the merged page durable before acknowledging it to the server.
             persistConversationsNow()
             runCatching { chatRepository.ackPendingDeliveries() }
-            if (!older) runCatching { chatRepository.markConversationRead(partnerUsername) }
+            // A loading chat might have been closed before the RPC returned. Only
+            // an actively viewed conversation may turn its messages blue.
+            if (!older && chatUiForeground &&
+                (_uiState.value.selectedTab == MainTab.MESSAGES ||
+                    _uiState.value.isConversationFullScreen) &&
+                _uiState.value.activeConversationPartner.equals(partnerUsername, true)) {
+                runCatching { chatRepository.markConversationRead(partnerUsername) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Message history hydration failed for @$partnerUsername", e)
         } finally {
@@ -2899,51 +3049,431 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun sendVideoMessage(partnerUsername: String, uri: Uri) {
-        val cleanPartner = partnerUsername.trim().removePrefix("@")
-        if (cleanPartner.isBlank()) return
-        val tempId = "temp_video_${UUID.randomUUID()}"
-        val uid = supabaseService.getCurrentUserId() ?: "local_user"
-        val existingConversationId = _uiState.value.conversations
-            .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
-            ?.id
-            ?.takeUnless { it.startsWith("local_") }
-        appendMessageToState(
-            cleanPartner,
-            ChatMessage(
-                id = tempId,
-                conversationId = existingConversationId,
-                senderId = uid,
-                receiverUsername = cleanPartner,
-                text = "Video",
-                rawTimestamp = java.time.Instant.now().toString(),
-                timestamp = "Sending...",
-                isFromMe = true,
-                isRead = false,
-                status = MessageStatus.SENDING
-            )
-        )
+    /** Forwards the image bytes, not its expiring signed URL or a misleading
+     * "Image" text. The receiver gets a newly protected, sender-owned media object. */
+    fun forwardPictureMessage(targetUsername: String, source: ChatMessage) {
+        val sourceConvo = source.conversationId
+        if (source.attachedImageUrl.isNullOrBlank() || sourceConvo.isNullOrBlank() ||
+            source.deletedForEveryone || source.id.startsWith("temp_")) {
+            showToast("This picture cannot be forwarded.")
+            return
+        }
+        val cleanTarget = targetUsername.trim().removePrefix("@")
+        if (cleanTarget.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold(
-                onSuccess = { serverMsg ->
-                    withContext(Dispatchers.Main) {
-                        replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
-                    }
-                    // Confirmed media messages receive the same durable Room ordering as text.
-                    persistConversationsNow()
-                    withContext(Dispatchers.Main) { fetchSupabaseData() }
-                },
-                onFailure = {
-                    withContext(Dispatchers.Main) {
-                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast("Failed to send video. Tap the message to retry.")
-                    }
+            var resultFile: java.io.File? = null
+            try {
+                val temp = java.io.File.createTempFile("blink-forward-", ".staged", appContext.cacheDir)
+                resultFile = temp
+                val mime = java.io.FileOutputStream(temp).use { destination ->
+                    MessageMediaService.copyPrivateImage(source.id, sourceConvo, destination)
+                        .getOrThrow().second
                 }
-            )
+                val extension = BlinkChatAttachmentKind.IMAGE.extension(mime)
+                val renamed = java.io.File(
+                    appContext.cacheDir, "blink-forward-${UUID.randomUUID()}.$extension"
+                )
+                check(temp.renameTo(renamed)) { "Unable to prepare forwarded picture." }
+                resultFile = renamed
+                withContext(Dispatchers.Main) {
+                    sendAttachmentMessage(
+                        cleanTarget, Uri.fromFile(renamed),
+                        BlinkChatAttachmentKind.IMAGE,
+                        caption = source.text.takeUnless { it.equals("Image", true) }.orEmpty(),
+                        imageQuality = BlinkChatImageQuality.ORIGINAL
+                    )
+                }
+                // The file stays private until the background uploader has staged it.
+                resultFile = null
+            } catch (error: Exception) {
+                resultFile?.delete()
+                withContext(Dispatchers.Main) {
+                    showToast(error.message ?: "Could not forward picture.")
+                }
+            }
         }
     }
 
+    /** View-once pictures never enter the durable normal-photo outbox or public
+     * media bucket. A failed private send stays failed instead of silently
+     * falling back to an unrestricted regular picture. */
+    fun sendViewOncePicture(
+        partnerUsername: String,
+        uri: Uri,
+        caption: String,
+        quality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD
+    ) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        val owner = supabaseService.getCurrentUserId().orEmpty()
+        val conversationId = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername.equals(partner, true)
+        }?.id?.takeUnless { it.startsWith("local_") }.orEmpty()
+        if (owner.isBlank() || conversationId.isBlank()) {
+            showToast("Open a confirmed conversation to send a view-once picture.")
+            return
+        }
+        val messageId = UUID.randomUUID().toString()
+        val temporaryId = "temp_attachment_$messageId"
+        appendMessageToState(partner, ChatMessage(
+            id = temporaryId, conversationId = conversationId,
+            senderId = owner, isFromMe = true, isRead = false,
+            text = caption.trim().take(1024).ifBlank { "View once photo" },
+            timestamp = "Sending...", rawTimestamp = java.time.Instant.now().toString(),
+            imageViewOnce = true, status = MessageStatus.SENDING
+        ))
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendViewOncePicture(
+                appContext, conversationId, uri, caption, quality, messageId
+            ).fold(onSuccess = { confirmed ->
+                cleanupPrivatePictureSource(uri)
+                withContext(Dispatchers.Main) {
+                    if (supabaseService.getCurrentUserId() == owner) {
+                        replaceMessageInState(partner, temporaryId, confirmed)
+                        fetchSupabaseData()
+                    }
+                }
+            }, onFailure = { failure ->
+                withContext(Dispatchers.Main) {
+                    if (supabaseService.getCurrentUserId() == owner) {
+                        updateMessageStatusInState(partner, temporaryId, MessageStatus.FAILED)
+                        showToast(failure.message ?: "View-once send failed. No regular picture was sent.")
+                    }
+                }
+            })
+        }
+    }
+
+    fun sendVideoMessage(partnerUsername: String, uri: Uri) =
+        sendAttachmentMessage(partnerUsername, uri, BlinkChatAttachmentKind.VIDEO)
+
+    fun sendAttachmentMessage(
+        partnerUsername: String,
+        uri: Uri,
+        kind: BlinkChatAttachmentKind,
+        durationMs: Long = 0L,
+        caption: String = "",
+        imageQuality: BlinkChatImageQuality = BlinkChatImageQuality.STANDARD,
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
+    ) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        if (partner.isBlank()) return
+        val tempId = "temp_attachment_${UUID.randomUUID()}"
+        val senderId = supabaseService.getCurrentUserId().orEmpty()
+        if (senderId.isBlank()) { showToast("Sign in before sharing a file."); return }
+        pendingAttachments[tempId] = PendingAttachment(uri, kind, durationMs, senderId, caption.trim().take(1024), imageQuality, album)
+        val currentConversation = _uiState.value.conversations
+            .firstOrNull { it.partnerUsername.equals(partner, true) }
+            ?.id?.takeUnless { it.startsWith("local_") }
+        appendMessageToState(partner, ChatMessage(
+            id = tempId,
+            conversationId = currentConversation,
+            senderId = supabaseService.getCurrentUserId().orEmpty(),
+            receiverUsername = partner,
+            text = if (kind == BlinkChatAttachmentKind.IMAGE && caption.isNotBlank()) caption.trim().take(1024)
+                else if (kind == BlinkChatAttachmentKind.DOCUMENT) "Document" else kind.title,
+            isFromMe = true,
+            timestamp = "Sending...",
+            rawTimestamp = java.time.Instant.now().toString(),
+            isRead = false,
+            isVoiceNote = kind == BlinkChatAttachmentKind.VOICE,
+            attachedImageUrl = uri.toString().takeIf { kind == BlinkChatAttachmentKind.IMAGE },
+            imageAlbumId = album.id.takeIf { kind == BlinkChatAttachmentKind.IMAGE && album.grouped },
+            imageAlbumPosition = if (album.grouped) album.position else 0,
+            imageAlbumSize = if (album.grouped) album.size else 1,
+            uploadProgress = 0,
+            status = MessageStatus.SENDING
+        ))
+        dispatchAttachment(partner, tempId)
+    }
+
+    /** Only delete captures or editor/forward copies created inside BLINK's own cache. */
+    private fun cleanupPrivatePictureSource(uri: Uri) {
+        if (uri.scheme != "file") return
+        val photo = java.io.File(uri.path.orEmpty())
+        val allowed = (photo.parentFile == appContext.cacheDir &&
+            (photo.name.startsWith("blink-forward-") ||
+                photo.name.startsWith("blink-edited-"))) ||
+            (photo.parentFile?.name == "blink-camera" &&
+                photo.parentFile?.parentFile == appContext.cacheDir &&
+                photo.name.startsWith("blink-camera-"))
+        if (allowed) runCatching { photo.delete() }
+    }
+
+    /** Restore the original message ID and private local file after process restart,
+     * so manual retry/cancel can refer to the same server-side idempotency key. */
+    private fun restoreDurablePictureDrafts() {
+        val currentUserId = supabaseService.getCurrentUserId().orEmpty()
+        if (currentUserId.isBlank()) return
+        val directory = java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+        directory.listFiles()?.filter { it.name.endsWith(".pending") }?.forEach { marker ->
+            runCatching {
+                val obj = JSONObject(marker.readText())
+                val uid = obj.optString("ownerId")
+                if (uid != currentUserId) return@runCatching
+                val id = UUID.fromString(obj.getString("messageId")).toString()
+                val imageFile = java.io.File(directory, obj.getString("filename"))
+                if (imageFile.canonicalFile.parentFile != directory.canonicalFile ||
+                    !imageFile.isFile || !imageFile.name.startsWith("$id.")) return@runCatching
+                val kind = runCatching {
+                    BlinkChatImageQuality.valueOf(obj.optString("imageQuality"))
+                }.getOrDefault(BlinkChatImageQuality.STANDARD)
+                pendingAttachments["temp_attachment_$id"] = PendingAttachment(
+                    Uri.fromFile(imageFile), BlinkChatAttachmentKind.IMAGE, 0L, uid,
+                    obj.optString("caption").take(1024), kind,
+                    runCatching {
+                        val albumId = obj.optString("albumId")
+                        if (albumId.isBlank()) BlinkChatPhotoAlbum.single()
+                        else BlinkChatPhotoAlbum.of(
+                            albumId, obj.optInt("albumPosition"), obj.optInt("albumSize")
+                        )
+                    }.getOrDefault(BlinkChatPhotoAlbum.single())
+                )
+            }.onFailure { Log.w(TAG, "Skipped invalid local picture draft", it) }
+        }
+    }
+
+    /**
+     * Images are staged in app-private durable storage, then delivered through
+     * WorkManager only when the device has internet. Unique names plus the
+     * server-provided client UUID prevent duplicate message rows on retries.
+     */
+    private fun enqueueImageAttachment(partner: String, tempId: String, pending: PendingAttachment) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val messageId = tempId.removePrefix("temp_attachment_")
+            try {
+                val outbox = java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+                    .apply { mkdirs() }
+                val durableFile = BoundedMessageAttachment.open(
+                    appContext, pending.uri, BlinkChatAttachmentKind.IMAGE
+                ).use { stage ->
+                    val file = java.io.File(outbox, "$messageId.${stage.extension}")
+                    stage.file.copyTo(file, overwrite = true)
+                    file
+                }
+                if (cancelledImageUploads.contains(tempId)) {
+                    durableFile.delete()
+                    return@launch
+                }
+                // Replace the picker URI with our app-private durable copy so queued
+                // previews remain readable after the system revokes document grants.
+                withContext(Dispatchers.Main) {
+                    val current = _uiState.value
+                    _uiState.value = current.copy(conversations = current.conversations.map { conversation ->
+                        if (!conversation.partnerUsername.equals(partner, true)) conversation
+                        else conversation.copy(messages = conversation.messages.map { message ->
+                            if (message.id == tempId && message.status == MessageStatus.SENDING)
+                                message.copy(attachedImageUrl = Uri.fromFile(durableFile).toString())
+                            else message
+                        }.toMutableList())
+                    })
+                    persistConversations()
+                }
+                val record = java.io.File(outbox, "$messageId.pending")
+                val json = JSONObject()
+                    .put("messageId", messageId)
+                    .put("ownerId", pending.ownerId)
+                    .put("partner", partner)
+                    .put("caption", pending.caption)
+                    .put("imageQuality", pending.imageQuality.name)
+                    .put("filename", durableFile.name)
+                    .put("albumId", pending.album.id ?: "")
+                    .put("albumPosition", pending.album.position)
+                    .put("albumSize", pending.album.size)
+                val writing = java.io.File(outbox, "$messageId.pending.tmp")
+                writing.writeText(json.toString())
+                check(writing.renameTo(record)) { "Could not persist picture upload." }
+                val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
+                    .setConstraints(Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .setInputData(workDataOf(
+                        "ownerId" to pending.ownerId,
+                        "partner" to partner,
+                        "messageId" to messageId,
+                        "filename" to durableFile.name,
+                        "caption" to pending.caption,
+                        "imageQuality" to pending.imageQuality.name,
+                        "albumId" to (pending.album.id ?: ""),
+                        "albumPosition" to pending.album.position,
+                        "albumSize" to pending.album.size
+                    ))
+                    .addTag("blink_chat_picture").build()
+                WorkManager.getInstance(appContext).enqueueUniqueWork(
+                    "blink_chat_image_$messageId", ExistingWorkPolicy.KEEP, request
+                )
+                withContext(Dispatchers.Main) {
+                    val workManager = WorkManager.getInstance(appContext)
+                    val source = workManager.getWorkInfoByIdLiveData(request.id)
+                    val observer = object : Observer<WorkInfo?> {
+                        override fun onChanged(info: WorkInfo?) {
+                            if (info == null) return
+                            if (cancelledImageUploads.contains(tempId)) {
+                                source.removeObserver(this)
+                                chatImageObservers.removeAll { it.first === source && it.second === this }
+                                return
+                            }
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                updateAttachmentProgressInState(
+                                    partner, tempId, info.progress.getInt("progress", 0)
+                                )
+                            }
+                            if (!info.state.isFinished) return
+                            source.removeObserver(this)
+                            chatImageObservers.removeAll { it.first === source && it.second === this }
+                            if (supabaseService.getCurrentUserId() != pending.ownerId) return
+                            if (info.state == WorkInfo.State.SUCCEEDED) {
+                                pendingAttachments.remove(tempId)
+                                cleanupPrivatePictureSource(pending.uri)
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    val remoteId = info.outputData.getString("serverMessageId")
+                                    val remote = runCatching {
+                                        val conversationId = chatRepository.fetchConversations()
+                                            .firstOrNull { it.partnerUsername.equals(partner, true) }
+                                            ?.id.orEmpty()
+                                        chatRepository.fetchMessagePage(conversationId)
+                                            .firstOrNull { it.id == remoteId }
+                                    }.getOrNull()
+                                    withContext(Dispatchers.Main) {
+                                        if (remote != null) replaceMessageInState(partner, tempId, remote)
+                                        else {
+                                            updateMessageStatusInState(partner, tempId, MessageStatus.SENT)
+                                            fetchSupabaseData()
+                                        }
+                                    }
+                                }
+                            } else {
+                                updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                                showToast("Picture wasn't sent. Tap to retry.")
+                            }
+                        }
+                    }
+                    chatImageObservers.add(source to observer)
+                    source.observeForever(observer)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                    showToast(e.message ?: "Could not queue picture. Tap to retry.")
+                }
+            }
+        }
+    }
+
+    private fun dispatchAttachment(partner: String, tempId: String) {
+        val pending = pendingAttachments[tempId] ?: return
+        if (pending.ownerId != supabaseService.getCurrentUserId()) {
+            pendingAttachments.remove(tempId)
+            showToast("Attachment belongs to a previous account. Choose the file again.")
+            return
+        }
+        if (pending.kind == BlinkChatAttachmentKind.IMAGE) {
+            enqueueImageAttachment(partner, tempId, pending)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!activeOutboxIds.add(tempId)) return@launch
+            try {
+                var reportedProgress = -5
+                MessageMediaService.sendAttachment(
+                    appContext, partner, pending.uri, pending.kind, pending.durationMs,
+                    tempId.removePrefix("temp_attachment_"),
+                    onUploadProgress = { percent ->
+                        if (percent == 100 || percent >= reportedProgress + 5) {
+                            reportedProgress = percent
+                            viewModelScope.launch(Dispatchers.Main) {
+                                if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                    updateAttachmentProgressInState(partner, tempId, percent)
+                                }
+                            }
+                        }
+                    },
+                    caption = pending.caption,
+                    imageQuality = pending.imageQuality,
+                    album = pending.album
+                ).fold(
+                    onSuccess = { message ->
+                        pendingAttachments.remove(tempId)
+                        // Recorded notes are app-owned temporary cache files.
+                        if (pending.kind == BlinkChatAttachmentKind.VOICE &&
+                            pending.uri.scheme == "file") {
+                            runCatching {
+                                java.io.File(pending.uri.path.orEmpty()).takeIf {
+                                    it.parentFile == appContext.cacheDir &&
+                                        it.name.startsWith("blink-voice-")
+                                }?.delete()
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                replaceMessageInState(partner, tempId, message.copy(status = MessageStatus.SENT))
+                            }
+                        }
+                        persistConversationsNow()
+                        withContext(Dispatchers.Main) { fetchSupabaseData() }
+                    },
+                    onFailure = { error ->
+                        withContext(Dispatchers.Main) {
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                                showToast(error.message ?: "Attachment could not be sent. Tap to retry.")
+                            }
+                        }
+                    }
+                )
+            } finally {
+                activeOutboxIds.remove(tempId)
+            }
+        }
+    }
+
+    /** Best effort cancellation: remove only the pending local picture and stop its unique job.
+     * Never delete or change a confirmed server message from this control. */
+    fun cancelAttachmentMessage(partnerUsername: String, message: ChatMessage) {
+        val tempId = message.id
+        if (!tempId.startsWith("temp_attachment_") || !message.isFromMe ||
+            message.status != MessageStatus.SENDING) return
+        val pending = pendingAttachments[tempId] ?: return
+        if (pending.kind != BlinkChatAttachmentKind.IMAGE ||
+            pending.ownerId != supabaseService.getCurrentUserId()) return
+        cancelledImageUploads.add(tempId)
+        pendingAttachments.remove(tempId)
+        cleanupPrivatePictureSource(pending.uri)
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .resolve("${tempId.removePrefix("temp_attachment_")}.pending").delete()
+        WorkManager.getInstance(appContext).cancelUniqueWork(
+            "blink_chat_image_${tempId.removePrefix("temp_attachment_")}"
+        )
+        val messageId = tempId.removePrefix("temp_attachment_")
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .listFiles()?.filter { it.name.startsWith("$messageId.") }
+            ?.forEach { runCatching { it.delete() } }
+        val state = _uiState.value
+        _uiState.value = state.copy(conversations = state.conversations.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else {
+                val remaining = conversation.messages.filterNot { it.id == tempId }
+                val latest = remaining.lastOrNull()
+                conversation.copy(
+                    messages = remaining.toMutableList(),
+                    lastMessage = latest?.text.orEmpty(),
+                    lastMessageTime = latest?.timestamp.orEmpty(),
+                    lastMessageRawTime = latest?.rawTimestamp.orEmpty()
+                )
+            }
+        })
+        persistConversations()
+    }
+
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (failedMessage.id.startsWith("temp_attachment_")) {
+            if (!pendingAttachments.containsKey(failedMessage.id)) restoreDurablePictureDrafts()
+            if (pendingAttachments.containsKey(failedMessage.id)) {
+                updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
+                dispatchAttachment(partnerUsername.trim().removePrefix("@"), failedMessage.id)
+            } else {
+                showToast("Attachment is no longer available. Choose the file again.")
+            }
+            return
+        }
         if (failedMessage.text.isBlank()) return
         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
         persistConversations()
@@ -3223,7 +3753,7 @@ private suspend fun restoreSupabaseSession() {
 
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
-            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
+            is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message, event.eventType)
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch {
                 runCatching { chatRepository.fetchConversations() }
                     .onSuccess { summaries ->
@@ -3266,21 +3796,29 @@ private suspend fun restoreSupabaseSession() {
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
-                val fresh = postRepository.fetchFeed()
-                if (fresh.isNotEmpty()) {
-                    val muted = _uiState.value.mutedUsers
-                    _uiState.value = _uiState.value.copy(
-                        posts = fresh.filter {
-                            it.videoUrl.isNullOrBlank() &&
-                                !it.isReel &&
-                                it.author.lowercase() !in muted
-                        },
-                        reels = fresh.filter {
-                            !it.videoUrl.isNullOrBlank() &&
-                                it.author.lowercase() !in muted
-                        }
-                    )
-                    persistCurrentFeed()
+                // A failed background RPC must never escape this coroutine and
+                // terminate the app. Keep the last successful/cached feed intact.
+                try {
+                    val fresh = postRepository.fetchFeed()
+                    if (fresh.isNotEmpty()) {
+                        val muted = _uiState.value.mutedUsers
+                        _uiState.value = _uiState.value.copy(
+                            posts = fresh.filter {
+                                it.videoUrl.isNullOrBlank() &&
+                                    !it.isReel &&
+                                    it.author.lowercase() !in muted
+                            },
+                            reels = fresh.filter {
+                                !it.videoUrl.isNullOrBlank() &&
+                                    it.author.lowercase() !in muted
+                            }
+                        )
+                        persistCurrentFeed()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(TAG, "Realtime feed update failed; preserving loaded posts", error)
                 }
             }
         }
@@ -3489,7 +4027,7 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
-    private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
+    private fun handleIncomingRealtimeMessage(msg: ChatMessage, eventType: String) {
         val myId = supabaseService.getCurrentUserId().orEmpty()
         val isMine = msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)
         if (isMine) {
@@ -3499,13 +4037,27 @@ private suspend fun restoreSupabaseSession() {
                 var messageChanged = false
                 val messages = conversation.messages.map { existing ->
                     if (existing.id == msg.id && msg.id.isNotBlank()) {
-                        messageChanged = true
-                        existing.copy(status = msg.status, isRead = msg.isRead)
+                        val status = strongestReceipt(existing.status, msg.status)
+                        if (status != existing.status || msg.isRead != existing.isRead) messageChanged = true
+                        existing.copy(status = status, isRead = existing.isRead || msg.isRead)
                     } else existing
                 }.toMutableList()
-                if (messageChanged) {
+                // Realtime receipts also update the inbox if this conversation was
+                // never opened and its message page is not loaded.
+                val latestOutgoing = conversation.id == msg.conversationId &&
+                    conversation.lastMessageRawTime.isNotBlank() &&
+                    sameMessageTime(conversation.lastMessageRawTime, msg.rawTimestamp)
+                val newStatus = if (latestOutgoing) {
+                    conversation.lastOutgoingStatus?.let { strongestReceipt(it, msg.status) } ?: msg.status
+                } else conversation.lastOutgoingStatus
+                if (messageChanged || (latestOutgoing &&
+                    (newStatus != conversation.lastOutgoingStatus || msg.id != conversation.lastReceiptMessageId))) {
                     changed = true
-                    conversation.copy(messages = messages)
+                    conversation.copy(
+                        messages = messages,
+                        lastOutgoingStatus = newStatus,
+                        lastReceiptMessageId = if (latestOutgoing) msg.id else conversation.lastReceiptMessageId
+                    )
                 } else conversation
             }
             if (changed) {
@@ -3515,6 +4067,9 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
+        // Delivery/read UPDATEs are not new incoming messages: never increment
+        // unread count, show another alert or overwrite last-message summaries.
+        if (!eventType.equals("INSERT", ignoreCase = true)) return
         viewModelScope.launch {
             if (msg.id.isNotBlank()) {
                 runCatching { chatRepository.markMessageDelivered(msg.id) }
@@ -3551,14 +4106,18 @@ private suspend fun restoreSupabaseSession() {
             val conversationId = msg.conversationId?.takeIf { it.isNotBlank() }
                 ?: serverSummary?.id
                 ?: "conv_$partner"
-            val enriched = msg.copy(
+            val authorizedMedia = com.example.data.supabase.MessageMediaService
+                .hydrateViewOnceFlags(listOf(msg), conversationId).firstOrNull() ?: msg
+            val enriched = authorizedMedia.copy(
                 conversationId = conversationId,
                 senderUsername = partner,
                 isFromMe = false
             )
 
             val latest = _uiState.value
-            val active = latest.activeConversationPartner?.equals(partner, true) == true
+            val active = chatUiForeground &&
+                (latest.selectedTab == MainTab.MESSAGES || latest.isConversationFullScreen) &&
+                latest.activeConversationPartner?.equals(partner, true) == true
             val conversations = latest.conversations.toMutableList()
             val index = conversations.indexOfFirst {
                 it.id == conversationId || it.partnerUsername.equals(partner, true)
@@ -3577,6 +4136,8 @@ private suspend fun restoreSupabaseSession() {
                     lastMessageTime = enriched.timestamp,
                     lastMessageRawTime = enriched.rawTimestamp,
                     unreadCount = if (active) 0 else old.unreadCount + 1,
+                    lastOutgoingStatus = null,
+                    lastReceiptMessageId = enriched.id,
                     messages = messages.distinctBy { it.id }.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList()
                 )
             } else {
@@ -3598,6 +4159,8 @@ private suspend fun restoreSupabaseSession() {
                         lastMessageTime = enriched.timestamp,
                         lastMessageRawTime = enriched.rawTimestamp,
                         unreadCount = if (active) 0 else 1,
+                        lastOutgoingStatus = null,
+                        lastReceiptMessageId = enriched.id,
                         messages = mutableListOf(enriched)
                     )
                 )
@@ -3638,8 +4201,12 @@ private suspend fun restoreSupabaseSession() {
 
     private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
         val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
-        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList()) }
-        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
+        if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList(),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id) }
+        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message),
+                lastOutgoingStatus = if (message.isFromMe) message.status else null,
+                lastReceiptMessageId = message.id))
         _uiState.value = _uiState.value.copy(conversations = conversations)
         persistConversations()
     }
@@ -3662,7 +4229,9 @@ private suspend fun restoreSupabaseSession() {
                     lastMessage = newMsg.text,
                     lastMessageTime = newMsg.timestamp,
                     lastMessageRawTime = newMsg.rawTimestamp,
-                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId))
+                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId)),
+                    lastOutgoingStatus = if (newMsg.isFromMe) newMsg.status else null,
+                    lastReceiptMessageId = newMsg.id
                 )
             )
             _uiState.value = state.copy(conversations = conversations)
@@ -3685,6 +4254,8 @@ private suspend fun restoreSupabaseSession() {
             lastMessage = normalized.text,
             lastMessageTime = normalized.timestamp,
             lastMessageRawTime = normalized.rawTimestamp,
+            lastOutgoingStatus = if (normalized.isFromMe) normalized.status else null,
+            lastReceiptMessageId = normalized.id,
             messages = messages.distinctBy { it.id.ifBlank { "${it.rawTimestamp}:${it.text}" } }
                 .sortedBy { it.rawTimestamp.ifBlank { "9999" } }
                 .toMutableList()
@@ -3718,6 +4289,20 @@ private suspend fun restoreSupabaseSession() {
         )
         persistConversations()
     }
+    /** Keep upload percentages in memory only; never persist a fake delivery status. */
+    private fun updateAttachmentProgressInState(partnerUsername: String, messageId: String, percent: Int) {
+        val state = _uiState.value
+        val conversations = state.conversations.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else conversation.copy(messages = conversation.messages.map { message ->
+                if (message.id == messageId && message.status == MessageStatus.SENDING)
+                    message.copy(uploadProgress = percent.coerceIn(0, 100))
+                else message
+            }.toMutableList())
+        }
+        _uiState.value = state.copy(conversations = conversations)
+    }
+
     private fun updateMessageStatusInState(
         partnerUsername: String,
         messageId: String,
@@ -4013,6 +4598,23 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun logout() {
+        // Drop in-memory picker grants and private recordings on account change.
+        pendingAttachments.values.forEach { attachment ->
+            if (attachment.kind == BlinkChatAttachmentKind.IMAGE) {
+                cleanupPrivatePictureSource(attachment.uri)
+            }
+            if (attachment.kind == BlinkChatAttachmentKind.VOICE && attachment.uri.scheme == "file") {
+                runCatching {
+                    java.io.File(attachment.uri.path.orEmpty()).takeIf {
+                        it.parentFile == appContext.cacheDir && it.name.startsWith("blink-voice-")
+                    }?.delete()
+                }
+            }
+        }
+        WorkManager.getInstance(appContext).cancelAllWorkByTag("blink_chat_picture")
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .listFiles()?.forEach { runCatching { it.delete() } }
+        pendingAttachments.clear()
         realtimeManager.disconnect()
         viewModelScope.launch {
             runCatching { supabaseService.setMyPresence(false) }
@@ -4033,7 +4635,11 @@ private suspend fun restoreSupabaseSession() {
     fun closeStory() { _uiState.value = _uiState.value.copy(activeViewingStory = null) }
     fun createStory(storyImage: String, caption: String, faculty: String = "") {
         val p=_uiState.value.myProfile
-        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
+        val s=Story(
+            UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,
+            "Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge,
+            createdAt = java.time.Instant.now().toString(), authorId = p.id,
+        )
         viewModelScope.launch(Dispatchers.IO){
             if(postRepository.createStory(s,false)){
                 _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
@@ -4053,7 +4659,11 @@ private suspend fun restoreSupabaseSession() {
                 val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
                 val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
                 val p=_uiState.value.myProfile
-                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
+                val story=Story(
+                    UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,
+                    caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge,
+                    createdAt = java.time.Instant.now().toString(), isVideo = isVideo, authorId = p.id,
+                )
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
                 _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
                 showToast("Story shared.")
@@ -4065,7 +4675,14 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-    fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
+    fun markStoryViewed(storyId: String) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (story.isUser) return
+        _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map {
+            if (it.id == storyId) it.copy(hasUnseen = false) else it
+        })
+        viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) }
+    }
     fun toggleStoryLike(storyId: String) {
         var next = false
         var count = 0
@@ -4105,28 +4722,71 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun replyToStory(storyUsername: String, replyText: String) {
-        val cleanText = replyText.trim()
-        val cleanUser = storyUsername.trim().removePrefix("@")
-        if (cleanText.isBlank() || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+    /** Story replies are genuine DMs with a persistent, tappable story reference. */
+    fun replyToStory(story: Story, replyText: String) {
+        val cleanUser = story.username.trim().removePrefix("@")
+        val content = BlinkStoryPresentation.reply(story.id, story.caption, replyText)
+        if (cleanUser.isBlank() || cleanUser.equals("null", true) || content == null) return
+        if (story.isUser || !BlinkStoryPresentation.active(story.createdAt, true)) {
+            showToast("This story is no longer available for replies.")
+            return
+        }
         viewModelScope.launch {
-            chatRepository.sendMessage(cleanUser, cleanText).fold(
+            chatRepository.sendMessage(cleanUser, content).fold(
                 onSuccess = {
-                    showToast("💬 Message sent to @$cleanUser")
-                    supabaseService.recordActivity(
-                        cleanUser,
-                        "replied to your story",
-                        NotificationFilter.ALL,
-                        targetUsername = _uiState.value.myProfile.username,
-                        targetType = "CHAT"
-                    )
+                    showToast("Story reply sent in Messages.")
                 },
-                onFailure = { showToast("Story reply wasn't sent.") }
+                onFailure = { showToast("Story reply wasn't sent. Please try again.") },
             )
         }
     }
 
+    /** Sharing is allowed only after the owner explicitly permits reposts. */
+    fun setStoryRepostsAllowed(storyId: String, allowed: Boolean) {
+        val story = _uiState.value.stories.firstOrNull { it.id == storyId } ?: return
+        if (!story.isUser || !BlinkStoryPresentation.active(story.createdAt, true)) return
+        viewModelScope.launch {
+            val saved = runCatching {
+                supabaseService.setStoryRepostsAllowed(storyId, allowed)
+            }.getOrDefault(false)
+            if (saved) {
+                val current = _uiState.value
+                val updated = current.stories.map {
+                    if (it.id == storyId) it.copy(allowReposts = allowed) else it
+                }
+                _uiState.value = current.copy(
+                    stories = updated,
+                    activeViewingStory = updated.firstOrNull { it.id == storyId },
+                )
+                showToast(if (allowed) "Friends can repost this story." else "Story reposts disabled.")
+            } else showToast("Couldn't update story repost permissions.")
+        }
+    }
+
+    fun repostStory(story: Story) {
+        if (story.isUser || !story.allowReposts ||
+            !BlinkStoryPresentation.active(story.createdAt, true)) {
+            showToast("This story isn't available for reposting.")
+            return
+        }
+        viewModelScope.launch {
+            val ok = runCatching { supabaseService.repostStory(story.id) }.getOrDefault(false)
+            if (ok) {
+                val fresh = runCatching { postRepository.fetchStories() }.getOrNull()
+                if (fresh != null) _uiState.value = _uiState.value.copy(stories = fresh)
+                showToast("Reposted to your Story.")
+            } else showToast("Couldn't repost this story.")
+        }
+    }
+
     fun showToast(message: String) { _snackBarMessages.tryEmit(message) }
+
+    override fun onCleared() {
+        // The image WorkManager jobs survive this ViewModel; only UI observers go away.
+        chatImageObservers.forEach { (source, observer) -> source.removeObserver(observer) }
+        chatImageObservers.clear()
+        super.onCleared()
+    }
 }
 
 private fun String.capitalizeWords(): String = split(" ").filter { it.isNotBlank() }.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
