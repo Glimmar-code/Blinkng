@@ -8,6 +8,8 @@ import okhttp3.RequestBody
 import okio.BufferedSink
 import java.io.File
 import java.io.FileInputStream
+import java.io.OutputStream
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import java.awt.image.BufferedImage
@@ -650,6 +652,53 @@ class DesktopSupabaseClient(
             url.startsWith("/object/") -> baseUrl + "/storage/v1" + url
             url.startsWith("$baseUrl/storage/v1/") -> url
             else -> null
+        }
+    }
+
+    /** Save a fresh private image through messages RLS and a time-limited storage URL.
+     * Only whitelisted image MIME types and at most 15 MiB can reach the output file. */
+    suspend fun copyChatImageTo(messageId: String, conversationId: String, output: OutputStream):
+        Pair<Long, String> = withContext(Dispatchers.IO) {
+        val id = UUID.fromString(messageId).toString()
+        val convo = UUID.fromString(conversationId).toString()
+        val row = getArray(
+            "/rest/v1/messages?id=eq.$id&conversation_id=eq.$convo&" +
+                "select=id,message_type,media_url&limit=1"
+        ).optJSONObject(0) ?: throw SecurityException("Picture is not accessible.")
+        require(row.optString("message_type") == "image") { "Not an image message." }
+        val reference = row.optString("media_url")
+        val url = signedChatImageUrl(reference, convo)
+            ?: throw SecurityException("Picture is no longer accessible.")
+        val expected = baseUrl.toHttpUrlOrNull() ?: error("Invalid server host.")
+        val actual = url.toHttpUrlOrNull() ?: error("Invalid picture link.")
+        require(actual.scheme == "https" && actual.host == expected.host &&
+            actual.port == expected.port) { "Picture host did not match." }
+        http.newCall(Request.Builder().url(actual).get().build()).execute().use { response ->
+            check(response.isSuccessful) { "Picture download failed." }
+            val mime = response.header("Content-Type").orEmpty()
+                .substringBefore(';').trim().lowercase()
+            require(BlinkChatAttachmentKind.IMAGE.accepts(mime)) {
+                "Unsupported picture content type."
+            }
+            val body = response.body ?: error("Image had no content.")
+            require(body.contentLength() <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                "Image exceeded limit."
+            }
+            val buffer = ByteArray(64 * 1024)
+            var downloaded = 0L
+            body.byteStream().use { input ->
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    downloaded += n
+                    check(downloaded <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
+                        "Image exceeded limit."
+                    }
+                    output.write(buffer, 0, n)
+                }
+            }
+            output.flush()
+            downloaded to mime
         }
     }
 
