@@ -1,5 +1,6 @@
 package com.example.data.supabase
 
+import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -16,7 +17,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(application = Application::class, sdk = [34])
 class BlinkChatPhotoEditorTest {
     private val context: Context
         get() = ApplicationProvider.getApplicationContext()
