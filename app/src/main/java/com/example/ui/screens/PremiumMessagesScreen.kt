@@ -2232,7 +2232,7 @@ private fun PremiumChatDetail(
             onDismissRequest = { galleryPreviewUri = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            var swipeDistance by remember(galleryPreviewIndex) { mutableFloatStateOf(0f) }
+            var swipeDistance by remember(galleryPreviewIndex) { mutableStateOf(0f) }
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black)
                     .pointerInput(galleryPhotos.size, galleryPreviewIndex) {
