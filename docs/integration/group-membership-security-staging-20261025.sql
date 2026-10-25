@@ -104,6 +104,39 @@ with check (
   )
 );
 
+-- Ordinary group participants must never take over metadata (title,
+-- avatar, description) or turn a private group into a direct conversation.
+-- Server-owned row counters/timestamps remain compatible with legacy triggers.
+create or replace function public.blink_guard_group_metadata()
+returns trigger language plpgsql security invoker set search_path=public,pg_temp
+as $
+begin
+  if current_user='authenticated' and (
+    old.is_group or new.is_group
+  ) then
+    if old.is_group is distinct from new.is_group or
+       old.created_by is distinct from new.created_by then
+      raise exception 'BLINK_GROUP_IDENTITY_REQUIRES_SERVER' using errcode='42501';
+    end if;
+    if old.title is distinct from new.title or
+       old.description is distinct from new.description or
+       old.avatar_url is distinct from new.avatar_url then
+      if not exists (
+        select 1 from public.conversation_participants cp
+         where cp.conversation_id=old.id and cp.user_id=auth.uid()
+           and cp.is_admin=true and cp.left_at is null
+      ) then
+        raise exception 'BLINK_GROUP_ADMIN_REQUIRED' using errcode='42501';
+      end if;
+    end if;
+  end if;
+  return new;
+end $;
+drop trigger if exists blink_guard_group_metadata_trigger on public.conversations;
+create trigger blink_guard_group_metadata_trigger
+before update on public.conversations
+for each row execute function public.blink_guard_group_metadata();
+
 -- Strictly authenticate actual, ACTIVE members. The deployed version of
 -- send_group_message currently fails to filter left_at and therefore allowed
 -- historic/departed participants to satisfy its permission lookup.
