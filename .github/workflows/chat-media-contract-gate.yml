@@ -1,0 +1,54 @@
+name: BLINK chat media disposable database gate
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/*chat_photo*'
+      - 'supabase/migrations/*view_once*'
+      - 'supabase/functions/blink-view-once-image/**'
+      - 'scripts/testing/chat_media_*'
+      - '.github/workflows/chat-media-contract-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-media-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: blink_chat_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: private-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_chat_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: blink_chat_ci
+      PGUSER: postgres
+      PGPASSWORD: private-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install temporary PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+      - name: Build isolated schema fixture (never use production)
+        run: psql -v ON_ERROR_STOP=1 -f scripts/testing/chat_media_staging_fixture.sql
+      - name: Apply pending private-media migrations in order
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025100000_chat_photo_albums_and_bucket_limits.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025103000_view_once_private_media_contract.sql
+      - name: Verify private bucket limits and atomic one-use access control
+        run: psql -v ON_ERROR_STOP=1 -f scripts/testing/chat_media_contract_assertions.sql
