@@ -854,8 +854,31 @@ class DesktopSupabaseClient(
         return supported
     }
 
+    /** Decode a pixel-bounded preview, without allocating the full original bitmap. */
+    private fun readResampledPhoto(file: File, maxSide: Int): BufferedImage? =
+        ImageIO.createImageInputStream(file)?.use { source ->
+            val decoders = ImageIO.getImageReaders(source)
+            if (!decoders.hasNext()) return@use null // HEIC may lack a native decoder.
+            val decoder = decoders.next()
+            try {
+                decoder.input = source
+                val width = decoder.getWidth(0)
+                val height = decoder.getHeight(0)
+                require(width in 1..20000 && height in 1..20000) {
+                    "Picture dimensions are not supported."
+                }
+                val stride = maxOf(1, (maxOf(width, height) + maxSide - 1) / maxSide)
+                val options = decoder.defaultReadParam
+                options.setSourceSubsampling(stride, stride, 0, 0)
+                decoder.read(0, options)
+            } finally {
+                decoder.dispose()
+            }
+        }
+
     private fun makeSmallChatPreview(original: File): File? {
-        val source = runCatching { ImageIO.read(original) }.getOrNull() ?: return null
+        val source = runCatching { readResampledPhoto(original, 320) }
+            .getOrNull() ?: return null
         val ratio = minOf(1.0, 320.0 / maxOf(source.width, source.height))
         val w = (source.width * ratio).toInt().coerceAtLeast(1)
         val h = (source.height * ratio).toInt().coerceAtLeast(1)
@@ -899,7 +922,9 @@ class DesktopSupabaseClient(
             "png" -> "image/png"
             "gif" -> "image/gif"
             "webp" -> "image/webp"
-            else -> throw IllegalArgumentException("Choose a JPEG, PNG, GIF or WebP photo.")
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
+            else -> throw IllegalArgumentException("Choose a JPEG, PNG, GIF, WebP or HEIC/HEIF photo.")
         }
         BlinkChatAttachmentKind.IMAGE.verify(mime, file.length())
         var prepared = file
@@ -907,8 +932,8 @@ class DesktopSupabaseClient(
         var extension = file.extension.lowercase().let { if (it == "jpeg") "jpg" else it }
         try {
             if (quality == BlinkChatImageQuality.STANDARD && mime != "image/gif" &&
-                mime != "image/webp") {
-                val original = ImageIO.read(file)
+                mime != "image/webp" && mime != "image/heic" && mime != "image/heif") {
+                val original = readResampledPhoto(file, 1600)
                     ?: throw IllegalArgumentException("This picture cannot be decoded.")
                 val factor = minOf(1.0, 1600.0 / maxOf(original.width, original.height))
                 val w = (original.width * factor).toInt().coerceAtLeast(1)
