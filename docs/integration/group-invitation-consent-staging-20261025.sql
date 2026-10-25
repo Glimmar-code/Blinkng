@@ -153,4 +153,49 @@ revoke all on function public.blink_group_respond_invitation(uuid,boolean)
 grant execute on function public.blink_group_respond_invitation(uuid,boolean)
   to authenticated;
 
+-- Group creation must not silently enroll non-consenting students either.
+-- Validate the full requested 3–50-person roster, but activate only the
+-- authenticated founder. Every other student gets a pending invitation.
+-- The Android/Windows existing RPC signatures and group IDs stay unchanged.
+create or replace function public.create_group_conversation(
+  p_title text,p_member_ids uuid[]
+) returns uuid language plpgsql security definer set search_path=''
+as $$
+declare v_actor uuid:=auth.uid(); v_members uuid[]; v_group uuid;
+begin
+  if v_actor is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if length(btrim(coalesce(p_title,'')))<2 then
+    raise exception 'GROUP_TITLE_REQUIRED'; end if;
+  select array_agg(distinct x) into v_members
+    from unnest(array_append(coalesce(p_member_ids,'{}'::uuid[]),v_actor)) x
+    where x is not null;
+  if cardinality(v_members)<3 or cardinality(v_members)>50 then
+    raise exception 'GROUP_MEMBER_LIMIT'; end if;
+  if exists (
+    select 1 from unnest(v_members) x
+    where not exists (select 1 from public.profiles p where p.id=x)
+  ) then raise exception 'GROUP_MEMBER_NOT_FOUND'; end if;
+  if exists (
+    select 1 from public.blocks b
+    where b.blocker_id=any(v_members) and b.blocked_id=any(v_members)
+  ) then raise exception 'GROUP_CONTAINS_BLOCKED_USERS'; end if;
+
+  insert into public.conversations(is_group,created_by,title,last_message_at)
+    values(true,v_actor,left(btrim(p_title),80),now())
+    returning id into v_group;
+  insert into public.conversation_participants(
+    conversation_id,user_id,is_admin
+  ) values(v_group,v_actor,true);
+  insert into public.blink_group_invitations(
+    conversation_id,invitee_id,inviter_id,status
+  ) select v_group,x,v_actor,'pending' from unnest(v_members) x
+    where x<>v_actor;
+  return v_group;
+end;
+$$;
+revoke all on function public.create_group_conversation(text,uuid[])
+  from public,anon;
+grant execute on function public.create_group_conversation(text,uuid[])
+  to authenticated;
+
 commit;
