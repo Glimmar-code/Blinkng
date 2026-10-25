@@ -11,6 +11,10 @@ on:
       - '.github/workflows/chat-media-contract-gate.yml'
   workflow_dispatch:
 
+concurrency:
+  group: chat-media-contract-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
