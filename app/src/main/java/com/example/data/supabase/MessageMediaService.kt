@@ -126,7 +126,7 @@ object MessageMediaService {
      * signed URL outside the app. 15 MiB limit applies to received bytes as well. */
     suspend fun copyPrivateImage(
         messageId: String, conversationId: String, output: OutputStream
-    ): Result<Long> = withContext(Dispatchers.IO) {
+    ): Result<Pair<Long, String>> = withContext(Dispatchers.IO) {
         runCatching {
             val url = freshImageUrl(messageId, conversationId)
                 ?: throw SecurityException("Picture access was not authorized.")
@@ -138,8 +138,10 @@ object MessageMediaService {
                 signed.port == host.port) { "Private picture host did not match." }
             client.newCall(Request.Builder().url(signed).get().build()).execute().use { response ->
                 check(response.isSuccessful) { "Could not download picture." }
-                require(response.header("Content-Type").orEmpty().startsWith("image/")) {
-                    "The selected attachment is not an image."
+                val mimeType = response.header("Content-Type").orEmpty()
+                    .substringBefore(';').trim().lowercase()
+                require(BlinkChatAttachmentKind.IMAGE.accepts(mimeType)) {
+                    "The selected attachment is not an allowed image."
                 }
                 val image = response.body ?: error("Picture was empty.")
                 require(image.contentLength() <= BlinkChatAttachmentKind.IMAGE.maxBytes) {
@@ -159,7 +161,7 @@ object MessageMediaService {
                     }
                 }
                 output.flush()
-                written
+                written to mimeType
             }
         }
     }
