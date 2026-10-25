@@ -27,6 +27,16 @@ import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatImageUploadWorker
+import com.example.data.supabase.BoundedMessageAttachment
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import androidx.lifecycle.Observer
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkInAppNotification
 import com.example.notification.BlinkInAppNotificationCenter
@@ -3070,11 +3080,103 @@ private suspend fun restoreSupabaseSession() {
         dispatchAttachment(partner, tempId)
     }
 
+    /**
+     * Images are staged in app-private durable storage, then delivered through
+     * WorkManager only when the device has internet. Unique names plus the
+     * server-provided client UUID prevent duplicate message rows on retries.
+     */
+    private fun enqueueImageAttachment(partner: String, tempId: String, pending: PendingAttachment) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val messageId = tempId.removePrefix("temp_attachment_")
+            try {
+                val outbox = java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+                    .apply { mkdirs() }
+                val durableFile = BoundedMessageAttachment.open(
+                    appContext, pending.uri, BlinkChatAttachmentKind.IMAGE
+                ).use { stage ->
+                    val file = java.io.File(outbox, "$messageId.${stage.extension}")
+                    stage.file.copyTo(file, overwrite = true)
+                    file
+                }
+                if (pending.uri.scheme == "file") {
+                    val source = java.io.File(pending.uri.path.orEmpty())
+                    if (source.parentFile?.name == "blink-camera" &&
+                        source.name.startsWith("blink-camera-")) source.delete()
+                }
+                val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
+                    .setConstraints(Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .setInputData(workDataOf(
+                        "ownerId" to pending.ownerId,
+                        "partner" to partner,
+                        "messageId" to messageId,
+                        "filename" to durableFile.name,
+                        "caption" to pending.caption,
+                        "imageQuality" to pending.imageQuality.name
+                    ))
+                    .addTag("blink_chat_picture").build()
+                WorkManager.getInstance(appContext).enqueueUniqueWork(
+                    "blink_chat_image_$messageId", ExistingWorkPolicy.KEEP, request
+                )
+                withContext(Dispatchers.Main) {
+                    val workManager = WorkManager.getInstance(appContext)
+                    val source = workManager.getWorkInfoByIdLiveData(request.id)
+                    val observer = object : Observer<WorkInfo> {
+                        override fun onChanged(info: WorkInfo) {
+                            if (info == null) return
+                            if (supabaseService.getCurrentUserId() == pending.ownerId) {
+                                updateAttachmentProgressInState(
+                                    partner, tempId, info.progress.getInt("progress", 0)
+                                )
+                            }
+                            if (!info.state.isFinished) return
+                            source.removeObserver(this)
+                            if (supabaseService.getCurrentUserId() != pending.ownerId) return
+                            if (info.state == WorkInfo.State.SUCCEEDED) {
+                                pendingAttachments.remove(tempId)
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    val remoteId = info.outputData.getString("serverMessageId")
+                                    val remote = runCatching {
+                                        val conversationId = chatRepository.fetchConversations()
+                                            .firstOrNull { it.partnerUsername.equals(partner, true) }
+                                            ?.id.orEmpty()
+                                        chatRepository.fetchMessagePage(conversationId)
+                                            .firstOrNull { it.id == remoteId }
+                                    }.getOrNull()
+                                    withContext(Dispatchers.Main) {
+                                        if (remote != null) replaceMessageInState(partner, tempId, remote)
+                                        else {
+                                            updateMessageStatusInState(partner, tempId, MessageStatus.SENT)
+                                            fetchSupabaseData()
+                                        }
+                                    }
+                                }
+                            } else {
+                                updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                                showToast("Picture wasn't sent. Tap to retry.")
+                            }
+                        }
+                    }
+                    source.observeForever(observer)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    updateMessageStatusInState(partner, tempId, MessageStatus.FAILED)
+                    showToast(e.message ?: "Could not queue picture. Tap to retry.")
+                }
+            }
+        }
+    }
+
     private fun dispatchAttachment(partner: String, tempId: String) {
         val pending = pendingAttachments[tempId] ?: return
         if (pending.ownerId != supabaseService.getCurrentUserId()) {
             pendingAttachments.remove(tempId)
             showToast("Attachment belongs to a previous account. Choose the file again.")
+            return
+        }
+        if (pending.kind == BlinkChatAttachmentKind.IMAGE) {
+            enqueueImageAttachment(partner, tempId, pending)
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -4274,6 +4376,9 @@ private suspend fun restoreSupabaseSession() {
                 }
             }
         }
+        WorkManager.getInstance(appContext).cancelAllWorkByTag("blink_chat_picture")
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .listFiles()?.forEach { runCatching { it.delete() } }
         pendingAttachments.clear()
         realtimeManager.disconnect()
         viewModelScope.launch {
