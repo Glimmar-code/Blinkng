@@ -48,6 +48,16 @@ const REASONS = Object.freeze({
     'No Update branch click is needed: integration retests against current main.'],
   batched: ['Included in isolated Testlab batch',
     'Review combined checks; release happens only after every required gate passes.'],
+  'batch-refresh': ['Testlab batch is updating to newer main',
+    'The automation is refreshing integration; all combined checks must rerun afterward.'],
+  'batch-checks': ['Combined Testlab verification is running or blocked',
+    'Open the batch PR Checks tab and resolve any actual failures before promotion.'],
+  'batch-staging': ['Combined Testlab batch needs staging acceptance',
+    'Verify the combined backend/release behavior independently in staging first.'],
+  'batch-device': ['Combined Testlab batch needs device acceptance',
+    'Verify the combined native/device behavior independently before production.'],
+  'batch-promoting': ['Combined checks passed — awaiting protected main promotion',
+    'The trusted promoter must recheck SHA, branch protections and required approvals.'],
 });
 
 function statusEntry(pr, code, detail = '') {
