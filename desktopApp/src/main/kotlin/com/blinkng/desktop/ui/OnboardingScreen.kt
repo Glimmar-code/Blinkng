@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.discovery.BlinkUniversitySearch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -287,8 +288,22 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                                 onValueChange = { university = it.take(120) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                label = { Text("Search / enter university") },
+                                label = { Text("Search university or acronym (e.g. FUTA)") },
                             )
+                            val universityMatches = remember(university) {
+                                BlinkUniversitySearch.search(university, limit = 6)
+                            }
+                            if (universityMatches.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    items(universityMatches, key = { it }) { candidate ->
+                                        FilterChip(
+                                            selected = university == candidate,
+                                            onClick = { university = candidate },
+                                            label = { Text(candidate) },
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(10.dp))
                             OutlinedTextField(
                                 value = department,
@@ -339,7 +354,7 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                             Spacer(Modifier.height(16.dp))
                             OnboardingPrimaryButton(
                                 text = if (state.busy) "Saving..." else "Continue",
-                                enabled = university.isNotBlank() &&
+                                enabled = BlinkUniversitySearch.canonical(university) != null &&
                                     department.isNotBlank() &&
                                     gender.isNotBlank() &&
                                     !state.busy,

@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.BlinkOnboardingCatalog
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
@@ -134,7 +135,7 @@ fun AccountOnboardingScreen(
     var usernameMessage by remember { mutableStateOf<String?>(null) }
 
     var university by rememberSaveable(profile.id) {
-        mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) })
+        mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) }.let { NigerianUniversitySearch.canonical(it) ?: it })
     }
     var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
@@ -514,7 +515,7 @@ fun AccountOnboardingScreen(
                                 }
 
                                 onSaveBasics(
-                                    university,
+                                    NigerianUniversitySearch.canonical(university) ?: university,
                                     department,
                                     level,
                                     gender,
