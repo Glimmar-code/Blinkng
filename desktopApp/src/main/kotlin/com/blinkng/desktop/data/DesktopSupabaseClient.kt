@@ -919,6 +919,9 @@ class DesktopSupabaseClient(
     suspend fun joinCommunity(id: String): String =
         communityRpc("blink_community_join", JSONObject().put("p_community_id", id))
 
+    suspend fun requestJoinCommunity(id: String): String =
+        communityRpc("blink_community_request_join", JSONObject().put("p_community_id", id))
+
     suspend fun inviteToCommunity(id: String, userId: String): String =
         communityRpc("blink_community_invite",
             JSONObject().put("p_community_id", id).put("p_user_id", userId))
