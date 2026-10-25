@@ -65,10 +65,15 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin main Testlab
-          # The feature delta is ONLY the files added by this chat PR.
-          # Do not merge all of stale Testlab into main: that would also bring
-          # hundreds of unrelated Testlab-only commits.
-          git diff --binary origin/Testlab...HEAD > "$RUNNER_TEMP/chat-pr.patch"
+          # PR #523 targets Testlab; main-derived integration PRs (e.g.
+          # #543) must use their actual base. Never synthesize all of the
+          # unrelated changes from the diverged Testlab branch.
+          source_base="${{ github.event.pull_request.base.ref }}"
+          case "$source_base" in
+            main|Testlab) ;;
+            *) echo "::error::Unexpected pull request base $source_base"; exit 1 ;;
+          esac
+          git diff --binary "origin/$source_base"...HEAD > "$RUNNER_TEMP/chat-pr.patch"
           git checkout --detach origin/main
           if git apply --3way --index "$RUNNER_TEMP/chat-pr.patch" > "$RUNNER_TEMP/merge-output.txt" 2>&1; then
             {
