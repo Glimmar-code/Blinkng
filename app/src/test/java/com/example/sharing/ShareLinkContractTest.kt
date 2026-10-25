@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -50,6 +51,16 @@ class ShareLinkContractTest {
             DeepLinkRouter.parse(Uri.parse(link))
         )
         assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://market/$marketId")))
+    }
+
+    @Test
+    fun `invite links select only valid usernames from owned HTTPS hosts`() {
+        assertEquals("glimmar", DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/Glimmar")))
+        assertEquals("glimmar", DeepLinkRouter.invitedBy(Uri.parse("https://www.blink.com.ng/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("http://blink.com.ng/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://attacker.example/invite/glimmar")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/bad%2Fpath")))
+        assertNull(DeepLinkRouter.invitedBy(Uri.parse("https://blink.com.ng/invite/g")))
     }
 
     @Test

@@ -1,0 +1,543 @@
+-- Synthetic data only; fail loudly on regression.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000001','2025-01-01T00:00:00Z',now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000001','alpha','Alpha Referrer','FUTA',true);
+
+-- New signup selects alpha, but credit must not be confirmed until email confirmation.
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000002','2026-01-01T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000001"}'
+);
+do $$
+begin
+  if (select status from public.blink_referrals
+      where referred_user_id='00000000-0000-0000-0000-000000000002') <> 'pending'
+  then raise exception 'Referral must remain pending before email confirmation'; end if;
+  if exists (select 1 from public.notifications where actor_id='00000000-0000-0000-0000-000000000002')
+  then raise exception 'Unconfirmed signup must not notify anyone'; end if;
+end $$;
+
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000002','beta','Beta Newcomer','FUTA',false);
+
+update auth.users set email_confirmed_at=now()
+where id='00000000-0000-0000-0000-000000000002';
+do $$
+begin
+  if (select status from public.blink_referrals
+      where referred_user_id='00000000-0000-0000-0000-000000000002') <> 'confirmed'
+  then raise exception 'Email-confirmed referral must be credited'; end if;
+  if (select count(*) from public.notifications
+      where actor_id='00000000-0000-0000-0000-000000000002'
+        and metadata->>'kind'='blink_referral_confirmed') <> 1
+  then raise exception 'Confirmed referral must produce exactly one notification'; end if;
+end $$;
+
+-- Repeated updates cannot award again.
+update auth.users set email_confirmed_at=now()
+where id='00000000-0000-0000-0000-000000000002';
+do $$
+begin
+  if (select count(*) from public.notifications
+      where actor_id='00000000-0000-0000-0000-000000000002'
+        and metadata->>'kind'='blink_referral_confirmed') <> 1
+  then raise exception 'Duplicate confirmation created multiple notifications'; end if;
+end $$;
+
+-- Self-referral and nonexistent/unonboarded referral cannot earn credit.
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000003','2026-01-02T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000003"}'
+);
+insert into auth.users(id,created_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000004','2026-01-03T00:00:00Z',
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000003"}'
+);
+do $$
+begin
+  if exists (select 1 from public.blink_referrals
+             where referred_user_id in (
+              '00000000-0000-0000-0000-000000000003',
+              '00000000-0000-0000-0000-000000000004'
+             ))
+  then raise exception 'Self or unonboarded referral accepted'; end if;
+end $$;
+
+-- Public suggestions protect private profiles, rank exact username first.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000005','2025-01-02T00:00:00Z',now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000005','alphaprivate','Alpha Private','FUTA',true);
+insert into public.user_settings(user_id,private_account)
+values ('00000000-0000-0000-0000-000000000005',true);
+do $$
+declare first_username text;
+begin
+  select username into first_username from public.blink_referrer_suggestions('alpha',10,0) limit 1;
+  if first_username <> 'alpha'
+  then raise exception 'Exact referrer match not ranked first: %', first_username; end if;
+  if exists(select 1 from public.blink_referrer_suggestions('alpha',10,0) where username='alphaprivate')
+  then raise exception 'Private user was leaked in public signup suggestions'; end if;
+end $$;
+
+-- Logged-in referrer sees exactly one confirmed referral and active discovery score.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+declare total bigint; active bigint; points integer;
+begin
+  select total_referrals,active_referrals,visibility_points into total,active,points
+  from public.blink_referral_dashboard();
+  if total<>1 or active<>1 or points<>3
+  then raise exception 'Dashboard totals invalid: %, %, %',total,active,points; end if;
+  if exists(select 1 from public.blink_referral_recommendations(10) where id='00000000-0000-0000-0000-000000000001')
+  then raise exception 'Self-profile suggested to viewer'; end if;
+end $$;
+
+-- Fresh referrals fade smoothly, never rewrite historical achievement counts.
+update public.blink_referrals
+  set confirmed_at=now()-interval '11 days'
+  where referred_user_id='00000000-0000-0000-0000-000000000002';
+do $$
+declare total bigint; points integer; badge text;
+begin
+  select total_referrals, visibility_points, achievement_tier into total, points, badge
+  from public.blink_referral_dashboard();
+  if total<>1 or points<>2 or badge<>'Starter'
+  then raise exception 'Day 11 fade must retain permanent achievement: %, %, %',total,points,badge; end if;
+end $$;
+
+update public.blink_referrals
+  set confirmed_at=now()-interval '21 days'
+  where referred_user_id='00000000-0000-0000-0000-000000000002';
+do $$
+declare total bigint; points integer;
+begin
+  select total_referrals, visibility_points into total, points from public.blink_referral_dashboard();
+  if total<>1 or points<>1
+  then raise exception 'Day 21 must have 1 point and still 1 lifelong referral: %, %', total, points; end if;
+end $$;
+
+update public.blink_referrals
+  set confirmed_at=now()-interval '31 days'
+  where referred_user_id='00000000-0000-0000-0000-000000000002';
+do $$
+declare total bigint; active bigint; points integer; badge text;
+begin
+  select total_referrals, active_referrals, visibility_points, achievement_tier
+  into total, active, points, badge from public.blink_referral_dashboard();
+  if total<>1 or active<>0 or points<>0 or badge<>'Starter'
+  then raise exception 'Day 31 expiry cannot erase badge: %, %, %, %',total,active,points,badge; end if;
+end $$;
+
+-- One NEW confirmation refreshes the temporary advantage, without resetting
+-- the old account's earned lifetime credit.
+insert into auth.users(id,created_at,email_confirmed_at,raw_user_meta_data)
+values (
+ '00000000-0000-0000-0000-000000000006','2026-01-04T00:00:00Z',now(),
+ '{"blink_referrer_id":"00000000-0000-0000-0000-000000000001"}'
+);
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000006','gamma','Gamma Newcomer','FUTA',false);
+do $$
+declare total bigint; active bigint; points integer;
+begin
+  select total_referrals, active_referrals, visibility_points into total,active,points
+  from public.blink_referral_dashboard();
+  if total<>2 or active<>1 or points<>3
+  then raise exception 'New referral must replenish fading visibility: %, %, %',total,active,points; end if;
+end $$;
+
+-- Test durable milestone tiers independent of the temporary 30-day score.
+do $$
+declare expected record; actual_tier text; next_target integer;
+begin
+  for expected in
+    select * from (values
+      (0::bigint, 'New member'::text, 1::integer),
+      (1::bigint, 'Starter'::text, 5::integer),
+      (5::bigint, 'Builder'::text, 10::integer),
+      (10::bigint, 'Advocate'::text, 25::integer),
+      (25::bigint, 'Connector'::text, 50::integer),
+      (50::bigint, 'Champion'::text, 100::integer),
+      (100::bigint, 'Ambassador'::text, null::integer)
+    ) as tiers(total,tier,next_target)
+  loop
+    update public.blink_referral_achievements set confirmed_referrals=expected.total
+      where user_id='00000000-0000-0000-0000-000000000001';
+    select achievement_tier,achievement_next_target into actual_tier,next_target
+      from public.blink_referral_dashboard();
+    if actual_tier is distinct from expected.tier or next_target is distinct from expected.next_target
+    then raise exception 'Tier % expected %/% got %/%',expected.total,expected.tier,
+      expected.next_target,actual_tier,next_target; end if;
+  end loop;
+  -- Restore the real synthetic aggregate after the tier table test.
+  update public.blink_referral_achievements set confirmed_referrals=2
+    where user_id='00000000-0000-0000-0000-000000000001';
+end $$;
+
+-- RLS must hide other people's referrals; clients cannot directly forge referral rows.
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000003',false);
+do $$
+begin
+  if exists(select 1 from public.blink_referrals)
+  then raise exception 'Referral records leaked through RLS'; end if;
+  begin
+    insert into public.blink_referrals(referred_user_id,referrer_user_id,status)
+    values (
+      '00000000-0000-0000-0000-000000000003',
+      '00000000-0000-0000-0000-000000000005',
+      'confirmed'
+    );
+    raise exception 'Unprivileged client forged a referral';
+  exception when insufficient_privilege then
+    null; -- expected: no direct INSERT grant
+  end;
+end $$;
+reset role;
+
+-- A referred member may leave BLINK, but the referrer's anonymized, earned
+-- achievement total must persist. No personal data is retained in the tally.
+delete from public.notifications
+where actor_id='00000000-0000-0000-0000-000000000002';
+delete from auth.users where id='00000000-0000-0000-0000-000000000002';
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+declare total bigint;
+begin
+  select total_referrals into total from public.blink_referral_dashboard();
+  if total<>2 then raise exception 'Deleting a referred account erased lifetime badge progress: %',total; end if;
+end $$;
+select 'BLINK Refer & Grow permanent achievements + fading visibility checks passed' as result;
+
+-- Privacy-aware leaderboard includes only public profiles and excludes blocked accounts.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+update public.profiles set is_verified=true, verification_badge='blue',
+  profile_views_this_week=7 where username='alpha';
+insert into public.follows(follower_id,following_id,created_at)
+values ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000001',now());
+set role authenticated;
+do $$
+declare
+  current_rank bigint;
+  weekly_views bigint;
+  weekly_followers bigint;
+  actions bigint;
+begin
+  select rank_position into current_rank from public.blink_referral_leaderboard(7,10)
+   where username='alpha';
+  if current_rank<>1 then raise exception 'Unexpected weekly connector rank: %',current_rank; end if;
+  select profile_views_this_week,followers_gained_this_week,share_actions
+    into weekly_views,weekly_followers,actions from public.blink_referral_growth_stats();
+  if weekly_views<>7 or weekly_followers<>1 or actions<>0
+  then raise exception 'Growth must show observed stats only: %, %, %',weekly_views,weekly_followers,actions; end if;
+  if not public.blink_record_referral_share('copy')
+  then raise exception 'First legitimate share action should be recorded'; end if;
+  if public.blink_record_referral_share('copy')
+  then raise exception 'Repeated rapid share action should be throttled'; end if;
+  select share_actions into actions from public.blink_referral_growth_stats();
+  if actions<>1 then raise exception 'Share action counter did not reflect one event: %',actions; end if;
+  begin
+    insert into public.blink_referral_share_events(user_id,channel)
+    values ('00000000-0000-0000-0000-000000000001','share');
+    raise exception 'Client unexpectedly allowed to forge share events';
+  exception when insufficient_privilege then
+    null;
+  end;
+end $$;
+reset role;
+select 'BLINK referral leaderboard + observed analytics checks passed' as result;
+
+-- Relevance-first search exact match regression: boosts may break ties, not defeat exact usernames.
+update public.profiles set onboarding_completed=true where username='gamma';
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+declare first_result text;
+begin
+  select username into first_result from public.blink_referral_profile_search('alpha',20) limit 1;
+  if first_result<>'alpha' then
+    raise exception 'Referral boost outranked exact Search username: %', first_result;
+  end if;
+  if exists(select 1 from public.blink_referral_profile_search('alpha',20) where username='alphaprivate')
+  then raise exception 'Private profile leaked in referral-aware Search'; end if;
+  if exists(select 1 from public.blink_referrer_suggestions('%',10,0))
+  then raise exception 'SQL percent wildcard returned unrelated referrers'; end if;
+  if exists(select 1 from public.blink_referral_profile_search('%',20))
+  then raise exception 'SQL percent wildcard returned unrelated Search profiles'; end if;
+end $$;
+reset role;
+select 'Relevance-first search exact match regression passed' as result;
+
+-- Testable rewards policy is deliberately disabled until the owner approves Coins.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+declare rewards_enabled boolean;
+begin
+  select reward_enabled into rewards_enabled from public.blink_referral_coin_status();
+  if rewards_enabled then raise exception 'Referral Coin minting must be off by default'; end if;
+  if exists(select 1 from public.blink_referral_coin_milestones)
+  then raise exception 'Unexpected Coin mint while disabled'; end if;
+end $$;
+
+-- Enable milestone 5 ONLY in this disposable database, verify idempotent accounting.
+update private.blink_referral_reward_policy set enabled=true where milestone=5;
+update public.blink_referral_achievements set confirmed_referrals=5
+where user_id='00000000-0000-0000-0000-000000000001';
+do $$
+declare earned bigint; balance numeric; count_events integer;
+begin
+  select earned_coins into earned from public.blink_referral_coin_status();
+  select spendable_coin_balance into balance from public.user_balances
+  where user_id='00000000-0000-0000-0000-000000000001';
+  select count(*) into count_events from public.blink_coin_transactions
+  where user_id='00000000-0000-0000-0000-000000000001' and kind='referral_milestone';
+  if earned<>25 or balance<>25 or count_events<>1 then
+    raise exception 'Milestone reward mismatch %, %, %',earned,balance,count_events;
+  end if;
+end $$;
+update public.blink_referral_achievements set confirmed_referrals=5
+where user_id='00000000-0000-0000-0000-000000000001';
+do $$
+begin
+  if (select count(*) from public.blink_referral_coin_milestones)<>1
+  then raise exception 'Duplicate Coin reward'; end if;
+end $$;
+-- Restore no-mint configuration in the disposable fixture only.
+update private.blink_referral_reward_policy set enabled=false;
+
+-- Source attribution records only valid unique daily public profile opens.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+begin
+  if not public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'First Search open should count'; end if;
+  if public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'Duplicate same-day Search open counted'; end if;
+  if not public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000001','recommendations')
+  then raise exception 'Recommended profile open should count'; end if;
+  if public.blink_record_referral_discovery_open(
+      '00000000-0000-0000-0000-000000000006','search')
+  then raise exception 'Self profile counted as discovery'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare search_count bigint; suggested_count bigint;
+begin
+  select search_profile_opens,recommendation_profile_opens
+  into search_count,suggested_count from public.blink_referral_source_analytics();
+  if search_count<>1 or suggested_count<>1 then
+    raise exception 'Source analytics mismatch %, %', search_count,suggested_count;
+  end if;
+end $$;
+reset role;
+select 'Milestone Coin rewards and Search/recommendation source attribution passed' as result;
+
+
+-- Independent outbox delivery, authenticated link telemetry, and restricted roles.
+-- The outbox must not depend on the newly referred student reopening BLINK.
+do $$
+declare pending integer;
+begin
+  select count(*) into pending from private.blink_referral_push_outbox;
+  if pending <> 1 then raise exception 'Deleted newcomer must cascade outbox; expected one live push, got %', pending; end if;
+end $$;
+-- Link metrics are per browser+referrer+UTC day and do not mint points or Coins.
+select set_config('request.jwt.claim.sub','',false);
+set role anon;
+do $$
+declare
+  visitor uuid := '00000000-0000-0000-0000-000000000011';
+begin
+  if not public.blink_record_referral_link_open('alpha',visitor) then
+    raise exception 'First legitimate invite open should be tracked';
+  end if;
+  if public.blink_record_referral_link_open('alpha',visitor) then
+    raise exception 'Same-browser same-day invite opened twice';
+  end if;
+  if public.blink_record_referral_link_open('alphaprivate',visitor) then
+    raise exception 'A private referrer must not be exposed through invite links';
+  end if;
+  begin
+    insert into public.blink_referral_link_opens(referrer_id,visitor_key)
+    values('00000000-0000-0000-0000-000000000001',visitor);
+    raise exception 'Anonymous caller forged a link-open event';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.blink_claim_referral_pushes(10);
+    raise exception 'Anonymous caller claimed a server push';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare
+  clicks bigint;
+  conversions bigint;
+begin
+  select unique_link_opens_30d,confirmed_referrals_30d into clicks,conversions
+    from public.blink_referral_link_stats();
+  if clicks<>1 then raise exception 'Unique estimated invite browser opens should equal one: %',clicks; end if;
+  if conversions<>1 then raise exception 'Confirmed 30d referrals should be one: %',conversions; end if;
+  begin
+    perform public.blink_finish_referral_push(
+      '00000000-0000-0000-0000-000000000001',true,null,1);
+    raise exception 'User unexpectedly acknowledged a server push';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+set role service_role;
+do $$
+declare picked record; total integer := 0;
+begin
+  for picked in select * from public.blink_claim_referral_pushes(10)
+  loop
+    total := total+1;
+    if public.blink_finish_referral_push(picked.notification_id,true,null,picked.attempt_count-1) then
+      raise exception 'A stale worker could acknowledge a newer delivery attempt';
+    end if;
+    if not public.blink_finish_referral_push(picked.notification_id,true,null,picked.attempt_count) then
+      raise exception 'Trusted service role could not acknowledge a queued push';
+    end if;
+  end loop;
+  if total <> 1 then raise exception 'Worker should claim one surviving push, got %',total; end if;
+  if exists(select 1 from public.blink_claim_referral_pushes(10)) then
+    raise exception 'Delivered push was dispatched more than once';
+  end if;
+end $$;
+reset role;
+select 'Referrals: durable server worker outbox, permissions and estimated link telemetry passed' as result;
+
+
+-- Invitation-only group creation must not add people before they consent.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000000007',now(),now()),
+       ('00000000-0000-0000-0000-000000000008',now(),now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000000007','delta','Delta','FUTA',true),
+       ('00000000-0000-0000-0000-000000000008','epsilon','Epsilon','FUTA',true);
+update public.profiles set onboarding_completed=true where username='gamma';
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare group_id uuid;
+begin
+  group_id:=public.blink_create_invite_only_group('Physics classmates',
+    array['00000000-0000-0000-0000-000000000006'::uuid,'00000000-0000-0000-0000-000000000007'::uuid]);
+  if group_id is null then raise exception 'Owner could not create opt-in invite group'; end if;
+  if (select count(*) from public.conversation_participants where conversation_id=group_id)<>1
+  then raise exception 'Invited users were added without consent'; end if;
+  begin
+    perform public.blink_create_invite_only_group('Not allowed',
+      array['00000000-0000-0000-0000-000000000005'::uuid,
+            '00000000-0000-0000-0000-000000000007'::uuid]);
+    raise exception 'Private account was invited';
+  exception when others then
+    if SQLERRM='Private account was invited' then raise; end if;
+  end;
+end $$;
+reset role;
+-- Recipients may independently accept or decline; other students cannot mutate them.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000007',false);
+set role authenticated;
+do $$
+declare item record;
+begin
+  select * into item from public.blink_my_group_invitations(10) limit 1;
+  if item.group_id is null or item.inviter_username<>'alpha' then
+    raise exception 'Invitation not visible to its actual recipient'; end if;
+  if not public.blink_respond_to_group_invite(item.group_id,true)
+  then raise exception 'Recipient cannot accept'; end if;
+  if not exists(select 1 from public.conversation_participants
+     where conversation_id=item.group_id and user_id='00000000-0000-0000-0000-000000000007')
+  then raise exception 'Accepted member not inserted'; end if;
+  if public.blink_respond_to_group_invite(item.group_id,true)
+  then raise exception 'Duplicate acceptance incorrectly returned success'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000008',false);
+set role authenticated;
+do $$
+begin
+  if exists(select 1 from public.blink_my_group_invitations(10))
+  then raise exception 'Third-party invitations leaked'; end if;
+  if exists(select 1 from public.conversation_participants)
+  then raise exception 'Uninvited users can read group memberships'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+declare group_id uuid;
+begin
+  select i.group_id into group_id from public.blink_my_group_invitations(10) i limit 1;
+  if not public.blink_respond_to_group_invite(group_id,false)
+  then raise exception 'Recipient cannot decline'; end if;
+  if exists(select 1 from public.conversation_participants
+    where conversation_id=group_id and user_id='00000000-0000-0000-0000-000000000006')
+  then raise exception 'Declined member was added'; end if;
+end $$;
+reset role;
+select 'Group invitation consent, cross-account isolation and private-account restrictions passed' as result;
+
+
+-- Viewable-card impressions are NOT clicks, follows, Coin rewards or referrals.
+-- They require a signed-in viewer and deduplicate per viewer/profile/source/day.
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+begin
+  if not public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'First Search impression should count'; end if;
+  if public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search')
+  then raise exception 'Repeated same-day Search impression counted'; end if;
+  if not public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','recommendations')
+  then raise exception 'Recommendations must be attributed separately'; end if;
+  if public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000006','search')
+  then raise exception 'Self impressions must not count'; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+set role authenticated;
+do $$
+declare from_search bigint; from_recommendations bigint;
+begin
+  select search_impressions_7d,recommendation_impressions_7d
+  into from_search,from_recommendations
+  from public.blink_referral_impression_stats();
+  if from_search<>1 or from_recommendations<>1
+  then raise exception 'Wrong source impression attribution: %, %',from_search,from_recommendations; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub','',false);
+set role anon;
+do $$
+begin
+  begin
+    perform public.blink_record_referral_impression(
+      '00000000-0000-0000-0000-000000000001','search');
+    raise exception 'Anonymous account forged a referral impression';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select 'Authenticated, deduplicated and privacy-limited referral impressions passed' as result;

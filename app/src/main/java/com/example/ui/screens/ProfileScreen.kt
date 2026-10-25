@@ -183,6 +183,7 @@ fun ProfileScreen(
     }
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
+    var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
@@ -241,6 +242,10 @@ fun ProfileScreen(
     val textPrimary = if (isDark) Color.White else LightTextPrimary
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val borderColor = if (isDark) DarkBorder else LightBorder
+
+    if (showReferGrow && isMe) {
+        BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
+    }
 
     if (showProgressHub && isMe) {
         ProgressHubSheet(
@@ -1030,6 +1035,14 @@ fun ProfileScreen(
                                     },
                                     modifier = Modifier.weight(1f)
                                 )
+                            }
+
+                            if (isMe) {
+                                OutlinedButton(onClick = { showReferGrow = true }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Refer & Grow · My Referrals")
+                                }
                             }
 
                             if (isMe || profile.links.website.isNotBlank()) {
