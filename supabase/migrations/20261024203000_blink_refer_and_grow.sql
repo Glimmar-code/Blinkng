@@ -429,14 +429,14 @@ grant execute on function public.blink_referral_growth_stats() to authenticated;
 create or replace function public.blink_referral_leaderboard(
   p_days integer default 7, p_limit integer default 20
 )
-returns table(position bigint, id uuid, username text, full_name text,
+returns table(rank_position bigint, id uuid, username text, full_name text,
               avatar_url text, university text, successful_referrals bigint)
 language sql stable security definer set search_path = ''
 as $$
   with ranked as (
     select row_number() over (
              order by count(r.referred_user_id) desc, lower(p.username),p.id
-           )::bigint as position,
+           )::bigint as rank_position,
            p.id, p.username, p.full_name, p.avatar_url, p.university,
            count(r.referred_user_id)::bigint as successful_referrals
       from public.blink_referrals r
@@ -455,9 +455,9 @@ as $$
        )
      group by p.id,p.username,p.full_name,p.avatar_url,p.university
   )
-  select position,id,username,full_name,avatar_url,university,successful_referrals
+  select rank_position,id,username,full_name,avatar_url,university,successful_referrals
     from ranked
-   order by position
+   order by rank_position
    limit greatest(1,least(coalesce(p_limit,20),50));
 $$;
 revoke all on function public.blink_referral_leaderboard(integer,integer) from public, anon;
