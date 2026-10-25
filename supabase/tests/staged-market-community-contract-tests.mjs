@@ -350,6 +350,14 @@ export async function stagedMarketCommunityContractTests() {
       select * from public.blink_group_members('${group}')`),
       'NOT_AN_ACTIVE_GROUP_MEMBER');
     await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await rejects(() => db.exec(`
+      update public.conversation_participants set left_at=now()
+      where conversation_id='${managed}' and user_id='${owner}'`),
+      'GROUP_OWNER_MUST_TRANSFER_FIRST');
+    await db.exec('reset role');
+    console.log('PASS staged founder cannot silently abandon group via raw UPDATE');
     console.log('PASS staged active roster permissions');
     console.log('PASS staged group send/identity/title permissions');
     console.log('PASS staged self-invite/admin escalation/rejoin/departed-group RLS');
