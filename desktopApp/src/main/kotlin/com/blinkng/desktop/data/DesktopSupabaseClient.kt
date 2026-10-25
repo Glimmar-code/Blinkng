@@ -2,6 +2,8 @@ package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
 import com.blinkng.shared.BlinkChatImageQuality
+import com.blinkng.shared.BlinkChatPhotoAlbum
+import okhttp3.RequestBody.Companion.asRequestBody
 import com.blinkng.shared.BlinkChatAttachmentKind
 import com.blinkng.shared.BlinkChatUploadProgress
 import okhttp3.RequestBody
@@ -825,11 +827,43 @@ class DesktopSupabaseClient(
     }
 
     /** Desktop uses the same user-owned private bucket and messages RLS as Android. */
+    @Volatile private var photoSchemaAvailable: Boolean? = null
+    private fun supportsPhotoSchema(): Boolean {
+        photoSchemaAvailable?.let { return it }
+        val supported = runCatching {
+            getArray("/rest/v1/messages?select=image_album_id,image_album_position," +
+                "image_album_size,image_preview_url&limit=0")
+            true
+        }.getOrDefault(false)
+        if (supported) photoSchemaAvailable = true
+        return supported
+    }
+
+    private fun makeSmallChatPreview(original: File): File? {
+        val source = runCatching { ImageIO.read(original) }.getOrNull() ?: return null
+        val ratio = minOf(1.0, 320.0 / maxOf(source.width, source.height))
+        val w = (source.width * ratio).toInt().coerceAtLeast(1)
+        val h = (source.height * ratio).toInt().coerceAtLeast(1)
+        val target = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        val graphics = target.createGraphics()
+        try {
+            graphics.color = java.awt.Color.WHITE
+            graphics.fillRect(0, 0, w, h)
+            graphics.drawImage(source, 0, 0, w, h, null)
+        } finally { graphics.dispose() }
+        val small = File.createTempFile("blink-preview-", ".jpg")
+        return try {
+            if (ImageIO.write(target, "jpg", small) && small.length() in 1..180000) small
+            else { small.delete(); null }
+        } catch (_: Exception) { small.delete(); null }
+    }
+
     suspend fun sendChatImage(
         conversationId: String, file: File, caption: String,
         quality: BlinkChatImageQuality,
         onProgress: (Int) -> Unit = {},
-        clientMessageId: String = UUID.randomUUID().toString()
+        clientMessageId: String = UUID.randomUUID().toString(),
+        album: BlinkChatPhotoAlbum = BlinkChatPhotoAlbum.single()
     ): DesktopMessage = withContext(Dispatchers.IO) {
         require(UUID.fromString(conversationId).toString() == conversationId) { "Invalid conversation." }
         val userId = requireSession().userId
@@ -899,18 +933,52 @@ class DesktopSupabaseClient(
             }
             execute(authenticatedRequest("/storage/v1/object/message-media/$encoded")
                 .header("x-upsert", "false").post(body).build())
+            val supportsMetadata = supportsPhotoSchema()
+            var previewRef: String? = null
+            if (supportsMetadata) {
+                val thumb = makeSmallChatPreview(prepared)
+                if (thumb != null) {
+                    try {
+                        val thumbPath = "conversations/$conversationId/users/$userId/preview/" +
+                            "${UUID.randomUUID()}.jpg"
+                        val encodedThumb = thumbPath.split('/').joinToString("/") { encode(it) }
+                        val uploaded = runCatching {
+                            execute(authenticatedRequest(
+                                "/storage/v1/object/message-media/$encodedThumb"
+                            ).header("x-upsert", "false")
+                                .post(thumb.asRequestBody("image/jpeg".toMediaType())).build())
+                            true
+                        }.getOrDefault(false)
+                        if (uploaded) previewRef = "message-media:$thumbPath"
+                    } finally { thumb.delete() }
+                }
+            }
+            val payload = JSONObject().put("id", messageId)
+                .put("conversation_id", conversationId)
+                .put("sender_id", userId)
+                .put("content", caption.trim().take(1024).ifBlank { "Image" })
+                .put("message_type", "image")
+                .put("media_url", "message-media:$objectPath")
+                .put("is_read", false)
+            if (supportsMetadata) {
+                if (album.grouped) {
+                    payload.put("image_album_id", album.id)
+                        .put("image_album_position", album.position)
+                        .put("image_album_size", album.size)
+                }
+                previewRef?.let { payload.put("image_preview_url", it) }
+            }
             val row = postArray(
-                "/rest/v1/messages",
-                JSONObject().put("id", messageId)
-                    .put("conversation_id", conversationId)
-                    .put("sender_id", userId)
-                    .put("content", caption.trim().take(1024).ifBlank { "Image" })
-                    .put("message_type", "image")
-                    .put("media_url", "message-media:$objectPath")
-                    .put("is_read", false),
+                "/rest/v1/messages", payload,
                 prefer = "return=representation"
             ).optJSONObject(0) ?: throw IllegalStateException("Picture not confirmed by server.")
-            parseMessage(row).copy(mediaUrl = signedChatImageUrl("message-media:$objectPath", conversationId))
+            parseMessage(row).copy(
+                mediaUrl = signedChatImageUrl("message-media:$objectPath", conversationId),
+                imagePreviewUrl = previewRef?.let { signedChatImageUrl(it, conversationId) },
+                imageAlbumId = album.id.takeIf { supportsMetadata && album.grouped },
+                imageAlbumPosition = if (supportsMetadata) album.position else 0,
+                imageAlbumSize = if (supportsMetadata) album.size else 1
+            )
         } finally {
             if (prepared != file) prepared.delete()
         }
