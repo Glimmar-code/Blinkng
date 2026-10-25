@@ -244,6 +244,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         if (hasLocalSession) restoreLocalSession()
 
         observeCachedContent()
+        restoreDurablePictureDrafts()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
             restoreResumableRouteFromCurrentState()
@@ -3084,6 +3085,32 @@ private suspend fun restoreSupabaseSession() {
         dispatchAttachment(partner, tempId)
     }
 
+    /** Restore the original message ID and private local file after process restart,
+     * so manual retry/cancel can refer to the same server-side idempotency key. */
+    private fun restoreDurablePictureDrafts() {
+        val currentUserId = supabaseService.getCurrentUserId().orEmpty()
+        if (currentUserId.isBlank()) return
+        val directory = java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+        directory.listFiles()?.filter { it.name.endsWith(".pending") }?.forEach { marker ->
+            runCatching {
+                val obj = JSONObject(marker.readText())
+                val uid = obj.optString("ownerId")
+                if (uid != currentUserId) return@runCatching
+                val id = UUID.fromString(obj.getString("messageId")).toString()
+                val imageFile = java.io.File(directory, obj.getString("filename"))
+                if (imageFile.canonicalFile.parentFile != directory.canonicalFile ||
+                    !imageFile.isFile || !imageFile.name.startsWith("$id.")) return@runCatching
+                val kind = runCatching {
+                    BlinkChatImageQuality.valueOf(obj.optString("imageQuality"))
+                }.getOrDefault(BlinkChatImageQuality.STANDARD)
+                pendingAttachments["temp_attachment_$id"] = PendingAttachment(
+                    Uri.fromFile(imageFile), BlinkChatAttachmentKind.IMAGE, 0L, uid,
+                    obj.optString("caption").take(1024), kind
+                )
+            }.onFailure { Log.w(TAG, "Skipped invalid local picture draft", it) }
+        }
+    }
+
     /**
      * Images are staged in app-private durable storage, then delivered through
      * WorkManager only when the device has internet. Unique names plus the
@@ -3106,6 +3133,17 @@ private suspend fun restoreSupabaseSession() {
                     durableFile.delete()
                     return@launch
                 }
+                val record = java.io.File(outbox, "$messageId.pending")
+                val json = JSONObject()
+                    .put("messageId", messageId)
+                    .put("ownerId", pending.ownerId)
+                    .put("partner", partner)
+                    .put("caption", pending.caption)
+                    .put("imageQuality", pending.imageQuality.name)
+                    .put("filename", durableFile.name)
+                val writing = java.io.File(outbox, "$messageId.pending.tmp")
+                writing.writeText(json.toString())
+                check(writing.renameTo(record)) { "Could not persist picture upload." }
                 val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
                     .setConstraints(Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -3260,6 +3298,8 @@ private suspend fun restoreSupabaseSession() {
             pending.ownerId != supabaseService.getCurrentUserId()) return
         cancelledImageUploads.add(tempId)
         pendingAttachments.remove(tempId)
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .resolve("${tempId.removePrefix("temp_attachment_")}.pending").delete()
         WorkManager.getInstance(appContext).cancelUniqueWork(
             "blink_chat_image_${tempId.removePrefix("temp_attachment_")}"
         )
@@ -3286,6 +3326,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
         if (failedMessage.id.startsWith("temp_attachment_")) {
+            if (!pendingAttachments.containsKey(failedMessage.id)) restoreDurablePictureDrafts()
             if (pendingAttachments.containsKey(failedMessage.id)) {
                 updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
                 dispatchAttachment(partnerUsername.trim().removePrefix("@"), failedMessage.id)
