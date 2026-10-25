@@ -292,8 +292,7 @@ object MessageMediaService {
         if (messages.isEmpty()) return@withContext messages
         val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
             ?: return@withContext messages
-        val ids = messages.filter { it.attachedImageUrl != null ||
-            it.text == "View once photo" }.mapNotNull {
+        val ids = messages.mapNotNull {
             runCatching { UUID.fromString(it.id).toString() }.getOrNull()
         }
         if (ids.isEmpty()) return@withContext messages
