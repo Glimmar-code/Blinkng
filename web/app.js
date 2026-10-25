@@ -977,6 +977,8 @@
     if(!requireAuth())return;
     modal('Refer & Grow', '<p>Invite friends. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
       '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
+      '<div id="referral-growth" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-top" class="muted" style="margin-top:9px"></div>' +
       '<div class="form-stack"><button type="button" class="btn primary" id="share-referral">Share invitation</button></div>');
     const stats=document.getElementById('referral-stats');
     if(!stats)return;
@@ -998,15 +1000,38 @@
           ' · Each new confirmation adds 3 points for 10 days, then 2, then 1; after 30 days it expires. Your achievement never fades.'
         : 'No referral activity yet.';
     }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
+    void Promise.allSettled([
+      rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5})
+    ]).then(([growthResult,leaderResult])=>{
+      const growth=document.getElementById('referral-growth');
+      if(growth?.isConnected && growthResult.status==='fulfilled'){
+        const x=Array.isArray(growthResult.value)?growthResult.value[0]:null;
+        if(x) growth.textContent='Real profile views this week: '+fmt(x.profile_views_this_week)+
+          ' · Followers gained this week: '+fmt(x.followers_gained_this_week)+
+          ' · Invite share actions: '+fmt(x.share_actions)+
+          ' · Source-level Search/recommendation attribution is not yet tracked.';
+      }
+      const lead=document.getElementById('referral-top');
+      if(lead?.isConnected && leaderResult.status==='fulfilled'){
+        const rows=Array.isArray(leaderResult.value)?leaderResult.value:[];
+        if(rows.length)lead.textContent='Top connectors this week: '+
+          rows.map(x=>'#'+x.position+' @'+x.username+' ('+fmt(x.successful_referrals)+')').join(' · ');
+      }
+    });
     document.getElementById('share-referral')?.addEventListener('click',async()=>{
       const username=String(state.profile?.username||'').toLowerCase().replace(/^@/,'');
       if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(username)){toast('Complete your username first.');return;}
       const invite='Join me on BLINK — connect and discover students beyond link.\n'+
         SITE_URL+'/invite/'+encodeURIComponent(username);
       try{
-        if(navigator.share)await navigator.share({title:'Join BLINK',text:invite});
-        else if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(invite);toast('Invite copied.');}
-        else toast('Sharing is unavailable in this browser.');
+        if(navigator.share) {
+          await navigator.share({title:'Join BLINK',text:invite});
+          void rpc('blink_record_referral_share',{p_channel:'web'}).catch(()=>{});
+        } else if(navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(invite);
+          toast('Invite copied.');
+          void rpc('blink_record_referral_share',{p_channel:'copy'}).catch(()=>{});
+        } else toast('Sharing is unavailable in this browser.');
       }catch{}
     });
   }
@@ -1017,9 +1042,15 @@
     const form=`<form id="search-form" style="display:flex;gap:8px;margin-bottom:13px"><input class="search-input" name="q" maxlength="120" value="${esc(q)}" placeholder="Search people, posts, tags…" autocomplete="off"><button class="btn primary">Search</button></form><div id="search-results"></div>`;
     const promo='<button type="button" class="card" id="refer-grow-promo" style="width:100%;text-align:left;margin-bottom:13px;padding:15px">' +
       '<strong>🚀 Refer friends. Get discovered.</strong><p class="muted small">Invite students to BLINK. Confirmed referrals can improve your chances of being recommended to new members.</p>' +
-      '<span class="btn small-btn primary">Invite friends →</span></button>';
+      '<span class="btn small-btn primary">Invite friends →</span>'+
+      '<span class="muted small" id="refer-grow-promo-count"></span></button>';
     ROOT.innerHTML=shell(promo+form,'Search');bindCommon();
     document.getElementById('refer-grow-promo').onclick=showReferralGrowth;
+    void rpc('blink_referral_dashboard').then(rows=>{
+      const n=document.getElementById('refer-grow-promo-count');
+      const item=Array.isArray(rows)?rows[0]:null;
+      if(n?.isConnected && item)n.textContent=' · '+fmt(item.total_referrals)+' confirmed referrals';
+    }).catch(()=>{});
     document.getElementById('search-form').onsubmit=e=>{
       e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();
       const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);runSearch(v);
