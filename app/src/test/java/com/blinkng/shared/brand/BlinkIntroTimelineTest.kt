@@ -4,24 +4,35 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** Align the production baseline test with the explicitly shortened intro. */
 class BlinkIntroTimelineTest {
     @Test
-    fun timelineMatchesApprovedSixPointFourSecondAnimation() {
-        assertEquals(6400, BLINK_INTRO_DURATION_MS)
-        assertEquals(0f, introFraction(200f, 230, 560), 0.001f)
-        assertEquals(0.5f, introFraction(395f, 230, 560), 0.001f)
-        assertEquals(1f, introFraction(570f, 230, 560), 0.001f)
-        assertEquals(0f, introFraction(-100f, 230, 560), 0.001f)
+    fun introductionHasNoArtificialBlankLeadIn() {
+        assertEquals(3_200, BLINK_INTRO_DURATION_MS)
+        // A time fraction must clamp correctly for all timestamps; the artwork
+        // itself is visible on the first rendered Compose frame.
+        assertEquals(0f, introFraction(-100f, 0, 400), 0.001f)
+        assertEquals(0f, introFraction(0f, 0, 400), 0.001f)
+        assertEquals(0.5f, introFraction(200f, 0, 400), 0.001f)
+        assertEquals(1f, introFraction(600f, 0, 400), 0.001f)
     }
 
     @Test
-    fun intermediateGlyphCollapseKeepsApprovedIntervals() {
-        assertEquals(
-            listOf(1950 to 2240, 2080 to 2340, 2190 to 2450, 2460 to 2920, 2640 to 3160),
-            introLetterExitTimings
+    fun eachBeyondLetterCollapsesInOrderBeforeCompletion() {
+        val expected = listOf(
+            1_080 to 1_340,
+            1_190 to 1_480,
+            1_300 to 1_610,
+            1_480 to 1_810,
+            1_620 to 1_950,
         )
-        assertTrue(introLetterExitTimings.all { (from, until) -> from < until })
-        assertEquals(0f, introFraction(1950f, 1950, 2240), 0.001f)
-        assertEquals(1f, introFraction(2240f, 1950, 2240), 0.001f)
+        assertEquals(expected, introLetterExitTimings)
+        assertEquals(5, introLetterExitTimings.size)
+        assertTrue(introLetterExitTimings.zipWithNext().all { (a, b) -> a.first < b.first })
+        assertTrue(introLetterExitTimings.all { (from, until) ->
+            from >= 0 && from < until && until < BLINK_INTRO_DURATION_MS
+        })
+        assertEquals(0f, introFraction(1_080f, 1_080, 1_340), 0.001f)
+        assertEquals(1f, introFraction(1_340f, 1_080, 1_340), 0.001f)
     }
 }
