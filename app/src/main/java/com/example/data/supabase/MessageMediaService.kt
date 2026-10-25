@@ -239,17 +239,6 @@ object MessageMediaService {
     ): Result<ChatMessage> = sendAttachment(context, receiverUsername, uri, BlinkChatAttachmentKind.VIDEO)
 
 
-    suspend fun sendVideoMessage(
-        context: Context,
-        receiverUsername: String,
-        uri: Uri
-    ): Result<ChatMessage> = sendAttachmentMessage(
-        context = context,
-        receiverUsername = receiverUsername,
-        uri = uri,
-        kind = "video"
-    )
-
     /**
      * Upload a verified private file without loading the entire source into RAM.
      * All direct conversation membership is established by the existing backend
