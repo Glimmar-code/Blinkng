@@ -44,7 +44,7 @@ create index if not exists blink_community_members_user
 alter table public.blink_communities enable row level security;
 alter table public.blink_community_members enable row level security;
 
--- Private members can read their own community without exposing private
+-- Active or invited members can see their community before accepting without exposing private
 -- communities to general discovery. SECURITY DEFINER avoids recursive member
 -- and community RLS lookups; it never returns member identities or private data.
 create or replace function public.blink_community_member_active(p_community_id uuid)
@@ -54,9 +54,9 @@ as $$
     select 1 from public.blink_community_members cm
     where cm.community_id = p_community_id
       and cm.user_id = (select auth.uid())
-      and cm.status = 'active'
+      and cm.status in ('active','invited')
   )
-$$;
+$;
 revoke all on function public.blink_community_member_active(uuid) from public,anon;
 grant execute on function public.blink_community_member_active(uuid) to authenticated;
 
