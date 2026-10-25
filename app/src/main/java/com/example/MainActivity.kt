@@ -2561,6 +2561,9 @@ fun MainAppContent(
                 mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
                     .filter { it.username.isNotBlank() }
                     .distinctBy { it.username.trim().removePrefix("@").lowercase() },
+                onSearchMentions = { query, limit, afterUsername, afterId ->
+                    viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
+                },
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openCommentsForPost(null) },
                 onSendComment = { text, parentCommentId ->
