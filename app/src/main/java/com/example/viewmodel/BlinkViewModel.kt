@@ -218,7 +218,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
     private val cancelledImageUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val chatImageObservers = mutableListOf<
-        Pair<androidx.lifecycle.LiveData<WorkInfo>, Observer<WorkInfo>>
+        Pair<androidx.lifecycle.LiveData<WorkInfo?>, Observer<WorkInfo?>>
     >()
     private var chatUiForeground = false
     private val inboxReceiptFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -3235,7 +3235,7 @@ private suspend fun restoreSupabaseSession() {
                 withContext(Dispatchers.Main) {
                     val workManager = WorkManager.getInstance(appContext)
                     val source = workManager.getWorkInfoByIdLiveData(request.id)
-                    val observer = object : Observer<WorkInfo> {
+                    val observer = object : Observer<WorkInfo?> {
                         override fun onChanged(info: WorkInfo) {
                             if (info == null) return
                             if (cancelledImageUploads.contains(tempId)) {
