@@ -562,7 +562,8 @@
             const button=document.createElement('button');
             button.type='button';
             button.className='btn';
-            button.textContent=(person.full_name || person.username)+' (@'+person.username+')';
+            button.textContent=(person.full_name || person.username)+' (@'+person.username+')'+
+              (person.is_verified?' ✓':'')+(person.university?' · '+person.university:'');
             button.onclick=()=>{
               selectedReferrerId=String(person.id||'');
               field.value='@'+person.username;

@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -118,7 +120,7 @@ internal fun BlinkReferrerPicker(
                                 Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
                                 if (person.isVerified) {
                                     Spacer(Modifier.width(4.dp))
-                                    Icon(androidx.compose.material.icons.Icons.Rounded.Verified,
+                                    Icon(Icons.Rounded.Verified,
                                         contentDescription = "Verified account",
                                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                 }

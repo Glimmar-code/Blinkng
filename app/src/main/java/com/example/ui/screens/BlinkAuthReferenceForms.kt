@@ -600,6 +600,16 @@ fun BlinkReferenceCreateAccountScreen(
     var visible by remember { mutableStateOf(false) }
     var university by rememberSaveable { mutableStateOf("") }
     var selectedReferrer by remember { mutableStateOf<com.blinkng.shared.discovery.BlinkReferralSuggestion?>(null) }
+    LaunchedEffect(context) {
+        val invite = context.getSharedPreferences("blink_referral_invite", android.content.Context.MODE_PRIVATE)
+            .getString("username", null).orEmpty()
+        if (invite.isNotBlank() && selectedReferrer == null) {
+            val matches = runCatching {
+                com.example.data.supabase.BlinkReferralClient.findReferrers(invite)
+            }.getOrDefault(emptyList())
+            selectedReferrer = matches.firstOrNull { it.username.equals(invite, ignoreCase = true) }
+        }
+    }
     var pickingUniversity by remember { mutableStateOf(false) }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
     var confirmTerms by remember { mutableStateOf(false) }

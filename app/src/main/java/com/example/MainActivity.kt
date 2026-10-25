@@ -261,6 +261,17 @@ class MainActivity : ComponentActivity() {
             intent.action = Intent.ACTION_MAIN // Consume the notification action once.
         }
         handleNotificationIntent(intent)
+        val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)
+        if (invitedUsername != null) {
+            // Invitation selection remains optional. Never redirect an existing logged-in account.
+            if (viewModel.uiState.value.destination != AppDestination.MAIN) {
+                getSharedPreferences("blink_referral_invite", MODE_PRIVATE).edit()
+                    .putString("username", invitedUsername).apply()
+                viewModel.setDestination(AppDestination.SIGN_UP)
+            }
+            intent?.data = null
+            return
+        }
         val data = intent?.data
         if (data?.scheme == "blink" && data.host == "payment") {
             viewModel.verifyPendingPaystackCheckout()
