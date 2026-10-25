@@ -216,6 +216,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     )
     private val pendingAttachments =
         java.util.concurrent.ConcurrentHashMap<String, PendingAttachment>()
+    private val cancelledImageUploads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val chatImageObservers = mutableListOf<
         Pair<androidx.lifecycle.LiveData<WorkInfo>, Observer<WorkInfo>>
     >()
@@ -3101,6 +3102,10 @@ private suspend fun restoreSupabaseSession() {
                     stage.file.copyTo(file, overwrite = true)
                     file
                 }
+                if (cancelledImageUploads.contains(tempId)) {
+                    durableFile.delete()
+                    return@launch
+                }
                 val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
                     .setConstraints(Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -3122,6 +3127,11 @@ private suspend fun restoreSupabaseSession() {
                     val observer = object : Observer<WorkInfo> {
                         override fun onChanged(info: WorkInfo) {
                             if (info == null) return
+                            if (cancelledImageUploads.contains(tempId)) {
+                                source.removeObserver(this)
+                                chatImageObservers.removeAll { it.first === source && it.second === this }
+                                return
+                            }
                             if (supabaseService.getCurrentUserId() == pending.ownerId) {
                                 updateAttachmentProgressInState(
                                     partner, tempId, info.progress.getInt("progress", 0)
@@ -3237,6 +3247,41 @@ private suspend fun restoreSupabaseSession() {
                 activeOutboxIds.remove(tempId)
             }
         }
+    }
+
+    /** Best effort cancellation: remove only the pending local picture and stop its unique job.
+     * Never delete or change a confirmed server message from this control. */
+    fun cancelAttachmentMessage(partnerUsername: String, message: ChatMessage) {
+        val tempId = message.id
+        if (!tempId.startsWith("temp_attachment_") || !message.isFromMe ||
+            message.status != MessageStatus.SENDING) return
+        val pending = pendingAttachments[tempId] ?: return
+        if (pending.kind != BlinkChatAttachmentKind.IMAGE ||
+            pending.ownerId != supabaseService.getCurrentUserId()) return
+        cancelledImageUploads.add(tempId)
+        pendingAttachments.remove(tempId)
+        WorkManager.getInstance(appContext).cancelUniqueWork(
+            "blink_chat_image_${tempId.removePrefix("temp_attachment_")}"
+        )
+        val messageId = tempId.removePrefix("temp_attachment_")
+        java.io.File(appContext.filesDir, "blink-chat-image-outbox")
+            .listFiles()?.filter { it.name.startsWith("$messageId.") }
+            ?.forEach { runCatching { it.delete() } }
+        val state = _uiState.value
+        _uiState.value = state.copy(conversations = state.conversations.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else {
+                val remaining = conversation.messages.filterNot { it.id == tempId }
+                val latest = remaining.lastOrNull()
+                conversation.copy(
+                    messages = remaining.toMutableList(),
+                    lastMessage = latest?.text.orEmpty(),
+                    lastMessageTime = latest?.timestamp.orEmpty(),
+                    lastMessageRawTime = latest?.rawTimestamp.orEmpty()
+                )
+            }
+        })
+        persistConversations()
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
