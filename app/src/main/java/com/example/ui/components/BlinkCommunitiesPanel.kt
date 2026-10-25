@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.blinkng.shared.BlinkCommunityPolicy
 import com.example.data.models.UserProfile
 import com.example.data.repository.BlinkCommunity
+import com.example.data.repository.BlinkCommunityMember
 import com.example.data.repository.BlinkCommunityRepository
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.launch
@@ -59,6 +60,8 @@ fun BlinkCommunitiesPanel(
     var rules by rememberSaveable { mutableStateOf("") }
     var isPrivate by rememberSaveable { mutableStateOf(false) }
     var inviteTo by remember { mutableStateOf<BlinkCommunity?>(null) }
+    var managing by remember { mutableStateOf<String?>(null) }
+    var roster by remember { mutableStateOf<List<BlinkCommunityMember>>(emptyList()) }
     val ownerId = service.getCurrentUserId().orEmpty()
 
     suspend fun refresh() {
@@ -179,6 +182,21 @@ fun BlinkCommunitiesPanel(
                             OutlinedButton(onClick = { inviteTo = community }, enabled = !saving) {
                                 Text("Invite students")
                             }
+                            TextButton(enabled = !saving, onClick = {
+                                if (managing == community.id) {
+                                    managing = null
+                                } else {
+                                    scope.launch {
+                                        saving = true
+                                        try {
+                                            roster = backend.memberRoster(community.id)
+                                            managing = community.id
+                                            error = null
+                                        } catch (cause: Exception) { error = cause.message }
+                                        finally { saving = false }
+                                    }
+                                }
+                            }) { Text(if (managing == community.id) "Close management" else "Manage members") }
                         } else {
                             Button(enabled = !saving, onClick = {
                                 scope.launch {
@@ -204,6 +222,44 @@ fun BlinkCommunitiesPanel(
                                     } finally { saving = false }
                                 }
                             }) { Text("Leave") }
+                        }
+                    }
+                    if (community.ownerId == ownerId && managing == community.id) {
+                        Text("Membership and requests", style = MaterialTheme.typography.titleSmall)
+                        if (roster.isEmpty()) Text("No requests or members to review.")
+                        roster.forEach { member ->
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(member.displayName + "  @" + member.username)
+                                Text(member.status + " · " + member.role,
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (member.id != ownerId) {
+                                    val actions = when (member.status) {
+                                        "pending", "invited" -> listOf("approve", "ban")
+                                        "active" -> listOf(
+                                            if (member.role == "moderator") "demote" else "promote",
+                                            "remove", "ban"
+                                        )
+                                        else -> emptyList()
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        actions.forEach { action ->
+                                            TextButton(enabled = !saving, onClick = {
+                                                scope.launch {
+                                                    saving = true
+                                                    try {
+                                                        backend.moderate(community.id, member.id, action)
+                                                        roster = backend.memberRoster(community.id)
+                                                        success = "Membership updated."
+                                                        error = null
+                                                    } catch (cause: Exception) {
+                                                        error = cause.message
+                                                    } finally { saving = false }
+                                                }
+                                            }) { Text(action.replaceFirstChar(Char::uppercase)) }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
