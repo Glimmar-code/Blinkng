@@ -133,6 +133,27 @@ with check (
   )
 );
 
+-- The production conv_insert_own policy permits arbitrary creation of
+-- is_group=true conversations by ordinary authenticated clients. Real group
+-- creation must go through the existing SECURITY DEFINER validated RPC,
+-- which checks 3–50 valid, nonblocked members. Protect that boundary without
+-- changing existing direct-message creation.
+create or replace function public.blink_guard_group_creation()
+returns trigger language plpgsql security invoker
+set search_path=public,pg_temp
+as $$
+begin
+  if current_user='authenticated' and coalesce(new.is_group,false) then
+    raise exception 'BLINK_GROUP_CREATION_REQUIRES_SERVER' using errcode='42501';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists blink_guard_group_creation_trigger on public.conversations;
+create trigger blink_guard_group_creation_trigger
+before insert on public.conversations
+for each row execute function public.blink_guard_group_creation();
+
 -- Ordinary group participants must never take over metadata (title,
 -- avatar, description) or turn a private group into a direct conversation.
 -- Server-owned row counters/timestamps remain compatible with legacy triggers.
