@@ -395,6 +395,28 @@ fun ConnectHubPremiumPanel(
             onChallenge = { p -> challengeTarget = p }
         )
 
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = {
+                runCatching {
+                    localContext.startActivity(
+                        android.content.Intent(
+                            localContext, com.example.ProfessionalCenterActivity::class.java
+                        ).putExtra("section", "communities")
+                    )
+                }.onFailure {
+                    android.widget.Toast.makeText(
+                        localContext, "Couldn't open Communities.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Explore / Create Communities")
+        }
         Spacer(Modifier.height(18.dp))
 
         if (hub.failedSections.isNotEmpty()) {
