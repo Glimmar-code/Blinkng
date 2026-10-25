@@ -189,10 +189,16 @@ begin
   then raise exception 'GROUP_MEMBER_LIMIT'; end if;
   if not exists(select 1 from public.profiles p where p.id=p_user_id)
   then raise exception 'USER_NOT_FOUND'; end if;
+  -- Do not allow administrators to force blocked students into shared
+  -- conversations. Check the invitee against EVERY currently active member,
+  -- not merely the administrator.
   if exists (
     select 1 from public.blocks b
-    where (b.blocker_id=v_actor and b.blocked_id=p_user_id)
-      or (b.blocker_id=p_user_id and b.blocked_id=v_actor)
+    join public.conversation_participants member
+      on member.conversation_id=p_conversation_id
+       and member.left_at is null
+    where (b.blocker_id=member.user_id and b.blocked_id=p_user_id)
+       or (b.blocker_id=p_user_id and b.blocked_id=member.user_id)
   ) then raise exception 'GROUP_INVITATION_BLOCKED'; end if;
   update public.conversation_participants
     set left_at=null,joined_at=now(),is_admin=false
@@ -209,6 +215,35 @@ begin
 end $;
 revoke all on function public.blink_group_invite(uuid,uuid) from public,anon;
 grant execute on function public.blink_group_invite(uuid,uuid) to authenticated;
+
+-- Group roster may only be fetched by an active member. The function
+-- returns server-owned profile labels; it never relies on client-supplied roles.
+create or replace function public.blink_group_members(p_conversation_id uuid)
+returns table (
+  user_id uuid, username text, full_name text, avatar_url text,
+  is_admin boolean, joined_at timestamptz
+)
+language plpgsql stable security definer set search_path = ''
+as $
+begin
+  if auth.uid() is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if not exists(
+    select 1 from public.conversations c
+    join public.conversation_participants cp on cp.conversation_id=c.id
+    where c.id=p_conversation_id and c.is_group=true
+      and cp.user_id=auth.uid() and cp.left_at is null
+  ) then raise exception 'NOT_AN_ACTIVE_GROUP_MEMBER'; end if;
+  return query
+    select cp.user_id,p.username,p.full_name,p.avatar_url,
+           cp.is_admin,cp.joined_at
+    from public.conversation_participants cp
+    join public.profiles p on p.id=cp.user_id
+    where cp.conversation_id=p_conversation_id and cp.left_at is null
+    order by cp.is_admin desc,cp.joined_at asc,cp.user_id asc
+    limit 50;
+end $;
+revoke all on function public.blink_group_members(uuid) from public,anon;
+grant execute on function public.blink_group_members(uuid) to authenticated;
 
 create or replace function public.blink_group_leave(p_conversation_id uuid)
 returns boolean language plpgsql security definer set search_path = ''
