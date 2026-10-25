@@ -49,6 +49,7 @@ fun DesktopGroupManagementDialog(
     var matches by remember(conversation.id, inviteQuery) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var inviting by remember(conversation.id) { mutableStateOf(false) }
     var busy by remember(conversation.id) { mutableStateOf(false) }
+    var transferTarget by remember(conversation.id) { mutableStateOf<DesktopGroupMember?>(null) }
     var error by remember(conversation.id) { mutableStateOf<String?>(null) }
     var info by remember(conversation.id) { mutableStateOf<String?>(null) }
 
@@ -140,6 +141,9 @@ fun DesktopGroupManagementDialog(
                                             }) { Text(action.replaceFirstChar(Char::uppercase)) }
                                         }
                                 }
+                                TextButton(enabled = !busy, onClick = {
+                                    transferTarget = member
+                                }) { Text("Transfer ownership") }
                             }
                         }
                     }
@@ -164,4 +168,35 @@ fun DesktopGroupManagementDialog(
             TextButton(enabled = !busy, onClick = onDismiss) { Text("Close") }
         }
     )
+    val successor = transferTarget
+    if (successor != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) transferTarget = null },
+            title = { Text("Transfer group ownership?") },
+            text = { Text("Make @" + successor.username +
+                " the group owner? Only the new owner can transfer ownership again.") },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true
+                        try {
+                            check(state.client.transferGroupOwnership(
+                                conversation.id, successor.id
+                            )) { "Ownership transfer was not confirmed by Supabase." }
+                            transferTarget = null
+                            info = "Ownership transferred to @" + successor.username
+                            refresh()
+                        } catch (cause: Exception) {
+                            error = cause.message ?: "Unable to transfer group."
+                        } finally { busy = false }
+                    }
+                }) { Text("Transfer") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { transferTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
