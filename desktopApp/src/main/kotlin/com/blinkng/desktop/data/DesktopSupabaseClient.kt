@@ -318,6 +318,14 @@ class DesktopSupabaseClient(
             )
         }
 
+    suspend fun recordReferralImpression(profileId: String, source: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (source !in setOf("search", "recommendations") ||
+                runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/blink_record_referral_impression",
+                JSONObject().put("p_profile", profileId).put("p_source", source)))
+        }
+
     suspend fun referralSourceStats(): BlinkReferralSourceStats = withContext(Dispatchers.IO) {
         val row = postArray("/rest/v1/rpc/blink_referral_source_analytics", JSONObject(),
             "return=representation").optJSONObject(0) ?: return@withContext BlinkReferralSourceStats()
