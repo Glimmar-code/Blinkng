@@ -92,6 +92,13 @@ begin
       and v.consumed_at is null
       and v.sender_id <> p_viewer_id
       and exists (
+          select 1 from public.messages m
+          where m.id = v.message_id
+            and m.conversation_id = v.conversation_id
+            and m.image_view_once = true
+            and m.deleted_for_everyone = false
+      )
+      and exists (
           select 1 from public.conversation_participants cp
           where cp.conversation_id=v.conversation_id
             and cp.user_id=p_viewer_id
