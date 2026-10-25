@@ -1,7 +1,7 @@
 package com.blinkng.shared
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkCommunityPolicyTest {
@@ -11,8 +11,8 @@ class BlinkCommunityPolicyTest {
             BlinkCommunityPolicy.Visibility.fromWire("private"))
         assertEquals(listOf("Be kind"),
             BlinkCommunityPolicy.validatedRules(listOf("Be kind", "Be kind", "")))
-        assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(runCatching {
             BlinkCommunityPolicy.validatedName("x")
-        }
+        }.exceptionOrNull() is IllegalArgumentException)
     }
 }
