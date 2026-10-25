@@ -4584,6 +4584,10 @@ private suspend fun restoreSupabaseSession() {
         }
         val state = _uiState.value
         val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(clean) != null && existing?.isGroup != true) {
+            showToast("This group is no longer available. Refresh Messages.")
+            return
+        }
         val newChatRoute = navigationEntry(state).copy(
             selectedTab = MainTab.MESSAGES,
             viewingProfile = null,
@@ -4872,6 +4876,59 @@ private suspend fun restoreSupabaseSession() {
         val cleanPartner = partnerUsername.trim().removePrefix("@")
         if (cleanText.isBlank() || cleanPartner.isBlank()) return
 
+        val group = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername == cleanPartner && it.isGroup
+        }
+        if (group != null) {
+            // Group chat does not use the direct-message outbox. The deployed group
+            // RPC currently lacks a client-generated idempotency key, so an
+            // ambiguous failure must never be automatically retried.
+            val tempId = "temp_group_${UUID.randomUUID()}"
+            val timestamp = Instant.now().toString()
+            appendMessageToState(cleanPartner, ChatMessage(
+                id = tempId,
+                conversationId = group.id,
+                senderId = _uiState.value.myProfile.id,
+                receiverUsername = cleanPartner,
+                text = cleanText,
+                timestamp = "Sending...",
+                rawTimestamp = timestamp,
+                isFromMe = true,
+                isRead = false,
+                status = MessageStatus.SENDING
+            ))
+            viewModelScope.launch(Dispatchers.IO) {
+                if (!_uiState.value.isOnline) {
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                        showToast("Group message not sent. Connect and refresh before resending.")
+                    }
+                    return@launch
+                }
+                chatRepository.sendGroupMessage(group.id, cleanText).fold(
+                    onSuccess = { confirmed ->
+                        withContext(Dispatchers.Main) {
+                            replaceMessageInState(cleanPartner, tempId, confirmed)
+                        }
+                        persistConversationsNow()
+                    },
+                    onFailure = {
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                            showToast("Group delivery unconfirmed. Refresh before resending to avoid duplicates.")
+                        }
+                    }
+                )
+            }
+            return
+        }
+        // Never interpret synthetic group IDs as usernames, even if local
+        // conversation history has not hydrated from the database yet.
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(cleanPartner) != null) {
+            showToast("Refresh your group list before sending.")
+            return
+        }
+
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
         val currentUsername = supabaseService.getCurrentUsername()
             ?: _uiState.value.myProfile.username.ifBlank { "you" }
@@ -4942,6 +4999,10 @@ private suspend fun restoreSupabaseSession() {
             }
         }
         if (cleanPartner.isBlank()) return
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(cleanPartner) != null) {
+            showToast("Group attachments require the verified group media service.")
+            return
+        }
 
         val tempId = "temp_attachment_${UUID.randomUUID()}"
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
@@ -5052,6 +5113,10 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (com.blinkng.shared.BlinkGroupRoute.conversationId(partnerUsername.trim()) != null) {
+            showToast("Refresh this group before retrying; delivery may already be complete.")
+            return
+        }
         if (failedMessage.messageType != "text" && !failedMessage.localAttachmentUri.isNullOrBlank()) {
             retryAttachmentMessage(partnerUsername, failedMessage)
             return
