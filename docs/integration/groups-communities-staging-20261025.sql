@@ -189,13 +189,20 @@ grant execute on function public.blink_community_invite(uuid,uuid) to authentica
 create or replace function public.blink_community_leave(p_community_id uuid)
 returns boolean language plpgsql security definer set search_path = ''
 as $$
-declare v_user uuid:=auth.uid(); v_owner uuid;
+declare v_user uuid:=auth.uid(); v_owner uuid; v_status text;
 begin
   if v_user is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
   select owner_id into v_owner from public.blink_communities where id=p_community_id;
   if v_owner=v_user then raise exception 'OWNER_MUST_TRANSFER_OR_DELETE_COMMUNITY'; end if;
+  -- Leaving cannot remove a server-issued ban. Otherwise a banned user
+  -- could call leave, erase the banned row, then rejoin a public community
+  -- (or request private access) as a new member.
+  select status into v_status from public.blink_community_members
+    where community_id=p_community_id and user_id=v_user for update;
+  if v_status='banned' then raise exception 'COMMUNITY_MEMBERSHIP_BANNED'; end if;
   delete from public.blink_community_members
-    where community_id=p_community_id and user_id=v_user;
+    where community_id=p_community_id and user_id=v_user
+      and status in ('active','invited','pending');
   return found;
 end $$;
 revoke all on function public.blink_community_leave(uuid) from public,anon;
