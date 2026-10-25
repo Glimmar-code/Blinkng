@@ -301,7 +301,8 @@ class ChatRepository(
             }
         }
         val visibleMessages = filterClearedMessages(conversationId, baseMessages)
-        enrichMessageActions(visibleMessages)
+        val privacyHydrated = MessageMediaService.hydrateViewOnceFlags(visibleMessages, conversationId)
+        enrichMessageActions(privacyHydrated)
     }
 
     /**
