@@ -23,7 +23,7 @@
 - Live `create_group_conversation(p_title,p_member_ids)` and `send_group_message` exist.
 - `blink_communities`, `blink_community_members`, and `blink_my_group_conversations` do **not** exist on hosted production.
 - Proposed `blink_feed_market_category_guard` trigger is **not installed** on hosted production.
-- SQL proposals live in `docs/integration/*-staging-20261025.sql`, NOT under migrations and NOT executed against hosted production. The disposable PGlite test harness imports these docs for **synthetic security contracts**. That does not constitute full real RLS/migration integration.
+- SQL proposals live in `docs/integration/*-staging-20261025.sql`, NOT under migrations and NOT executed against hosted production. In addition to Marketplace/Community drafts, `group-membership-security-staging-20261025.sql` stages removal of unsafe raw group self-invites, participant admin self-edits, departed-member rejoining, and inactive conversation/message RLS. Its synthetic CI regression attempts group self-invite, admin escalation, rejoin, and read/send after leaving. These tests are **not** a substitute for full real Supabase staging integration, complete permission audit or official production migration.
 - Current RLS requires critical group account-isolation review: membership and message permission predicates must reject departed people, group member insert/role mutation must not permit self-invitation/elevated `is_admin`, invite privacy must hold, and management RPCs must enforce roles. Until proven, groups/Communities are **not security-releasable**.
 - Hosted Supabase has no preview branches connected. A paid staging environment must not be created or billed without separate authorization. No production-first tests.
 
