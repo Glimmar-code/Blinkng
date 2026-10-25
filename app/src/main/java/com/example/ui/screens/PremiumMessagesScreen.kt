@@ -506,6 +506,7 @@ private fun PremiumMessagesMasterDetail(
     isConnected: Boolean
 ) {
     val density = LocalDensity.current
+    val groupContext = LocalContext.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
 
     Box(
@@ -562,12 +563,24 @@ private fun PremiumMessagesMasterDetail(
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
-                onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                onProfileClick = {
+                    if (!displayedConversation.isGroup) {
+                        onProfileClick(displayedConversation.partnerUsername)
+                    }
+                },
                 onAudioCall = {
-                    onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onVideoCall = {
-                    onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    if (!displayedConversation.isGroup) {
+                        onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                    } else {
+                        Toast.makeText(groupContext, "Group calls aren't available yet.", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 isConnected = isConnected,
                 isFullScreen = true,
@@ -1253,7 +1266,10 @@ private fun ConversationList(
                 conversation = conversation,
                 palette = palette,
                 onOpen = { onOpenConversation(conversation.partnerUsername) },
-                onAvatarClick = { onProfileClick(conversation.partnerUsername) }
+                onAvatarClick = {
+                    if (conversation.isGroup) onOpenConversation(conversation.partnerUsername)
+                    else onProfileClick(conversation.partnerUsername)
+                }
             )
         }
     }
