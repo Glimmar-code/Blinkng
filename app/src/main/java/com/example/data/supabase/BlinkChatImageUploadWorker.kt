@@ -31,7 +31,12 @@ class BlinkChatImageUploadWorker(
         if (!outbox.canonicalPath.equals(file.parentFile?.canonicalPath) ||
             !fileName.startsWith("$messageId.") || !file.isFile) return Result.failure()
 
-        val token = SupabaseService.accessToken() ?: return Result.retry()
+        // Restore/refresh an expired stored session before retrying a queued upload.
+        if (!SupabaseService().restoreSession()) {
+            return if (runAttemptCount < 3) Result.retry()
+            else Result.failure(workDataOf("error" to "Sign in again to send picture."))
+        }
+        val token = SupabaseService.accessToken() ?: return Result.failure()
         val actualUser = runCatching {
             val json = org.json.JSONObject(String(
                 android.util.Base64.decode(
