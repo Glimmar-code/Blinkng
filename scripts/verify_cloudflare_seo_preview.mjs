@@ -8,6 +8,7 @@
  * BLINK_SEO_PREVIEW_URL=https://<branch>.blinkng.pages.dev node scripts/verify_cloudflare_seo_preview.mjs
  */
 import assert from 'node:assert/strict';
+import {INDEXNOW_KEY} from './indexnow_public_urls.mjs';
 
 const input=String(process.env.BLINK_SEO_PREVIEW_URL||'').trim();
 assert.match(input,/^https:\/\/[a-z0-9-]+\.blinkng\.pages\.dev\/?$/,'Preview must be a BLINK Cloudflare Pages HTTPS deployment');
@@ -40,6 +41,9 @@ async function inspect(){
  assert.equal(sitemap.res.status,200,'Sitemap HTTP status');
  const locations=[...sitemap.html.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m=>m[1]);
  assert.deepEqual(locations,approved.map(p=>prod+p),'Unexpected sitemap URLs or order');
+ const proof=await fetchPublic('/'+INDEXNOW_KEY+'.txt');
+ assert.equal(proof.res.status,200,'IndexNow domain ownership key not served on Cloudflare Pages preview');
+ assert.equal(proof.html.trim(),INDEXNOW_KEY,'IndexNow public key file content mismatch');
  const robots=await fetchPublic('/robots.txt');
  assert.equal(robots.res.status,200,'robots.txt HTTP status');
  assert.ok(robots.html.includes('Sitemap: '+prod+'/sitemap.xml'),'robots.txt missing production sitemap reference');
@@ -62,7 +66,7 @@ async function inspect(){
  const download=await fetchPublic('/download/');
  assert.equal(download.res.status,200,'Download page status');
  assert.ok(download.html.includes('releases/latest/download/Blink-latest.apk'),'Official APK link changed in preview');
- console.log(JSON.stringify({result:'PASS',checks:'HTML-first home, nine canonical sitemap URLs, robots, three static pages, privacy, 404, download',preview:base,publicOnly:true}));
+ console.log(JSON.stringify({result:'PASS',checks:'HTML-first home, public IndexNow key, nine canonical sitemap URLs, robots, three static pages, privacy, 404, download',preview:base,publicOnly:true}));
 }
 let error;
 for(let attempt=1;attempt<=7;attempt++){
