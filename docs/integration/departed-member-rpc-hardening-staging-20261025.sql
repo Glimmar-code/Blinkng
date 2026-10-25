@@ -116,7 +116,7 @@ create or replace function public.get_conversation_messages_page(
   p_before timestamptz default null, p_before_id uuid default null
 ) returns setof public.messages
 language sql stable security invoker set search_path=''
-as $
+as $$
   select m.*
   from public.messages m
   where m.conversation_id=p_conversation_id
@@ -132,7 +132,7 @@ as $
         (p_before_id is null or m.id<p_before_id)))
   order by m.created_at desc,m.id desc
   limit greatest(1,least(coalesce(p_limit,40),100))
-$;
+$$;
 revoke all on function public.get_conversation_messages_page(uuid,integer,timestamptz,uuid)
   from public,anon;
 grant execute on function public.get_conversation_messages_page(uuid,integer,timestamptz,uuid)
@@ -143,7 +143,7 @@ grant execute on function public.get_conversation_messages_page(uuid,integer,tim
 -- Do not grant departed people indirect access via read receipt side effects.
 create or replace function public.mark_conversation_read(p_partner_username text)
 returns integer language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   v_me uuid:=auth.uid();
   v_partner uuid;
@@ -207,7 +207,7 @@ begin
   end if;
   return v_changed;
 end;
-$;
+$$;
 revoke all on function public.mark_conversation_read(text) from public,anon;
 grant execute on function public.mark_conversation_read(text) to authenticated;
 commit;
