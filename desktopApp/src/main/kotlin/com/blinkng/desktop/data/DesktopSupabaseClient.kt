@@ -896,6 +896,19 @@ class DesktopSupabaseClient(
         } catch (_: Exception) { small.delete(); null }
     }
 
+    /** A retry may reach Storage after a previous attempt succeeded but before
+     * the corresponding message row was committed. A deterministic owner-scoped
+     * object name makes that retry safe without creating orphan duplicates. */
+    private fun uploadPrivateChatObject(request: Request) {
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 409) {
+                throw IllegalStateException(
+                    "Private picture upload failed (${response.code})."
+                )
+            }
+        }
+    }
+
     suspend fun sendChatImage(
         conversationId: String, file: File, caption: String,
         quality: BlinkChatImageQuality,
@@ -951,7 +964,7 @@ class DesktopSupabaseClient(
                 extension = "jpg"
                 BlinkChatAttachmentKind.IMAGE.verify(uploadMime, prepared.length())
             }
-            val objectPath = "conversations/$conversationId/users/$userId/image/${UUID.randomUUID()}.$extension"
+            val objectPath = "conversations/$conversationId/users/$userId/image/$messageId.$extension"
             val encoded = objectPath.split('/').joinToString("/") { encode(it) }
             val inputFile = prepared
             val body = object : RequestBody() {
@@ -971,7 +984,7 @@ class DesktopSupabaseClient(
                     }
                 }
             }
-            execute(authenticatedRequest("/storage/v1/object/message-media/$encoded")
+            uploadPrivateChatObject(authenticatedRequest("/storage/v1/object/message-media/$encoded")
                 .header("x-upsert", "false").post(body).build())
             val supportsMetadata = supportsPhotoSchema()
             var previewRef: String? = null
@@ -980,10 +993,10 @@ class DesktopSupabaseClient(
                 if (thumb != null) {
                     try {
                         val thumbPath = "conversations/$conversationId/users/$userId/preview/" +
-                            "${UUID.randomUUID()}.jpg"
+                            "$messageId.jpg"
                         val encodedThumb = thumbPath.split('/').joinToString("/") { encode(it) }
                         val uploaded = runCatching {
-                            execute(authenticatedRequest(
+                            uploadPrivateChatObject(authenticatedRequest(
                                 "/storage/v1/object/message-media/$encodedThumb"
                             ).header("x-upsert", "false")
                                 .post(thumb.asRequestBody("image/jpeg".toMediaType())).build())
