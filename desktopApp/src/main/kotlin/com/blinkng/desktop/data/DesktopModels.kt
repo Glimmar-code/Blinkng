@@ -101,6 +101,18 @@ data class DesktopComment(
     val premiumStyleSource: String? = null,
 )
 
+data class DesktopCommunity(
+    val id: String,
+    val ownerId: String,
+    val name: String,
+    val description: String,
+    val university: String,
+    val category: String,
+    val visibility: String,
+    val coverUrl: String?,
+    val rules: List<String>,
+)
+
 data class DesktopConversation(
     val id: String,
     val title: String,
