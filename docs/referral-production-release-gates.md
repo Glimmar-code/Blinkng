@@ -5,7 +5,7 @@ The current PR #540 is a development candidate, not a published release.
 ## Safe integration and production order
 
 1. Preserve diverged Testlab and main branches. Reconcile without destructive resets; rerun current-head CI.
-2. Apply the three referral migrations in order in an independently approved staging Supabase project/branch, not first on live auth.
+2. Apply all five staged referral/group/impression migrations in order in an independently approved staging Supabase project/branch, not first on live auth.
 3. Verify hosted signup pending -> email confirmed, duplicate callback, logout, account deletion, RLS, private-user exclusion, and zero Coin minting while disabled.
 4. Stage the amended send-activity-notification function and new blink-referral-push-worker together. Configure a long random BLINK_REFERRAL_WORKER_TOKEN only in Supabase Edge secrets and GitHub Actions secrets.
 5. Verify the service-role worker cannot send unrelated notifications, unprivileged users cannot claim or acknowledge messages, and duplicate retries do not notify twice.
@@ -29,3 +29,20 @@ The current PR #540 is a development candidate, not a published release.
 - Fraud prevention is a velocity flag, not complete anti-Sybil prevention; manual moderation tools remain missing.
 - Coins are disabled by default and should stay so until budget and fraud checks are approved.
 - Current-head CI and real-device verification must pass before release.
+
+## Additional development work — not deployed
+
+- Added consent-first group invitation APIs and actual Android, Windows and web
+  invitation selectors. The group organizer is the only initial participant;
+  invitees accept or decline using their own authenticated RPC. Server limits
+  invite creation, verifies blocks/privacy and writes in-app notifications.
+- Added source-qualified Search/recommendation impressions to a separate private
+  ledger with no Coin or permanent reward effect. Android, Windows and web
+  attempt to record only cards with >=60% viewport visibility for >=750ms.
+  Browser and device screenshots/scroll tests are still required for proof.
+- For production prepare all five SQL files in timestamp order:
+  20261024203000, 20261025114000, 20261025153000, 20261025190000,
+  20261025201000. Do not run them first on production.
+- The disposable PostgreSQL fixture has newly added invitation and impression
+  assertions. Their latest-head workflow result is a release gate and is not
+  implied by an earlier green workflow.
