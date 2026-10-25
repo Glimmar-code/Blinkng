@@ -10,7 +10,7 @@
 --   It must not be treated as a production-ready group inbox.
 --   No public communities/community_members tables currently exist.
 --
--- Community foundation proposal (owner-only mutation until role and invite QA):
+-- Community foundation proposal (server-vetted community and moderation operations):
 begin;
 
 create table if not exists public.blink_communities (
@@ -60,23 +60,28 @@ $$;
 revoke all on function public.blink_community_member_active(uuid) from public,anon;
 grant execute on function public.blink_community_member_active(uuid) to authenticated;
 
+drop policy if exists blink_communities_select on public.blink_communities;
 create policy blink_communities_select on public.blink_communities
   for select to authenticated
   using (
     visibility='public' or owner_id=(select auth.uid())
     or public.blink_community_member_active(id)
   );
+drop policy if exists blink_communities_insert on public.blink_communities;
 create policy blink_communities_insert on public.blink_communities
   for insert to authenticated with check (owner_id=(select auth.uid()));
+drop policy if exists blink_communities_update on public.blink_communities;
 create policy blink_communities_update on public.blink_communities
   for update to authenticated using (owner_id=(select auth.uid()))
   with check (owner_id=(select auth.uid()));
+drop policy if exists blink_communities_delete on public.blink_communities;
 create policy blink_communities_delete on public.blink_communities
   for delete to authenticated using (owner_id=(select auth.uid()));
 
 -- Members may see their own membership; owners may see join requests.
 -- Raw user writes are deliberately denied: all join/invite/moderation actions
 -- below run server-side and check caller privileges and state transitions.
+drop policy if exists blink_community_members_read on public.blink_community_members;
 create policy blink_community_members_read on public.blink_community_members
   for select to authenticated
   using (
