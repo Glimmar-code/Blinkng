@@ -18,8 +18,17 @@ import java.io.FileOutputStream
  */
 internal object BlinkChatImagePreparer {
     fun open(context: Context, uri: Uri, quality: BlinkChatImageQuality): BoundedMessageAttachment {
-        val mime = if (uri.scheme == "file") "image/jpeg" else
-            context.contentResolver.getType(uri)?.lowercase().orEmpty()
+        val mime = if (uri.scheme == "file") {
+            when (File(uri.path.orEmpty()).extension.lowercase()) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                "gif" -> "image/gif"
+                "heic" -> "image/heic"
+                "heif" -> "image/heif"
+                else -> throw IllegalArgumentException("Unsupported queued picture format.")
+            }
+        } else context.contentResolver.getType(uri)?.lowercase().orEmpty()
         if (quality == BlinkChatImageQuality.ORIGINAL ||
             mime == "image/gif" || mime == "image/webp") {
             return BoundedMessageAttachment.open(context, uri, BlinkChatAttachmentKind.IMAGE)
