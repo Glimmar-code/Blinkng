@@ -11,10 +11,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -143,7 +151,15 @@ fun VideoReelsScreen(
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     initialReelId: String? = null,
-    initialReelPositionMs: Long = 0L
+    initialReelPositionMs: Long = 0L,
+    stories: List<com.example.data.models.Story> = emptyList(),
+    userAvatar: String = "",
+    onAddStoryClick: () -> Unit = {},
+    onStoryClick: (com.example.data.models.Story) -> Unit = {},
+    onSearchClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    onMenuClick: () -> Unit = {},
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
     var firstPageVisible by remember(currentUsername) { mutableStateOf(true) }
@@ -211,7 +227,17 @@ fun VideoReelsScreen(
                     onFirstPageChanged = { firstPageVisible = it },
                     onFollowingSelectionChanged = { followingSelected = it },
                     initialReelId = initialReelId,
-                    initialReelPositionMs = initialReelPositionMs
+                    initialReelPositionMs = initialReelPositionMs,
+                    stories = stories,
+                    userAvatar = userAvatar,
+                    isDark = isDark,
+                    onAddStoryClick = onAddStoryClick,
+                    onStoryClick = onStoryClick,
+                    onSearchClick = onSearchClick,
+                    onGameClick = onGameClick,
+                    onNotificationsClick = onNotificationsClick,
+                    onMenuClick = onMenuClick,
+                    onBottomBarVisibilityChange = onBottomBarVisibilityChange
                 )
             }
         }
@@ -327,7 +353,17 @@ private fun ReelsContent(
     onFirstPageChanged: (Boolean) -> Unit,
     onFollowingSelectionChanged: (Boolean) -> Unit,
     initialReelId: String?,
-    initialReelPositionMs: Long
+    initialReelPositionMs: Long,
+    stories: List<com.example.data.models.Story>,
+    userAvatar: String,
+    isDark: Boolean,
+    onAddStoryClick: () -> Unit,
+    onStoryClick: (com.example.data.models.Story) -> Unit,
+    onSearchClick: () -> Unit,
+    onGameClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    onMenuClick: () -> Unit,
+    onBottomBarVisibilityChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val refreshScope = rememberCoroutineScope()
@@ -341,7 +377,7 @@ private fun ReelsContent(
     var promotedReels by remember(resumeUserKey) {
         mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
     }
-    var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("For You") }
+    var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("Reels") }
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
     // A no-fill response must not strand a viewer on an empty full-screen ad page.
     var unavailableSponsoredSlots by remember(resumeUserKey, selectedTab) {
@@ -474,7 +510,71 @@ private fun ReelsContent(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    // The preview and fullscreen are one continuously mounted pager/player, not two routes.
+    // A deep-linked reel starts expanded, while a normal Reels tap opens the reference layout.
+    var expanded by rememberSaveable(resumeUserKey) { mutableStateOf(!initialReelId.isNullOrBlank()) }
+    val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
+    val animationScope = rememberCoroutineScope()
+    LaunchedEffect(initialReelId) {
+        if (!initialReelId.isNullOrBlank()) expanded = true
+    }
+    LaunchedEffect(expanded) {
+        expansion.animateTo(
+            targetValue = if (expanded) 1f else 0f,
+            animationSpec = tween(300, easing = FastOutSlowInEasing)
+        )
+        onBottomBarVisibilityChange(!expanded)
+    }
+    // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
+    DisposableEffect(onBottomBarVisibilityChange) {
+        onDispose { onBottomBarVisibilityChange(true) }
+    }
+    BackHandler(enabled = expanded && !isInteractionOverlayOpen) { expanded = false }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
+        val density = LocalDensity.current
+        val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
+        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 216.dp)
+            .coerceAtMost(maxHeight * 0.48f)
+        val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
+        val progress = expansion.value.coerceIn(0f, 1f)
+        val pagerFrame = Modifier
+            .fillMaxSize()
+            .padding(
+                start = 12.dp * (1f - progress),
+                end = 12.dp * (1f - progress),
+                top = chromeTop * (1f - progress),
+                bottom = chromeBottom * (1f - progress)
+            )
+            .clip(RoundedCornerShape(20.dp * (1f - progress)))
+            .background(Color.Black)
+
+        // Pager-at-start downward overscroll reveals the preview progressively.
+        // The pager is allowed to consume other gestures (including all next-reel swipes).
+        val collapseConnection = remember(pager, expanded, viewportHeightPx) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (source != NestedScrollSource.UserInput || !expanded ||
+                        pager.currentPage != 0 || pager.currentPageOffsetFraction != 0f ||
+                        available.y <= 0f || isInteractionOverlayOpen
+                    ) return Offset.Zero
+                    animationScope.launch {
+                        expansion.snapTo((expansion.value - available.y / viewportHeightPx).coerceIn(0f, 1f))
+                    }
+                    return Offset(0f, available.y)
+                }
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
+                        expanded = expansion.value >= 0.84f
+                        return available
+                    }
+                    return Velocity.Zero
+                }
+            }
+        }
+
+        Box(pagerFrame.nestedScroll(collapseConnection)) {
         if (pagerItems.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -519,6 +619,7 @@ private fun ReelsContent(
                 }
             },
             beyondViewportPageCount = 1,
+            userScrollEnabled = expanded && !isInteractionOverlayOpen,
             modifier = Modifier.fillMaxSize()
         ) { index ->
             val pageOffset = (pager.currentPage - index) + pager.currentPageOffsetFraction
@@ -637,8 +738,55 @@ private fun ReelsContent(
             }
         }
 
+        // A drag on the preview expands this SAME video player; taps still reach ReelPage.
+        if (!expanded) {
+            Box(
+                Modifier.fillMaxSize().pointerInput(resumeUserKey, expanded) {
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { change, dragAmount ->
+                            if (dragAmount < 0f || expansion.value > 0f) {
+                                change.consume()
+                                animationScope.launch {
+                                    expansion.snapTo(
+                                        (expansion.value - dragAmount / viewportHeightPx).coerceIn(0f, 1f)
+                                    )
+                                }
+                            }
+                        },
+                        onDragEnd = { expanded = expansion.value >= 0.16f },
+                        onDragCancel = { expanded = expansion.value >= 0.5f }
+                    )
+                }
+            )
+        }
+        }
+
+        if (progress < 0.999f) {
+            ReelsReferenceChrome(
+                stories = stories,
+                userAvatar = userAvatar,
+                currentUsername = currentUsername,
+                isDark = isDark,
+                selectedTab = selectedTab,
+                onSelectTab = { selectedTab = it },
+                onAddStory = onAddStoryClick,
+                onStoryClick = onStoryClick,
+                onProfileClick = onProfileClick,
+                onSearch = onSearchClick,
+                onGame = onGameClick,
+                onNotifications = onNotificationsClick,
+                onMenu = onMenuClick,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                    .graphicsLayer {
+                        alpha = (1f - progress * 1.4f).coerceIn(0f, 1f)
+                        translationY = -48.dp.toPx() * progress
+                    }
+            )
+        }
+
+        if (expanded) {
         ReelsTopTabs(
-            selectedTab = selectedTab,
+            selectedTab = if (selectedTab == "Reels") "For You" else selectedTab,
             onTabSelected = { selectedTab = it },
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -683,6 +831,8 @@ private fun ReelsContent(
             } else {
                 Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
             }
+        }
+
         }
 
         AnimatedVisibility(
