@@ -267,7 +267,9 @@ data class ChatMessage(
     val imageAlbumId: String? = null,
     val imageAlbumPosition: Int = 0,
     val imageAlbumSize: Int = 1,
-    val imagePreviewUrl: String? = null
+    val imagePreviewUrl: String? = null,
+    /** True only when the server owns one-time picture access. */
+    val imageViewOnce: Boolean = false
 )
 
 data class ChatConversation(
