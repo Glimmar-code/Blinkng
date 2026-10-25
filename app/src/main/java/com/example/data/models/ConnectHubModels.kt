@@ -178,6 +178,7 @@ fun ConnectHubSnapshot.retainFailedSectionsFrom(previous: ConnectHubSnapshot): C
         housingRequests = if ("Housing" in failures) previous.housingRequests else housingRequests,
         gameChallenges = if ("Challenges" in failures) previous.gameChallenges else gameChallenges,
         smartMatches = if ("Student matches" in failures) previous.smartMatches else smartMatches,
-        requests = if ("Connect inbox" in failures) previous.requests else requests
+        requests = if ("Connect inbox" in failures) previous.requests else requests,
+        gameStats = if ("Game stats" in failures) previous.gameStats else gameStats
     )
 }
