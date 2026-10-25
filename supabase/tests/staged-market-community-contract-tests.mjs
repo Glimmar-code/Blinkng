@@ -489,6 +489,42 @@ export async function stagedMarketCommunityContractTests() {
       select * from public.blink_group_pending_invitations(50)`);
     assert.equal(remainingInvites.rows.length,0,'Accepted invitation leaves pending inbox');
     await db.exec('reset role');
+    // Initial group creation must also require every selected student's
+    // consent. The trusted founder is the only immediate member.
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await rejects(() => db.exec(`
+      select public.create_group_conversation('Too few', array['${applicant}'::uuid])`),
+      'GROUP_MEMBER_LIMIT');
+    const createdGroup = await db.query(`
+      select public.create_group_conversation(
+        'Opt-in study group',array['${other}'::uuid,'${applicant}'::uuid]
+      ) as id`);
+    const consentGroup = createdGroup.rows[0].id;
+    const createdRoster = await db.query(`
+      select user_id from public.blink_group_members('${consentGroup}')`);
+    assert.equal(createdRoster.rows.length,1,
+      'New group founder is active; invitees must not be silently enrolled');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const pendingOther = await db.query(`
+      select conversation_id from public.blink_group_pending_invitations(50)
+      where conversation_id='${consentGroup}'`);
+    assert.equal(pendingOther.rows.length,1);
+    await db.exec(`select public.blink_group_respond_invitation('${consentGroup}',true)`);
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    const pendingApplicant = await db.query(`
+      select conversation_id from public.blink_group_pending_invitations(50)
+      where conversation_id='${consentGroup}'`);
+    assert.equal(pendingApplicant.rows.length,1);
+    await db.exec(`select public.blink_group_respond_invitation('${consentGroup}',false)`);
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const optedInRoster = await db.query(`
+      select user_id from public.blink_group_members('${consentGroup}')`);
+    assert.equal(optedInRoster.rows.length,2,
+      'Declined initial invite cannot appear in active group roster');
+    await db.exec('reset role');
+    console.log('PASS staged founder-only group creation and recipient opt-in');
+
     console.log('PASS staged group invitation consent, decline, acceptance and role isolation');
     // Read-receipt authorization must survive regular two-person messages
     // while denying the same RPC after someone leaves that direct chat.
