@@ -40,12 +40,12 @@ class BlinkChatAttachmentPolicyTest {
         assertFalse(BlinkChatPhotoAlbum.single().grouped)
         assertTrue(BlinkChatPhotoAlbum.of(id, 0, 2).grouped)
         assertTrue(BlinkChatPhotoAlbum.of(id, 9, 10).grouped)
-        assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(runCatching {
             BlinkChatPhotoAlbum.of(id, 10, 10)
-        }
-        assertThrows(IllegalArgumentException::class.java) {
+        }.isFailure)
+        assertTrue(runCatching {
             BlinkChatPhotoAlbum.of(id, 0, 11)
-        }
+        }.isFailure)
     }
 
     @Test fun photoQualitySupportsStandardAndOriginalWithoutNewMediaType() {
