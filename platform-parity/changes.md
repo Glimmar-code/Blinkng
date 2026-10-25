@@ -1351,3 +1351,11 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - Unifies group invitations into the conversation_id/invitee_id/inviter_id schema. Referral RPCs retain their wire response names through compatibility wrappers; acceptance shares the hardened group consent function.
 - Preserves group retry/profile/call safeguards while adding attachment cancellation, durable retries, albums and view-once adapters. Removes duplicated desktop account/invitation state from overlapping branches.
 - Local PostgreSQL fixture tests are distinct from full hosted Auth/Storage/device verification; this candidate must pass final-head Android/Windows CI and release/backend gates before promotion.
+
+PARITY-EXCEPTION: android-rewarded-ad-load-diagnostics-20261025
+Date: 2026-10-25
+Feature: Report rewarded AdMob SDK load errors and timeout details without changing coin awards.
+Why Android-specific: Android is the only BLINK client that embeds the Google Mobile Ads rewarded SDK; its LoadAdError, ResponseInfo and Activity lifecycle do not exist in desktopApp. This is diagnostic state only, not a new monetization, entitlement or rewards path.
+Windows equivalent: No rewarded AdMob SDK or rewarded-ad watch action exists on Windows. Desktop retains its existing coin/account UI and server-verified payment/reward flows without inventing AdMob availability or coin payouts.
+Security: This records SDK loading details for local diagnostics; it does not send developer logs or unlock coins, and the existing server-side verified reward claim remains authoritative.
+Validation: Android build and rewarded-ad unit/runtime tests; Windows parity gate; verify failed/no-fill/timeout flows and privacy consent do not grant rewards.
