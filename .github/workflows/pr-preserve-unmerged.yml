@@ -2,9 +2,7 @@
 name: BLINK preserve unmerged pull requests
 
 on:
-  pull_request_target:
-    types: [closed]
-
+  workflow_dispatch:
 permissions:
   contents: read
   pull-requests: write

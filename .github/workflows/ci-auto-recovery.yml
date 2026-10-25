@@ -3,20 +3,7 @@
 name: BLINK CI automatic recovery
 
 on:
-  workflow_run:
-    workflows:
-      - Android quality gate
-      - Android runtime smoke
-      - Android release smoke test
-      - Windows desktop quality gate
-      - APK delivery integrity
-      - Web Parity Testlab Gate
-      - Supabase safety gate
-      - Secret leak guard
-      - Signed Android release
-      - Publish latest APK
-    types: [completed]
-
+  workflow_dispatch:
 permissions:
   contents: read
   actions: write

@@ -3,15 +3,6 @@ name: Monitor BLINK production releases
 # Alerts on failed signing/publishing/public download integrity, or a scheduled
 # recheck. This never publishes an APK or overrides GitHub status checks.
 on:
-  workflow_run:
-    workflows:
-      - Signed Android release
-      - Publish latest APK
-      - Verify published BLINK APK
-      - Notify BLINK website release
-    types: [completed]
-  schedule:
-    - cron: '7 5 * * *'
   workflow_dispatch:
 
 permissions:

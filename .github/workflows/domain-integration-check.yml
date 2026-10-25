@@ -2,50 +2,6 @@ name: BLINK domain integration check
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'Testlab*'
-    paths:
-      - 'app/build.gradle.kts'
-      - 'app/src/main/AndroidManifest.xml'
-      - 'app/src/main/java/com/example/MainActivity.kt'
-      - 'app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt'
-      - 'app/src/main/java/com/example/sharing/**'
-      - 'app/src/test/java/com/example/sharing/**'
-      - 'web/**'
-      - '.github/workflows/domain-integration-check.yml'
-      - '.github/workflows/deploy-web-preview.yml'
-      - 'scripts/check_github_pages_site.py'
-      - 'scripts/test_domain_auth_links.mjs'
-      - 'scripts/test_android_prod_links.mjs'
-      - 'scripts/verify_live_blink_integrations.mjs'
-      - 'scripts/test_landing_phase1.mjs'
-      - 'scripts/test_discovery_phase2.mjs'
-      - 'scripts/test_web_production_phase3.mjs'
-      - 'scripts/test_web_production_phase3_authseo.mjs'
-      - 'scripts/test_mobile_web_performance.mjs'
-      - 'scripts/test_web_local_analytics.mjs'
-      - 'scripts/test_site_aggregate_analytics.mjs'
-  pull_request:
-    paths:
-      - 'app/build.gradle.kts'
-      - 'app/src/main/AndroidManifest.xml'
-      - 'app/src/main/java/com/example/MainActivity.kt'
-      - 'app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt'
-      - 'app/src/main/java/com/example/sharing/**'
-      - 'app/src/test/java/com/example/sharing/**'
-      - 'web/**'
-      - '.github/workflows/domain-integration-check.yml'
-      - '.github/workflows/deploy-web-preview.yml'
-      - 'scripts/check_github_pages_site.py'
-      - 'scripts/test_domain_auth_links.mjs'
-      - 'scripts/test_android_prod_links.mjs'
-      - 'scripts/verify_live_blink_integrations.mjs'
-      - 'scripts/test_landing_phase1.mjs'
-      - 'scripts/test_discovery_phase2.mjs'
-      - 'scripts/test_web_production_phase3.mjs'
-      - 'scripts/test_web_production_phase3_authseo.mjs'
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

@@ -1,12 +1,7 @@
 name: Fix weighted discovery feed wiring
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - '.github/scripts/fix_weighted_discovery_feed.py'
-      - '.github/workflows/fix-weighted-discovery-feed.yml'
-
+  workflow_dispatch:
 permissions:
   contents: write
 

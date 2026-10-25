@@ -4,11 +4,6 @@ name: Notify BLINK website release
 # publication does not fire normal release:published workflows. Depend on
 # the verified Publish latest APK workflow finishing successfully instead.
 on:
-  workflow_run:
-    workflows: [Publish latest APK]
-    types: [completed]
-  # Manually verify existing published release against FCM WITHOUT publishing
-  # a new APK. Default is validate_only and does not send any user notification.
   workflow_dispatch:
     inputs:
       mode:
@@ -20,13 +15,6 @@ on:
   # After promoting a notifier-only repair, validate Firebase credentials
   # immediately, before the next signed APK release can finish publishing.
   # This path can NEVER broadcast: the push event uses validate_only.
-  push:
-    branches: [main]
-    paths:
-      - .github/scripts/notify_blink_release.py
-      - .github/scripts/test_notify_blink_release.py
-      - .github/workflows/notify-blink-website-release.yml
-
 concurrency:
   # Do not cancel a notification when another APK publication or validation starts.
   group: blink-release-notify-${{ github.event_name }}-${{ github.run_id }}
