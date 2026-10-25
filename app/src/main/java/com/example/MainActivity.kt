@@ -1403,6 +1403,7 @@ fun MainAppContent(
                 uiState.activeViewingStory != null ||
                 uiState.showSellerCongratulationsDialog ||
                 uiState.deepLinkedPost != null ||
+                uiState.navigationHistory.isNotEmpty() ||
                 (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
     ) {
         when {
@@ -1413,14 +1414,21 @@ fun MainAppContent(
             uiState.isBecomeSellerOpen -> viewModel.openBecomeSeller(false)
             uiState.isPostItemOpen -> viewModel.openPostItem(false)
             uiState.isActivityOpen -> viewModel.openActivity(false)
-            uiState.activeConversationPartner != null -> viewModel.closeConversation()
-            uiState.viewingProfile != null -> viewModel.closeProfile()
-            uiState.viewingProduct != null -> viewModel.closeProductDetail()
+            uiState.activeConversationPartner != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeConversation()
+            }
+            uiState.viewingProfile != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProfile()
+            }
+            uiState.viewingProduct != null -> {
+                if (!viewModel.navigateBackInHistory()) viewModel.closeProductDetail()
+            }
             uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
             uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
             uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.navigationHistory.isNotEmpty() -> viewModel.navigateBackInHistory()
             uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
                 isBottomBarVisibleByScroll = true
                 viewModel.setFeedSubTab(0)
