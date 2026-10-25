@@ -34,10 +34,17 @@ internal object BlinkChatImagePreparer {
         while (options.outWidth / sample > 1600 || options.outHeight / sample > 1600) {
             sample *= 2
         }
-        val image = context.contentResolver.openInputStream(uri)?.use {
+        val decoded = context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null,
                 BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: throw IllegalArgumentException("Could not decode picture.")
+        val image = try {
+            BlinkChatImageOrientation.apply(context, uri, decoded)
+        } catch (failure: Exception) {
+            decoded.recycle()
+            throw failure
+        }
+        if (image !== decoded) decoded.recycle()
         val temporary = File.createTempFile("blink-standard-", ".jpg", context.cacheDir)
         try {
             // JPEG has no alpha; white background avoids unintended black regions.
