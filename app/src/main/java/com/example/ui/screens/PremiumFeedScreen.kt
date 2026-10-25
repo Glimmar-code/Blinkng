@@ -322,6 +322,7 @@ fun PremiumFeedScreen(
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onFollowingVisible: () -> Unit = {},
     onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
@@ -372,6 +373,13 @@ fun PremiumFeedScreen(
     // A new app process always lands on For You; rememberSaveable still retains
     // Following during activity recreation and normal in-app navigation.
     var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
+    // An explicit Following visit fetches only that lane. The ViewModel's
+    // per-account cooldown handles repeat composition or quick tab changes.
+    LaunchedEffect(feedLane, currentSubTab, isMainPageActive, resumeUserKey) {
+        if (feedLane == 1 && currentSubTab == 0 && isMainPageActive) {
+            onFollowingVisible()
+        }
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
@@ -509,6 +517,7 @@ fun PremiumFeedScreen(
             userAvatar = userAvatar,
             currentSubTab = 1,
             onSubTabChanged = onSubTabChanged,
+            hasUnreadNotifications = hasUnreadNotifications,
             isDark = isDark,
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,

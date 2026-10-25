@@ -32,11 +32,11 @@ class PrimaryBottomBarNavigationTest {
             }
         }
 
-        listOf("home", "reels", "market", "connect", "menu").forEach { destination ->
+        listOf("home", "reels", "market", "connect", "message").forEach { destination ->
             rule.onNodeWithTag("feed_nav_${destination}").performClick()
         }
         rule.runOnIdle {
-            assertEquals(listOf("home", "reels", "market", "connect", "menu"), tapped)
+            assertEquals(listOf("home", "reels", "market", "connect", "message"), tapped)
         }
     }
 }

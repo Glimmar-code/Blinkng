@@ -8,12 +8,12 @@ class BlinkMenuDestinationTest {
     @Test fun approvedReferenceOrderIsStable() {
         assertEquals(
             listOf(
-                "My Profile", "Leaderboard", "Wallet & Coins", "Notifications",
+                "My Profile", "Refer & Grow", "Leaderboard", "Wallet & Coins", "Notifications",
                 "Saved Items", "Verification", "Update Center", "Settings",
                 "Help & Support", "Log Out"
             ), BlinkMenuDestination.entries.map { it.title }
         )
-        assertEquals(10, BlinkMenuDestination.entries.map { it.key }.distinct().size)
+        assertEquals(11, BlinkMenuDestination.entries.map { it.key }.distinct().size)
     }
 
     @Test fun invalidRouteNeverMeansLogout() {
