@@ -266,7 +266,18 @@ class ChatRepository(
                             else -> MessageStatus.SENT
                         },
                         isVoiceNote = mediaType.equals("voice", true),
-                        attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
+                        attachedImageUrl = mediaUrl.takeIf {
+                            mediaType.equals("image", true) && !o.optBoolean("image_view_once", false)
+                        },
+                        imageViewOnce = o.optBoolean("image_view_once", false),
+                        imageAlbumId = o.optString("image_album_id").takeIf {
+                            it.isNotBlank() && !it.equals("null", ignoreCase = true)
+                        },
+                        imageAlbumPosition = o.optInt("image_album_position", 0),
+                        imageAlbumSize = o.optInt("image_album_size", 1),
+                        imagePreviewUrl = o.optString("image_preview_url").takeIf {
+                            it.isNotBlank() && !it.equals("null", ignoreCase = true)
+                        },
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
                         attachedAudioUrl = mediaUrl.takeIf {
                             mediaType.equals("voice", true) || mediaType.equals("audio", true)
