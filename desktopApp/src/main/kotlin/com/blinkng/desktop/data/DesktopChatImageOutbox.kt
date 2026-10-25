@@ -117,8 +117,26 @@ object DesktopChatImageOutbox {
         }?.sortedBy { it.file.lastModified() }.orEmpty()
     }
 
+    fun progress(ownerId: String, messageId: String, percentage: Int) {
+        val id = UUID.fromString(messageId).toString()
+        runCatching {
+            File(userFolder(ownerId), "$id.progress")
+                .writeText(percentage.coerceIn(0, 100).toString(), Charsets.UTF_8)
+        }
+    }
+
+    fun pendingProgress(ownerId: String): Int? {
+        val active = pending(ownerId).firstOrNull() ?: return null
+        return runCatching {
+            File(userFolder(ownerId), "${active.messageId}.progress")
+                .takeIf { it.isFile }?.readText(Charsets.UTF_8)
+                ?.trim()?.toIntOrNull()?.coerceIn(0, 100)
+        }.getOrNull()
+    }
+
     fun complete(record: Record) {
         val folder = userFolder(record.ownerId)
+        File(folder, "${record.messageId}.progress").delete()
         val file = record.file.canonicalFile
         if (file.parentFile != folder) return
         File(folder, "${record.messageId}.json").delete()
