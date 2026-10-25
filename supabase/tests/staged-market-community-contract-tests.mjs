@@ -396,6 +396,37 @@ export async function stagedMarketCommunityContractTests() {
       where conversation_id='${managed}' and user_id='${owner}'`),
       'GROUP_OWNER_MUST_TRANSFER_FIRST');
     await db.exec('reset role');
+    // Read-receipt authorization must survive regular two-person messages
+    // while denying the same RPC after someone leaves that direct chat.
+    await db.exec(`
+      insert into public.conversation_participants(conversation_id,user_id)
+        values ('${dm}','${owner}');
+      insert into public.messages(id,conversation_id,sender_id,content)
+        values ('aaaaaaaa-bbbb-4aaa-8aaa-aaaaaaaaaaaa','${dm}','${owner}','Fresh direct message');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const dmRead = await db.query(
+      "select public.mark_conversation_read('testowner') as n");
+    assert.equal(Number(dmRead.rows[0].n),1,'Current DM member marks message as read');
+    await db.exec(`
+      update public.conversation_participants set left_at=now()
+      where conversation_id='${dm}' and user_id='${other}'`);
+    await db.exec('reset role');
+    await db.exec(`
+      insert into public.messages(id,conversation_id,sender_id,content)
+        values ('bbbbbbbb-cccc-4bbb-8bbb-bbbbbbbbbbbb','${dm}','${owner}','After departure');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const departedDmRead = await db.query(
+      "select public.mark_conversation_read('testowner') as n");
+    assert.equal(Number(departedDmRead.rows[0].n),0,'Departed DM member cannot mark new messages read');
+    const departedDmHistory = await db.query(`
+      select id from public.get_conversation_messages_page('${dm}',20)`);
+    assert.equal(departedDmHistory.rows.length,0,'Departed DM member cannot fetch history');
+    await db.exec('reset role');
+    console.log('PASS active and departed direct-chat history/read-receipt authorization');
     console.log('PASS staged founder cannot silently abandon group via raw UPDATE');
     console.log('PASS staged active roster permissions');
     console.log('PASS staged group send/identity/title permissions');
