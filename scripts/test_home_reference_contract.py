@@ -93,6 +93,17 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('"Messages & inbox" to onMessages', menu)
         self.assertIn('onMessages = {', MAIN)
 
+    def test_hidden_bottom_navigation_releases_feed_space(self):
+        # MainActivity's scroll visibility must actually reach the feed's
+        # viewport and FAB. Hiding the overlay alone leaves a phantom gap.
+        self.assertIn('isBottomNavigationVisible = isBottomBarVisibleByScroll', MAIN)
+        self.assertIn('isBottomNavigationVisible: Boolean = true', HOME)
+        self.assertIn('bottom = bottomRailClearance', HOME)
+        self.assertIn('bottom = createFabClearance', HOME)
+        self.assertIn('if (isBottomNavigationVisible) 64.dp + bottomNavigationInset else bottomNavigationInset', HOME)
+        self.assertNotIn('.padding(bottom = 64.dp + bottomNavigationInset)', HOME)
+        self.assertNotIn('.padding(end = 14.dp, bottom = 144.dp + bottomNavigationInset)', HOME)
+
     def test_game_is_inside_items_and_admin_is_role_gated(self):
         self.assertIn('title = "Game"', ITEMS)
         self.assertIn('title = "Boost"', ITEMS)
