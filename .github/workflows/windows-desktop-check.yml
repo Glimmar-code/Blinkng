@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 concurrency:
   group: windows-desktop-${{ github.ref }}
@@ -55,8 +57,24 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether full Windows packaging inputs were previously verified
+        id: reuse
+        shell: pwsh
+        env:
+          BLINK_CI_SCOPE: windows
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/ci_verified_reuse.py
+
+      - name: Explain evidence-backed Windows build reuse
+        if: steps.reuse.outputs.reuse == 'true'
+        shell: pwsh
+        run: Write-Output 'Prior successful Windows build, EXE and MSI packaging reused from identical source, test and dependency inputs; this commit has a fresh successful check.'
 
       - uses: actions/setup-java@v5
+        if: steps.reuse.outputs.reuse != 'true'
         with:
           distribution: temurin
           java-version: '17'
@@ -65,10 +83,12 @@ jobs:
       # wrapper launch scripts. Pin Gradle explicitly so the desktop build is
       # deterministic and does not depend on the runner's preinstalled version.
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.reuse.outputs.reuse != 'true'
         with:
           gradle-version: '8.12.1'
 
       - name: Stage pinned Godot 4.3 native Windows runtime
+        if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -84,12 +104,15 @@ jobs:
           Copy-Item -Path $engine.FullName -Destination (Join-Path $destination 'BlinkLife.exe')
 
       - name: Compile and test desktop app
+        if: steps.reuse.outputs.reuse != 'true'
         run: gradle -p desktopApp build --stacktrace --no-daemon
 
       - name: Build Windows EXE and MSI
+        if: steps.reuse.outputs.reuse != 'true'
         run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
 
       - name: Verify native Godot assets in Windows installer build
+        if: steps.reuse.outputs.reuse != 'true'
         shell: pwsh
         run: |
           $base = 'desktopApp/build/nativeResources/windows/blink-life'
@@ -100,6 +123,7 @@ jobs:
           }
 
       - name: Upload Windows installers
+        if: steps.reuse.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: blinkng-windows-${{ github.sha }}
