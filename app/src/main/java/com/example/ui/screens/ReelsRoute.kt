@@ -110,7 +110,15 @@ fun FeedScreen(
             onConnectClick = { onSubTabChanged(2) },
             onGameClick = { onSubTabChanged(3) },
             initialReelId = initialReelId,
-            initialReelPositionMs = initialReelPositionMs
+            initialReelPositionMs = initialReelPositionMs,
+            stories = stories,
+            userAvatar = userAvatar,
+            onAddStoryClick = onAddStoryClick,
+            onStoryClick = onStoryClick,
+            onSearchClick = onSearchClick,
+            onNotificationsClick = onOpenActivity,
+            onMenuClick = onOpenMenu,
+            onBottomBarVisibilityChange = onBottomBarVisibilityChange
         )
     } else {
         LaunchedEffect(currentSubTab) { onSubTabChanged(0) }
