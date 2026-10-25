@@ -1,10 +1,10 @@
 /**
- * Fail-closed BLINK Testlab -> main promotion controller.
+ * Fail-closed BLINK verified feature PR -> main promotion controller.
  *
  * Runs only from the trusted default branch in pull_request_target/schedule.
  * Never checks out or executes code from a pull request.
  * A PR is eligible only when an authorized connected agent explicitly opts
- * the current Testlab revision into promotion after testing. No GitHub owner
+ * the current internal feature-branch revision into promotion after testing. No GitHub owner
  * approval comment or manual owner interaction is required.
  */
 'use strict';
@@ -36,7 +36,7 @@ function filePathsRequireStaging(files) {
     /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^supabase\/(?:migrations\/|functions\/|config\.toml$)/.test(path) ||
     /^app\/proguard-rules\.pro$/.test(path) ||
-    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
+    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab|retire-testlab-branch)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
   );
 }
 
@@ -105,8 +105,8 @@ function releaseWorkflows(files) {
 function preflight(pr, changedFiles) {
   if (!pr || pr.state !== 'open' || pr.draft) return 'PR is not open and ready for review';
   if (pr.base?.ref !== 'main') return 'PR does not target main';
-  if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return 'PR head is not an internal Testlab branch';
-  if (!/^Testlab(?:-|$)/.test(pr.head?.ref || '')) return 'PR head must be Testlab or Testlab-*';
+  if (pr.head?.repo?.full_name !== OWNER + '/' + REPO) return 'PR head must be internal to Blinkng';
+  if (!pr.head?.ref || pr.head.ref === 'main' || /^Testlab(?:-|$)/.test(pr.head.ref)) return 'PR head must be a non-main, non-Testlab feature branch';
   const labels = new Set((pr.labels || []).map(label => label.name));
   if (!labels.has(OPT_IN)) return 'No auto-promote opt-in label';
   if (/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(pr.body || '')) return 'Unfinished task checklist';
@@ -238,7 +238,7 @@ async function run({github, context, core}) {
         owner: OWNER, repo: REPO, base: 'main', head: pr.head.sha
       });
       if (comparison.behind_by !== 0 || comparison.ahead_by < 1) {
-        core.info('#' + number + ': Testlab branch must incorporate latest main'); continue;
+        core.info('#' + number + ': Feature branch must incorporate latest main'); continue;
       }
 
       const reviews = await github.paginate(github.rest.pulls.listReviews, {
@@ -277,10 +277,10 @@ async function run({github, context, core}) {
         owner: OWNER, repo: REPO, pull_number: number, sha: pr.head.sha,
         // Preserve each source PR's commit ancestry for multi-PR batches.
         merge_method: /^Testlab-batch-[0-9]+$/.test(pr.head.ref) ? 'merge' : 'squash',
-        commit_title: 'Promote verified Testlab PR #' + number
+        commit_title: 'Merge verified BLINK PR #' + number
       });
       if (!merged.data.merged) throw new Error('GitHub did not confirm the merge');
-      core.info('Promoted verified Testlab PR #' + number + ' into main');
+      core.info('Merged verified BLINK PR #' + number + ' into main');
 
       // GITHUB_TOKEN merges do NOT trigger downstream push workflows. Dispatch
       // production jobs explicitly to keep releases/website in sync with main.

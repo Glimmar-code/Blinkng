@@ -1358,6 +1358,17 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - Preserves group retry/profile/call safeguards while adding attachment cancellation, durable retries, albums and view-once adapters. Removes duplicated desktop account/invitation state from overlapping branches.
 - Local PostgreSQL fixture tests are distinct from full hosted Auth/Storage/device verification; this candidate must pass final-head Android/Windows CI and release/backend gates before promotion.
 
+## 2026-10-24 — Single visible BLINK profile (Testlab review required)
+
+- **Android:** The new full-screen reference dashboard is now the only profile cover and identity surface. Removed the obsolete expand/collapse switch that rendered a second old cover, avatar, name, ranks and trust banner. Profile tabs, posts, reels, Market, Skills, About, private owner activity and refresh remain outside the removed block.
+- **Relationship capabilities:** Migrated the original server-backed Follow → Interact actions (message, unfollow, coin gift with idempotency key, game challenge, mentor, friend, roommate, study mate and Connect Hub) to the new reference dashboard for both narrow/accessibility and ordinary phone layouts.
+- **Windows:** Desktop already renders a single `DesktopUserProfileDialog` identity section, so there is no duplicate header to remove; it continues to use the shared account, profile and follow backend. There is no equivalent obsolete Android panel on Windows. This is an Android-only visual de-duplication and preserves existing Windows functionality.
+- **Release gate:** Main remains untouched. Verify latest-commit Android builds, screenshot QA (including 320dp/200% font), owner/visitor content tabs, follow/interact actions, avatar/back navigation and Windows parity before merge or APK publication. No Supabase production change.
+
+**PARITY-EXCEPTION: profile-single-surface** — Android removes an accidental second, obsolete profile header after the current reference dashboard. Windows already renders exactly one profile header in `DesktopUserProfileDialog`, so duplicating this Android-specific removal in Windows would be meaningless. Equivalent Windows behavior is the existing single header and unchanged profile actions.
+
+- **Main reconciliation:** On the conflict-resolution branch, retained the newer main profile features (including the owner Refer & Grow entry, initial tab/deep link behavior and current profile handlers) while removing only the redundant second cover/identity/trust surface. This is still a draft PR; no production merge or deployment.
+
 ## 2026-10-21 — Android 15 WebRTC calling recovery, scoped production port
 
 - **PARITY-EXCEPTION: android15-webrtc-native-jni** — Android's `JNI_OnLoad`, R8 APK shrinking, FCM-to-Activity ordering, `AudioManager` endpoint routing, and Android Telecom foreground service are native to Android. Windows retains its existing desktop calling interface, signaling, TURN, microphone/camera and error recovery without JNI or FCM Activity lifecycle. Supabase call-state and SDP/ICE contracts are unchanged.

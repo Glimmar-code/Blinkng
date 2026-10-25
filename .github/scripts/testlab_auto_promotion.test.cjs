@@ -1,4 +1,4 @@
-// Regression tests for the trusted Testlab -> main release gate.
+// Regression tests for the trusted verified feature-PR -> main release gate.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,7 +11,7 @@ const ready = (more = {}) => ({
   state: 'open',
   draft: false,
   base: {ref: 'main', sha: main},
-  head: {ref: 'Testlab-feature-20261011', sha: head, repo: {full_name: 'Glimmar-code/Blinkng'}},
+  head: {ref: 'feature/feed-20261025', sha: head, repo: {full_name: 'Glimmar-code/Blinkng'}},
   mergeable: true,
   mergeable_state: 'clean',
   changed_files: 1,
@@ -25,7 +25,7 @@ const check = (name, status = 'completed', conclusion = 'success', id = 1, numbe
   pull_requests: [{number, base: {sha: main}, head: {sha: head}}],
 });
 
-test('a verified, clean, opted-in Testlab change is eligible', () => {
+test('a verified, clean, opted-in feature change is eligible', () => {
   assert.equal(policy.preflight(ready(), ['app/src/Foo.kt']), null);
 });
 test('no opt-in, draft, fork, wrong base or unchecked task never promote', () => {
@@ -36,6 +36,13 @@ test('no opt-in, draft, fork, wrong base or unchecked task never promote', () =>
   assert.match(policy.preflight(ready({body: '- [ ] Device testing'}), ['readme.md']), /Unfinished/);
   assert.match(policy.preflight(ready({body: 'Do not auto-merge until validated.'}), ['readme.md']), /prohibits/);
 });
+test('retired Testlab branches and main itself cannot be promoted as feature PRs', () => {
+  for (const ref of ['Testlab', 'Testlab-old-work', 'main']) {
+    assert.match(policy.preflight(ready({head: {...ready().head, ref}}), ['README.md']),
+      /non-main/, ref);
+  }
+  assert.equal(policy.preflight(ready({head: {...ready().head, ref: 'fix/feed-ui'}}), ['README.md']), null);
+});
 test('backend, release and JNI-sensitive changes need staging attestation', () => {
   for (const filename of [
     'supabase/migrations/20261010_fix.sql',
@@ -43,6 +50,7 @@ test('backend, release and JNI-sensitive changes need staging attestation', () =
     'app/proguard-rules.pro',
     '.github/workflows/signed-release.yml',
     '.github/workflows/auto-promote-testlab.yml',
+    '.github/workflows/retire-testlab-branch.yml',
     '.github/scripts/install_release_smoke_apk.sh',
   ]) {
     assert.match(policy.preflight(ready(), [filename]), /Staging/, filename);
@@ -101,7 +109,7 @@ test('release and website workflows are dispatched for relevant merges', () => {
   assert.deepEqual(policy.releaseWorkflows(['.github/workflows/signed-release.yml']), ['signed-release.yml']);
   assert.deepEqual(policy.releaseWorkflows(['.github/scripts/install_release_smoke_apk.sh']), ['signed-release.yml']);
 });
-test('authorized AI opt-in on the latest Testlab revision requires no GitHub owner comment', () => {
+test('authorized AI opt-in on the latest feature-branch revision requires no GitHub owner comment', () => {
   assert.equal(policy.preflight(ready(), ['web/app.js']), null);
   assert.equal(policy.preflight(ready({labels: []}), ['web/app.js']), 'No auto-promote opt-in label');
   assert.equal(policy.preflight(ready({draft: true}), ['web/app.js']),
@@ -161,7 +169,7 @@ test('synchronize fails closed if GitHub cannot revoke existing opt-in', async (
   );
 });
 
-test('end-to-end trusted controller merges fully verified agent-opted Testlab PR without owner comments', async () => {
+test('end-to-end trusted controller merges fully verified feature PR without owner comments', async () => {
   const names = policy.requiredChecks(['README.md']);
   const labels = [{name: 'auto-promote'}];
   const pr = ready({labels, changed_files: 1});
@@ -203,7 +211,7 @@ test('end-to-end trusted controller merges fully verified agent-opted Testlab PR
   assert.equal(merges, 1);
   assert.equal(commentsFetched, 0);
   assert.deepEqual(failed, []);
-  assert.ok(logs.some(m => m.includes('Promoted verified Testlab PR #300')));
+  assert.ok(logs.some(m => m.includes('Merged verified BLINK PR #300')));
 });
 
 test('CI fails closed on missing, pending, failed or stale checks', () => {

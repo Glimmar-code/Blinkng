@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ContactField
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.NigerianUniversitySearch
 import com.example.data.models.UserProfile
 import com.example.data.repository.ProfileRepository
 import com.example.data.supabase.ProfileMediaType
@@ -2006,27 +2007,10 @@ private fun UniversityPickerDialog(
 
     var query by rememberPersistentTextState(key = "com/example/ui/screens/EditProfileScreen.kt:query:1")
 
-    val universities =
-        remember(
-            query
-        ) {
-
-            if (
-                query.isBlank()
-            ) {
-                NigerianUniversities.all
-            } else {
-                NigerianUniversities
-                    .all
-                    .filter {
-                        it.contains(
-                            query,
-                            ignoreCase =
-                                true
-                        )
-                    }
-            }
-        }
+    val universities = remember(query) {
+        if (query.isBlank()) NigerianUniversities.all
+        else NigerianUniversitySearch.search(query, limit = 120)
+    }
 
     AlertDialog(
         onDismissRequest =

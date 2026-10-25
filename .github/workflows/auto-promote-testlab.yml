@@ -1,6 +1,6 @@
 # Trusted default-branch controller. Never execute untrusted PR code here.
-# Promotes ONLY explicitly opted-in, completed, green Testlab PRs.
-name: Automatically promote verified Testlab
+# Promotes ONLY explicitly opted-in, completed, green internal feature PRs targeting main.
+name: Automatically merge verified BLINK PRs into main
 
 on:
   pull_request_target:
@@ -18,7 +18,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: blink-verified-testlab-promotion
+  group: blink-verified-direct-main-promotion
   cancel-in-progress: false
 
 jobs:
