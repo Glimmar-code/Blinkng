@@ -240,6 +240,7 @@ fun PremiumMessagesScreen(
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit = { _, _, _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
     onLoadOlder: (String) -> Unit = {},
@@ -376,6 +377,7 @@ fun PremiumMessagesScreen(
                         onSendVideo = onSendVideo,
                         onSendAttachment = onSendAttachment,
                         onRetryMessage = onRetryMessage,
+                        onCancelAttachment = onCancelAttachment,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
                         onLoadOlder = onLoadOlder,
@@ -493,6 +495,7 @@ private fun PremiumMessagesMasterDetail(
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    onCancelAttachment: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
     onLoadOlder: (String) -> Unit,
@@ -559,6 +562,9 @@ private fun PremiumMessagesMasterDetail(
                 },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
+                },
+                onCancelUpload = { message ->
+                    onCancelAttachment?.invoke(displayedConversation.partnerUsername, message)
                 },
                 onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
                 onStoryReferenceClick = onStoryReferenceClick,
@@ -1262,6 +1268,7 @@ private fun PremiumChatDetail(
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality) -> Unit,
     onRetry: (ChatMessage) -> Unit,
+    onCancelUpload: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onStoryReferenceClick: (String) -> Unit,
     onAudioCall: () -> Unit,
@@ -1601,6 +1608,7 @@ private fun PremiumChatDetail(
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
+                            onCancelUpload = { onCancelUpload(message) },
                             onStoryReferenceClick = onStoryReferenceClick,
                         )
                     }
@@ -2168,6 +2176,7 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onActions: () -> Unit,
     onRetry: () -> Unit,
+    onCancelUpload: () -> Unit,
     onStoryReferenceClick: (String) -> Unit,
 ) {
     val isMine = message.isFromMe
@@ -2260,6 +2269,7 @@ private fun MessageBubble(
                         message = message, isMine = isMine, palette = palette,
                         onStoryReferenceClick = onStoryReferenceClick,
                         onRetry = onRetry,
+                        onCancelUpload = onCancelUpload,
                     )
                 }
 
@@ -2322,6 +2332,7 @@ private fun MessageContent(
     palette: MessagePalette,
     onStoryReferenceClick: (String) -> Unit,
     onRetry: () -> Unit,
+    onCancelUpload: () -> Unit,
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -2380,6 +2391,9 @@ private fun MessageContent(
                                     else "${message.uploadProgress ?: 0}%",
                                     color = Color.White, fontSize = 12.sp
                                 )
+                                androidx.compose.material3.TextButton(
+                                    onClick = onCancelUpload
+                                ) { Text("Cancel upload", color = Color.White, fontSize = 11.sp) }
                             }
                         }
                     }
