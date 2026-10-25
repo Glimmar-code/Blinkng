@@ -45,6 +45,8 @@ import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkPink
 import com.blinkng.shared.BlinkUserSuggestionPolicy
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private data class MentionToken(
     val start: Int,
@@ -81,7 +83,8 @@ fun CommentSheet(
     onSendComment: (text: String, parentCommentId: String?) -> Unit,
     onToggleCommentLike: (String) -> Unit,
     onReportComment: (commentId: String, reason: String) -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onSearchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
     var textInput by rememberPersistentTextState(key = "comment_text", scope = draftKey)
     var replyParentId by remember { mutableStateOf<String?>(null) }
@@ -89,27 +92,43 @@ fun CommentSheet(
     var reportingCommentId by remember { mutableStateOf<String?>(null) }
 
     val mentionToken = remember(textInput) { activeMentionToken(textInput) }
-    var expandMentionSuggestions by remember(mentionToken?.query) { mutableStateOf(false) }
-    val mentionSuggestions = remember(mentionToken, mentionCandidates, expandMentionSuggestions) {
+    val mentionScope = rememberCoroutineScope()
+    var remoteMentionCandidates by remember(draftKey, mentionToken?.query) {
+        mutableStateOf<List<UserProfile>>(emptyList())
+    }
+    var remoteLoading by remember(draftKey, mentionToken?.query) { mutableStateOf(false) }
+    var remoteHasMore by remember(draftKey, mentionToken?.query) { mutableStateOf(false) }
+    var mentionVisibleLimit by remember(draftKey, mentionToken?.query) {
+        mutableIntStateOf(BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE)
+    }
+    LaunchedEffect(draftKey, mentionToken?.query) {
+        val token = mentionToken ?: return@LaunchedEffect
+        val search = onSearchMentions ?: return@LaunchedEffect
+        if (token.query.isBlank()) return@LaunchedEffect
+        delay(220)
+        remoteLoading = true
+        try {
+            val page = search(token.query, 60, null, null)
+            remoteMentionCandidates = page
+            remoteHasMore = page.size >= 60
+        } finally {
+            remoteLoading = false
+        }
+    }
+    val availableMentionCandidates =
+        if (onSearchMentions != null) remoteMentionCandidates else mentionCandidates
+    val rankedMentions = remember(mentionToken, availableMentionCandidates) {
         if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.page(
-            visibleCandidates = mentionCandidates,
+            visibleCandidates = availableMentionCandidates,
             query = mentionToken.query,
-            pageSize = if (expandMentionSuggestions) 50 else BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE,
+            pageSize = 100,
             username = { it.username },
             displayName = { it.fullName }
         )
     }
-    val hasMoreMentionSuggestions = remember(mentionToken, mentionCandidates, expandMentionSuggestions) {
-        mentionToken != null && !expandMentionSuggestions &&
-            BlinkUserSuggestionPolicy.page(
-                visibleCandidates = mentionCandidates,
-                query = mentionToken.query,
-                offset = BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE,
-                pageSize = 1,
-                username = { it.username },
-                displayName = { it.fullName }
-            ).isNotEmpty()
-    }
+    val mentionSuggestions = rankedMentions.take(mentionVisibleLimit)
+    val hasMoreMentionSuggestions = mentionToken != null &&
+        (rankedMentions.size > mentionVisibleLimit || remoteHasMore)
 
     fun startReply(parentId: String, username: String) {
         val cleanUsername = username.trim().removePrefix("@")
@@ -318,9 +337,29 @@ fun CommentSheet(
                         }
                         if (hasMoreMentionSuggestions) {
                             TextButton(
-                                onClick = { expandMentionSuggestions = true },
+                                enabled = !remoteLoading,
+                                onClick = {
+                                    if (mentionVisibleLimit < rankedMentions.size) {
+                                        mentionVisibleLimit += BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE
+                                    } else if (onSearchMentions != null && mentionToken != null) {
+                                        val query = mentionToken.query
+                                        val last = remoteMentionCandidates.lastOrNull()
+                                        if (last != null && remoteHasMore) {
+                                            mentionScope.launch {
+                                                remoteLoading = true
+                                                try {
+                                                    val page = onSearchMentions(query, 60, last.username, last.id)
+                                                    remoteMentionCandidates =
+                                                        (remoteMentionCandidates + page).distinctBy { it.id }
+                                                    remoteHasMore = page.size >= 60
+                                                    mentionVisibleLimit += BlinkUserSuggestionPolicy.DEFAULT_PAGE_SIZE
+                                                } finally { remoteLoading = false }
+                                            }
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text("See more matching users") }
+                            ) { Text(if (remoteLoading) "Searching…" else "See more matching users") }
                         }
                     }
                 }
