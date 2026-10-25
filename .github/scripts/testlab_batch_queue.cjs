@@ -50,6 +50,7 @@ function isCandidate(pr, now = Date.now()) {
     Number.isFinite(age) && age >= 0 && age <= ACTIVE_DAYS * 86400000 &&
     !/^\s*\[(?:draft|wip|superseded|hold|blocked|do not merge)\]/i.test(title) &&
     !/\b(?:superseded by|do not auto-merge|do not merge|not for production|staging only|hold (?:the )?merge)\b/i.test(body) &&
+    !/^\s*(?:[-*+]|\d+\.)\s*\[\s\]/m.test(body) &&
     ![...tags].some(name => BLOCKED_LABELS.has(name.toLowerCase()));
 }
 
@@ -241,8 +242,9 @@ async function selectVerified(github, candidates, core) {
     }
     // A write-enabled dispatcher must not execute altered workflow, action
     // or CI helper code supplied by another PR.
-    if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p))) {
-      core.info('Skipping #' + pr.number + ': CI controller changes require separate review');
+    if (files.some(p => /^\.github\/(?:workflows\/|actions\/|scripts\/)/.test(p) ||
+        /^scripts\/(?:ci_change_scope\.py|check_[^/]+|test_[^/]+)$/.test(p))) {
+      core.info('Skipping #' + pr.number + ': CI policy or testing changes require separate review');
       continue;
     }
     if (promo.filePathsRequireStaging(files) && !labels(pr).has('staging-verified')) {
