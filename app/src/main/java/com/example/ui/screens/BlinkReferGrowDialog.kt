@@ -40,6 +40,7 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
         growth = runCatching { BlinkReferralClient.growthStats() }.getOrNull()
         coins = runCatching { BlinkReferralClient.coinRewardStatus() }.getOrNull()
         sources = runCatching { BlinkReferralClient.sourceStats() }.getOrNull()
+        linkStats = runCatching { BlinkReferralClient.linkStats() }.getOrNull()
         leaders = runCatching { BlinkReferralClient.leaderboard() }.getOrDefault(emptyList())
     }
     AlertDialog(
@@ -70,6 +71,11 @@ internal fun BlinkReferGrowDialog(username: String, onDismiss: () -> Unit) {
                     Text("Profile opens from Search (7 days): ${it.searchProfileOpens}")
                     Text("Profile opens from new-student recommendations: ${it.recommendationProfileOpens}")
                     Text("Only unique daily in-app opens are counted.", style = MaterialTheme.typography.labelSmall)
+                }
+                linkStats?.let {
+                    Text("Unique invite-browser opens (30 days, estimated): ${it.estimatedUniqueOpens30Days}")
+                    Text("Confirmed referral signups (30 days): ${it.confirmedSignups30Days}")
+                    Text("Link opens are estimates and cannot earn Coins.", style = MaterialTheme.typography.labelSmall)
                 }
                 coins?.let {
                     Text("Referral milestone Coins earned: ${it.earnedCoins}")
