@@ -45,11 +45,18 @@ internal object BlinkChatPhotoEditor {
             while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > 2048) {
                 sampleSize *= 2
             }
-            val photo = context.contentResolver.openInputStream(uri)?.use {
+            val decoded = context.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(
                     it, null, BitmapFactory.Options().apply { inSampleSize = sampleSize }
                 )
             } ?: throw IllegalArgumentException("This photo cannot be edited.")
+            val photo = try {
+                BlinkChatImageOrientation.apply(context, uri, decoded)
+            } catch (failure: Exception) {
+                decoded.recycle()
+                throw failure
+            }
+            if (photo !== decoded) decoded.recycle()
             val result = try {
                 when (operation) {
                     Edit.ROTATE_RIGHT -> {
