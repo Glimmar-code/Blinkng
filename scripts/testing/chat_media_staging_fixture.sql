@@ -13,6 +13,23 @@ create table storage.buckets (
 insert into storage.buckets(id, name, public)
 values ('message-media', 'message-media', false);
 
+-- Simulate an existing over-permissive Storage policy. The migration must
+-- restrict the one-use bucket even when broad legacy policies already exist.
+create table storage.objects(
+    id uuid primary key,
+    bucket_id text not null,
+    name text not null
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated;
+grant select, insert, update, delete on storage.objects to authenticated;
+create policy staging_allow_storage_select
+    on storage.objects for select to authenticated using (true);
+create policy staging_allow_storage_insert
+    on storage.objects for insert to authenticated with check (true);
+
+
+
 create table public.messages (
     id uuid primary key,
     conversation_id uuid not null,
