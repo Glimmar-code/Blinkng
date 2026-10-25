@@ -27,6 +27,14 @@ class BlinkChatAttachmentPolicyTest {
         }.isSuccess)
     }
 
+    @Test fun uploadProgressClampsAndHandlesUnknownOrEmptyTotals() {
+        assertEquals(0, BlinkChatUploadProgress.percent(10L, 0L))
+        assertEquals(0, BlinkChatUploadProgress.percent(-20L, 100L))
+        assertEquals(45, BlinkChatUploadProgress.percent(45L, 100L))
+        assertEquals(100, BlinkChatUploadProgress.percent(200L, 100L))
+        assertEquals(100, BlinkChatUploadProgress.percent(Long.MAX_VALUE, Long.MAX_VALUE))
+    }
+
     @Test fun extensionsAndNamesAreSafe() {
         assertEquals("jpg", BlinkChatAttachmentKind.IMAGE.extension("image/jpeg"))
         assertEquals("docx", BlinkChatAttachmentKind.DOCUMENT.extension(
