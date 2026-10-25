@@ -94,6 +94,7 @@ import com.example.data.repository.ProfessionalRepository
 import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.BlinkMark
+import com.example.ui.components.BlinkUserPickerSheet
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import com.example.ui.theme.BlinkTheme
@@ -324,17 +325,22 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                         }
                     )
 
-                    ProfessionalSection.GROUPS -> GroupsSection(busy) { title, usernames ->
+                    ProfessionalSection.GROUPS -> GroupsSection(
+                        busy = busy,
+                        searchProfiles = { query, limit, afterUsername, afterId ->
+                            service.searchProfilesPage(query, limit, afterUsername, afterId)
+                        }
+                    ) { title, members ->
                         scope.launch {
                             busy = true
                             runCatching {
-                                val ids = withContext(Dispatchers.IO) {
-                                    usernames.map { username ->
-                                        service.fetchProfileByUsername(username.removePrefix("@"))?.id
-                                            ?: error("@$username was not found")
-                                    }
-                                }
-                                repository.createGroup(title, ids).getOrThrow()
+                                val creator = service.getCurrentUserId().orEmpty()
+                                val ids = com.blinkng.shared.BlinkGroupCreationPolicy
+                                    .normalizedMembers(creator, members.map { it.id })
+                                repository.createGroup(
+                                    com.blinkng.shared.BlinkGroupCreationPolicy.normalizedTitle(title),
+                                    ids
+                                ).getOrThrow()
                             }.onSuccess {
                                 Toast.makeText(context, "Group created. Refresh Messages to see it.", Toast.LENGTH_SHORT).show()
                             }.onFailure {
@@ -586,28 +592,76 @@ private fun OrdersSection(
 }
 
 @Composable
-private fun GroupsSection(busy: Boolean, onCreate: (String, List<String>) -> Unit) {
+private fun GroupsSection(
+    busy: Boolean,
+    searchProfiles: suspend (String, Int, String?, String?) -> List<UserProfile>,
+    onCreate: (String, List<UserProfile>) -> Unit
+) {
     var title by rememberSaveable { mutableStateOf("") }
-    var users by rememberSaveable { mutableStateOf("") }
+    var showMemberPicker by rememberSaveable { mutableStateOf(false) }
+    var members by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp, 6.dp, 14.dp, 28.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        item { Header(Icons.Default.Groups, "Group chats", "Create a secure group with 3–50 Blink members.") }
+        item { Header(Icons.Default.Groups, "Group chats", "Create a group with 3–50 actual BLINK accounts.") }
         item {
             Panel("New group") {
-                OutlinedTextField(title, { title = it.take(80) }, label = { Text("Group name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    title, { title = it.take(80) },
+                    label = { Text("Group name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(users, { users = it.take(500) }, label = { Text("Member usernames") }, supportingText = { Text("Comma-separated usernames") }, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = { showMemberPicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (members.isEmpty()) "Select members" else "Change members (" + members.size + ")")
+                }
+                members.take(8).forEach { person ->
+                    FilterChip(
+                        selected = true,
+                        enabled = !busy,
+                        onClick = { members = members.filterNot { it.id == person.id } },
+                        label = { Text("@" + person.username + "  ×") }
+                    )
+                }
+                if (members.size > 8) {
+                    Text((members.size - 8).toString() + " more selected", style = MaterialTheme.typography.bodySmall)
+                }
                 Spacer(Modifier.height(8.dp))
-                val parsed = users.split(',').map { it.trim().removePrefix("@") }.filter(String::isNotBlank).distinct()
-                Button(onClick = { onCreate(title.trim(), parsed) }, enabled = !busy && title.trim().length >= 2 && parsed.size >= 2, modifier = Modifier.fillMaxWidth()) {
-                    if (busy) { CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp); Spacer(Modifier.width(7.dp)) }
+                Button(
+                    onClick = { onCreate(title.trim(), members) },
+                    enabled = !busy && title.trim().length in 2..80 && members.size in 2..49,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(7.dp))
+                    }
                     Text("Create group")
                 }
             }
         }
+    }
+    if (showMemberPicker) {
+        BlinkUserPickerSheet(
+            title = "Select Group Members",
+            onDismiss = { showMemberPicker = false },
+            searchProfiles = searchProfiles,
+            onSelectUser = {},
+            multiSelect = true,
+            minSelection = 2,
+            maxSelection = 49,
+            onConfirmSelection = { selected ->
+                members = selected.distinctBy { it.id }
+                showMemberPicker = false
+            }
+        )
     }
 }
 
