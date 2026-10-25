@@ -20,6 +20,8 @@ WINDOWS_ROOTS = ("desktopApp/", "shared/", "game3d/", "gradle/")
 BACKEND_ROOTS = ("supabase/",)
 ANDROID_FILES = BUILD_INPUTS | {
     ".github/workflows/android-build-check.yml",
+    "scripts/ci_verified_reuse.py",
+    "scripts/test_ci_verified_reuse.py",
     ".github/scripts/testlab_auto_promotion.test.cjs",
     ".github/scripts/test_blink_delta.py",
     "scripts/test_inapp_apk_update.py",
@@ -39,6 +41,8 @@ ANDROID_FILES = BUILD_INPUTS | {
 }
 WINDOWS_FILES = BUILD_INPUTS | {
     ".github/workflows/windows-desktop-check.yml",
+    "scripts/ci_verified_reuse.py",
+    "scripts/test_ci_verified_reuse.py",
     "scripts/check_windows_parity.py",
     "scripts/check_premium_dark_tokens.py",
     "platform-parity/changes.md",

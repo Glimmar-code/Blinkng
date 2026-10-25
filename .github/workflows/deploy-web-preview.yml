@@ -11,6 +11,10 @@ on:
       - 'app/src/main/res/drawable/app_icon.png'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_blink_indexnow.mjs'
+      - 'scripts/indexnow_public_urls.mjs'
+      - 'scripts/submit_blink_indexnow.mjs'
+      - '.github/workflows/submit-blink-indexnow.yml'
       # Keep live SEO, Auth provider and browser-analytics checks aligned with web publication.
       - '.github/workflows/blink-live-integrations-smoke.yml'
       - 'scripts/verify_live_blink_integrations.mjs'
@@ -47,6 +51,9 @@ jobs:
 
       - name: Verify raw HTML SEO and private SPA route protections
         run: node scripts/test_web_seo_static.mjs
+
+      - name: Validate public-only IndexNow submission rules
+        run: node scripts/test_blink_indexnow.mjs
 
       - name: Set up Java for Android link verification
         uses: actions/setup-java@v5
