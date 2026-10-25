@@ -3236,7 +3236,7 @@ private suspend fun restoreSupabaseSession() {
                     val workManager = WorkManager.getInstance(appContext)
                     val source = workManager.getWorkInfoByIdLiveData(request.id)
                     val observer = object : Observer<WorkInfo?> {
-                        override fun onChanged(info: WorkInfo) {
+                        override fun onChanged(info: WorkInfo?) {
                             if (info == null) return
                             if (cancelledImageUploads.contains(tempId)) {
                                 source.removeObserver(this)
