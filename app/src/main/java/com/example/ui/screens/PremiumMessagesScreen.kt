@@ -179,6 +179,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.asImageBitmap
 import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
@@ -241,6 +242,7 @@ fun PremiumMessagesScreen(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit = { _, _, _, _, _, _, _ -> },
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     onCancelAttachment: ((String, ChatMessage) -> Unit)? = null,
     onForwardPicture: (String, ChatMessage) -> Unit = { _, _ -> },
@@ -379,6 +381,7 @@ fun PremiumMessagesScreen(
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
                         onSendAttachment = onSendAttachment,
+                        onSendViewOncePicture = onSendViewOncePicture,
                         onRetryMessage = onRetryMessage,
                         onCancelAttachment = onCancelAttachment,
                         onForwardPicture = onForwardPicture,
@@ -498,6 +501,7 @@ private fun PremiumMessagesMasterDetail(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit,
+    onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     onCancelAttachment: ((String, ChatMessage) -> Unit)?,
     onForwardPicture: (String, ChatMessage) -> Unit,
@@ -572,6 +576,9 @@ private fun PremiumMessagesMasterDetail(
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind, duration, caption, quality, album ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind, duration, caption, quality, album)
+                },
+                onSendViewOncePicture = { uri, caption, quality ->
+                    onSendViewOncePicture(displayedConversation.partnerUsername, uri, caption, quality)
                 },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
@@ -1280,6 +1287,7 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit,
+    onSendViewOncePicture: (Uri, String, BlinkChatImageQuality) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onCancelUpload: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
@@ -1302,6 +1310,7 @@ private fun PremiumChatDetail(
     var imageEditBusy by remember(conversation.id) { mutableStateOf(false) }
     val photoEditScope = rememberCoroutineScope()
     var selectedImageQuality by remember(conversation.id) { mutableStateOf(BlinkChatImageQuality.STANDARD) }
+    var selectedImageViewOnce by remember(conversation.id) { mutableStateOf(false) }
     var showMediaGallery by remember(conversation.id) { mutableStateOf(false) }
     var galleryPreviewUri by remember(conversation.id) { mutableStateOf<String?>(null) }
     var galleryPreviewIndex by remember(conversation.id) { mutableIntStateOf(0) }
@@ -2115,6 +2124,13 @@ private fun PremiumChatDetail(
                         label = { Text("Original / HD") }
                     )
                 }
+                if (selectedImageUris.size == 1) {
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedImageViewOnce,
+                        onClick = { selectedImageViewOnce = !selectedImageViewOnce },
+                        label = { Text("View once (cannot be saved or forwarded)") }
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     androidx.compose.material3.TextButton(onClick = {
@@ -2127,8 +2143,12 @@ private fun PremiumChatDetail(
                         val captions = selectedImageCaptions
                         val quality = selectedImageQuality
                         val groupId = java.util.UUID.randomUUID().toString()
+                        val viewOnce = selectedImageViewOnce && photos.size == 1
                         selectedImageUris = emptyList()
-                        photos.forEachIndexed { index, uri ->
+                        selectedImageViewOnce = false
+                        if (viewOnce) {
+                            onSendViewOncePicture(photos[0], captions[0].orEmpty(), quality)
+                        } else photos.forEachIndexed { index, uri ->
                             onSendAttachment(
                                 uri, BlinkChatAttachmentKind.IMAGE, 0L,
                                 captions[index].orEmpty(), quality,
