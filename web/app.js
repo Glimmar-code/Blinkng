@@ -1194,6 +1194,7 @@
     if(!requireAuth())return;
     const parts=path.split('/').filter(Boolean),convId=parts[1],target=new URLSearchParams(location.search).get('user')||'';
     if(convId==='new'){renderNewMessage(target);return;}
+    if(convId==='groups'){renderGroupInvitations();return;}
     if(convId){renderConversation(convId,target);return;}
     ROOT.innerHTML=shell('<div class="spinner"></div>','Messages');bindCommon();
     try{
@@ -1219,7 +1220,7 @@
           meta=new Map((list||[]).map(x=>[String(x.id),x]));
         }catch{}
       }
-      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button></div><div class="list">${rows.map(m=>{
+      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button><button type="button" class="btn" id="group-invites">Groups &amp; invitations</button></div><div class="list">${rows.map(m=>{
         const group=meta.get(String(m.conversation_id));
         const isGroup=!!group?.is_group;
         const title=isGroup?(group.title||'Group chat'):(m.partner_name||m.partner_username||'Blink user');
@@ -1228,8 +1229,67 @@
         const unread=Number(m.unread_count||0);
         return `<button type="button" class="card list-item ${unread?'notification unread':''}" data-nav="/messages/${esc(m.conversation_id)}${targetQuery}">${avatar(picture,title)}<span class="grow"><span class="title">${esc(title)}${m.partner_online&&!isGroup?' <span class="online-dot" title="Online"></span>':''}</span><span class="sub">${esc(m.last_message||'No messages yet')} · ${ago(m.last_message_at)}</span></span>${unread?`<span class="badge">${fmt(unread)}</span>`:''}</button>`;
       }).join('')||'<div class="card empty"><h2>No conversations yet</h2><p>Start a conversation with a Blink user.</p></div>'}</div>`;
-      ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');
+      ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');document.getElementById('group-invites').onclick=()=>navigate('/messages/groups');
     }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}
+  }
+  async function renderGroupInvitations(){
+    if(!requireAuth())return;
+    const html=`<section class="card" style="padding:16px"><h2>Invite classmates to a group</h2><p class="muted">Invited students choose whether to join. No automatic memberships.</p><form class="form-stack" id="invite-group-form"><label class="form-label">Group name</label><input name="title" class="field" maxlength="80" minlength="2" required><label class="form-label">Find students by username</label><input class="field" id="group-member-lookup" placeholder="Search @username" maxlength="40" autocomplete="off"><div id="group-member-results"></div><div id="group-selected" class="muted"></div><button class="btn primary" id="group-create" type="submit">Create group &amp; send invitations</button><p id="group-status" aria-live="polite"></p></form></section><section class="card" style="padding:16px;margin-top:12px"><h2>Your pending group invitations</h2><div id="group-pending"><div class="spinner"></div></div></section>`;
+    ROOT.innerHTML=shell(html,'Groups & invitations');bindCommon();
+    const selection=new Map(),input=document.getElementById('group-member-lookup');
+    const suggestions=document.getElementById('group-member-results'),chosen=document.getElementById('group-selected');
+    const status=document.getElementById('group-status');let seq=0,debounce;
+    function updateSelected(){
+      chosen.textContent=selection.size?'Selected ('+selection.size+'/30): '+[...selection.values()].map(x=>'@'+x.username).join(', '):'Select at least two different students.';
+      document.getElementById('group-create').disabled=selection.size<2;
+    }
+    updateSelected();
+    async function lookupMembers(){
+      const token=++seq,query=input.value.trim().replace(/^@/,'');
+      if(query.length<2){suggestions.textContent='';return;}
+      try{
+        const rows=await anonRpc('blink_referrer_suggestions',{p_query:query,p_limit:10,p_offset:0});
+        if(token!==seq)return;
+        suggestions.textContent='';
+        (rows||[]).filter(person=>person.id!==uid()&&!selection.has(person.id)).slice(0,10).forEach(person=>{
+          const b=document.createElement('button');b.type='button';b.className='btn ghost';
+          b.textContent=(person.full_name||person.username)+' (@'+person.username+')'+(person.is_verified?' ✓':'');
+          b.style.margin='4px';b.onclick=()=>{if(selection.size>=30){toast('Maximum 30 invitations');return;}selection.set(person.id,person);input.value='';suggestions.textContent='';updateSelected();};
+          suggestions.append(b);
+        });
+      }catch{if(token===seq)suggestions.textContent='Student search is unavailable.';}
+    }
+    input.addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(lookupMembers,260);});
+    document.getElementById('invite-group-form').onsubmit=async e=>{
+      e.preventDefault();if(selection.size<2)return;
+      const form=e.currentTarget,button=document.getElementById('group-create');button.disabled=true;status.textContent='Creating invitations…';
+      try{
+        const title=String(new FormData(form).get('title')||'').trim();
+        await rpc('blink_create_invite_only_group',{p_title:title,p_member_ids:[...selection.keys()]});
+        toast('Invitations sent. Students must accept to join.');navigate('/messages');
+      }catch(error){status.textContent='Unable to create group: '+String(error.message||'Try again.').slice(0,140);button.disabled=false;}
+    };
+    const list=document.getElementById('group-pending');
+    try{
+      const rows=await rpc('blink_my_group_invitations',{p_limit:20});
+      if(!list.isConnected)return;list.textContent='';
+      if(!rows?.length)list.textContent='No pending invitations.';
+      (rows||[]).forEach(item=>{
+        const row=document.createElement('div');row.className='list-item';
+        const title=document.createElement('strong');title.textContent=item.group_title||'Group invitation';
+        const from=document.createElement('span');from.className='muted';from.textContent=' From @'+item.inviter_username;
+        row.append(title,from);
+        for(const [label,accept] of [['Accept',true],['Decline',false]]){
+          const button=document.createElement('button');button.type='button';button.className='btn ghost';button.style.margin='4px';button.textContent=label;
+          button.onclick=async()=>{button.disabled=true;try{
+            const ok=await rpc('blink_respond_to_group_invite',{p_group_id:item.group_id,p_accept:accept});
+            if(ok!==true)throw Error('Invitation is no longer valid');
+            toast(accept?'Invitation accepted':'Invitation declined');row.remove();
+          }catch(error){toast('Unable to respond to invitation.');button.disabled=false;}};
+          row.append(button);
+        }list.append(row);
+      });
+    }catch{list.textContent='Invitations are unavailable until the server update is deployed.';}
   }
   function renderNewMessage(prefill=''){
     ROOT.innerHTML=shell(`<div class="card" style="padding:15px"><form id="new-message-form" class="form-stack"><label class="form-label">Username</label><input class="field" name="username" maxlength="64" value="${esc(prefill)}" placeholder="@username" required autocomplete="off"><label class="form-label">Message</label><textarea class="field" name="text" maxlength="8000" placeholder="Write a message" required></textarea><button type="submit" class="btn primary">Send</button><div id="message-status"></div></form></div>`,'New message');bindCommon();
