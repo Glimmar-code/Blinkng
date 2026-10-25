@@ -12,6 +12,7 @@
   const toastEl = document.getElementById('toast');
   const SESSION_KEY = 'blink_web_session_v3';
   const INVITE_REFERRER_KEY = 'blink_web_invited_by_v1';
+  const INVITE_VISITOR_KEY = 'blink_web_invite_visitor_v1';
   const DRAFT_KEY = 'blink_web_post_draft_v2';
   const VISITOR_KEY = 'blink_web_visitor_v2';
   const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
@@ -1019,6 +1020,7 @@
       '<div id="referral-stats" class="muted">Loading your real referral activity…</div>' +
       '<div id="referral-growth" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-sources" class="muted" style="margin-top:9px"></div>' +
+      '<div id="referral-links" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-coins" class="muted" style="margin-top:9px"></div>' +
       '<div id="referral-top" class="muted" style="margin-top:9px"></div>' +
       '<div class="form-stack"><button type="button" class="btn primary" id="share-referral">Share invitation</button></div>');
@@ -1044,8 +1046,17 @@
     }catch{if(stats.isConnected)stats.textContent='Referral statistics are not available until the server update is ready.';}
     void Promise.allSettled([
       rpc('blink_referral_growth_stats'), rpc('blink_referral_leaderboard',{p_days:7,p_limit:5}),
-      rpc('blink_referral_source_analytics'), rpc('blink_referral_coin_status')
-    ]).then(([growthResult,leaderResult,sourceResult,coinResult])=>{
+      rpc('blink_referral_source_analytics'), rpc('blink_referral_coin_status'),
+      rpc('blink_referral_link_stats')
+    ]).then(([growthResult,leaderResult,sourceResult,coinResult,linkResult])=>{
+      const linkStats=document.getElementById('referral-links');
+      if(linkStats?.isConnected && linkResult.status==='fulfilled'){
+        const item=Array.isArray(linkResult.value)?linkResult.value[0]:null;
+        if(item)linkStats.textContent='Unique invite-browser opens (30 days, estimated): '+
+          fmt(item.unique_link_opens_30d)+
+          ' · Confirmed new accounts (30 days): '+fmt(item.confirmed_referrals_30d)+
+          '. Opens are approximate and never earn Coins.';
+      }
       const growth=document.getElementById('referral-growth');
       if(growth?.isConnected && growthResult.status==='fulfilled'){
         const x=Array.isArray(growthResult.value)?growthResult.value[0]:null;
@@ -1475,7 +1486,17 @@
     if(path==='/'||path==='')return renderLanding();
     const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);
     if(invited){
-      storageSet(INVITE_REFERRER_KEY,invited[1].toLowerCase());
+      const referrer=invited[1].toLowerCase();
+      storageSet(INVITE_REFERRER_KEY,referrer);
+      // Anonymous per-browser estimate only; no credits or personal identifiers.
+      let visitor=storageGet(INVITE_VISITOR_KEY,'');
+      if(!/^[0-9a-f-]{36}$/i.test(visitor)){
+        visitor=crypto.randomUUID();
+        storageSet(INVITE_VISITOR_KEY,visitor);
+      }
+      void anonRpc('blink_record_referral_link_open',{
+        p_username:referrer,p_visitor:visitor
+      }).catch(()=>{});
       return navigate('/login',true);
     }
     if(path==='/login')return renderLogin();
