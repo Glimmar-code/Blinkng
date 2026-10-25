@@ -1,6 +1,7 @@
 name: BLINK domain integration check
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'Testlab*'

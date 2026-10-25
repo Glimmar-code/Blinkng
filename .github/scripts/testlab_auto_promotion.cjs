@@ -152,13 +152,19 @@ async function revokeStaleOptIn(github, context, core) {
   return true;
 }
 
-function checkGate(checks, required, number, baseSha, headSha) {
+function checkGate(checks, required, number, baseSha, headSha, options = {}) {
   // Checks can be rerun. Use the newest run of each job, never an old success.
   const latest = new Map();
   for (const check of checks) {
     if (check.app?.slug !== 'github-actions') continue;
-    if (!(check.pull_requests || []).some(p =>
-      p.number === number && p.base?.sha === baseSha && p.head?.sha === headSha)) continue;
+    const fromThisPr = (check.pull_requests || []).some(p =>
+      p.number === number && p.base?.sha === baseSha && p.head?.sha === headSha);
+    // Actions started with workflow_dispatch have no PR links. This fallback
+    // is allowed ONLY for an isolated Testlab-batch PR at its exact head SHA;
+    // it cannot validate another branch or an out-of-date integration base.
+    const fromBatchDispatch = options.allowDispatchForBatch === true &&
+      check.head_sha === headSha && (check.pull_requests || []).length === 0;
+    if (!fromThisPr && !fromBatchDispatch) continue;
     if (!latest.has(check.name) || check.id > latest.get(check.name).id) {
       latest.set(check.name, check);
     }
@@ -252,7 +258,8 @@ async function run({github, context, core}) {
       const checks = await github.paginate(github.rest.checks.listForRef, {
         owner: OWNER, repo: REPO, ref: pr.head.sha, per_page: 100, filter: 'latest'
       });
-      const fail = checkGate(checks, requiredChecks(paths), number, pr.base.sha, pr.head.sha);
+      const fail = checkGate(checks, requiredChecks(paths), number, pr.base.sha,
+        pr.head.sha, {allowDispatchForBatch: /^Testlab-batch-[0-9]+$/.test(pr.head.ref)});
       if (fail) { core.info('#' + number + ': ' + fail); continue; }
 
       // GitHub owner approval comments are no longer required. The connected
@@ -268,7 +275,9 @@ async function run({github, context, core}) {
 
       const merged = await github.rest.pulls.merge({
         owner: OWNER, repo: REPO, pull_number: number, sha: pr.head.sha,
-        merge_method: 'squash', commit_title: 'Promote verified Testlab PR #' + number
+        // Preserve each source PR's commit ancestry for multi-PR batches.
+        merge_method: /^Testlab-batch-[0-9]+$/.test(pr.head.ref) ? 'merge' : 'squash',
+        commit_title: 'Promote verified Testlab PR #' + number
       });
       if (!merged.data.merged) throw new Error('GitHub did not confirm the merge');
       core.info('Promoted verified Testlab PR #' + number + ' into main');

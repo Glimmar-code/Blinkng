@@ -39,6 +39,9 @@ jobs:
       - name: Test bounded CI recovery and security policy
         run: node --test .github/scripts/ci_auto_recovery.test.cjs
 
+      - name: Test multi-PR Testlab batch selection and strict dispatch gating
+        run: node --test .github/scripts/testlab_batch_queue.test.cjs
+
       - uses: actions/setup-java@v5
         if: steps.scope.outputs.android == 'true'
         with:
