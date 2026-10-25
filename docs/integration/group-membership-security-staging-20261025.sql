@@ -36,7 +36,7 @@ as $$
     select 1 from public.conversations c
     where c.id=p_conversation_id
       and c.created_by=(select auth.uid())
-      and c.is_group is false
+      and coalesce(c.is_group,false)=false
       and (select count(*) from public.conversation_participants cp
            where cp.conversation_id=c.id) < 2
   );
