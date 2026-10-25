@@ -64,6 +64,7 @@ class BlinkChatImageUploadWorker(
         return outcome.fold(
             onSuccess = {
                 file.delete()
+                File(outbox, "$messageId.pending").delete()
                 Result.success(workDataOf("serverMessageId" to it.id))
             },
             onFailure = {
