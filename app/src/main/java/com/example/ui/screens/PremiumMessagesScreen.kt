@@ -2105,7 +2105,7 @@ private fun PremiumChatDetail(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             row.forEach { picture ->
                                 AsyncImage(
-                                    model = picture.attachedImageUrl,
+                                    model = picture.imagePreviewUrl ?: picture.attachedImageUrl,
                                     contentDescription = "Open shared photo",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.width(88.dp).height(88.dp)
@@ -2607,9 +2607,9 @@ private fun MessageContent(
                 ) {
                     // Local content Uri renders immediately for optimistic messages.
                     // Server-confirmed messages use short-lived private signed URLs.
-                    if (shouldLoad) {
+                    if (shouldLoad || message.imagePreviewUrl != null) {
                         AsyncImage(
-                            model = imageUrl,
+                            model = message.imagePreviewUrl ?: imageUrl,
                             contentDescription = "Shared image. Tap to enlarge.",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
