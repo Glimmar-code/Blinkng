@@ -37,7 +37,7 @@ fun BlinkGroupManagementPanel(
     modifier: Modifier = Modifier,
 ) {
     val repo = remember { ProfessionalRepository() }
-    val ownerId = remember { SupabaseService().getCurrentUserId().orEmpty() }
+    val ownerId = SupabaseService().getCurrentUserId().orEmpty()
     val scope = rememberCoroutineScope()
     var groups by remember(ownerId) { mutableStateOf<List<BlinkGroupSummary>>(emptyList()) }
     var openGroup by remember(ownerId) { mutableStateOf<BlinkGroupSummary?>(null) }
