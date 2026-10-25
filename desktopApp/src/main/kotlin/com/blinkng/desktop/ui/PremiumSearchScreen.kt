@@ -537,7 +537,7 @@ private fun DesktopSearchCore(
                             ) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.Person, null, modifier = Modifier.size(22.dp))
+                                    DesktopReferralAvatar(person.avatarUrl)
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(person.fullName.ifBlank { person.username },
@@ -645,7 +645,7 @@ private fun DesktopSearchCore(
                             ) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.Person, null, modifier = Modifier.size(22.dp))
+                                    DesktopReferralAvatar(person.avatarUrl)
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
