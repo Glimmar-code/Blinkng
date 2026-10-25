@@ -251,3 +251,24 @@ begin
 end $$;
 reset role;
 select 'BLINK referral leaderboard + observed analytics checks passed' as result;
+
+-- Relevance-first search exact match regression: boosts may break ties, not defeat exact usernames.
+update public.profiles set onboarding_completed=true where username='gamma';
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000006',false);
+set role authenticated;
+do $$
+declare first_result text;
+begin
+  select username into first_result from public.blink_referral_profile_search('alpha',20) limit 1;
+  if first_result<>'alpha' then
+    raise exception 'Referral boost outranked exact Search username: %', first_result;
+  end if;
+  if exists(select 1 from public.blink_referral_profile_search('alpha',20) where username='alphaprivate')
+  then raise exception 'Private profile leaked in referral-aware Search'; end if;
+  if exists(select 1 from public.blink_referrer_suggestions('%',10,0))
+  then raise exception 'SQL percent wildcard returned unrelated referrers'; end if;
+  if exists(select 1 from public.blink_referral_profile_search('%',20))
+  then raise exception 'SQL percent wildcard returned unrelated Search profiles'; end if;
+end $$;
+reset role;
+select 'Relevance-first search exact match regression passed' as result;
