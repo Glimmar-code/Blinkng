@@ -160,6 +160,7 @@ fun VideoReelsScreen(
     onSearchClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
     onMenuClick: () -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
@@ -240,6 +241,7 @@ fun VideoReelsScreen(
                     onGameClick = onGameClick,
                     onNotificationsClick = onNotificationsClick,
                     onMenuClick = onMenuClick,
+                    hasUnreadNotifications = hasUnreadNotifications,
                     onBottomBarVisibilityChange = onBottomBarVisibilityChange
                 )
             }
@@ -366,6 +368,7 @@ private fun ReelsContent(
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onMenuClick: () -> Unit,
+    hasUnreadNotifications: Boolean,
     onBottomBarVisibilityChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -796,6 +799,7 @@ private fun ReelsContent(
                 userAvatar = userAvatar,
                 currentUsername = currentUsername,
                 isDark = isDark,
+                hasUnreadNotifications = hasUnreadNotifications,
                 selectedTab = selectedTab,
                 onSelectTab = { selectedTab = it },
                 onAddStory = onAddStoryClick,
