@@ -93,6 +93,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
+    var forwardPhoto by remember { mutableStateOf<DesktopMessage?>(null) }
     var selectedPictures by remember { mutableStateOf<List<File>>(emptyList()) }
     var selectedPictureIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var pictureCaptions by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
@@ -481,9 +482,15 @@ fun MessagesScreen(state: DesktopAppState) {
                             DropdownMenuItem(
                                 text = { Text("Forward") },
                                 onClick = {
-                                    draft = message.content
+                                    if (message.messageType == "image" && !message.mediaUrl.isNullOrBlank()) {
+                                        forwardPhoto = message
+                                    } else if (message.messageType != "text") {
+                                        error = "Forwarding this media type is not available yet."
+                                    } else {
+                                        draft = message.content
+                                        error = "Message copied into the composer. Choose another chat to forward it."
+                                    }
                                     actionMessageId = null
-                                    error = "Message copied into the composer. Choose another chat to forward it."
                                 },
                             )
                         }
@@ -617,6 +624,63 @@ fun MessagesScreen(state: DesktopAppState) {
                     TextButton(enabled = !pictureUploading, onClick = { selectedPictures = emptyList(); selectedPictureIds = emptyList() }) {
                         Text("Cancel")
                     }
+                }
+            )
+        }
+        forwardPhoto?.let { sourcePicture ->
+            AlertDialog(
+                onDismissRequest = { forwardPhoto = null },
+                title = { Text("Forward picture to…") },
+                text = {
+                    val eligible = conversations.filter { it.id != sourcePicture.conversationId }
+                    if (eligible.isEmpty()) Text("No other conversation available.")
+                    else LazyColumn(modifier = Modifier.heightIn(max = 310.dp)) {
+                        items(eligible) { target ->
+                            TextButton(onClick = {
+                                forwardPhoto = null
+                                scope.launch {
+                                    var temporary: File? = null
+                                    try {
+                                        val staging = File.createTempFile("blink-desktop-forward-", ".staged")
+                                        temporary = staging
+                                        val mime = FileOutputStream(staging).use {
+                                            state.client.copyChatImageTo(
+                                                sourcePicture.id, sourcePicture.conversationId, it
+                                            ).second
+                                        }
+                                        val extension = when (mime) {
+                                            "image/jpeg" -> "jpg"
+                                            "image/png" -> "png"
+                                            "image/gif" -> "gif"
+                                            "image/webp" -> "webp"
+                                            else -> throw IllegalArgumentException(
+                                                "This picture format cannot be forwarded on Windows."
+                                            )
+                                        }
+                                        val proper = File(staging.parentFile,
+                                            "blink-desktop-forward-${java.util.UUID.randomUUID()}.$extension")
+                                        check(staging.renameTo(proper)) { "Could not stage forwarded picture." }
+                                        temporary = proper
+                                        state.client.sendChatImage(
+                                            target.id, proper,
+                                            sourcePicture.content.takeUnless {
+                                                it.equals("Image", ignoreCase = true)
+                                            }.orEmpty(),
+                                            BlinkChatImageQuality.ORIGINAL
+                                        )
+                                        error = "Picture forwarded to ${target.title}."
+                                    } catch (ex: Exception) {
+                                        error = ex.message ?: "Could not forward picture."
+                                    } finally {
+                                        temporary?.delete()
+                                    }
+                                }
+                            }) { Text(target.title, maxLines = 1) }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { forwardPhoto = null }) { Text("Cancel") }
                 }
             )
         }
