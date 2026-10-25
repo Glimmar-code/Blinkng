@@ -3821,7 +3821,8 @@ private suspend fun restoreSupabaseSession() {
         clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
-        if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
+        if (com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category) ||
+            com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
             showToast("Item sales belong in BLINK Market. Open Market to list your product.")
             return
         }
