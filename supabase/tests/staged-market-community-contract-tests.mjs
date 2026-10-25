@@ -97,6 +97,30 @@ export async function stagedMarketCommunityContractTests() {
     await db.exec('reset role');
     console.log('PASS staged private-community RLS and non-owner creation denial');
 
+    // A group is listed exactly once for an active member even when 2+
+    // participants exist. Leaving removes it from that person's list.
+    const group = '55555555-5555-4555-8555-555555555555';
+    await db.exec(`
+      insert into public.conversations(id,title,is_group)
+        values ('${group}','FUTA Readers',true);
+      insert into public.conversation_participants(conversation_id,user_id)
+        values ('${group}','${owner}'),('${group}','${other}');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const mine = await db.query('select group_id,title,member_count from public.blink_my_group_conversations(50)');
+    assert.equal(mine.rows.length, 1);
+    assert.equal(mine.rows[0].title, 'FUTA Readers');
+    assert.equal(Number(mine.rows[0].member_count), 2);
+    await db.exec('reset role');
+    await db.exec(`update public.conversation_participants
+      set left_at=now() where conversation_id='${group}' and user_id='${other}'`);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const departed = await db.query('select group_id from public.blink_my_group_conversations(50)');
+    assert.equal(departed.rows.length, 0, 'Departed members cannot list groups');
+    await db.exec('reset role');
+    console.log('PASS staged one-row group inbox and departed-member suppression');
     console.log('PASS independent offline staged Marketplace + Community contracts');
   } finally {
     await db.close();
