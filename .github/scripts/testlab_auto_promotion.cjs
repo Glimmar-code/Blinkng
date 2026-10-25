@@ -36,7 +36,7 @@ function filePathsRequireStaging(files) {
     /^\.github\/scripts\/install_release_smoke_apk\.sh$/.test(path) ||
     /^supabase\/(?:migrations\/|functions\/|config\.toml$)/.test(path) ||
     /^app\/proguard-rules\.pro$/.test(path) ||
-    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
+    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab|retire-testlab-branch)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
   );
 }
 
