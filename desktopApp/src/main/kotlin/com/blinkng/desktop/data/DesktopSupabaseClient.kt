@@ -1403,6 +1403,12 @@ class DesktopSupabaseClient(
             JSONObject().put("p_conversation_id", conversationId)
                 .put("p_user_id", userId)))
 
+    /** Atomic owner transfer; backend checks current creator and active successor. */
+    suspend fun transferGroupOwnership(conversationId: String, successorId: String): Boolean =
+        rpcBoolean(postObject("/rest/v1/rpc/blink_group_transfer_owner",
+            JSONObject().put("p_conversation_id", conversationId)
+                .put("p_new_owner_id", successorId)))
+
     suspend fun leaveGroup(conversationId: String): Boolean =
         rpcBoolean(postObject("/rest/v1/rpc/blink_group_leave",
             JSONObject().put("p_conversation_id", conversationId)))
