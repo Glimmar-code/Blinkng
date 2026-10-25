@@ -118,10 +118,9 @@ fun CommentSheet(
     val availableMentionCandidates =
         if (onSearchMentions != null) remoteMentionCandidates else mentionCandidates
     val rankedMentions = remember(mentionToken, availableMentionCandidates) {
-        if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.page(
+        if (mentionToken == null) emptyList() else BlinkUserSuggestionPolicy.rank(
             visibleCandidates = availableMentionCandidates,
             query = mentionToken.query,
-            pageSize = 100,
             username = { it.username },
             displayName = { it.fullName }
         )
