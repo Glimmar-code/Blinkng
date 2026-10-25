@@ -441,6 +441,35 @@ export async function stagedMarketCommunityContractTests() {
       select id from public.get_conversation_messages_page('${dm}',20)`);
     assert.equal(departedDmHistory.rows.length,0,'Departed DM member cannot fetch history');
     await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_group_transfer_owner('${managed}','${owner}')`),
+      'GROUP_OWNER_REQUIRED');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_group_transfer_owner('${managed}','${applicant}')`),
+      'NEW_OWNER_MUST_BE_ACTIVE_MEMBER');
+    const transferred = await db.query(`
+      select public.blink_group_transfer_owner('${managed}','${other}') as ok`);
+    assert.equal(transferred.rows[0].ok,true,'Owner can transfer to active member');
+    await db.exec(`select set_config('request.jwt.claim.sub','${other}',false)`);
+    const newOwner = await db.query(`
+      select created_by from public.conversations where id='${managed}'`);
+    assert.equal(newOwner.rows[0].created_by,other,'Creator identity moved to successor');
+    const newAdmin = await db.query(`
+      select is_admin from public.conversation_participants
+      where conversation_id='${managed}' and user_id='${other}'`);
+    assert.equal(newAdmin.rows[0].is_admin,true,'Successor is made group admin');
+    await rejects(() => db.exec(`
+      select public.blink_group_leave('${managed}')`),
+      'GROUP_OWNER_MUST_TRANSFER_FIRST');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const ownerLeave = await db.query(`
+      select public.blink_group_leave('${managed}') as ok`);
+    assert.equal(ownerLeave.rows[0].ok,true,'Previous owner can leave after transfer');
+    await db.exec('reset role');
+    console.log('PASS staged group owner transfer, successor authorization and safe leave');
     console.log('PASS active and departed direct-chat history/read-receipt authorization');
     console.log('PASS staged founder cannot silently abandon group via raw UPDATE');
     console.log('PASS staged active roster permissions');
