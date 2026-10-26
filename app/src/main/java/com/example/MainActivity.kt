@@ -2518,6 +2518,7 @@ fun MainAppContent(
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
                     onLikePost = { viewModel.togglePostLike(it) },
+                    onOpenPost = { viewModel.openFeedPostDetails(it) },
                     onCommentPost = { viewModel.openCommentsForPost(it) },
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
                     onSharePost = { sharePostOrReel(it) },
