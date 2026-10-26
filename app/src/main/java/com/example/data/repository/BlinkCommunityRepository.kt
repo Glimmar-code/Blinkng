@@ -145,7 +145,7 @@ class BlinkCommunityRepository {
         val body = JSONObject()
             .put("name", BlinkCommunityPolicy.validatedName(name))
             .put("description", BlinkCommunityPolicy.validatedDescription(description))
-            .put("cover_url", cover.ifBlank { JSONObject.NULL })
+            .put("cover_url", if (cover.isEmpty()) JSONObject.NULL else cover)
         val rows = request("blink_communities?id=eq.$uuid&select=*", "PATCH",
             body, represent = true)
         return JSONArray(rows.ifBlank { "[]" }).optJSONObject(0)?.let(::parse)
