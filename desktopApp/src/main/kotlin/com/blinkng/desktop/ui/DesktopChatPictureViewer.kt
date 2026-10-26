@@ -43,6 +43,10 @@ internal fun DesktopChatPictureViewer(
     onStar: () -> Unit,
     onDeleteForMe: () -> Unit,
     onClose: () -> Unit,
+    groupPhotoEnabled: Boolean = false,
+    onSaveSticker: (File) -> Unit = {},
+    onAskBlinkAi: (File) -> Unit = {},
+    onSetGroupPicture: (File) -> Unit = {},
 ) {
     if(message.imageViewOnce || message.messageType!="image" ||
         message.mediaUrl.isNullOrBlank()) return
@@ -54,6 +58,7 @@ internal fun DesktopChatPictureViewer(
     var error by remember(message.id){mutableStateOf<String?>(null)}
     var editing by remember(message.id){mutableStateOf<File?>(null)}
     var privacyWarning by remember(message.id){mutableStateOf(false)}
+    var confirmAction by remember(message.id){mutableStateOf<String?>(null)}
     DisposableEffect(message.id) {onDispose{downloadJob?.cancel()}}
     AlertDialog(
         onDismissRequest={if(!busy)onClose()},
@@ -128,6 +133,12 @@ internal fun DesktopChatPictureViewer(
                     }) {Text(if(busy)"Downloading…" else "Download")}
                     TextButton(enabled=busy,onClick={downloadJob?.cancel()}){Text("Cancel")}
                     TextButton(enabled=saved!=null,onClick={editing=saved}){Text("Edit copy")}
+                    TextButton(enabled=saved!=null,onClick={confirmAction="sticker"}){Text("Save sticker")}
+                    TextButton(enabled=saved!=null,onClick={confirmAction="ai"}){Text("Ask BLINK AI")}
+                    if(groupPhotoEnabled) TextButton(
+                        enabled=saved!=null,
+                        onClick={confirmAction="group"}
+                    ){Text("Set group picture")}
                     TextButton(enabled=saved!=null,onClick={privacyWarning=true}){Text("Share externally")}
                     TextButton(onClick=onDeleteForMe){Text("Delete for me")}
                 }
@@ -143,6 +154,31 @@ internal fun DesktopChatPictureViewer(
                 saved=result
                 editing=null
             },onDismiss={editing=null}
+        )
+    }
+    confirmAction?.let { action ->
+        AlertDialog(
+            onDismissRequest={confirmAction=null},
+            title={Text(when(action){
+                "ai" -> "Send this image to BLINK AI?"
+                "group" -> "Change the group's picture?"
+                else -> "Keep this image as a reusable sticker?"
+            })},
+            text={Text(when(action){
+                "ai" -> "The photo will be attached to an AI draft; it will not be sent until you submit a question."
+                "group" -> "Only group owners or admins can change the picture. This change is visible to members."
+                else -> "This creates a private copy saved on your computer. Get permission before saving another person's photo."
+            })},
+            confirmButton={TextButton(onClick={
+                val file=saved
+                confirmAction=null
+                if(file!=null)when(action) {
+                    "ai" -> onAskBlinkAi(file)
+                    "group" -> onSetGroupPicture(file)
+                    else -> onSaveSticker(file)
+                }
+            }){Text("Continue")}},
+            dismissButton={TextButton(onClick={confirmAction=null}){Text("Cancel")}}
         )
     }
     if(privacyWarning) {
