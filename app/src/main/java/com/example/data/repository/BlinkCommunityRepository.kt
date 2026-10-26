@@ -274,6 +274,28 @@ class BlinkCommunityRepository {
         rpc("blink_channel_is_muted", JSONObject()
             .put("p_channel_id", channelId)) == "true"
 
+
+    suspend fun channelUnreadCount(id: String): Int =
+        rpc("blink_channel_unread_count", JSONObject().put("p_channel_id", id))
+            .toIntOrNull() ?: 0
+
+    suspend fun markChannelSeen(id: String): Boolean =
+        rpc("blink_channel_mark_seen", JSONObject().put("p_channel_id", id)) == "true"
+
+    suspend fun scheduledChannelUpdates(id: String): List<Pair<String, String>> {
+        val raw = request("rpc/blink_channel_scheduled_page", "POST",
+            JSONObject().put("p_channel_id", id))
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { it.optString("id") to
+                (it.optString("scheduled_at") + " — " + it.optString("body")) }
+        }
+    }
+
+    suspend fun cancelScheduledChannelUpdate(id: String): Boolean =
+        rpc("blink_channel_cancel_scheduled",
+            JSONObject().put("p_update_id", id)) == "true"
+
     suspend fun leave(communityId: String): Boolean =
         rpc("blink_community_leave", JSONObject().put("p_community_id", communityId)) == "true"
 }
