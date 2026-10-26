@@ -80,9 +80,15 @@ class BlinkChatImageUploadWorker(
             },
             onFailure = {
                 if (isStopped) return@fold Result.failure()
-                // A transient loss of network should retry after constraints return;
-                // repeated server denials eventually fail, not spin forever.
-                if (runAttemptCount < 3) Result.retry()
+                // Network loss, timeouts and server throttling can recover after the user
+                // leaves the chat or exits the app. WorkManager persists these retries.
+                // Do not infinitely retry malformed media, denied access or revoked accounts.
+                val networkFailure = generateSequence(it) { cause -> cause.cause }
+                    .any { cause -> cause is java.io.IOException }
+                val detail = it.message.orEmpty()
+                val recoverableStatus = Regex("""\\b(408|429|500|502|503|504)\\b""")
+                    .containsMatchIn(detail)
+                if (networkFailure || recoverableStatus) Result.retry()
                 else Result.failure(workDataOf("error" to "Picture could not be sent."))
             }
         )

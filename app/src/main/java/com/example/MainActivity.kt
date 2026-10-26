@@ -871,8 +871,13 @@ class MainActivity : ComponentActivity() {
                                         onCheckUsername = { username, onResult ->
                                             viewModel.checkOnboardingUsername(username, onResult)
                                         },
-                                        onSaveUsername = { username, onResult ->
-                                            viewModel.saveOnboardingUsername(username, onResult)
+                                        onSaveUsername = { username, displayName, onResult ->
+                                            viewModel.saveOnboardingUsername(
+                                                username, onResult, displayName
+                                            )
+                                        },
+                                        onSaveReferrer = { referrerId, onResult ->
+                                            viewModel.saveGoogleOnboardingReferrer(referrerId, onResult)
                                         },
                                         onSaveBasics = { university, department, level, gender, birthDate, avatarUrl, onResult ->
                                             viewModel.saveOnboardingBasics(

@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fullscreen
@@ -1514,7 +1515,11 @@ private fun PremiumChatDetail(
     )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    var showStickers by remember(conversation.id) { mutableStateOf(false) }
+    var aiPhotoUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var historicalViewerPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1559,6 +1564,8 @@ private fun PremiumChatDetail(
         mutableStateOf<List<ChatPhotoReviewItem>>(emptyList())
     }
     var photoEditBusy by remember(conversation.id) { mutableStateOf(false) }
+    var gallerySelectedPhotoId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var photoAdjustmentItem by remember(conversation.id) { mutableStateOf<ChatPhotoReviewItem?>(null) }
 
     // Only delete files produced by BLINK's non-destructive editor. Never touch
     // files returned by the Android Photo Picker or another application.
@@ -1679,12 +1686,26 @@ private fun PremiumChatDetail(
     }
 
     // Avoid repeatedly filtering and linearly scanning the entire history for every row.
-    val visibleMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
+    val matchedMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
         conversation.messages.filter { message ->
             val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
             val matchesPinned = !pinnedOnly || message.isPinned
             val matchesStarred = !starredOnly || message.isStarred
             matchesSearch && matchesPinned && matchesStarred
+        }
+    }
+    val albumGroups = remember(matchedMessages) {
+        matchedMessages.filter {
+            !it.imageViewOnce && !it.imageAlbumId.isNullOrBlank() &&
+                it.imageAlbumSize > 1 && !it.attachedImageUrl.isNullOrBlank()
+        }.groupBy { it.imageAlbumId.orEmpty() }
+    }
+    val visibleMessages = remember(matchedMessages, albumGroups) {
+        val displayedAlbumIds = hashSetOf<String>()
+        matchedMessages.filter { item ->
+            val id = item.imageAlbumId
+            if (id.isNullOrBlank() || albumGroups[id].orEmpty().size < 2) true
+            else displayedAlbumIds.add(id)
         }
     }
     val messagesById = remember(conversation.messages) {
@@ -1953,7 +1974,16 @@ private fun PremiumChatDetail(
                                     }
                                 }
                             }
-                            MessageBubble(
+                            if (!message.imageAlbumId.isNullOrBlank() &&
+                                albumGroups[message.imageAlbumId].orEmpty().size > 1) {
+                                BlinkChatPhotoAlbumBubble(
+                                    messages = albumGroups[message.imageAlbumId].orEmpty(),
+                                    palette = palette,
+                                    onOpen = { viewedImageMessage = it },
+                                    onReply = { replyingTo = message; editingMessage = null },
+                                    onActions = { selectedMessage = message }
+                                )
+                            } else MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
@@ -1971,6 +2001,7 @@ private fun PremiumChatDetail(
                                 }
                             },
                             onActions = { selectedMessage = message },
+                            onOpenImage = { viewedImageMessage = it },
                             onRetry = { onRetry(message) },
                             onCancelAttachment = { onCancelAttachment(message) },
                             allowLinkPreviews = allowLinkPreviews
@@ -2081,6 +2112,78 @@ private fun PremiumChatDetail(
                 onVoiceStart = { beginVoiceRecording() },
                 onVoiceStop = { finishVoiceRecording(true) },
                 onVoiceCancel = { finishVoiceRecording(false) }
+            )
+        }
+    }
+
+    viewedImageMessage?.let { requestedImage ->
+        val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
+        val normalPictures = remember(conversation.messages,historicalViewerPhotos) {
+            (historicalViewerPhotos.ifEmpty { conversation.messages }).filter {
+                !it.imageViewOnce && !it.deletedForEveryone &&
+                    !it.attachedImageUrl.isNullOrBlank()
+            }
+        }
+        val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
+        if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
+            BlinkChatPictureViewer(
+                message = message,
+                senderName = if (message.isFromMe) "You" else conversation.partnerName,
+                onDismiss = { viewedImageMessage = null; historicalViewerPhotos = emptyList() },
+                onShowInChat = {
+                    viewedImageMessage = null
+                    searchQuery = ""
+                    pinnedOnly = false
+                    starredOnly = false
+                    val position = visibleMessages.indexOfFirst {
+                        it.id == message.id ||
+                            (!message.imageAlbumId.isNullOrBlank() &&
+                                it.imageAlbumId == message.imageAlbumId)
+                    }
+                    if (position >= 0) scrollScope.launch {
+                        delay(100)
+                        listState.animateScrollToItem(position + if (isLoadingOlder) 1 else 0)
+                    }
+                },
+                onForward = {
+                    forwardingMessage = message
+                    viewedImageMessage = null
+                },
+                onReply = {
+                    replyingTo = message
+                    editingMessage = null
+                    viewedImageMessage = null
+                },
+                onStar = {
+                    interactionActions.onToggleStar(conversation.partnerUsername, message)
+                    viewedImageMessage = null
+                },
+                onDeleteForMe = {
+                    interactionActions.onDeleteForMe(conversation.partnerUsername, message)
+                    viewedImageMessage = null
+                },
+                onOpenAllMedia = {
+                    viewedImageMessage = null
+                    showSharedContent = true
+                },
+                onReact = { emoji ->
+                    interactionActions.onReact(conversation.partnerUsername, message, emoji)
+                    viewedImageMessage = null
+                },
+                groupConversationId = conversation.id.takeIf { conversation.isGroup },
+                onAskBlinkAi = { selected ->
+                    aiPhotoUri = selected
+                    viewedImageMessage = null
+                },
+                hasPrevious = pictureIndex > 0,
+                hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                onPrevious = {
+                    if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
+                },
+                onNext = {
+                    if (pictureIndex in 0 until normalPictures.lastIndex)
+                        viewedImageMessage = normalPictures[pictureIndex + 1]
+                }
             )
         }
     }
@@ -2286,12 +2389,22 @@ private fun PremiumChatDetail(
             conversation = conversation,
             palette = palette,
             onDismiss = { showSharedContent = false },
+            onOpenPhoto = { photo, history ->
+                historicalViewerPhotos = history
+                viewedImageMessage = photo
+                showSharedContent = false
+            },
             onJumpToMessage = { messageId ->
                 showSharedContent = false
                 searchQuery = ""
                 pinnedOnly = false
                 starredOnly = false
-                val targetIndex = conversation.messages.indexOfFirst { it.id == messageId }
+                val targetMessage = conversation.messages.firstOrNull { it.id == messageId }
+                val targetIndex = visibleMessages.indexOfFirst {
+                    it.id == messageId ||
+                        (!targetMessage?.imageAlbumId.isNullOrBlank() &&
+                            it.imageAlbumId == targetMessage?.imageAlbumId)
+                }
                 if (targetIndex >= 0) {
                     scrollScope.launch {
                         delay(120)
@@ -2324,7 +2437,68 @@ private fun PremiumChatDetail(
                 Text("Review ${pendingPhotoReview.size} photo(s)", color = palette.textPrimary)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    // A private, app-designed post-selection gallery; the Android
+                    // Photo Picker retains its own privacy-safe system appearance.
+                    val focused = pendingPhotoReview.firstOrNull {
+                        it.id == gallerySelectedPhotoId
+                    } ?: pendingPhotoReview.first()
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF0D0D16),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.fillMaxWidth().height(228.dp),
+                            contentAlignment = Alignment.Center) {
+                            AsyncImage(
+                                model = focused.uri,
+                                contentDescription = "Large preview of selected image",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Surface(
+                                modifier=Modifier.align(Alignment.TopStart).padding(7.dp),
+                                color=Color.Black.copy(alpha=.68f),
+                                shape=RoundedCornerShape(12.dp)
+                            ) {
+                                Text("${pendingPhotoReview.indexOfFirst { it.id == focused.id } + 1} / ${pendingPhotoReview.size}",
+                                    fontSize=11.sp,color=Color.White,
+                                    modifier=Modifier.padding(horizontal=9.dp,vertical=6.dp))
+                            }
+                            androidx.compose.material3.TextButton(
+                                enabled=!photoEditBusy,
+                                onClick = { photoAdjustmentItem = focused },
+                                modifier=Modifier.align(Alignment.BottomEnd).padding(5.dp)
+                            ) {
+                                Text("✎ Edit photo",fontSize=11.sp,color=Color.White)
+                            }
+                        }
+                    }
+                    LazyRow(
+                        contentPadding=PaddingValues(vertical=3.dp),
+                        horizontalArrangement=Arrangement.spacedBy(5.dp)
+                    ) {
+                        itemsIndexed(pendingPhotoReview, key = { _, item -> "thumb:${item.id}" }) { index,item ->
+                            Surface(
+                                shape=RoundedCornerShape(8.dp),
+                                color=Color(0xFF171724),
+                                border=BorderStroke(if(item.id==focused.id) 2.dp else 1.dp,
+                                    if(item.id==focused.id) palette.accent else palette.border),
+                                modifier=Modifier.size(54.dp)
+                                    .clickable { gallerySelectedPhotoId = item.id }
+                            ) {
+                                Box(contentAlignment=Alignment.BottomEnd) {
+                                    AsyncImage(model=item.uri,
+                                        contentDescription="View selected photo ${index+1}",
+                                        contentScale=ContentScale.Crop,
+                                        modifier=Modifier.fillMaxSize())
+                                    Text("${index+1}",fontSize=10.sp,color=Color.White,
+                                        modifier=Modifier.background(Color.Black.copy(alpha=.63f))
+                                            .padding(horizontal=4.dp))
+                                }
+                            }
+                        }
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -2351,7 +2525,7 @@ private fun PremiumChatDetail(
                         }
                     }
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         itemsIndexed(pendingPhotoReview, key = { _, item -> item.id }) { index, item ->
@@ -2415,6 +2589,12 @@ private fun PremiumChatDetail(
                                     enabled = !photoEditBusy
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    androidx.compose.material3.TextButton(
+                                        enabled = !photoEditBusy,
+                                        onClick = { photoAdjustmentItem = item }
+                                    ) {
+                                        Text("Adjust", color = palette.textSecondary)
+                                    }
                                     listOf(
                                         "Rotate" to BlinkChatPhotoEditor.Edit.ROTATE_RIGHT,
                                         "Square crop" to BlinkChatPhotoEditor.Edit.CENTER_SQUARE
@@ -2478,6 +2658,35 @@ private fun PremiumChatDetail(
         )
     }
 
+    photoAdjustmentItem?.let { item ->
+        BlinkUniversalPhotoEditor(
+            originalUri = item.uri,
+            onEdited = { editedUri ->
+                pendingPhotoReview = pendingPhotoReview.map {
+                    if (it.id == item.id) it.copy(uri = editedUri) else it
+                }
+                cleanupReviewEdit(item.uri)
+                photoAdjustmentItem = null
+            },
+            onDismiss = { photoAdjustmentItem = null }
+        )
+    }
+
+    aiPhotoUri?.let { selected ->
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { aiPhotoUri = null },
+            initialImageUri = selected
+        )
+    }
+    if (showStickers) {
+        BlinkStickerPicker(
+            onSend = { uri ->
+                showStickers = false
+                onSendAttachment(uri, "image")
+            },
+            onDismiss = { showStickers = false }
+        )
+    }
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
@@ -2492,6 +2701,10 @@ private fun PremiumChatDetail(
             onCamera = {
                 showAttachmentSheet = false
                 requestChatCamera()
+            },
+            onSticker = {
+                showAttachmentSheet = false
+                showStickers = true
             },
             onOriginalPhotos = {
                 selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
@@ -2935,6 +3148,7 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
+    onOpenImage: (ChatMessage) -> Unit,
     onRetry: () -> Unit,
     onCancelAttachment: () -> Unit,
     allowLinkPreviews: Boolean
@@ -3060,8 +3274,48 @@ private fun MessageBubble(
                         isMine = isMine,
                         palette = palette,
                         allowLinkPreviews = allowLinkPreviews,
-                        onCancelAttachment = onCancelAttachment
+                        onCancelAttachment = onCancelAttachment,
+                        onOpenImage = onOpenImage
                     )
+                    // Compact inside-bubble timestamp and one overlapping double-check glyph.
+                    val metadata = when (message.status) {
+                        MessageStatus.SENDING -> "Sending…"
+                        MessageStatus.FAILED -> "Waiting to retry"
+                        MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ ->
+                            message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 8.dp, bottom = 5.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (message.isPinned) Text("📌", fontSize = 10.sp)
+                        if (message.isStarred) Text("★", color = palette.accent, fontSize = 10.sp)
+                        Text(
+                            metadata,
+                            color = if (message.status == MessageStatus.FAILED)
+                                palette.danger else palette.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (isMine && message.status in setOf(
+                                MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
+                            )) {
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                imageVector = if (message.status == MessageStatus.SENT)
+                                    Icons.Default.Check else Icons.Default.DoneAll,
+                                contentDescription = when (message.status) {
+                                    MessageStatus.READ -> "Read"
+                                    MessageStatus.DELIVERED -> "Delivered"
+                                    else -> "Sent"
+                                },
+                                tint = if (message.status == MessageStatus.READ)
+                                    Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -3081,36 +3335,7 @@ private fun MessageBubble(
                     }
                 }
 
-                Spacer(Modifier.height(3.dp))
-                val metadata = when (message.status) {
-                    MessageStatus.SENDING -> "Sending…"
-                    MessageStatus.FAILED -> "Failed • tap to retry"
-                    MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ -> message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
-                }
-                val receipt = if (!isMine) "" else when (message.status) {
-                    MessageStatus.SENT -> "✓"
-                    MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
-                    else -> ""
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (message.isPinned) Text("📌 ", fontSize = 11.sp)
-                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 11.sp)
-                    Text(
-                        metadata,
-                        color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (receipt.isNotBlank()) {
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            receipt,
-                            color = if (message.status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+
             }
         }
     }
@@ -3122,7 +3347,8 @@ private fun MessageContent(
     isMine: Boolean,
     palette: MessagePalette,
     allowLinkPreviews: Boolean,
-    onCancelAttachment: () -> Unit
+    onCancelAttachment: () -> Unit,
+    onOpenImage: (ChatMessage) -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -3231,6 +3457,7 @@ private fun MessageContent(
                     contentDescription = "Shared image",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
+                        .clickable { onOpenImage(message) }
                 )
             }
             if (!message.attachedVideoUrl.isNullOrBlank()) {
@@ -3733,7 +3960,8 @@ private fun SharedChatContentSheet(
     conversation: ChatConversation,
     palette: MessagePalette,
     onDismiss: () -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onOpenPhoto: (ChatMessage, List<ChatMessage>) -> Unit
 ) {
     val context = LocalContext.current
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
@@ -3762,7 +3990,6 @@ private fun SharedChatContentSheet(
     var photoHasMore by remember(conversation.id) { mutableStateOf(true) }
     var photoLoading by remember(conversation.id) { mutableStateOf(false) }
     var photoError by remember(conversation.id) { mutableStateOf<String?>(null) }
-    var photoViewerId by remember(conversation.id) { mutableStateOf<String?>(null) }
     val photoScope = rememberCoroutineScope()
 
     suspend fun loadNextPhotoPage() {
@@ -3851,7 +4078,7 @@ private fun SharedChatContentSheet(
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, palette.border),
                             modifier = Modifier.fillMaxWidth()
-                                .clickable { photoViewerId = picture.id }
+                                .clickable { onOpenPhoto(picture, galleryPictures) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(8.dp),
@@ -3977,59 +4204,7 @@ private fun SharedChatContentSheet(
         Spacer(Modifier.height(16.dp).navigationBarsPadding())
     }
 
-    val currentPhoto = galleryPictures.indexOfFirst { it.id == photoViewerId }
-    if (currentPhoto >= 0) {
-        val photo = galleryPictures[currentPhoto]
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { photoViewerId = null },
-            title = {
-                Text("Photo ${currentPhoto + 1} of ${galleryPictures.size}",
-                    color = palette.textPrimary)
-            },
-            text = {
-                var horizontalDrag by remember(photo.id) { mutableStateOf(0f) }
-                AsyncImage(
-                    model = photo.attachedImageUrl,
-                    contentDescription = "Full-size photo. Swipe for the next or previous image.",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
-                        .pointerInput(currentPhoto, galleryPictures.size) {
-                            detectHorizontalDragGestures(
-                                onDragEnd = {
-                                    if (horizontalDrag < -65f &&
-                                        currentPhoto < galleryPictures.lastIndex) {
-                                        photoViewerId = galleryPictures[currentPhoto + 1].id
-                                    } else if (horizontalDrag > 65f && currentPhoto > 0) {
-                                        photoViewerId = galleryPictures[currentPhoto - 1].id
-                                    }
-                                    horizontalDrag = 0f
-                                }
-                            ) { change, amount ->
-                                horizontalDrag += amount
-                                change.consume()
-                            }
-                        }
-                )
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = { photoViewerId = null }
-                ) { Text("Close") }
-            },
-            dismissButton = {
-                Row {
-                    androidx.compose.material3.TextButton(
-                        enabled = currentPhoto > 0,
-                        onClick = { photoViewerId = galleryPictures[currentPhoto - 1].id }
-                    ) { Text("Previous") }
-                    androidx.compose.material3.TextButton(
-                        enabled = currentPhoto < galleryPictures.lastIndex,
-                        onClick = { photoViewerId = galleryPictures[currentPhoto + 1].id }
-                    ) { Text("Next") }
-                }
-            }
-        )
-    }
+
 }
 
 @Composable
@@ -4171,6 +4346,7 @@ private fun AttachmentSheet(
     onCamera: () -> Unit,
     onViewOnce: () -> Unit,
     onOriginalPhotos: () -> Unit,
+    onSticker: () -> Unit,
     onVideo: () -> Unit,
     onAudio: () -> Unit,
     onDocument: () -> Unit,
@@ -4233,6 +4409,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onViewOnce
+            )
+            AttachmentOption(
+                label = "Stickers",
+                description = "Create and reuse saved image stickers",
+                icon = Icons.Default.EmojiEmotions,
+                palette = palette,
+                onClick = onSticker
             )
             AttachmentOption(
                 label = "Video",

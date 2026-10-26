@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -95,3 +96,55 @@ suspend fun DesktopSupabaseClient.recordReelEngagement(
         rewatched = rewatched,
     )
 }
+
+/** Windows consumes the same server-authoritative featured Reel cohort as Android. */
+data class DesktopFeaturedReel(
+    val id: String,
+    val author: String,
+    val username: String,
+    val avatarUrl: String,
+    val coverUrl: String,
+    val caption: String,
+    val videoUrl: String,
+    val viewsInWindow: Long,
+)
+
+suspend fun DesktopSupabaseClient.featuredReels12h(): List<DesktopFeaturedReel> =
+    withContext(Dispatchers.IO) {
+        val token = session?.accessToken ?: return@withContext emptyList()
+        val baseUrl = BlinkBackendDefaults.resolve(
+            System.getenv("SUPABASE_URL") ?: System.getenv("VITE_SUPABASE_URL"),
+            BlinkBackendDefaults.SUPABASE_URL
+        ).trimEnd('/')
+        val apiKey = BlinkBackendDefaults.resolve(
+            System.getenv("SUPABASE_ANON_KEY") ?: System.getenv("VITE_SUPABASE_ANON_KEY"),
+            BlinkBackendDefaults.SUPABASE_ANON_KEY
+        )
+        val request = Request.Builder()
+            .url("$baseUrl/rest/v1/rpc/blink_featured_reels_12h")
+            .header("apikey", apiKey)
+            .header("Authorization", "Bearer $token")
+            .header("Accept", "application/json")
+            .get().build()
+        runCatching {
+            OkHttpClient().newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyList<DesktopFeaturedReel>()
+                val rows = JSONArray(response.body?.string().orEmpty())
+                (0 until minOf(5, rows.length())).mapNotNull { index ->
+                    val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                    val id = row.optString("reel_id")
+                    if (id.isBlank()) return@mapNotNull null
+                    DesktopFeaturedReel(
+                        id = id,
+                        author = row.optString("display_name"),
+                        username = row.optString("username"),
+                        avatarUrl = row.optString("avatar_url"),
+                        coverUrl = row.optString("cover_url"),
+                        caption = row.optString("reel_caption"),
+                        videoUrl = row.optString("video_url"),
+                        viewsInWindow = row.optLong("window_views"),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }

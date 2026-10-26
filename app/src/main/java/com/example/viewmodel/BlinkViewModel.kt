@@ -13,6 +13,7 @@ import androidx.lifecycle.Observer
 import androidx.work.WorkInfo
 import androidx.work.NetworkType
 import androidx.work.Constraints
+import androidx.work.BackoffPolicy
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -29,6 +30,7 @@ import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
+import com.example.data.local.BlinkTextOutboxWorker
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
@@ -377,6 +379,22 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
         observeNetworkStatus()
         observeAuthState()
+        viewModelScope.launch {
+            // A queued message must recover after app restart even if connectivity
+            // was already restored before this ViewModel was initialized.
+            while (true) {
+                val state = _uiState.value
+                if (state.destination == AppDestination.MAIN && state.isOnline &&
+                    state.pendingMessageCount > 0) {
+                    val ownerId = supabaseService.getCurrentUserId()
+                    val ownerName = offlineContentStore.cachedOwnerUsername()
+                    if (!ownerId.isNullOrBlank() && ownerName.isNotBlank()) {
+                        scheduleTextOutboxWorker(ownerId, ownerName)
+                    }
+                }
+                delay(60_000L)
+            }
+        }
         if (!addAccountMode) {
             viewModelScope.launch { restoreSupabaseSession() }
         }
@@ -2976,8 +2994,14 @@ private suspend fun restoreSupabaseSession() {
 
     fun saveOnboardingUsername(
         username: String,
-        onResult: (Boolean, String?) -> Unit
+        onResult: (Boolean, String?) -> Unit,
+        displayName: String? = null
     ) {
+        val cleanDisplayName = displayName?.trim()
+        if (cleanDisplayName != null && cleanDisplayName.length !in 2..80) {
+            onResult(false, "Enter your name (2–80 characters).")
+            return
+        }
         checkOnboardingUsername(username) { available, message ->
             if (!available) {
                 onResult(false, message)
@@ -2989,6 +3013,7 @@ private suspend fun restoreSupabaseSession() {
                 val current = _uiState.value.myProfile
                 val updated = current.copy(
                     username = clean,
+                    fullName = cleanDisplayName ?: current.fullName,
                     onboardingCompleted = false,
                     onboardingStep = maxOf(current.onboardingStep, 1)
                 )
@@ -3002,6 +3027,21 @@ private suspend fun restoreSupabaseSession() {
                     onResult(false, "Unable to save your username. Check your connection and try again.")
                 }
             }
+        }
+    }
+
+    fun saveGoogleOnboardingReferrer(referrerId: String, onResult: (Boolean, String?) -> Unit) {
+        if (referrerId.isBlank()) {
+            onResult(true, null)
+            return
+        }
+        viewModelScope.launch {
+            val valid = runCatching {
+                com.example.data.supabase.BlinkReferralClient
+                    .claimGoogleOnboardingReferrer(referrerId)
+            }.getOrDefault(false)
+            onResult(valid, if (valid) null else
+                "Could not apply this referral. Choose another name or skip it.")
         }
     }
 
@@ -4896,6 +4936,19 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private fun scheduleTextOutboxWorker(ownerId: String, username: String) {
+        if (ownerId.isBlank() || username.isBlank() || ownerId == "local_user") return
+        val request = OneTimeWorkRequestBuilder<BlinkTextOutboxWorker>()
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+            .setInputData(workDataOf("ownerId" to ownerId, "ownerUsername" to username))
+            .addTag("blink_text_outbox").build()
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            "blink_text_outbox_$ownerId", ExistingWorkPolicy.KEEP, request
+        )
+    }
+
     fun sendMessage(
         partnerUsername: String,
         text: String,
@@ -4910,45 +4963,51 @@ private suspend fun restoreSupabaseSession() {
             it.partnerUsername == cleanPartner && it.isGroup
         }
         if (group != null) {
-            // Group chat does not use the direct-message outbox. The deployed group
-            // RPC currently lacks a client-generated idempotency key, so an
-            // ambiguous failure must never be automatically retried.
+            val senderId = supabaseService.getCurrentUserId()
+            if (senderId.isNullOrBlank()) {
+                showToast("Sign in again to send group messages.")
+                return
+            }
             val tempId = "temp_group_${UUID.randomUUID()}"
-            val timestamp = Instant.now().toString()
             appendMessageToState(cleanPartner, ChatMessage(
                 id = tempId,
                 conversationId = group.id,
-                senderId = _uiState.value.myProfile.id,
+                senderId = senderId,
                 receiverUsername = cleanPartner,
                 text = cleanText,
-                timestamp = "Sending...",
-                rawTimestamp = timestamp,
+                timestamp = "Sending…",
+                rawTimestamp = Instant.now().toString(),
                 isFromMe = true,
                 isRead = false,
-                status = MessageStatus.SENDING
+                status = MessageStatus.SENDING,
+                replyToMessageId = replyToMessageId
             ))
             viewModelScope.launch(Dispatchers.IO) {
-                if (!_uiState.value.isOnline) {
-                    withContext(Dispatchers.Main) {
-                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast("Group message not sent. Connect and refresh before resending.")
-                    }
-                    return@launch
-                }
-                chatRepository.sendGroupMessage(group.id, cleanText).fold(
-                    onSuccess = { confirmed ->
-                        withContext(Dispatchers.Main) {
-                            replaceMessageInState(cleanPartner, tempId, confirmed)
+                offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText, replyToMessageId)
+                scheduleTextOutboxWorker(senderId, offlineContentStore.cachedOwnerUsername())
+                if (!_uiState.value.isOnline) return@launch
+                if (!activeOutboxIds.add(tempId)) return@launch
+                try {
+                    chatRepository.sendGroupMessage(
+                        group.id, cleanText, tempId.removePrefix("temp_group_")
+                    ).fold(
+                        onSuccess = { confirmed ->
+                            withContext(Dispatchers.Main) {
+                                replaceMessageInState(cleanPartner, tempId, confirmed)
+                            }
+                            persistConversationsNow()
+                            offlineContentStore.deleteOutbox(tempId)
+                            chatRepository.triggerMessagePushBestEffort(confirmed.id)
+                        },
+                        onFailure = { failure ->
+                            withContext(Dispatchers.Main) {
+                                updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                            }
+                            // WorkManager independently retries the exact same client UUID.
+                            Log.w(TAG, "Queued failed group message for safe automatic retry", failure)
                         }
-                        persistConversationsNow()
-                    },
-                    onFailure = {
-                        withContext(Dispatchers.Main) {
-                            updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                            showToast("Group delivery unconfirmed. Refresh before resending to avoid duplicates.")
-                        }
-                    }
-                )
+                    )
+                } finally { activeOutboxIds.remove(tempId) }
             }
             return
         }
@@ -4985,10 +5044,12 @@ private suspend fun restoreSupabaseSession() {
         appendMessageToState(cleanPartner, optimistic)
 
         viewModelScope.launch(Dispatchers.IO) {
-            offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText)
+            offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText, replyToMessageId)
+            scheduleTextOutboxWorker(uid, offlineContentStore.cachedOwnerUsername())
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
-                chatRepository.sendMessage(cleanPartner, cleanText, replyToMessageId).fold(
+                chatRepository.sendMessage(cleanPartner, cleanText, replyToMessageId,
+                    tempId.removePrefix("temp_")).fold(
                     onSuccess = { serverMsg ->
                         withContext(Dispatchers.Main) {
                             replaceMessageInState(
@@ -5233,6 +5294,7 @@ private suspend fun restoreSupabaseSession() {
                 val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
                     .setConstraints(Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
                     .setInputData(workDataOf(
                         "ownerId" to pending.ownerId,
                         "partner" to partner,
@@ -5580,11 +5642,15 @@ private suspend fun restoreSupabaseSession() {
         for (item in pending) {
             if (!activeOutboxIds.add(item.localId)) continue
             try {
-                chatRepository.sendMessage(
-                    item.receiverUsername,
-                    item.content,
-                    pendingReplyTargets[item.localId]
-                ).fold(
+                val stableId = item.localId.removePrefix("temp_group_").removePrefix("temp_")
+                val groupId = com.blinkng.shared.BlinkGroupRoute.conversationId(item.receiverUsername)
+                val delivery = if (groupId != null) chatRepository.sendGroupMessage(
+                    groupId, item.content, stableId
+                ) else chatRepository.sendMessage(
+                    item.receiverUsername, item.content,
+                    item.replyToMessageId ?: pendingReplyTargets[item.localId], stableId
+                )
+                delivery.fold(
                     onSuccess = { serverMsg ->
                         withContext(Dispatchers.Main) {
                             replaceMessageInState(

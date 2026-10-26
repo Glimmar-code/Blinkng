@@ -35,9 +35,20 @@ import com.example.ui.theme.BlinkPurple
 
 @Composable
 fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,onPublish:(String,String,Boolean)->Unit){
-    var selectedUri by rememberSaveable{mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable{mutableStateOf("")}
-    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=false}}
+    var selectedUri by rememberSaveable{mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable{mutableStateOf("")};var imageToEdit by remember {mutableStateOf<android.net.Uri?>(null)}
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{imageToEdit=it;isVideo=false}}
     val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=true}}
+    imageToEdit?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { result ->
+                selectedUri = result.toString()
+                isVideo = false
+                imageToEdit = null
+            },
+            onDismiss = { imageToEdit = null }
+        )
+    }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background,BlinkPurple.copy(alpha=.10f),BlinkPink.copy(alpha=.06f))))){
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()){
             Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
@@ -77,11 +88,16 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                                     }
                                 }
                             }
-                            TextButton(
-                                onClick={selectedUri=null},
-                                enabled=!isUploading,
-                                modifier=Modifier.align(Alignment.TopEnd).padding(8.dp)
-                            ){Text("Change")}
+                            Row(modifier=Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                                if (!isVideo) TextButton(
+                                    onClick={imageToEdit=android.net.Uri.parse(uri)},
+                                    enabled=!isUploading
+                                ){Text("Edit photo")}
+                                TextButton(
+                                    onClick={selectedUri=null},
+                                    enabled=!isUploading
+                                ){Text("Change")}
+                            }
                         }
                     }
                 }
