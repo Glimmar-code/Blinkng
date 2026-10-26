@@ -83,7 +83,7 @@ on conflict(id) do update set public=false, file_size_limit=26214400,
 create policy blink_channel_media_upload on storage.objects
  for insert to authenticated with check (
    bucket_id='blink-channel-media'
-   and (case when name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/' then
+   and (case when name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/' then
        public.blink_channel_is_admin((split_part(name,'/',1))::uuid)
        else false end)
    and split_part(name,'/',2)=(select auth.uid())::text
@@ -91,7 +91,7 @@ create policy blink_channel_media_upload on storage.objects
 create policy blink_channel_media_read on storage.objects
  for select to authenticated using (
    bucket_id='blink-channel-media'
-   and (case when name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/' then
+   and (case when name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/' then
        public.blink_channel_can_read((split_part(name,'/',1))::uuid)
        else false end)
  );
@@ -115,7 +115,7 @@ begin
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501';
  end if;
  return query
- select u.id,u.channel_id,u.author_id,u.body,u.created_at,
+ select u.id,u.channel_id,null::uuid,u.body,u.created_at,
    coalesce((select jsonb_object_agg(q.emoji,q.n) from
      (select r.emoji,count(*)::integer n from public.blink_channel_reactions r
       where r.update_id=u.id group by r.emoji) q),'{}'::jsonb),
