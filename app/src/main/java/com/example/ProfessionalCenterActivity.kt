@@ -111,9 +111,11 @@ class ProfessionalCenterActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SupabaseService.initialize(applicationContext)
         val section = intent.getStringExtra("section") ?: "privacy"
+        val initialChannelId = intent.getStringExtra("channel_id").orEmpty()
+            .takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
         setContent {
             BlinkTheme(darkTheme = true) {
-                ProfessionalCenterScreen(initialSection = section, onBack = ::finish)
+                ProfessionalCenterScreen(initialSection = section, initialChannelId = initialChannelId, onBack = ::finish)
             }
         }
     }
@@ -131,7 +133,7 @@ private enum class ProfessionalSection(val key: String, val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit) {
+private fun ProfessionalCenterScreen(initialSection: String, initialChannelId: String?, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { ProfessionalRepository() }
@@ -360,7 +362,8 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                         searchProfiles = { query, limit, afterUsername, afterId ->
                             service.searchProfilesPage(query, limit, afterUsername, afterId)
                         },
-                        onChannelOpenChange = { channelOpen = it }
+                        onChannelOpenChange = { channelOpen = it },
+                        initialChannelId = initialChannelId
                     )
 
                     ProfessionalSection.ACCOUNT -> AccountSection(
