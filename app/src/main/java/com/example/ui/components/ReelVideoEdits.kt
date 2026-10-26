@@ -6,7 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.text.SpannableString
 import androidx.core.content.FileProvider
-import androidx.media3.common.Effects
+import androidx.media3.transformer.Effects
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.OverlayEffect
@@ -95,7 +95,7 @@ internal suspend fun exportEditedReel(
                 .build()
         ).build()
 
-    val videoEffects = mutableListOf<androidx.media3.common.VideoEffect>()
+    val videoEffects = mutableListOf<androidx.media3.common.Effect>()
     if (edit.grayscale) videoEffects += RgbFilter.createGrayscaleFilter()
     if (edit.rotationDegrees != 0f) {
         videoEffects += ScaleAndRotateTransformation.Builder()
