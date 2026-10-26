@@ -1526,9 +1526,11 @@ private fun PremiumChatDetail(
         val uri = result.data?.data
         if (uri != null) {
             runCatching {
-                val provider = android.provider.ContactsContract.CommonDataKinds.Phone
                 context.contentResolver.query(uri,
-                    arrayOf(provider.DISPLAY_NAME, provider.NUMBER), null, null, null
+                    arrayOf(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    ), null, null, null
                 )?.use { cursor ->
                     if (cursor.moveToFirst()) {
                         val name = cursor.getString(0).orEmpty().take(100)
