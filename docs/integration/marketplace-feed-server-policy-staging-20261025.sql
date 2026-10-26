@@ -38,7 +38,7 @@ begin
       using errcode = '42501',
             hint = 'Paid feed promotion must be created by BLINK payment-verified server logic.';
   end if;
-  v_sales_intent := v_copy ~* '(^|[^[:alpha:]])(for sale|selling this|available for purchase|dm to buy|buy now|order now|price is)([^[:alpha:]]|$)';
+  v_sales_intent := v_copy ~* '(^|[^[:alpha:]])(for sale|selling (this|my|a|an)|available for (purchase|sale)|dm to (buy|order)|buy now|order now|price is)([^[:alpha:]]|$)';
   v_has_price := v_copy ~* '(₦|NGN[[:space:]]*)[[:space:]]*[0-9]';
   -- Restrict the combination of explicit sales language and a price.
   -- A review or discussion ABOUT an item must remain publishable.
