@@ -77,6 +77,10 @@ verify_jwt = false
 [functions.share-preview]
 verify_jwt = false
 
+# Public read-only, allowlisted metadata. Deploy to staging before promotion.
+[functions.link-metadata]
+verify_jwt = false
+
 [functions.blink-web]
 verify_jwt = false
 

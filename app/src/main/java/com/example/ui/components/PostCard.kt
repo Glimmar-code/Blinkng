@@ -672,6 +672,17 @@ fun PostCard(
                 }
             }
 
+            val postLinks = listOfNotNull(
+                post.text.takeIf { it.isNotBlank() },
+                post.linkUrl?.takeIf { it.isNotBlank() }
+            ).joinToString(" ")
+            if (postLinks.isNotBlank()) {
+                BlinkRichLinkPreview(
+                    text = postLinks,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+
             post.poll?.let { poll ->
                 PremiumPollCard(
                     poll = poll,

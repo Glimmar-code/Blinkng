@@ -1,6 +1,6 @@
-const SHARE_ORIGIN = "https://my-app.com";
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.aistudio.blink.appvtwo";
-const ALLOWED_TYPES = new Set(["profile", "post", "reel"]);
+const SHARE_ORIGIN = "https://blink.com.ng";
+const PLAY_STORE_URL = "https://blink.com.ng/download/";
+const ALLOWED_TYPES = new Set(["profile", "post", "reel", "market"]);
 
 function firstKeyFromJsonEnv(name: string): string {
   const raw = Deno.env.get(name);
@@ -54,6 +54,10 @@ function findTypeAndId(url: URL): { type: string; id: string } | null {
   const qId = (url.searchParams.get("id") || "").trim();
   if (ALLOWED_TYPES.has(qType) && qId) return { type: qType, id: qId };
 
+  // Public profile share links use /@username, not /profile/username.
+  if (/^\/@[^/]+\/?$/.test(url.pathname)) {
+    return { type: "profile", id: decodeURIComponent(url.pathname.slice(2).replace(/\/$/, "")) };
+  }
   const segments = url.pathname.split("/").filter(Boolean).map((v) => decodeURIComponent(v));
   for (let i = 0; i < segments.length - 1; i++) {
     const type = segments[i].toLowerCase();
@@ -73,9 +77,28 @@ type Preview = {
   canonicalUrl: string;
 };
 
+async function publicContent(id: string, type: string): Promise<Record<string, unknown> | null> {
+  const base = Deno.env.get("SUPABASE_URL") || "";
+  const key = serviceKey();
+  if (!base || !key) throw new Error("Supabase runtime credentials are unavailable");
+  // Reuse the existing authenticated-policy-independent PUBLIC content projection:
+  // this RPC excludes inactive, non-Everyone posts AND private authors.
+  const response = await fetch(`${base}/rest/v1/rpc/get_public_web_content`, {
+    method: "POST",
+    headers: { ...gatewayHeaders(key), "Content-Type": "application/json" },
+    body: JSON.stringify({ p_content_id: id, p_content_type: type }),
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`Public content lookup failed (${response.status})`);
+  const record = await response.json() as Record<string, unknown>;
+  return record.available === true ? record : null;
+}
+
 async function buildPreview(type: string, id: string): Promise<Preview | null> {
   if (id.length > 128) return null;
-  const canonicalUrl = `${SHARE_ORIGIN}/${type}/${encodeURIComponent(id)}`;
+  const canonicalUrl = type === "profile"
+    ? `${SHARE_ORIGIN}/@${encodeURIComponent(id.replace(/^@+/, ""))}`
+    : `${SHARE_ORIGIN}/${type}/${encodeURIComponent(id)}`;
 
   if (type === "profile") {
     const selector = isUuid(id)
@@ -84,12 +107,14 @@ async function buildPreview(type: string, id: string): Promise<Preview | null> {
     const rows = await rest(`profiles?${selector}&select=id,username,full_name,avatar_url,bio,professional_headline,university&limit=1`);
     const p = rows[0] as Record<string, unknown> | undefined;
     if (!p) return null;
+    // A public link must not reveal private account biography/avatar.
+    const privateRows = await rest(`user_settings?user_id=eq.${encodeURIComponent(String(p.id))}&select=private_account&limit=1`);
+    if ((privateRows[0] as Record<string, unknown> | undefined)?.private_account === true) return null;
     const username = cleanText(p.username, 60);
     const fullName = cleanText(p.full_name, 90) || username;
     const detail = cleanText(p.professional_headline, 180) || cleanText(p.bio, 180) || cleanText(p.university, 180);
     return {
-      type,
-      id: String(p.id || id),
+      type, id: String(p.id || id),
       title: `${fullName}${username ? ` (@${username})` : ""} on Blink`,
       description: detail || `View ${fullName}'s profile on Blink.`,
       image: String(p.avatar_url || ""),
@@ -98,31 +123,40 @@ async function buildPreview(type: string, id: string): Promise<Preview | null> {
   }
 
   if (!isUuid(id)) return null;
-  const rows = await rest(
-    `feed_posts?id=eq.${encodeURIComponent(id)}&is_active=eq.true&audience=eq.Everyone&select=id,user_id,text,caption,image_url,images,video_url,is_reel,created_at&limit=1`,
-  );
-  const post = rows[0] as Record<string, unknown> | undefined;
-  if (!post) return null;
-
-  const actualIsReel = Boolean(post.is_reel) || Boolean(post.video_url);
-  if ((type === "reel") !== actualIsReel) return null;
-
-  const authorRows = await rest(
-    `profiles?id=eq.${encodeURIComponent(String(post.user_id || ""))}&select=username,full_name,avatar_url&limit=1`,
-  );
-  const author = (authorRows[0] || {}) as Record<string, unknown>;
+  if (type === "market") {
+    const listings = await rest(
+      `market_items?id=eq.${encodeURIComponent(id)}&status=eq.active&is_sold=eq.false&moderation_state=eq.approved&select=id,title,description,image_url,image_urls,seller_id,price,currency&limit=1`
+    );
+    const item = listings[0] as Record<string, unknown> | undefined;
+    if (!item) return null;
+    const seller = await rest(
+      `profiles?id=eq.${encodeURIComponent(String(item.seller_id || ""))}&select=is_seller_active,seller_status,is_verified&limit=1`
+    );
+    const approved = seller[0] as Record<string, unknown> | undefined;
+    if (!approved || approved.is_seller_active !== true ||
+        approved.seller_status !== "active" || approved.is_verified !== true) return null;
+    const imgs = Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean).map(String) : [];
+    return {
+      type, id, title: `${cleanText(item.title, 105) || "Market item"} on Blink Market`,
+      description: cleanText(item.description, 180) || "Explore this listing on Blink Market.",
+      image: String(imgs[0] || item.image_url || ""),
+      canonicalUrl
+    };
+  }
+  const result = await publicContent(id, type);
+  if (!result) return null;
+  const content = (result.content || {}) as Record<string, unknown>;
+  const author = (content.author || {}) as Record<string, unknown>;
   const username = cleanText(author.username, 60);
-  const caption = cleanText(post.text, 180) || cleanText(post.caption, 180);
-  const images = Array.isArray(post.images) ? post.images.filter(Boolean).map(String) : [];
-  const image = String(images[0] || post.image_url || author.avatar_url || "");
-
+  const caption = cleanText(content.text, 180) || cleanText(content.caption, 180);
+  const images = Array.isArray(content.imageUrls) ? content.imageUrls.filter(Boolean).map(String) : [];
+  const video = type === "reel" ? String(content.videoUrl || "") : "";
   return {
-    type,
-    id,
-    title: `${actualIsReel ? "Reel" : "Post"}${username ? ` by @${username}` : ""} on Blink`,
-    description: caption || `Open this ${actualIsReel ? "reel" : "post"} on Blink.`,
-    image,
-    video: actualIsReel ? String(post.video_url || "") : undefined,
+    type, id,
+    title: `${type === "reel" ? "Reel" : "Post"}${username ? ` by @${username}` : ""} on Blink`,
+    description: caption || `Open this ${type} on Blink.`,
+    image: String(images[0] || author.avatarUrl || ""),
+    video: video || undefined,
     canonicalUrl,
   };
 }
