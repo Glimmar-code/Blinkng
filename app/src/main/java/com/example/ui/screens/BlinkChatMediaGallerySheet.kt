@@ -101,6 +101,10 @@ internal fun BlinkChatMediaGallerySheet(
     onVideo: () -> Unit,
     onSticker: () -> Unit,
     onViewOnce: () -> Unit,
+    onShareLocation: () -> Unit,
+    onPickContact: () -> Unit,
+    onShareArticle: () -> Unit,
+    onCreatePoll: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -234,6 +238,10 @@ internal fun BlinkChatMediaGallerySheet(
                 Destination("Video", Icons.Default.Videocam, onVideo),
                 Destination("Music", Icons.Default.MusicNote, onAudio),
                 Destination("Sticker", Icons.Default.EmojiEmotions, onSticker),
+                Destination("Location", Icons.Default.Place, onShareLocation),
+                Destination("Contact", Icons.Default.Person, onPickContact),
+                Destination("Article", Icons.Default.Article, onShareArticle),
+                Destination("Poll", Icons.Default.Poll, onCreatePoll),
                 Destination("View once", Icons.Default.VisibilityOff, onViewOnce)
             ).forEach { entry ->
                 Column(
