@@ -69,6 +69,7 @@ fun Modifier.blinkElasticSwipeAction(
             tracker.addPosition(down.uptimeMillis, down.position)
             var childOwned = false
             var committed = false
+            try {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Final)
                 if (event.changes.size != 1) childOwned = true
@@ -94,8 +95,12 @@ fun Modifier.blinkElasticSwipeAction(
                     break
                 }
             }
-            dragging = false
-            distance = 0f
+            } finally {
+                // Account switches, keyboard changes and route disposal can cancel
+                // pointer input mid-gesture; never strand a translated screen.
+                dragging = false
+                distance = 0f
+            }
             if (committed) latestAction()
         }
     }
