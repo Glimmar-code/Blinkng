@@ -73,7 +73,8 @@ fun BlinkChannelDetail(
     backend: BlinkCommunityRepository,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    initialUpdateId: String? = null
+    initialUpdateId: String? = null,
+    onChannelEdited: (BlinkCommunity) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var updates by remember(channel.id) { mutableStateOf<List<BlinkChannelUpdate>>(emptyList()) }
@@ -87,6 +88,10 @@ fun BlinkChannelDetail(
     val context = LocalContext.current
     var muted by remember(channel.id) { mutableStateOf(false) }
     var menuOpen by remember(channel.id) { mutableStateOf(false) }
+    var editInfoOpen by remember(channel.id) { mutableStateOf(false) }
+    var editName by remember(channel.id) { mutableStateOf(channel.name) }
+    var editDescription by remember(channel.id) { mutableStateOf(channel.description) }
+    var editCover by remember(channel.id) { mutableStateOf(channel.coverUrl.orEmpty()) }
     var showScheduled by remember(channel.id) { mutableStateOf(false) }
     var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var unread by remember(channel.id) { mutableStateOf(0) }
@@ -193,6 +198,15 @@ fun BlinkChannelDetail(
                         menuOpen = false
                         scope.launch { refresh() }
                     })
+                    if (role == "owner") {
+                        DropdownMenuItem(text = { Text("Edit Channel info") }, onClick = {
+                            menuOpen = false
+                            editName = channel.name
+                            editDescription = channel.description
+                            editCover = channel.coverUrl.orEmpty()
+                            editInfoOpen = true
+                        })
+                    }
                     if (admin) {
                         DropdownMenuItem(text = { Text("Channel analytics") }, onClick = {
                             menuOpen = false
@@ -483,6 +497,46 @@ fun BlinkChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        if (editInfoOpen && role == "owner") {
+            AlertDialog(
+                onDismissRequest = { editInfoOpen = false },
+                title = { Text("Edit Channel information") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(value = editName,
+                            onValueChange = { editName = it.take(80) },
+                            label = { Text("Channel name") }, singleLine = true)
+                        OutlinedTextField(value = editDescription,
+                            onValueChange = { editDescription = it.take(1500) },
+                            label = { Text("Description") }, maxLines = 4)
+                        OutlinedTextField(value = editCover,
+                            onValueChange = { editCover = it.take(500) },
+                            label = { Text("Channel picture HTTPS URL") }, singleLine = true)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editInfoOpen = false }) { Text("Cancel") }
+                },
+                confirmButton = {
+                    TextButton(enabled = !saving && editName.trim().length >= 3, onClick = {
+                        scope.launch {
+                            saving = true
+                            try {
+                                val changed = backend.updateChannelInfo(
+                                    channel.id, editName, editDescription, editCover
+                                )
+                                onChannelEdited(changed)
+                                editInfoOpen = false
+                                info = "Channel information saved."
+                                error = null
+                            } catch (e: Exception) {
+                                error = e.message ?: "Could not save Channel information."
+                            } finally { saving = false }
+                        }
+                    }) { Text("Save changes") }
+                }
+            )
         }
         mediaUpdateId?.let { id ->
             BlinkChannelMediaViewer(
