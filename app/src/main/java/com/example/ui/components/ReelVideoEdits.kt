@@ -114,10 +114,10 @@ internal suspend fun exportEditedReel(
         .build()
     val music = edit.musicUri?.takeIf(String::isNotBlank)
     val composition = if (music != null) {
-        val videoSequence = EditedMediaItemSequence.withAudioAndVideoFrom(listOf(videoItem))
+        // Media3 1.8.0 uses the pre-1.9 sequence constructors.
+        val videoSequence = EditedMediaItemSequence(listOf(videoItem))
         val audioItem = EditedMediaItem.Builder(MediaItem.fromUri(music)).build()
-        val loopMusic = EditedMediaItemSequence.withAudioFrom(listOf(audioItem))
-            .buildUpon().setIsLooping(true).build()
+        val loopMusic = EditedMediaItemSequence(listOf(audioItem), true)
         Composition.Builder(videoSequence, loopMusic).build()
     } else null
 
