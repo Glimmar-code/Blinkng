@@ -731,6 +731,169 @@
     return {isImage,isVideo};
   }
 
+  /**
+   * The Web counterpart of BLINK's native photo editor. Uses a user-scoped File,
+   * a local canvas and an explicit Done gesture; nothing uploads during editing.
+   * Video and animated images are intentionally returned unchanged.
+   */
+  async function blinkEditSelectedPhoto(file){
+    if(!file||!/^image\/(jpeg|png|webp)$/i.test(file.type))return file;
+    const bitmap=await createImageBitmap(file);
+    const ratio=Math.min(1,2048/Math.max(bitmap.width,bitmap.height));
+    let surface=document.createElement('canvas');
+    surface.width=Math.max(1,Math.round(bitmap.width*ratio));
+    surface.height=Math.max(1,Math.round(bitmap.height*ratio));
+    let g=surface.getContext('2d',{willReadFrequently:true});
+    g.drawImage(bitmap,0,0,surface.width,surface.height);
+    bitmap.close();
+    const shade=document.createElement('div');
+    shade.setAttribute('role','dialog');
+    shade.setAttribute('aria-modal','true');
+    shade.setAttribute('aria-label','BLINK Photo Editor');
+    shade.style.cssText='position:fixed;inset:0;z-index:100000;background:#060608;color:#fff;display:flex;flex-direction:column;gap:12px;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);box-sizing:border-box;';
+    const bar=document.createElement('div');
+    bar.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:10px 0;';
+    const controls=document.createElement('div');
+    controls.style.cssText='display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
+    const view=document.createElement('div');
+    view.style.cssText='flex:1;min-height:150px;display:grid;place-items:center;overflow:auto;background:#000;';
+    surface.style.cssText='max-width:100%;max-height:100%;object-fit:contain;touch-action:none;box-shadow:0 0 2px #222;';
+    const lower=document.createElement('div');
+    lower.style.cssText='display:flex;flex-direction:column;gap:8px;min-height:115px;padding:8px 10px 16px;background:#101014;border-radius:14px;';
+    const status=document.createElement('div');
+    status.style.cssText='font-size:12px;color:#bdbdcc;text-align:center;';
+    const mkBtn=(label,action)=>{
+      const button=document.createElement('button');button.type='button';button.textContent=label;
+      button.style.cssText='border:1px solid #555;background:#24242c;color:white;border-radius:12px;padding:9px 12px;font:inherit;font-size:12px;cursor:pointer;';
+      button.addEventListener('click',action);return button;
+    };
+    let doneResolve;
+    const response=new Promise(resolve=>{doneResolve=resolve;});
+    let finished=false,drawEnabled=false,pointerDown=false;
+    let ink='#fff';
+    let edits={exposure:0,contrast:100,saturation:100};
+    function close(result){
+      if(finished)return;
+      finished=true;shade.remove();
+      document.removeEventListener('keydown',escape);
+      doneResolve(result);
+    }
+    function escape(e){if(e.key==='Escape')close(file);}
+    document.addEventListener('keydown',escape);
+    bar.append(mkBtn('✕ CANCEL',()=>close(file)));
+    const title=document.createElement('strong');title.textContent='BLINK PHOTO';
+    bar.append(title);
+    bar.append(mkBtn('✓ DONE',()=>{
+      try{
+        const adjusted=document.createElement('canvas');
+        adjusted.width=surface.width;adjusted.height=surface.height;
+        const cg=adjusted.getContext('2d');
+        cg.filter=`brightness(${100+edits.exposure}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;
+        cg.drawImage(surface,0,0);cg.filter='none';
+        adjusted.toBlob(blob=>{
+          if(!blob){status.textContent='Could not export picture.';return;}
+          close(new File([blob],`BLINK_${Date.now()}.jpg`,{type:'image/jpeg'}));
+        },'image/jpeg',.9);
+      }catch(e){status.textContent='Could not save edits. Choose Cancel to use the original.';}
+    }));
+    let active='Adjust';
+    function renderTools(){
+      lower.replaceChildren();
+      status.textContent=drawEnabled?'Draw on the picture with your finger or mouse.':'Edits are local until you publish.';
+      const tools=document.createElement('div');
+      tools.style.cssText='display:flex;gap:6px;justify-content:center;flex-wrap:wrap;';
+      ['Adjust','Crop','Draw','Sticker','Text'].forEach(name=>tools.append(
+        mkBtn(name,()=>{active=name;drawEnabled=name==='Draw';renderTools();})
+      ));
+      lower.append(tools);
+      const options=document.createElement('div');
+      options.style.cssText='display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;';
+      const changeCanvas=newCanvas=>{
+        const old=surface;
+        surface=newCanvas;
+        surface.style.cssText=old.style.cssText;
+        old.replaceWith(surface);
+        g=surface.getContext('2d',{willReadFrequently:true});
+        attachDraw();
+      };
+      if(active==='Adjust'){
+        [['Exposure','exposure',-80,80],['Contrast','contrast',50,150],['Saturation','saturation',0,200]]
+        .forEach(([label,key,min,max])=>{
+          const row=document.createElement('label');row.style.cssText='display:flex;gap:4px;align-items:center;font-size:11px;';
+          row.textContent=label;
+          const input=document.createElement('input');input.type='range';input.min=min;input.max=max;
+          input.value=edits[key];input.setAttribute('aria-label',label);
+          input.oninput=()=>{edits[key]=Number(input.value);
+            surface.style.filter=`brightness(${100+edits.exposure}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;};
+          row.append(input);options.append(row);
+        });
+      }else if(active==='Crop'){
+        const crop=(aspect)=>{
+          const ratio=surface.width/surface.height;
+          const w=ratio>aspect?Math.round(surface.height*aspect):surface.width;
+          const h=ratio>aspect?surface.height:Math.round(surface.width/aspect);
+          const next=document.createElement('canvas');next.width=w;next.height=h;
+          next.getContext('2d').drawImage(surface,(surface.width-w)/2,(surface.height-h)/2,w,h,0,0,w,h);
+          changeCanvas(next);
+        };
+        [['Square',1],['16:9',16/9],['9:16',9/16]].forEach(([label,ratio])=>
+          options.append(mkBtn(label,()=>crop(ratio))));
+        options.append(mkBtn('Rotate 90°',()=>{
+          const next=document.createElement('canvas');next.width=surface.height;next.height=surface.width;
+          const ctx=next.getContext('2d');ctx.translate(next.width,0);ctx.rotate(Math.PI/2);
+          ctx.drawImage(surface,0,0);changeCanvas(next);
+        }));
+      }else if(active==='Draw'){
+        ['#fff','#ffeb3b','#ec375c','#3bb9ff','#000'].forEach(color=>{
+          const swatch=mkBtn('●',()=>ink=color);
+          swatch.style.color=color;options.append(swatch);
+        });
+      }else if(active==='Sticker'){
+        ['❤️','✨','🔥','😂','⭐','💜'].forEach(emoji=>
+          options.append(mkBtn(emoji,()=>{
+            g.font=`bold ${Math.round(surface.width*.12)}px sans-serif`;
+            g.textAlign='center';g.fillText(emoji,surface.width/2,surface.height/2);
+          })));
+      }else if(active==='Text'){
+        const input=document.createElement('input');input.type='text';input.maxLength=80;
+        input.placeholder='Write on picture';input.style.cssText='background:#212127;color:#fff;border:1px solid #aaa;padding:8px;border-radius:8px;';
+        options.append(input,mkBtn('Add text',()=>{
+          const str=input.value.trim();if(!str)return;
+          g.font=`bold ${Math.round(surface.width*.065)}px sans-serif`;
+          g.fillStyle=ink;g.textAlign='center';
+          g.shadowColor='#000';g.shadowBlur=5;
+          g.fillText(str,surface.width/2,surface.height/2);
+          g.shadowBlur=0;input.value='';
+        }));
+      }
+      lower.append(options,status);
+    }
+    let previousPos=null;
+    function attachDraw(){
+      surface.addEventListener('pointerdown',e=>{
+        if(!drawEnabled)return;
+        pointerDown=true;surface.setPointerCapture(e.pointerId);
+        const b=surface.getBoundingClientRect();
+        previousPos=[(e.clientX-b.left)*surface.width/b.width,(e.clientY-b.top)*surface.height/b.height];
+      });
+      surface.addEventListener('pointermove',e=>{
+        if(!drawEnabled||!pointerDown||!previousPos)return;
+        const b=surface.getBoundingClientRect();
+        const pos=[(e.clientX-b.left)*surface.width/b.width,(e.clientY-b.top)*surface.height/b.height];
+        g.strokeStyle=ink;g.lineWidth=Math.max(3,surface.width*.007);
+        g.lineCap='round';g.beginPath();g.moveTo(...previousPos);g.lineTo(...pos);g.stroke();
+        previousPos=pos;
+      });
+      ['pointerup','pointercancel'].forEach(event=>surface.addEventListener(event,()=>{
+        pointerDown=false;previousPos=null;
+      }));
+    }
+    attachDraw();renderTools();
+    view.append(surface);shade.append(bar,view,lower);
+    document.body.appendChild(shade);
+    return response;
+  }
+
   function openPostComposer(){
     const draft=storageGet(draftKey(),'');
     modal('Create post',`<form id="post-form" class="form-stack"><textarea class="field" name="text" maxlength="8000" placeholder="What's happening on campus?">${esc(draft)}</textarea><div class="form-grid"><select class="field" name="audience"><option>Everyone</option><option>Followers</option></select><select class="field" name="category"><option>Campus Life</option><option>Education</option><option>Entertainment</option><option>Marketplace</option><option>Sports</option><option>Technology</option></select></div><input class="field" name="tags" maxlength="500" placeholder="Tags, comma separated"><input class="field" name="location" maxlength="160" placeholder="Location (optional)"><label class="checkbox"><input type="checkbox" name="reel"> Publish as Reel</label><label class="btn" style="text-align:center">Attach image/video<input class="hidden" id="post-media-file" type="file" accept="image/*,video/*"></label><div id="media-name" class="muted small"></div><button type="submit" class="btn primary">Publish</button><div id="post-msg"></div></form>`);
