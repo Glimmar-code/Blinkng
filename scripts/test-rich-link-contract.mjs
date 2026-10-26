@@ -80,5 +80,5 @@ test('chat preview preference on Web is a server-authoritative per-account setti
   assert.match(js, /user_chat_privacy/);
   assert.match(js, /p_allow_link_previews: !!enabled/);
   assert.match(js, /if\(!privacy.available\) throw/);
-  assert.match(js, /!m.deleted_for_everyone&&chatPreviewPrivacy.allowed/);
+  assert.match(js, /!m.deleted_for_everyone&&!viewOnce&&chatPreviewPrivacy.allowed/);
 });
