@@ -2568,8 +2568,8 @@ private fun PremiumChatDetail(
     }
 
     photoAdjustmentItem?.let { item ->
-        BlinkPictureAdjustDialog(
-            uri = item.uri,
+        BlinkUniversalPhotoEditor(
+            originalUri = item.uri,
             onEdited = { editedUri ->
                 pendingPhotoReview = pendingPhotoReview.map {
                     if (it.id == item.id) it.copy(uri = editedUri) else it
