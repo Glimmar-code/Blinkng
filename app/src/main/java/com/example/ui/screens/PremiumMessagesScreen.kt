@@ -4169,9 +4169,10 @@ private fun SharedChatContentSheet(
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
     val media = remember(conversation.messages) {
         conversation.messages.filter {
-            !it.attachedImageUrl.isNullOrBlank() ||
-                !it.attachedVideoUrl.isNullOrBlank() ||
-                !it.attachedAudioUrl.isNullOrBlank()
+            !it.imageViewOnce && !it.deletedForEveryone &&
+                (!it.attachedImageUrl.isNullOrBlank() ||
+                    !it.attachedVideoUrl.isNullOrBlank() ||
+                    !it.attachedAudioUrl.isNullOrBlank())
         }
     }
     val links = remember(conversation.messages) {
@@ -4180,10 +4181,14 @@ private fun SharedChatContentSheet(
         }
     }
     val files = remember(conversation.messages) {
-        conversation.messages.filter { !it.attachedDocumentUrl.isNullOrBlank() }
+        conversation.messages.filter {
+            !it.deletedForEveryone && !it.attachedDocumentUrl.isNullOrBlank()
+        }
     }
     val starred = remember(conversation.messages) {
-        conversation.messages.filter { it.isStarred }
+        conversation.messages.filter {
+            it.isStarred && !it.deletedForEveryone && !it.imageViewOnce
+        }
     }
     var historicalPictures by remember(conversation.id) {
         mutableStateOf<List<ChatMessage>>(emptyList())
