@@ -13,6 +13,7 @@ const SHELL=[
   './parity.css',
   './config.js',
   './link-previews.js',
+  './profile-theme.js',
   './app.js',
   './parity.js',
   './blink-icon.svg',

@@ -1412,6 +1412,8 @@ fun MainAppContent(
         )
     }
 
+    var startReelComposer by rememberSaveable { mutableStateOf(false) }
+
     fun sharePostOrReel(postId: String) {
         val post = (
             uiState.posts +
@@ -1626,7 +1628,8 @@ fun MainAppContent(
                         onProfileClick = { viewModel.openProfile(it) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onStoryClick = { story -> viewModel.openStory(story) },
-                        onOpenCreatePost = { viewModel.openCreatePost(true) },
+                        onOpenCreatePost = { startReelComposer = false; viewModel.openCreatePost(true) },
+                        onOpenCreateReel = { startReelComposer = true; viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         onOpenMenu = { viewModel.openMenu(true) },
                         onToggleTheme = { viewModel.toggleDarkMode() },
@@ -2529,6 +2532,11 @@ fun MainAppContent(
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
                     onLikePost = { viewModel.togglePostLike(it) },
+                    onOpenPost = { postId ->
+                        (profilePosts + profileLikedPosts + profileSavedPosts)
+                            .firstOrNull { it.id == postId }
+                            ?.let { viewModel.openFeedPostDetails(it) }
+                    },
                     onCommentPost = { viewModel.openCommentsForPost(it) },
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
                     onSharePost = { sharePostOrReel(it) },
@@ -2995,12 +3003,12 @@ fun MainAppContent(
                 profile = uiState.myProfile,
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
-                onDismiss = { viewModel.openCreatePost(false) },
+                onDismiss = { startReelComposer = false; viewModel.openCreatePost(false) },
                 onOpenMarket = {
+                    startReelComposer = false
                     viewModel.openCreatePost(false)
                     viewModel.setTab(MainTab.MARKET)
-                    // Active, verified sellers may jump directly to the listing
-                    // composer; everyone else sees Market's normal seller gates.
+                    // Preserve the verified-seller market composer added to main.
                     if (uiState.myProfile.isSellerActive &&
                         uiState.myProfile.hasActiveMarketVerification()
                     ) {
@@ -3049,6 +3057,7 @@ fun MainAppContent(
                     viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
+                startInReelMode = startReelComposer,
                 isSubmitting = uiState.isCreatingPost,
                 searchMentions = { query, limit, afterUsername, afterId ->
                     viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)

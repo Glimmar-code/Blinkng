@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -70,6 +71,12 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Replay5
+import androidx.compose.material.icons.filled.Forward5
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -88,6 +95,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -97,6 +106,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -137,6 +147,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 @OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
@@ -177,6 +188,7 @@ fun CreatePostSheet(
     onPublishScheduledPostNow: (String) -> Unit = {},
     onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
+    startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
     searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
@@ -198,7 +210,9 @@ fun CreatePostSheet(
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
-    var mode by rememberSaveable { mutableStateOf("post") }
+    var reelExporting by remember { mutableStateOf(false) }
+    var reelHasPendingEdits by remember { mutableStateOf(false) }
+    var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
         scope = composerScope
@@ -281,6 +295,13 @@ fun CreatePostSheet(
         }
     }
 
+    LaunchedEffect(startInReelMode) {
+        if (startInReelMode && selectedVideo == null) {
+            mode = "reel"
+            videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        }
+    }
+
     fun imagePayload(images: List<String>): String? {
         return when (images.size) {
             0 -> null
@@ -336,7 +357,7 @@ fun CreatePostSheet(
                 selectedImages = parseDraftImages(value.optString("image_uri"))
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
-                mode = value.optString(
+                if (!startInReelMode) mode = value.optString(
                     "mode",
                     if (selectedVideo == null) "post" else "reel"
                 )
@@ -574,6 +595,10 @@ fun CreatePostSheet(
     }
 
     fun submit() {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
+            Toast.makeText(context, "Apply Reel edits before publishing.", Toast.LENGTH_SHORT).show()
+            return
+        }
         // Older saved drafts may still contain the removed Marketplace category.
         if (marketOnlyWarning != null) {
             Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
@@ -645,6 +670,10 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
+            Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
             return
@@ -712,9 +741,24 @@ fun CreatePostSheet(
         onDismissRequest = ::requestDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val outerScheme = MaterialTheme.colorScheme
+        MaterialTheme(
+            colorScheme = if (selectedVideo != null || mode == "reel") {
+                darkColorScheme(
+                    primary = Color.White,
+                    onPrimary = Color.Black,
+                    background = Color.Black,
+                    onBackground = Color.White,
+                    surface = Color(0xFF141414),
+                    onSurface = Color.White,
+                    surfaceVariant = Color(0xFF232323),
+                    onSurfaceVariant = Color.White.copy(alpha = .77f),
+                )
+            } else outerScheme
+        ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = if (selectedVideo != null || mode == "reel") Color.Black else outerScheme.background
         ) {
         Column(
             modifier = Modifier
@@ -726,7 +770,7 @@ fun CreatePostSheet(
             ComposerTopBar(
                 isSubmitting = isSubmitting,
                 canSubmit = canSubmit,
-                isReel = selectedVideo != null,
+                isReel = selectedVideo != null || mode == "reel",
                 onDismiss = ::requestDismiss,
                 onSubmit = ::submit
             )
@@ -1001,11 +1045,19 @@ fun CreatePostSheet(
                     VideoComposerPreview(
                         uri = it,
                         onRemove = {
-                            if (!isSubmitting) {
+                            if (!isSubmitting && !reelExporting) {
                                 selectedVideo = null
+                                reelHasPendingEdits = false
                                 mode = "post"
                             }
-                        }
+                        },
+                        onEdited = { renderedUri ->
+                            // The publisher and draft store always use the actual rendered MP4.
+                            selectedVideo = renderedUri
+                            mode = "reel"
+                        },
+                        onExporting = { reelExporting = it },
+                        onPendingEdits = { reelHasPendingEdits = it }
                     )
                 }
 
@@ -1468,6 +1520,7 @@ fun CreatePostSheet(
                     }
                 }
             }
+        }
         }
         }
     }
@@ -2229,61 +2282,16 @@ private fun DraftCard(
 @Composable
 private fun VideoComposerPreview(
     uri: String,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onEdited: (String) -> Unit,
+    onExporting: (Boolean) -> Unit,
+    onPendingEdits: (Boolean) -> Unit
 ) {
-    val context = LocalContext.current
-    val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
-            repeatMode = Player.REPEAT_MODE_ONE
-        }
-    }
-
-    DisposableEffect(player) {
-        onDispose {
-            player.release()
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(260.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.Black)
-    ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    this.player = player
-                }
-            },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = .62f)
-            ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Remove video",
-                    tint = Color.White,
-                    modifier = Modifier.padding(7.dp)
-                )
-            }
-        }
-    }
+    PremiumReelEditor(
+        uri = uri,
+        onRemove = onRemove,
+        onEdited = onEdited,
+        onExporting = onExporting,
+        onPendingEdits = onPendingEdits
+    )
 }

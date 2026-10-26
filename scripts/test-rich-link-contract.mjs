@@ -8,6 +8,7 @@ const read = path => fs.readFileSync(new URL('../' + path, import.meta.url), 'ut
 test('browser script parses after link-card injection', () => {
   assert.doesNotThrow(() => new vm.Script(read('web/app.js')));
   assert.doesNotThrow(() => new vm.Script(read('web/link-previews.js')));
+  assert.doesNotThrow(() => new vm.Script(read('web/profile-theme.js')));
 });
 
 test('web rich preview uses inert text and never injects remote metadata HTML', () => {

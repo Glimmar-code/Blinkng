@@ -5,6 +5,7 @@ on:
     paths:
       - 'web/app.js'
       - 'web/link-previews.js'
+      - 'web/profile-theme.js'
       - 'web/styles.css'
       - 'shared/src/main/kotlin/com/blinkng/shared/BlinkRichLinks.kt'
       - 'app/src/main/java/com/example/ui/components/BlinkRichLinkPreview.kt'
@@ -31,6 +32,7 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/link-previews.js
+          node --check web/profile-theme.js
           node --test scripts/test-rich-link-contract.mjs
       - uses: denoland/setup-deno@v2
         with:

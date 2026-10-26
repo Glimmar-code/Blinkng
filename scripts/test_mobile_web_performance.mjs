@@ -7,6 +7,7 @@ const read=p=>readFileSync(p,'utf8');
 const sizes={
   'web/app.js':160_000,
   'web/link-previews.js':10_000,
+  'web/profile-theme.js':10_000,
   'web/parity.js':115_000,
   'web/discovery.js':20_000,
   'web/styles.css':35_000,
@@ -19,7 +20,7 @@ for(const [path,maxBytes] of Object.entries(sizes)){
   const bytes=statSync(path).size;
   assert.ok(bytes<=maxBytes,`${path} grew to ${bytes} bytes; mobile budget is ${maxBytes} bytes`);
 }
-const initialBytes=['web/app.js','web/link-previews.js','web/parity.js','web/discovery.js','web/styles.css','web/landing.css','web/parity.css']
+const initialBytes=['web/app.js','web/link-previews.js','web/profile-theme.js','web/parity.js','web/discovery.js','web/styles.css','web/landing.css','web/parity.css']
   .reduce((sum,path)=>sum+statSync(path).size,0);
 assert.ok(initialBytes<=360_000,'Mobile first-party JS+CSS exceeds 360 KB uncompressed budget');
 

@@ -45,6 +45,7 @@ class BlinkProfileReferenceScreenshotTest {
         id = "screenshot-only",
         fullName = "Aisha Khan",
         username = "aisha",
+        profileTheme = "royal_purple",
         university = "University of Lagos",
         bio = "Good people make great days.",
         verificationBadge = VerificationBadge.BLUE,
@@ -60,7 +61,7 @@ class BlinkProfileReferenceScreenshotTest {
         ),
     )
 
-    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null) {
+    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null, themeId: String = "royal_purple", visitor: Boolean = false) {
         rule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
@@ -73,14 +74,16 @@ class BlinkProfileReferenceScreenshotTest {
                     ) {
                         LazyColumn(Modifier.fillMaxSize()) {
                             item {
-                                BlinkReferenceProfileDashboard(
-                                    profile = profile,
-                                    isMe = true,
+                                BlinkPremiumProfileDashboard(
+                                    profile = profile.copy(profileTheme = themeId),
+                                    isMe = !visitor,
                                     blinkCoinBalance = 1250L,
                                     isDark = dark,
                                     isFollowing = false,
                                     followBusy = false,
                                     postCount = 24,
+                                    totalLoadedViews = 1234L,
+                                    totalLoadedLikes = 219L,
                                     profileCompletion = 82,
                                     onAvatarClick = {}, onBack = {}, onEdit = {},
                                     onMessage = {}, onFollow = {}, onVerify = {},
@@ -88,9 +91,6 @@ class BlinkProfileReferenceScreenshotTest {
                                     onCopyUsername = {}, onVisitors = {}, onTopAction = {}
                                 )
                             }
-                        }
-                        Box(Modifier.align(Alignment.BottomCenter)) {
-                            BlinkReferenceProfileBottomNav(dark, "home") {}
                         }
                     }
                 }
@@ -132,4 +132,39 @@ class BlinkProfileReferenceScreenshotTest {
         render(dark = true, fontScale = 1.0f)
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-dark.png")
     }
+    @Test fun blackProfileStaysBlackForOwnerInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "black")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-owner.png")
+    }
+
+    @Test fun blackProfileStaysBlackForVisitorInDarkApp() {
+        render(dark = true, fontScale = 1.0f, themeId = "black", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-visitor.png")
+    }
+
+    @Test fun purpleProfileStaysPurpleForVisitorInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "royal_purple", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-purple-visitor.png")
+    }
+
+    @Test fun sapphireVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "sapphire", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire.png")
+    }
+
+    @Test fun emeraldVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "emerald", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-emerald.png")
+    }
+
+    @Test fun roseVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "rose", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-rose.png")
+    }
+
+    @Test fun amberVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "amber", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-amber.png")
+    }
+
 }
