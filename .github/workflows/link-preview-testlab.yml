@@ -1,0 +1,39 @@
+name: BLINK universal rich link Testlab gate
+
+on:
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/styles.css'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkRichLinks.kt'
+      - 'app/src/main/java/com/example/ui/components/BlinkRichLinkPreview.kt'
+      - 'desktopApp/src/main/kotlin/com/blinkng/desktop/ui/DesktopRichLinkPreview.kt'
+      - 'supabase/functions/link-metadata/**'
+      - 'supabase/functions/share-preview/**'
+      - 'scripts/test-rich-link-contract.mjs'
+      - '.github/workflows/link-preview-testlab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  links-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify browser source and cross-platform preview contracts
+        run: |
+          node --check web/app.js
+          node --test scripts/test-rich-link-contract.mjs
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check both Edge Functions without deploying
+        run: |
+          deno check supabase/functions/link-metadata/index.ts
+          deno check supabase/functions/share-preview/index.ts
