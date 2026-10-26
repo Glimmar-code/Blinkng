@@ -467,8 +467,8 @@ private fun Phase3SearchContent(
                             state.sort == DiscoverySort.TRENDING -> "Trending now"
                             else -> "Discover"
                         },
-                        if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
-                        else searchResultsSummary(state.results.size, state.selectedType?.label, state.hasMore),
+                        if (state.imageSearchActive) "${visibleResults.size} privacy-preserving image matches"
+                        else searchResultsSummary(visibleResults.size, state.selectedType?.label, state.hasMore),
                     )
                 }
 
