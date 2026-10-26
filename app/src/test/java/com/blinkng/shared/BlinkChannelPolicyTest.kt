@@ -1,7 +1,7 @@
 package com.blinkng.shared
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkChannelPolicyTest {
@@ -10,14 +10,12 @@ class BlinkChannelPolicyTest {
     }
 
     @Test fun rejectsEmptyAndOversizedUpdates() {
-        assertThrows(IllegalArgumentException::class.java) { BlinkChannelPolicy.validatedUpdate(" ") }
-        assertThrows(IllegalArgumentException::class.java) {
-            BlinkChannelPolicy.validatedUpdate("x".repeat(5001))
-        }
+        assertTrue(runCatching { BlinkChannelPolicy.validatedUpdate(" ") }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { BlinkChannelPolicy.validatedUpdate("x".repeat(5001)) }.exceptionOrNull() is IllegalArgumentException)
     }
 
     @Test fun limitsReactionsToKnownEmojis() {
         assertEquals("❤️", BlinkChannelPolicy.validatedReaction("❤️"))
-        assertThrows(IllegalArgumentException::class.java) { BlinkChannelPolicy.validatedReaction("spam") }
+        assertTrue(runCatching { BlinkChannelPolicy.validatedReaction("spam") }.exceptionOrNull() is IllegalArgumentException)
     }
 }
