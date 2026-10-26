@@ -281,9 +281,15 @@ class MainActivity : ComponentActivity() {
         else null
         if (incomingChannelId != null &&
             runCatching { java.util.UUID.fromString(incomingChannelId) }.isSuccess) {
-            startActivity(Intent(this, ProfessionalCenterActivity::class.java)
+            val offset = if (incomingUri?.scheme == "blink") 1 else 2
+            val requestedUpdateId = if (segments.getOrNull(offset) == "update")
+                segments.getOrNull(offset + 1)?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+            else null
+            val openChannel = Intent(this, ProfessionalCenterActivity::class.java)
                 .putExtra("section", "communities")
-                .putExtra("channel_id", incomingChannelId))
+                .putExtra("channel_id", incomingChannelId)
+            if (requestedUpdateId != null) openChannel.putExtra("update_id", requestedUpdateId)
+            startActivity(openChannel)
             intent?.setData(null)
             return
         }
