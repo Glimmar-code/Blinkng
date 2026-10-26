@@ -1515,6 +1515,8 @@ private fun PremiumChatDetail(
     )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    var showStickers by remember(conversation.id) { mutableStateOf(false) }
+    var aiPhotoUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var historicalViewerPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
@@ -2167,6 +2169,11 @@ private fun PremiumChatDetail(
                     interactionActions.onReact(conversation.partnerUsername, message, emoji)
                     viewedImageMessage = null
                 },
+                groupConversationId = conversation.id.takeIf { conversation.isGroup },
+                onAskBlinkAi = { selected ->
+                    aiPhotoUri = selected
+                    viewedImageMessage = null
+                },
                 hasPrevious = pictureIndex > 0,
                 hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
                 onPrevious = {
@@ -2603,6 +2610,21 @@ private fun PremiumChatDetail(
         )
     }
 
+    aiPhotoUri?.let { selected ->
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { aiPhotoUri = null },
+            initialImageUri = selected
+        )
+    }
+    if (showStickers) {
+        BlinkStickerPicker(
+            onSend = { uri ->
+                showStickers = false
+                onSendAttachment(uri, "image")
+            },
+            onDismiss = { showStickers = false }
+        )
+    }
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
@@ -2617,6 +2639,10 @@ private fun PremiumChatDetail(
             onCamera = {
                 showAttachmentSheet = false
                 requestChatCamera()
+            },
+            onSticker = {
+                showAttachmentSheet = false
+                showStickers = true
             },
             onOriginalPhotos = {
                 selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
@@ -4282,6 +4308,7 @@ private fun AttachmentSheet(
     onCamera: () -> Unit,
     onViewOnce: () -> Unit,
     onOriginalPhotos: () -> Unit,
+    onSticker: () -> Unit,
     onVideo: () -> Unit,
     onAudio: () -> Unit,
     onDocument: () -> Unit,
@@ -4344,6 +4371,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onViewOnce
+            )
+            AttachmentOption(
+                label = "Stickers",
+                description = "Create and reuse saved image stickers",
+                icon = Icons.Default.EmojiEmotions,
+                palette = palette,
+                onClick = onSticker
             )
             AttachmentOption(
                 label = "Video",
