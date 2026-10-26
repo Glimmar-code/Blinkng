@@ -2,7 +2,7 @@
 
 - **Android:** `BlinkReferrerPicker` can explicitly render high-contrast text and suggestions on the white reference-signup surface instead of inheriting a dark-theme color. The form now reserves IME space, and the first matched referral is brought into the visible scroll viewport when results arrive.
 - **Shared/backend:** No changes to referrer identity, signup attribution, referral rewards, or database API. This is a visual/layout repair only.
-- **Windows:** Existing desktop referrer picker and desktop onboarding are unaffected because Windows does not open Android's soft keyboard; no data/permission semantics change.
+- **PARITY-EXCEPTION: android-signup-ime-keyboard-suggestion-20261026** — Android's soft keyboard obscures suggestion rows, so Compose IME padding and BringIntoView are Android-only platform APIs. **Windows equivalent:** Desktop's referral picker uses a window-scrolling, mouse-and-keyboard layout with no Android IME, and the same referral rules/server results. Readability and referral semantics are shared, not exempted.
 - **Verification required before production:** Android Gradle compilation, Robolectric narrow-screen screenshots and on-device keyboard tests at 100–200% font scaling. Status: code changed; tests have not been run from this session. Do not merge without checks.
 
 ## 2026-10-25 — Android touch Reels preview/fullscreen transition (Testlab only)
