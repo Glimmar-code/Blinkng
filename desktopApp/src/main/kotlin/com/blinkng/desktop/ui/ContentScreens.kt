@@ -4213,7 +4213,7 @@ internal fun DesktopFeedPostCard(
             }
 
             DesktopRichLinkPreview(
-                text = body,
+                text = listOfNotNull(body.takeIf(String::isNotBlank), post.linkUrl).joinToString(" "),
                 modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
             )
 
