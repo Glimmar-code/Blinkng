@@ -38,6 +38,8 @@ END $$;
 
 REVOKE ALL ON public.user_chat_privacy FROM anon;
 GRANT SELECT, INSERT, UPDATE ON public.user_chat_privacy TO authenticated;
+-- Trusted server-side maintenance may read/write privacy rows, never expose them to anon.
+GRANT SELECT, INSERT, UPDATE ON public.user_chat_privacy TO service_role;
 
 CREATE OR REPLACE FUNCTION public.update_chat_privacy(
     p_who_can_message text,
