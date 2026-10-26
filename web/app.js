@@ -291,11 +291,80 @@
   }
   function requireAuth(){ if(isAuthed())return true; navigate('/login'); return false; }
 
+  const richPreviewCache = new Map();
+  const richPreviewEndpoint = 'https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/link-metadata';
+  function previewLinkInText(text) {
+    const match = String(text || '').match(/https?:\/\/[^\s<>"']+/i);
+    if(!match) return null;
+    const raw = match[0].replace(/[.,!?;:)\]}]+$/, '');
+    if(raw.length > 2048) return null;
+    try {
+      const url = new URL(raw);
+      if(!['http:', 'https:'].includes(url.protocol) || !url.hostname.includes('.') ||
+        url.username || url.password) return null;
+      return url;
+    } catch { return null; }
+  }
+  function richLinkCard(text) {
+    const url = previewLinkInText(text);
+    if(!url) return '';
+    return `<a class="rich-link-card" data-link-card="${esc(url.href)}" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(url.hostname)} link">
+      <span class="rich-link-host">${esc(url.hostname)}</span>
+      <strong class="rich-link-title">${esc(url.hostname)}</strong>
+      <span class="rich-link-description">${esc(url.href.slice(0,180))}</span>
+    </a>`;
+  }
+  async function linkMetadata(url) {
+    if(richPreviewCache.has(url)) return richPreviewCache.get(url);
+    const promise = (async () => {
+      try {
+        const response = await fetch(richPreviewEndpoint+'?url='+encodeURIComponent(url),
+          {signal: AbortSignal.timeout(4500), headers: {'Accept':'application/json'}});
+        if(!response.ok) return null;
+        return await response.json();
+      } catch { return null; }
+    })();
+    richPreviewCache.set(url, promise);
+    if(richPreviewCache.size > 180) richPreviewCache.delete(richPreviewCache.keys().next().value);
+    return promise;
+  }
+  function hydrateLinkCards() {
+    const cards = [...document.querySelectorAll('.rich-link-card:not([data-preview-bound])')];
+    const hydrate = async card => {
+      if(!card.isConnected) return;
+      const metadata = await linkMetadata(card.dataset.linkCard);
+      if(!card.isConnected || !metadata) return;
+      const title = card.querySelector('.rich-link-title');
+      const desc = card.querySelector('.rich-link-description');
+      if(title && metadata.title) title.textContent = String(metadata.title).slice(0,160);
+      if(desc && metadata.description) desc.textContent = String(metadata.description).slice(0,240);
+      const image = safeUrl(metadata.image);
+      if(image && image.startsWith('https://') && !card.querySelector('img')) {
+        const img = document.createElement('img');
+        img.src = image; img.alt = 'Website thumbnail'; img.loading='lazy';
+        img.referrerPolicy='no-referrer';
+        card.prepend(img);
+      }
+    };
+    if(!('IntersectionObserver' in window)) {
+      cards.slice(0,20).forEach(card => {card.dataset.previewBound='1'; hydrate(card);});
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      for(const entry of entries) if(entry.isIntersecting) {
+        observer.unobserve(entry.target);
+        hydrate(entry.target);
+      }
+    }, {rootMargin:'280px'});
+    cards.forEach(card => {card.dataset.previewBound='1';observer.observe(card);});
+  }
+
   function bindCommon(){
     document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=(e)=>{e.preventDefault();navigate(el.dataset.nav);});
     document.querySelectorAll('[data-action="logout"]').forEach(el=>el.onclick=logout);
     document.querySelectorAll('[data-action="open-app"]').forEach(el=>el.onclick=()=>openAndroid('profile',state.profile?.username||''));
     document.querySelectorAll('[data-action="create-post"]').forEach(el=>el.onclick=()=>requireAuth()&&openPostComposer());
+    hydrateLinkCards();
   }
 
   function openAndroid(type,id){
@@ -824,7 +893,7 @@
     if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;
     return '';
   }
-  function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
+  function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${richLinkCard(post.text||post.caption||'')}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
     document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on');x.disabled=true;x.setAttribute('aria-pressed',String(on));try{await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));toast(e.message);}finally{x.disabled=false;}});
@@ -923,7 +992,7 @@
   async function loadStories(){ if(!isAuthed())return []; try{const rows=await table('stories','active=eq.true&select=id,user_id,media_url,media_type,caption,text,image_url,video_url,created_at,likes_count,views_count&order=created_at.desc&limit=40'); const profiles=await fetchProfiles(rows.map(x=>x.user_id)); return rows.map(s=>({...s,author:profiles.get(s.user_id)||{}}));}catch{return [];} }
   function storyStrip(stories){return `<div class="stories"><button class="story-ring" data-create-story><div class="avatar-sm avatar-fallback" style="width:58px;height:58px">＋</div><strong>Your story</strong></button>${stories.map(s=>`<button class="story-ring" data-story="${esc(s.id)}">${avatar(s.author.avatar_url,s.author.full_name,'avatar-sm')}<strong>${esc(s.author.username||'story')}</strong></button>`).join('')}</div>`;}
   function bindStories(stories){document.querySelector('[data-create-story]')?.addEventListener('click',()=>requireAuth()&&createStory());document.querySelectorAll('[data-story]').forEach(x=>x.onclick=()=>openStory(stories.find(s=>s.id===x.dataset.story)));}
-  function openStory(s){if(!s)return;const media=safeUrl(s.video_url||s.image_url||s.media_url);modal(`@${s.author?.username||'Blink'}`,`${s.media_type==='video'||s.video_url?`<video src="${esc(media)}" controls autoplay playsinline style="width:100%;max-height:70vh"></video>`:`<img src="${esc(media)}" alt="Story" style="width:100%;max-height:70vh;object-fit:contain">`}<p>${esc(s.caption||s.text||'')}</p><div class="muted small">${fmt(s.views_count)} views · ${fmt(s.likes_count)} likes</div>`);}
+  function openStory(s){if(!s)return;const media=safeUrl(s.video_url||s.image_url||s.media_url);modal(`@${s.author?.username||'Blink'}`,`${s.media_type==='video'||s.video_url?`<video src="${esc(media)}" controls autoplay playsinline style="width:100%;max-height:70vh"></video>`:`<img src="${esc(media)}" alt="Story" style="width:100%;max-height:70vh;object-fit:contain">`}<p>${esc(s.caption||s.text||'')}</p>${richLinkCard(s.caption||s.text||'')}<div class="muted small">${fmt(s.views_count)} views · ${fmt(s.likes_count)} likes</div>`);}
 
   async function renderFeed(path='/feed'){
     if(!requireAuth())return; state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
@@ -953,7 +1022,7 @@
       const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
       const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
-      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
+      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p>${richLinkCard(r.text||r.caption||'')}</div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
       ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
       document.querySelectorAll('[data-reel-follow]').forEach(button=>button.addEventListener('click',async()=>{
         if(button.disabled||!requireAuth())return;
@@ -1057,7 +1126,8 @@
     try{
       const rows=await rpc('get_post_comments',{p_post_id:postId});
       const body=document.getElementById('comments-body');if(!body)return;
-      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>{const cosmetic=premiumCosmetic(comment.premium_style_id);return `<div class="comment ${cosmetic?'premium-comment-surface':''}" ${cosmetic?`style="${cosmeticVars(cosmetic)}"`:''}><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}${cosmetic?`<span class="comment-premium-label">${esc(cosmetic.label)}</span>`:''}</div><div>${esc(comment.content)}</div><button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`;}).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>{const cosmetic=premiumCosmetic(comment.premium_style_id);return `<div class="comment ${cosmetic?'premium-comment-surface':''}" ${cosmetic?`style="${cosmeticVars(cosmetic)}"`:''}><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}${cosmetic?`<span class="comment-premium-label">${esc(cosmetic.label)}</span>`:''}</div><div>${esc(comment.content)}</div>${richLinkCard(comment.content)}<button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`;}).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+      hydrateLinkCards();
       let parent=null;
       document.querySelectorAll('[data-reply-comment]').forEach(x=>x.onclick=()=>{parent=x.dataset.replyComment;const input=document.querySelector('#comment-form input');input.placeholder='Write a reply…';input.focus();});
       document.getElementById('comment-form').onsubmit=async e=>{
@@ -1416,7 +1486,7 @@
       const title=isGroup?(conversationMeta?.title||'Group chat'):(partner?`@${partner}`:'Conversation');
       const messages=(rows||[]).slice().reverse().map(m=>{
         const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},attachment=safeUrl(m.media_url);
-        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
+        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${!m.deleted_for_everyone?richLinkCard(m.content):''}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
       }).join('');
       const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
       ROOT.innerHTML=shell(html,title);bindCommon();
