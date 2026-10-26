@@ -36,7 +36,9 @@ export async function stagedMarketCommunityContractTests() {
         category text not null default 'Campus Life',
         is_sponsored boolean not null default false,
         ad_label text,
-        text text
+        text text,
+        caption text,
+        alt_text text
       );
       grant select, insert, update, delete on public.feed_posts to authenticated, service_role;
       create table public.conversations (
@@ -69,6 +71,24 @@ export async function stagedMarketCommunityContractTests() {
       values ('Campus Life',true,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec(`
       insert into public.feed_posts(category,text) values ('Campus Life','Discussion of a product')`);
+    await db.exec(`
+      insert into public.feed_posts(category,text) values ('Academic','How expensive are laptops this semester?')`);
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text)
+      values ('Campus Life','Selling this laptop for NGN 150000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text,caption)
+      values ('Campus Life','Campus photos','For sale NGN 4500')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text,alt_text)
+      values ('Campus Life','Campus photos','Buy now ₦20000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      update public.feed_posts set caption='Selling this bag for NGN 1500'
+      where text='Discussion of a product'`),
+      'BLINK_MARKET_LISTING_ONLY');
     await rejects(() => db.exec(`
       update public.feed_posts set category='Market' where category='Campus Life'`),
       'BLINK_MARKET_LISTING_ONLY');
