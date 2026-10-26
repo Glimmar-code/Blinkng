@@ -48,4 +48,26 @@ const preview = check404('https://glimmar-code.github.io/Blinkng/settings/passwo
 assert.equal(preview.result.pathname, '/Blinkng/');
 assert.equal(preview.path, '/settings/password');
 
+// Cloudflare Pages serves a custom 404.html, which disables its implicit SPA
+// fallback. Verify that direct post/reel/profile links have explicit 200
+// rewrites instead of incorrectly relying on Vercel rewrites or a 404 redirect.
+const redirects = readFileSync('web/_redirects', 'utf8');
+const redirectRules = redirects.split(/\r?\n/).map(line => line.trim())
+  .filter(line => line && !line.startsWith('#'))
+  .map(line => line.split(/\s+/));
+const spaRewrites = new Map(redirectRules.filter(parts => parts.length === 3 && parts[2] === '200')
+  .map(parts => [parts[0], parts[1]]));
+for(const source of [
+  '/@*', '/profile/*', '/post/*', '/reel/*', '/invite/*',
+  '/feed', '/reels', '/search', '/messages', '/messages/*',
+  '/activity', '/market', '/connect', '/settings', '/settings/*', '/login'
+]) {
+  assert.equal(spaRewrites.get(source), '/index.html',
+    'Cloudflare Pages must internally serve the SPA for direct '+source+' visits');
+}
+assert.ok(!spaRewrites.has('/*'), 'Do not rewrite public marketing pages or static assets');
+assert.ok(readFileSync('web/404.html','utf8').includes('location.replace(base'),
+  'Keep the independent GitHub Pages 404 fallback for legacy links');
+
 console.log('PASS: canonical Google OAuth/password recovery and token-safe route fallback');
+console.log('PASS: Cloudflare Pages shared post, reel and profile URLs serve the SPA shell');
