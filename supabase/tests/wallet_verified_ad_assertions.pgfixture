@@ -53,4 +53,4 @@ begin
     if SQLERRM <> 'REWARDED_AD_DAILY_LIMIT' then raise; end if;
   end;
   raise notice 'PASS: free 10, active Blue/Gold 15, expiration, server admission and original Coin reward';
-end $check$;
+end; $check$;
