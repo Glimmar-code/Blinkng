@@ -156,6 +156,7 @@ fun VideoReelsScreen(
     stories: List<com.example.data.models.Story> = emptyList(),
     userAvatar: String = "",
     onAddStoryClick: () -> Unit = {},
+    onCreateReelClick: () -> Unit = {},
     onStoryClick: (com.example.data.models.Story) -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
@@ -831,41 +832,20 @@ private fun ReelsContent(
         // Preview tabs and header disappear completely in immersive fullscreen.
         IconButton(
             onClick = { expanded = false },
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(4.dp)
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
+                .padding(10.dp).clip(CircleShape)
+                .background(Color.Black.copy(alpha = .38f)).testTag("reel_fullscreen_back")
         ) {
             Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
         }
 
         IconButton(
-            onClick = {
-                if (!isRefreshing && !isInteractionOverlayOpen) {
-                    // Explicit refresh is deliberate: go to the first Reel before replacing
-                    // ranked recommendations so current playback isn't interrupted mid-swipe.
-                    refreshScope.launch {
-                        if (pager.currentPage != 0) pager.scrollToPage(0)
-                        onRefreshSelected()
-                    }
-                }
-            },
-            enabled = !isRefreshing && !isInteractionOverlayOpen,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(4.dp)
-                .semantics { contentDescription = "Refresh reels" }
+            onClick = onCreateReelClick,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+                .padding(10.dp).clip(CircleShape)
+                .background(Color.Black.copy(alpha = .38f)).testTag("reel_fullscreen_create")
         ) {
-            if (isRefreshing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = Color.White
-                )
-            } else {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
-            }
+            Icon(Icons.Default.CameraAlt, "Create reel", tint = Color.White)
         }
 
         }
@@ -1315,7 +1295,7 @@ private fun ReelPage(
             Modifier
                 .align(Alignment.BottomEnd)
                 .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
-                .padding(end = 8.dp, bottom = if (isPreview) 10.dp else 30.dp)
+                .padding(end = 8.dp, bottom = if (isPreview) 10.dp else 98.dp)
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1380,7 +1360,7 @@ private fun ReelPage(
                     start = 15.dp,
                     end = if (isPreview) 50.dp else 88.dp,
                     top = if (isPreview) 12.dp else 0.dp,
-                    bottom = if (isPreview) 0.dp else 45.dp
+                    bottom = if (isPreview) 0.dp else 107.dp
                 )
                 .entranceEffect(delayMillis = 120)
         ) {
@@ -1514,6 +1494,39 @@ private fun ReelPage(
                         fontSize = 11.sp,
                         maxLines = 1
                     )
+                }
+            }
+        }
+
+        if (!isPreview) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 18.dp)
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .clickable(enabled = reel.allowComments) {
+                        onComment(reel.id)
+                    }
+                    .testTag("reel_fullscreen_comment"),
+                shape = RoundedCornerShape(30.dp),
+                color = Color.White,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.SentimentSatisfiedAlt, null, tint = Color(0xFF32323B),
+                        modifier = Modifier.size(21.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (reel.allowComments) "Add Comment..." else "Comments disabled",
+                        modifier = Modifier.weight(1f),
+                        fontSize = 12.sp, color = Color(0xFF666672)
+                    )
+                    Icon(Icons.Default.Send, "Open comments", tint = Color(0xFF32323B),
+                        modifier = Modifier.size(20.dp))
                 }
             }
         }
