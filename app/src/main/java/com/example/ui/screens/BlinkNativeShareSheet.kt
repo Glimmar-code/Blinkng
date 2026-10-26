@@ -34,13 +34,14 @@ internal fun BlinkNativeShareSheet(
     suggestedUsers: List<UserProfile>,
     currentUsername: String,
     onDismiss: () -> Unit,
-    onSendToUser: (String) -> Unit,
+    onSendToUsers: (List<String>) -> Unit,
     onCopyLink: () -> Unit,
     onStory: () -> Unit,
     onWhatsApp: () -> Unit,
     onOtherApps: () -> Unit,
 ) {
     var search by remember(post.id) { mutableStateOf("") }
+    val selectedRecipients = remember(post.id) { mutableStateListOf<String>() }
     val recents = remember(recentChats) {
         recentChats.filter { !it.isGroup && it.partnerUsername.isNotBlank() }
             .distinctBy { it.partnerUsername.lowercase() }.take(10)
@@ -93,16 +94,30 @@ internal fun BlinkNativeShareSheet(
                     fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(people, key = { it.first }) { person ->
+                        val handle = person.first.trim().removePrefix("@")
+                        val isSelected = selectedRecipients.any { it.equals(handle, true) }
                         Column(
                             Modifier.width(76.dp).clip(RoundedCornerShape(12.dp))
-                                .clickable { onSendToUser(person.first) }
+                                .background(if (isSelected) Color(0xFF43256C) else Color.Transparent)
+                                .clickable {
+                                    val previous = selectedRecipients.indexOfFirst { it.equals(handle, true) }
+                                    if (previous >= 0) selectedRecipients.removeAt(previous)
+                                    else if (selectedRecipients.size < 15) selectedRecipients.add(handle)
+                                }
                                 .padding(vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            AsyncImage(model = person.third, contentDescription = "Send to @${person.first}",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(50.dp).clip(CircleShape)
-                                    .background(Color(0xFF392661)))
+                            Box {
+                                AsyncImage(model = person.third,
+                                    contentDescription = if (isSelected) "Deselect @$handle" else "Select @$handle",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(50.dp).clip(CircleShape)
+                                        .background(Color(0xFF392661)))
+                                if (isSelected) Icon(
+                                    Icons.Rounded.CheckCircle, contentDescription = null,
+                                    tint = Color(0xFFC6A2FF),
+                                    modifier = Modifier.align(Alignment.BottomEnd).size(19.dp))
+                            }
                             Text(person.second.ifBlank { person.first },
                                 maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
                         }
@@ -110,6 +125,20 @@ internal fun BlinkNativeShareSheet(
                 }
             } else {
                 Text("No matching people", color = Color(0xFFC1B9CF), fontSize = 12.sp)
+            }
+            if (selectedRecipients.isNotEmpty()) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onSendToUsers(selectedRecipients.toList()) },
+                    shape = RoundedCornerShape(15.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6721E8))
+                ) {
+                    Text(if (selectedRecipients.size == 1) "Send Reel Link" else
+                        "Send to ${selectedRecipients.size} people")
+                }
+            } else {
+                Text("Select up to 15 people to send a Reel link.",
+                    color = Color(0xFFC1B9CF), fontSize = 11.sp)
             }
             HorizontalDivider(color = Color.White.copy(alpha = .12f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {

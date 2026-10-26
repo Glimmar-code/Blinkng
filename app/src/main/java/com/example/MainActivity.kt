@@ -2683,9 +2683,13 @@ fun MainAppContent(
                     suggestedUsers = (uiState.profiles + uiState.discoverProfiles).distinctBy { it.id },
                     currentUsername = uiState.myProfile.username,
                     onDismiss = { sharingPostId = null },
-                    onSendToUser = { username ->
-                        viewModel.sendMessage(username, url)
-                        viewModel.sharePost(sharedPost.id)
+                    onSendToUsers = { usernames ->
+                        usernames.distinctBy { it.trim().lowercase() }
+                            .take(15).forEach { username ->
+                                viewModel.sendMessage(username, url)
+                            }
+                        // One share event per explicit send action, not per selected recipient.
+                        if (usernames.isNotEmpty()) viewModel.sharePost(sharedPost.id)
                         sharingPostId = null
                     },
                     onCopyLink = {
