@@ -52,3 +52,30 @@ test('profile sharing uses the official domain instead of temporary placeholder'
   assert.match(code, /const SHARE_ORIGIN = "https:\/\/blink\.com\.ng"/);
   assert.doesNotMatch(code, /my-app\.com/);
 });
+
+test('browser previews render three distinct links, safely, with no inline HTML', () => {
+  const js = read('web/app.js');
+  const start = js.indexOf('  function previewLinkInText(text) {');
+  const end = js.indexOf('  async function linkMetadata(url) {', start);
+  assert.ok(start >= 0 && end > start, 'browser link renderer not found');
+  const escape = value => String(value).replace(/[&<>"']/g, char =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'" :'&#39;'}[char]));
+  const {previewLinkInText, richLinkCard} =
+    new Function('esc', js.slice(start, end) + ';return {previewLinkInText, richLinkCard};')(escape);
+  assert.equal(previewLinkInText('javascript:alert(1)'), null);
+  assert.equal(previewLinkInText('https://user:password@example.com'), null);
+  const cards = richLinkCard('https://one.example/path https://two.example/ https://one.example/path https://three.example/ https://four.example/');
+  assert.equal((cards.match(/class="rich-link-card"/g)||[]).length, 3);
+  assert.ok(cards.includes('one.example'));
+  assert.ok(!cards.includes('four.example'));
+  assert.ok(!richLinkCard('Plain text').includes('rich-link-card'));
+  assert.ok(!richLinkCard('https://x.example/?v="><script>hacked</script>').includes('<script>'));
+});
+
+test('chat preview preference on Web is a server-authoritative per-account setting', () => {
+  const js = read('web/app.js');
+  assert.match(js, /user_chat_privacy/);
+  assert.match(js, /p_allow_link_previews: !!enabled/);
+  assert.match(js, /if\(!privacy.available\) throw/);
+  assert.match(js, /!m.deleted_for_everyone&&chatPreviewPrivacy.allowed/);
+});
