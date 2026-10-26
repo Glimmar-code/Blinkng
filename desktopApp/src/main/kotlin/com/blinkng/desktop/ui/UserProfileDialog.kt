@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -427,10 +429,24 @@ fun DesktopUserProfileDialog(
                                             shape = RoundedCornerShape(12.dp),
                                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
                                         ) {
-                                            Column(
-                                                Modifier.fillMaxSize().padding(8.dp),
+                                            Box(Modifier.fillMaxSize()) {
+                                                reel.images.firstOrNull { it.isNotBlank() }
+                                                    ?.let { thumbnail ->
+                                                        AsyncImage(
+                                                            model = thumbnail,
+                                                            contentDescription = "Reel cover",
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    }
+                                                Column(
+                                                Modifier.fillMaxSize().background(
+                                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                                        listOf(Color.Transparent, Color(0x66000000), Color(0xCC000000))
+                                                    )
+                                                ).padding(8.dp),
                                                 verticalArrangement = Arrangement.SpaceBetween
-                                            ) {
+                                                ) {
                                                 Text("▶", fontSize = 24.sp,
                                                     color = MaterialTheme.colorScheme.primary)
                                                 Text(
@@ -445,6 +461,7 @@ fun DesktopUserProfileDialog(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontSize = 10.sp
                                                 )
+                                                }
                                             }
                                         }
                                     }

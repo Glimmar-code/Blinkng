@@ -4070,6 +4070,22 @@ private suspend fun restoreSupabaseSession() {
                     throw IllegalStateException("The selected video could not be uploaded.")
                 }
 
+                // Persist a real image poster in the existing post-images contract.
+                // The video upload succeeds independently if a device cannot decode its frame.
+                if (uploadedImageUrls.isEmpty() && !videoUri.isNullOrBlank() &&
+                    (videoUri.startsWith("content://") || videoUri.startsWith("file://"))) {
+                    runCatching {
+                        com.example.media.BlinkReelPoster.extract(appContext, Uri.parse(videoUri))
+                    }.getOrNull()?.let { posterBytes ->
+                        runCatching {
+                            supabaseService.uploadPostMedia(
+                                userId = userId, bytes = posterBytes,
+                                mimeType = "image/jpeg", isVideo = false
+                            )
+                        }.getOrNull()?.takeIf { it.isNotBlank() }?.let(uploadedImageUrls::add)
+                    }
+                }
+
                 val imagePayload = when (uploadedImageUrls.size) {
                     0 -> null
                     1 -> uploadedImageUrls.first()

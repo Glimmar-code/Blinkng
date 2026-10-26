@@ -1202,9 +1202,21 @@ private fun LazyListScope.premiumProfileGridItems(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
-                            } else if (post.videoUrl != null) {
+                            } else if (!post.videoUrl.isNullOrBlank()) {
+                                // Existing pre-poster Reels: decode a single frame lazily,
+                                // with a play icon if the source cannot provide a frame.
+                                val videoThumbnail = coil.request.ImageRequest.Builder(LocalContext.current)
+                                    .data(post.videoUrl)
+                                    .decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+                                    .build()
+                                AsyncImage(
+                                    model = videoThumbnail,
+                                    contentDescription = "Open reel preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                                 Icon(Icons.Default.PlayCircleFilled, "Open reel",
-                                    tint = Color.White, modifier = Modifier.size(35.dp))
+                                    tint = Color.White, modifier = Modifier.size(29.dp))
                             } else {
                                 Text(
                                     post.text, color = Color.White,

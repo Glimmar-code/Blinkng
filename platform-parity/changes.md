@@ -1469,3 +1469,5 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - Candidate must NOT merge without final-head Android/Windows builds, UI interaction tests, platform parity, and device validation.
 
 - **Story sharing refinement:** The native BLINK share action now opens the real Story editor with the selected Reel/Post URL prefilled as a caption. Media still requires user selection and explicit Publish; it never auto-uploads someone else's Reel or bypasses permission/asset-copy rules. Android-only editor adapter; Windows keeps its copy-link action while cross-client composer parity is pending.
+
+- **Reel poster reliability:** Android now extracts and uploads a bounded JPEG poster from locally selected Reels using the existing authenticated post media image contract. Reel publication is not blocked if a specific video cannot supply a frame; legacy Reels attempt Coil video-frame decoding lazily. Windows profile grid shows posted cover images instead of blank tiles, keeping no-external-video-download behavior for video-only legacy posts. Require actual Android permission/storage tests and Windows screenshot checks before main.

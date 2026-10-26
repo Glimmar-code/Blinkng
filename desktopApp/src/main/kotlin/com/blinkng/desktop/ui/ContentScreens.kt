@@ -881,7 +881,7 @@ fun ReelsScreen(state: DesktopAppState) {
     }
     LaunchedEffect(featured.size) {
         while (featured.size > 1) {
-            delay(5_000L)
+            delay(4_000L)
             featuredIndex = (featuredIndex + 1) % featured.size
         }
     }
