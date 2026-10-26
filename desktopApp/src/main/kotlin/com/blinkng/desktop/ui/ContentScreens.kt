@@ -380,9 +380,17 @@ fun HomeScreen(
                         hasImages = false, hasVideo = false, hasPoll = false),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(BlinkPostGrowthTips.marketHint,
+                    Text("Product sales belong in BLINK Market",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold)
+                    Text("Feed posts are for student updates, not product listings. Use the Market tab to sell items.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (BlinkPostGrowthTips.marketOnlyReason(composerCategory, composer) != null) {
+                        Text("This looks like a sales advertisement and cannot be published to Feed.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                    }
                     Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
                     val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
                         BlinkSmartTags.suggest(
@@ -549,12 +557,11 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
-                                    if (BlinkPostGrowthTips.disallowedFeedCategory(composerCategory)) {
-                                        error = BlinkPostGrowthTips.marketHint
-                                        return@launch
-                                    }
-                                    if (com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(composer)) {
-                                        error = "This is a product ad. List it in BLINK Market, or request a review."
+                                    val marketOnlyWarning = BlinkPostGrowthTips.marketOnlyReason(
+                                        category = composerCategory, text = composer
+                                    )
+                                    if (marketOnlyWarning != null) {
+                                        error = marketOnlyWarning
                                         return@launch
                                     }
                                     val tags = BlinkSmartTags.allTags(composer, selectedTags)
