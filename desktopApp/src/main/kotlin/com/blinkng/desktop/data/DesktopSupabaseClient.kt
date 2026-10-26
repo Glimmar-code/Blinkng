@@ -1392,6 +1392,117 @@ class DesktopSupabaseClient(
             kind to path
         }
 
+    /** Copy an allowed channel attachment into a channel the sender administers.
+     * The source read and destination upload are independently authorized by Storage RLS.
+     * Never reuse the source private object path or a short-lived signed URL in another channel.
+     */
+    suspend fun forwardChannelMediaToChannel(
+        source: com.blinkng.shared.BlinkChannelUpdate,
+        destinationChannelId: String
+    ): Pair<String, String>? = withContext(Dispatchers.IO) {
+        val sourcePath = source.mediaPath ?: return@withContext null
+        require(source.mediaKind in setOf("image", "video", "audio", "document"))
+        require(channelRole(destinationChannelId) in setOf("owner", "moderator")) {
+            "Only administrators can forward media to this Channel."
+        }
+        val url = signedChannelMedia(sourcePath) ?: error("Source media is no longer accessible.")
+        require(url.startsWith("$baseUrl/storage/v1/")) { "Invalid Channel media URL." }
+        val extension = sourcePath.substringAfterLast('.').lowercase()
+        require(extension in setOf("jpg", "jpeg", "png", "webp", "mp4", "mp3", "m4a", "pdf"))
+        val tmp = File.createTempFile("blink_channel_forward_", ".$extension")
+        try {
+            http.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                check(response.isSuccessful) { "Could not read source Channel media." }
+                val stream = response.body?.byteStream() ?: error("Missing media.")
+                stream.use { input ->
+                    tmp.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val length = input.read(buffer)
+                            if (length < 0) break
+                            total += length
+                            require(total <= 25L * 1024L * 1024L) { "Channel media exceeds 25 MB." }
+                            output.write(buffer, 0, length)
+                        }
+                        require(total > 0) { "Source media is empty." }
+                    }
+                }
+            }
+            uploadChannelMedia(destinationChannelId, tmp)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** User-initiated attribution card for the existing BLINK Stories/Status backend.
+     * No channel-private attachment or follower identities are included.
+     */
+    suspend fun shareChannelUpdateToStatus(
+        channelName: String,
+        update: com.blinkng.shared.BlinkChannelUpdate
+    ): Boolean = withContext(Dispatchers.IO) {
+        val userId = requireSession().userId
+        val canvas = BufferedImage(720, 1280, BufferedImage.TYPE_INT_RGB)
+        val graphics = canvas.createGraphics()
+        try {
+            graphics.color = java.awt.Color(16, 13, 32)
+            graphics.fillRect(0, 0, 720, 1280)
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            graphics.color = java.awt.Color(194, 176, 255)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.BOLD, 26)
+            graphics.drawString("BLINK · CHANNEL", 52, 130)
+            graphics.color = java.awt.Color.WHITE
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.BOLD, 43)
+            graphics.drawString(channelName.take(26), 52, 210)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.PLAIN, 31)
+            val message = update.body.trim().ifBlank {
+                if (update.mediaKind == "poll") update.pollQuestion.orEmpty()
+                else "Shared a ${update.mediaKind} Channel update"
+            }.take(600)
+            var y = 335
+            var current = ""
+            for (word in message.split(Regex("\\s+"))) {
+                val combined = if (current.isEmpty()) word else "$current $word"
+                if (graphics.fontMetrics.stringWidth(combined) > 610 && current.isNotBlank()) {
+                    graphics.drawString(current, 52, y)
+                    y += 42
+                    current = word
+                    if (y > 1085) break
+                } else current = combined
+            }
+            if (y <= 1100 && current.isNotBlank()) graphics.drawString(current.take(72), 52, y)
+            graphics.color = java.awt.Color(194, 176, 255)
+            graphics.font = java.awt.Font("SansSerif", java.awt.Font.PLAIN, 24)
+            graphics.drawString("Open the original announcement on BLINK", 52, 1190)
+        } finally { graphics.dispose() }
+        val bytes = ByteArrayOutputStream().use {
+            check(ImageIO.write(canvas, "png", it)) { "Unable to render Status card." }
+            it.toByteArray()
+        }
+        val path = "$userId/${UUID.randomUUID()}.png"
+        val mediaType = "image/png".toMediaType()
+        execute(authenticatedRequest("/storage/v1/object/story-media/$path")
+            .header("Content-Type", "image/png")
+            .post(bytes.toRequestBody(mediaType)).build())
+        val mediaUrl = "$baseUrl/storage/v1/object/public/story-media/$path"
+        val channelLink = "https://blink.com.ng/channel/${update.channelId}/update/${update.id}"
+        val story = JSONObject()
+            .put("id", UUID.randomUUID().toString())
+            .put("user_id", userId)
+            .put("active", true)
+            .put("media_url", mediaUrl)
+            .put("media_type", "image")
+            .put("image_url", mediaUrl)
+            .put("caption", "Forwarded from $channelName · $channelLink")
+            .put("likes_count", 0)
+        execute(authenticatedRequest("/rest/v1/stories")
+            .header("Prefer", "return=minimal")
+            .post(story.toString().toRequestBody(jsonMedia)).build())
+        true
+    }
+
     suspend fun signedChannelMedia(path: String): String? = withContext(Dispatchers.IO) {
         val escaped = path.split('/').joinToString("/") {
             URLEncoder.encode(it, "UTF-8").replace("+", "%20")
