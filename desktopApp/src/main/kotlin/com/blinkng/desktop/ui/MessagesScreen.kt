@@ -86,6 +86,7 @@ import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.desktop.data.DesktopChatImageOutbox
 import com.blinkng.desktop.data.DesktopChatPhotoWorker
+import com.blinkng.desktop.data.DesktopStickerLibrary
 import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
 import javax.swing.JFileChooser
@@ -99,6 +100,7 @@ import com.blinkng.shared.BlinkMessageDatePolicy
 import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.Instant
@@ -136,10 +138,16 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
+    var viewedChatPhoto by remember(myUserId) { mutableStateOf<DesktopMessage?>(null) }
+    var aiImageFile by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
+    var showStickerTray by remember(myUserId) { mutableStateOf(false) }
+    var stickerRevision by remember(myUserId) { mutableStateOf(0) }
+    var stickerToDelete by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoReviewItems by remember(myUserId) {
         mutableStateOf<List<DesktopSelectedPhoto>>(emptyList())
     }
+    var desktopEditingPhoto by remember(myUserId) { mutableStateOf<DesktopSelectedPhoto?>(null) }
     var photoReviewQuality by remember(myUserId) {
         mutableStateOf(BlinkChatImageQuality.STANDARD)
     }
@@ -620,6 +628,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                                 contentScale = ContentScale.Fit,
                                                 modifier = Modifier.widthIn(max = 330.dp)
                                                     .heightIn(max = 270.dp)
+                                                    .clickable { viewedChatPhoto = message }
                                             )
                                         }
                                         if (message.content.isNotBlank() &&
@@ -802,6 +811,10 @@ fun MessagesScreen(state: DesktopAppState) {
                     enabled = !photoBusy && myUserId.isNotBlank(),
                     onClick = { chooseChatPhoto(false) }
                 ) { Text("Photo") }
+                TextButton(
+                    enabled = myUserId.isNotBlank() && !photoBusy,
+                    onClick = { showStickerTray = true }
+                ) { Text("Stickers") }
                 TextButton(
                     enabled = !photoBusy && myUserId.isNotBlank(),
                     onClick = { chooseChatPhoto(true) }
@@ -1024,6 +1037,93 @@ fun MessagesScreen(state: DesktopAppState) {
         }
     }
 
+    if (showStickerTray) {
+        val stickers=remember(myUserId,stickerRevision) {
+            DesktopStickerLibrary.saved(myUserId)
+        }
+        AlertDialog(
+            onDismissRequest={showStickerTray=false},
+            title={Text("My Stickers · ${stickers.size}/${DesktopStickerLibrary.MAX_SAVED}")},
+            text={
+                Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Text("Private stickers saved on this computer; no automatic upload.",
+                        style=MaterialTheme.typography.labelSmall)
+                    TextButton(
+                        enabled=stickers.size<DesktopStickerLibrary.MAX_SAVED,
+                        onClick={
+                            val chooser=JFileChooser().apply {
+                                dialogTitle="Create a reusable sticker from a picture"
+                            }
+                            if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
+                                val input=chooser.selectedFile
+                                scope.launch {
+                                    runCatching {
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            DesktopStickerLibrary.create(myUserId,input)
+                                        }
+                                    }.onSuccess {stickerRevision++}
+                                        .onFailure {error=it.message}
+                                }
+                            }
+                        }
+                    ) {Text("＋ Create sticker")}
+                    if (stickers.isEmpty()) Text("No saved stickers yet.")
+                    LazyRow(
+                        modifier=Modifier.heightIn(max=180.dp),
+                        horizontalArrangement=Arrangement.spacedBy(7.dp)
+                    ) {
+                        items(stickers,key={it.name}) { file ->
+                            Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                                AsyncImage(
+                                    model=file,
+                                    contentDescription="Use saved sticker",
+                                    contentScale=ContentScale.Fit,
+                                    modifier=Modifier.size(85.dp).clickable {
+                                        val target=selected
+                                        if(target==null || target.isGroup) {
+                                            error="Stickers can be sent in direct chats."
+                                        } else {
+                                            photoReviewDestination=target.id
+                                            photoReviewQuality=BlinkChatImageQuality.STANDARD
+                                            photoReviewItems=listOf(DesktopSelectedPhoto(file))
+                                            showStickerTray=false
+                                        }
+                                    }
+                                )
+                                TextButton(onClick={stickerToDelete=file}) {Text("Remove")}
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton={TextButton(onClick={showStickerTray=false}){Text("Close")}}
+        )
+    }
+    stickerToDelete?.let { file ->
+        AlertDialog(
+            onDismissRequest={stickerToDelete=null},
+            title={Text("Remove saved sticker?")},
+            text={Text("This removes only your local copy.")},
+            confirmButton={TextButton(onClick={
+                DesktopStickerLibrary.remove(myUserId,file)
+                stickerRevision++
+                stickerToDelete=null
+            }) {Text("Remove")}},
+            dismissButton={TextButton(onClick={stickerToDelete=null}){Text("Cancel")}}
+        )
+    }
+    desktopEditingPhoto?.let { item ->
+        DesktopUniversalPhotoEditor(
+            sourceFile = item.file,
+            onEdited = { result ->
+                photoReviewItems = photoReviewItems.map {
+                    if (it.file == item.file) it.copy(file = result) else it
+                }
+                desktopEditingPhoto = null
+            },
+            onDismiss = { desktopEditingPhoto = null }
+        )
+    }
     if (photoReviewItems.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { if (!photoBusy) photoReviewItems = emptyList() },
@@ -1081,6 +1181,10 @@ fun MessagesScreen(state: DesktopAppState) {
                                                         .apply { add(index + 1, removeAt(index)) }
                                                 }
                                             ) { Text("↓") }
+                                            TextButton(
+                                                enabled = !photoBusy,
+                                                onClick = { desktopEditingPhoto = item }
+                                            ) { Text("Edit") }
                                             TextButton(
                                                 enabled = !photoBusy,
                                                 onClick = {
@@ -1201,6 +1305,118 @@ fun MessagesScreen(state: DesktopAppState) {
         )
     }
 
+    viewedChatPhoto?.let { requested ->
+        val photo = messages.firstOrNull { it.id == requested.id } ?: requested
+        val normalPhotos = remember(messages) {
+            messages.filter { it.messageType == "image" && !it.imageViewOnce &&
+                !it.mediaUrl.isNullOrBlank() }
+        }
+        val index = normalPhotos.indexOfFirst { it.id == photo.id }
+        DesktopChatPictureViewer(
+            message = photo,
+            senderLabel = if (photo.senderId == myUserId) "You" else (selected?.title ?: "Student"),
+            hasPrevious = index > 0,
+            hasNext = index >= 0 && index < normalPhotos.lastIndex,
+            onPrevious = { if (index > 0) viewedChatPhoto = normalPhotos[index - 1] },
+            onNext = {
+                if (index in 0 until normalPhotos.lastIndex)
+                    viewedChatPhoto = normalPhotos[index + 1]
+            },
+            onReply = {
+                replyingTo = photo
+                viewedChatPhoto = null
+            },
+            onForward = {
+                forwardMessageId = photo.id
+                forwardUsername = ""
+                viewedChatPhoto = null
+            },
+            onStar = {
+                viewedChatPhoto = null
+                changeMessageControl(photo.conversationId) {
+                    state.client.setChatMessageStarred(photo.id, !photo.isStarred)
+                }
+            },
+            onDeleteForMe = {
+                deleteForEveryone = false
+                deleteMessage = photo
+                viewedChatPhoto = null
+            },
+            authorizedDownload = { destination ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val owner = myUserId
+                    check(state.session?.userId == owner) { "Sign in again to download." }
+                    check(!destination.exists()) { "Choose an unused filename." }
+                    val part = File.createTempFile(".blink-picture-", ".partial", destination.parentFile)
+                    try {
+                        val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                        part.outputStream().use { destinationStream ->
+                            val guarded = object : java.io.FilterOutputStream(destinationStream) {
+                                override fun write(b: ByteArray, off: Int, len: Int) {
+                                    job?.ensureActive()
+                                    out.write(b, off, len)
+                                }
+                                override fun write(b: Int) {
+                                    job?.ensureActive()
+                                    out.write(b)
+                                }
+                            }
+                            state.client.copyChatImageTo(
+                                photo.id, photo.conversationId, guarded
+                            )
+                        }
+                        check(state.session?.userId == owner) { "Account changed during download." }
+                        java.nio.file.Files.move(part.toPath(), destination.toPath())
+                        destination
+                    } catch (failure: Throwable) {
+                        part.delete()
+                        throw failure
+                    }
+                }
+            },
+            groupPhotoEnabled = selected?.isGroup == true,
+            onSaveSticker = { file ->
+                scope.launch {
+                    runCatching {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            DesktopStickerLibrary.create(myUserId,file)
+                        }
+                    }.onSuccess { stickerRevision++; error = "Sticker saved on this computer." }
+                        .onFailure {error = it.message}
+                }
+            },
+            onAskBlinkAi = { file ->
+                aiImageFile = file
+                viewedChatPhoto = null
+            },
+            onSetGroupPicture = { file ->
+                val groupId = selected?.id
+                val accountId = myUserId
+                if (selected?.isGroup != true || groupId.isNullOrBlank()) {
+                    error = "Only group conversations support group pictures."
+                } else scope.launch {
+                    runCatching {
+                        check(state.session?.userId == accountId) { "Sign in again." }
+                        check(state.client.setGroupAvatarFromPicture(groupId,file)) {
+                            "Only group admins may change this picture."
+                        }
+                    }.onSuccess {
+                        error = "Group picture updated."
+                        loadConversations()
+                    }.onFailure {error = it.message}
+                }
+            },
+            onClose = { viewedChatPhoto = null }
+        )
+    }
+
+    aiImageFile?.let { file ->
+        DesktopAiPhotoQuestionDialog(
+            file=file,
+            client=state.client,
+            onDismiss={aiImageFile=null}
+        )
+    }
     privatePicture?.let { picture ->
         DisposableEffect(picture) {
             onDispose { picture.close() }

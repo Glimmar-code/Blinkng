@@ -63,4 +63,57 @@ class BlinkChatPhotoEditorTest {
             assertTrue(original.exists())
         } finally { edited.delete(); original.delete() }
     }
+
+    @Test fun landscapeAndPortraitCropKeepOriginalAndRespectAspectRatio() = runBlocking {
+        val source = image(240, 160)
+        val originalLength = source.length()
+        val wide = BlinkChatPhotoEditor.edit(context, Uri.fromFile(source),
+            BlinkChatPhotoEditor.Edit.CENTER_LANDSCAPE)
+        val tall = BlinkChatPhotoEditor.edit(context, Uri.fromFile(source),
+            BlinkChatPhotoEditor.Edit.CENTER_PORTRAIT)
+        try {
+            val w = BitmapFactory.Options().apply { inJustDecodeBounds=true }
+            val h = BitmapFactory.Options().apply { inJustDecodeBounds=true }
+            BitmapFactory.decodeFile(wide.path,w)
+            BitmapFactory.decodeFile(tall.path,h)
+            assertTrue(w.outWidth > w.outHeight)
+            assertTrue(h.outHeight > h.outWidth)
+            assertEquals(originalLength,source.length())
+        } finally {
+            File(requireNotNull(wide.path)).delete()
+            File(requireNotNull(tall.path)).delete()
+            source.delete()
+        }
+    }
+
+    @Test fun annotationsAreExportedAsNewPhotoWithoutChangingSource() = runBlocking {
+        val source = image(180,120)
+        val bytesBefore = source.readBytes()
+        val result = BlinkChatPhotoEditor.overlay(
+            context,Uri.fromFile(source),
+            strokes=listOf(BlinkChatPhotoEditor.Stroke(
+                listOf(.1f to .1f, .8f to .8f), android.graphics.Color.YELLOW)),
+            labels=listOf(BlinkChatPhotoEditor.Label("BLINK",.5f,.5f))
+        )
+        val out=File(requireNotNull(result.path))
+        try {
+            assertTrue(out.isFile && out.length()>0)
+            assertTrue(out.canonicalPath!=source.canonicalPath)
+            assertTrue(source.readBytes().contentEquals(bytesBefore))
+        } finally {out.delete();source.delete()}
+    }
+
+    @Test fun liveAdjustmentsDoNotMutateOriginal() = runBlocking {
+        val source=image(130,100)
+        val before=source.readBytes()
+        val result=BlinkChatPhotoEditor.adjust(
+            context,Uri.fromFile(source),.2f,1.2f,.9f
+        )
+        val out=File(requireNotNull(result.path))
+        try {
+            assertTrue(out.exists() && out.length()>0)
+            assertTrue(source.readBytes().contentEquals(before))
+        } finally {out.delete();source.delete()}
+    }
+
 }
