@@ -17,6 +17,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatMediaPreferences
 import com.example.data.supabase.BlinkChatPhotoEditor
 import com.blinkng.shared.BlinkChatImageQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -4474,6 +4475,11 @@ private fun ChatPrivacySettingsSheet(
     onChange: (ChatPrivacySettings) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var autoWifi by remember { mutableStateOf(BlinkChatMediaPreferences.wifiAuto(context)) }
+    var autoMobile by remember { mutableStateOf(BlinkChatMediaPreferences.mobileAuto(context)) }
+    var dataSaver by remember { mutableStateOf(BlinkChatMediaPreferences.dataSaver(context)) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = palette.glass,
@@ -4586,6 +4592,49 @@ private fun ChatPrivacySettingsSheet(
                     settings.allowLinkPreviews,
                     palette
                 ) { onChange(settings.copy(allowLinkPreviews = it)) }
+            }
+
+            item {
+                Text(
+                    "Photo downloads",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Automatically download on Wi-Fi",
+                    "Load normal-quality private photos over Wi-Fi.",
+                    autoWifi,
+                    palette
+                ) {
+                    autoWifi = it
+                    BlinkChatMediaPreferences.update(context, wifi = it)
+                }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Automatically download on mobile data",
+                    "Off by default to save mobile data.",
+                    autoMobile,
+                    palette
+                ) {
+                    autoMobile = it
+                    BlinkChatMediaPreferences.update(context, mobile = it)
+                }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Data Saver",
+                    "Show small picture previews until you choose to open more.",
+                    dataSaver,
+                    palette
+                ) {
+                    dataSaver = it
+                    BlinkChatMediaPreferences.update(context, saver = it)
+                }
             }
 
             item {
