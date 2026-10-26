@@ -208,8 +208,8 @@ private fun Phase3SearchContent(
     val placeholders = remember {
         listOf(
             "Search people, posts and reels",
-            "Search communities and events",
-            "Search pages, brands and marketplace",
+            "Search campus events",
+            "Search pages and creators",
             "Search your saved content",
             "Search what people you follow are sharing",
         )
@@ -274,16 +274,26 @@ private fun Phase3SearchContent(
         }
     }
 
+    // Previously selected Market/Communities filters must not persist into Search.
+    LaunchedEffect(state.selectedType) {
+        if (state.selectedType == DiscoveryResultType.MARKET_ITEM ||
+            state.selectedType == DiscoveryResultType.COMMUNITY) {
+            viewModel.selectType(null)
+        }
+    }
+    val visibleResults = remember(state.results) {
+        state.results.filterNot {
+            it.type == DiscoveryResultType.MARKET_ITEM || it.type == DiscoveryResultType.COMMUNITY
+        }
+    }
     val categories = remember(state.capabilities) {
         buildList {
             add(Phase3Category(null, "All", Icons.Rounded.Search))
             add(Phase3Category(DiscoveryResultType.PROFILE, "People", Icons.Rounded.Person))
             add(Phase3Category(DiscoveryResultType.POST, "Posts", Icons.Rounded.Photo))
             add(Phase3Category(DiscoveryResultType.REEL, "Reels", Icons.Rounded.VideoLibrary))
-            if (state.capabilities.communities) add(Phase3Category(DiscoveryResultType.COMMUNITY, "Communities", Icons.Rounded.Groups))
             if (state.capabilities.events) add(Phase3Category(DiscoveryResultType.EVENT, "Events", Icons.Rounded.Event))
             if (state.capabilities.pagesBrands) add(Phase3Category(DiscoveryResultType.PAGE, "Pages", Icons.Rounded.Storefront))
-            if (state.capabilities.marketplace) add(Phase3Category(DiscoveryResultType.MARKET_ITEM, "Market", Icons.Rounded.ShoppingBag))
         }
     }
 
@@ -457,8 +467,8 @@ private fun Phase3SearchContent(
                             state.sort == DiscoverySort.TRENDING -> "Trending now"
                             else -> "Discover"
                         },
-                        if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
-                        else searchResultsSummary(state.results.size, state.selectedType?.label, state.hasMore),
+                        if (state.imageSearchActive) "${visibleResults.size} privacy-preserving image matches"
+                        else searchResultsSummary(visibleResults.size, state.selectedType?.label, state.hasMore),
                     )
                 }
 
@@ -480,9 +490,9 @@ private fun Phase3SearchContent(
 
                 when {
                     state.isLoading || visualProcessing -> items(6, key = { "skeleton-$it" }) { SearchSkeleton() }
-                    state.results.isEmpty() -> item(key = "empty") { SearchEmptyState(state.query, state.savedOnly, state.followingOnly, state.imageSearchActive) }
+                    visibleResults.isEmpty() -> item(key = "empty") { SearchEmptyState(state.query, state.savedOnly, state.followingOnly, state.imageSearchActive) }
                     else -> itemsIndexed(
-                        items = state.results,
+                        items = visibleResults,
                         key = { _, item -> "result-${item.type.backendValue}-${item.id}" },
                     ) { _, result ->
                         val key = "result-${result.type.backendValue}-${result.id}"
@@ -572,7 +582,7 @@ private fun Phase3SearchContent(
                 Text("Privacy and result scope", fontSize = 10.sp, color = colors.textMuted)
                 Spacer(Modifier.height(10.dp))
                 ToggleRow("Following only", "Only connected accounts and their content", state.followingOnly, viewModel::toggleFollowingOnly)
-                ToggleRow("Saved only", "Bookmarks and marketplace wishlist", state.savedOnly, viewModel::toggleSavedOnly)
+                ToggleRow("Saved only", "Your bookmarked content", state.savedOnly, viewModel::toggleSavedOnly)
                 ToggleRow("Private search", "New searches are not synced", state.privateHistory, viewModel::setPrivateHistory)
                 ToggleRow("Autoplay reel previews", "Muted and only while a result is visible", state.autoplayPreviews) { viewModel.toggleAutoplay() }
                 if (state.capabilities.distanceSort) {

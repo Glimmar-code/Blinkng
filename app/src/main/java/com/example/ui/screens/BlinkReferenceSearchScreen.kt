@@ -44,7 +44,6 @@ import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
 import com.example.data.models.FeedPost
-import com.example.data.models.MarketItem
 import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -64,8 +63,6 @@ private enum class ReferenceCategory(val label: String, val discoveryType: Disco
     ALL("All", null),
     PEOPLE("People", DiscoveryResultType.PROFILE),
     POSTS("Posts", DiscoveryResultType.POST),
-    MARKET("Market", DiscoveryResultType.MARKET_ITEM),
-    COMMUNITIES("Communities", DiscoveryResultType.COMMUNITY),
 }
 
 private const val REF_RECENTS_PREF = "blink_reference_search"
@@ -79,7 +76,6 @@ internal fun BlinkReferenceSearchScreen(
     posts: List<FeedPost>,
     serverProfiles: List<UserProfile>,
     serverPosts: List<FeedPost>,
-    marketItems: List<MarketItem>,
     currentUsername: String,
     myProfile: UserProfile,
     onProfileClick: (String) -> Unit,
@@ -89,7 +85,6 @@ internal fun BlinkReferenceSearchScreen(
     onSharePost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
-    onMarketItemClick: (MarketItem) -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     hasUnreadNotifications: Boolean,
@@ -117,7 +112,6 @@ internal fun BlinkReferenceSearchScreen(
                 .map(String::trim).filter(String::isNotEmpty).distinct().take(10)
         )
     }
-    var selectedDetail by remember { mutableStateOf<DiscoveryResult?>(null) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
     var showReferralDashboard by rememberSaveable { mutableStateOf(false) }
     var referralRecommendations by remember(accountKey) { mutableStateOf<List<BlinkReferralSuggestion>>(emptyList()) }
@@ -195,14 +189,6 @@ internal fun BlinkReferenceSearchScreen(
             .distinctBy { it.id.ifBlank { it.username.lowercase(Locale.ROOT) } }
     }
     val allPosts = remember(posts, serverPosts) { (posts + serverPosts).distinctBy { it.id } }
-    val actualMarket = remember(marketItems, query) {
-        marketItems.filter { !it.isSold && (
-            query.isBlank() || it.title.contains(query, true) ||
-            it.category.contains(query, true) || it.university.contains(query, true) ||
-            it.description.contains(query, true) || it.location.contains(query, true)
-        ) }.take(30)
-    }
-    val marketById = remember(marketItems) { marketItems.associateBy { it.id } }
     val currentProfile = myProfile.takeIf { it.id.isNotBlank() } ?: allProfiles.firstOrNull { it.username.equals(currentUsername, true) }
     val localPeople = remember(allProfiles, query) {
         allProfiles.filter {
@@ -220,8 +206,6 @@ internal fun BlinkReferenceSearchScreen(
     val live = if (discovery.backendAvailable && discovery.query == query && !discovery.isLoading) discovery.results else emptyList()
     val livePeople = live.filter { it.type == DiscoveryResultType.PROFILE }
     val livePosts = live.filter { it.type == DiscoveryResultType.POST }
-    val liveMarket = live.filter { it.type == DiscoveryResultType.MARKET_ITEM }
-    val liveCommunities = live.filter { it.type == DiscoveryResultType.COMMUNITY }
     val limit = if (category == ReferenceCategory.ALL) 2 else 20
 
     if (showReferralDashboard) {
@@ -278,7 +262,7 @@ internal fun BlinkReferenceSearchScreen(
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f)) {
                         if (query.isEmpty()) Text(
-                            "Search people, posts, market, communities...",
+                            "Search people and posts...",
                             fontSize = 12.sp, color = muted, maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -530,56 +514,6 @@ internal fun BlinkReferenceSearchScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            if (category == ReferenceCategory.ALL || category == ReferenceCategory.MARKET) {
-                ReferenceTitle("Market", fg, muted) { select(ReferenceCategory.MARKET) }
-                if (liveMarket.isNotEmpty()) {
-                    liveMarket.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                        ReferenceMarketRow(
-                            title = item.title, category = item.category, price = item.price,
-                            location = item.location, image = item.imageUrl,
-                            fg = fg, bg = bg, muted = muted, line = line,
-                            onClick = {
-                                val local = marketById[item.id]
-                                if (local != null) onMarketItemClick(local) else selectedDetail = item
-                            }
-                        )
-                    }
-                } else if (actualMarket.isNotEmpty()) {
-                    actualMarket.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                        ReferenceMarketRow(
-                            title = item.title, category = item.category, price = item.price,
-                            location = item.university.ifBlank { item.location }, image = item.images.firstOrNull(),
-                            fg = fg, bg = bg, muted = muted, line = line,
-                            onClick = { onMarketItemClick(item) }
-                        )
-                    }
-                } else ReferenceNoResults("No market listings found", muted)
-                Spacer(Modifier.height(12.dp))
-            }
-
-            if (category == ReferenceCategory.ALL || category == ReferenceCategory.COMMUNITIES) {
-                ReferenceTitle("Communities", fg, muted) { select(ReferenceCategory.COMMUNITIES) }
-                if (liveCommunities.isEmpty()) ReferenceNoResults(
-                    if (discovery.backendAvailable) "No communities found" else "Community discovery is not available yet",
-                    muted
-                )
-                liveCommunities.take(if (category == ReferenceCategory.ALL) 1 else limit).forEach { item ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ReferenceThumbnail(item.imageUrl, 68)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(item.title, color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text("${item.memberCount} members · ${item.subtitle}", color = muted, fontSize = 10.sp, maxLines = 2)
-                        }
-                        Surface(onClick = { search.toggleEntity(item) }, shape = RoundedCornerShape(12.dp), color = accent) {
-                            Text(if (item.following) "Joined" else "Join",
-                                Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
-                                color = accentText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    HorizontalDivider(color = line)
-                }
-            }
             Spacer(Modifier.height(22.dp))
         }
     }
@@ -651,26 +585,6 @@ internal fun BlinkReferenceSearchScreen(
         }
     }
 
-    selectedDetail?.let { item ->
-        AlertDialog(
-            onDismissRequest = { selectedDetail = null },
-            title = { Text(item.title) },
-            text = {
-                Column {
-                    item.price?.let { Text("₦" + String.format(Locale.US, "%,d", it)) }
-                    Text(item.body.ifBlank { item.subtitle })
-                    if (item.location.isNotBlank()) Text(item.location)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val seller = item.username
-                    selectedDetail = null
-                    if (seller.isNotBlank()) onProfileClick(seller)
-                }) { Text(if (item.username.isNotBlank()) "View seller" else "Close") }
-            },
-        )
-    }
 }
 
 @Composable
@@ -751,33 +665,6 @@ private fun ReferencePersonAction(
             color = if (followable && following) fg else if (fg == Color.White) Color.Black else Color.White,
             fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1,
         )
-    }
-}
-
-@Composable
-private fun ReferenceMarketRow(
-    title: String, category: String, price: Long?,
-    location: String, image: String?, fg: Color, bg: Color, muted: Color, line: Color,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick, shape = RoundedCornerShape(14.dp),
-        color = bg, border = BorderStroke(1.dp, line),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ReferenceThumbnail(image, 96)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = fg, maxLines = 1)
-                Text(category, fontSize = 11.sp, color = muted, maxLines = 1)
-                price?.let {
-                    Text("₦" + String.format(Locale.US, "%,d", it), fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold, color = fg)
-                }
-                Text(location, fontSize = 10.sp, color = muted, maxLines = 1)
-            }
-            Icon(Icons.Rounded.ChevronRight, null, tint = muted)
-        }
     }
 }
 
