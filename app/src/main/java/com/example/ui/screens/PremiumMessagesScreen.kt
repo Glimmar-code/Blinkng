@@ -913,6 +913,41 @@ private fun MessageBackground(
             .fillMaxSize()
             .background(palette.backgroundBrush())
     ) {
+        if (palette.mode == MessageThemeMode.DARK &&
+            palette.incomingBubble == Color(0xFF202C33)) {
+            // Subtle original doodle wallpaper in the WhatsApp-reference conversation.
+            // Canvas vectors stay device-resolution independent and require no assets.
+            Canvas(Modifier.fillMaxSize()) {
+                val spacing = 98.dp.toPx()
+                val ink = Color(0xFF22323B).copy(alpha = .5f)
+                val line = 1.dp.toPx()
+                var col = 0
+                var x = 18.dp.toPx()
+                while (x < size.width) {
+                    var row = 0
+                    var y = 22.dp.toPx()
+                    while (y < size.height) {
+                        val shift = if (row % 2 == 0) 0f else 32.dp.toPx()
+                        val center = Offset(x + shift, y)
+                        val radius = if ((row + col) % 3 == 0) 17.dp.toPx()
+                            else 11.dp.toPx()
+                        drawCircle(ink, radius, center,
+                            style = Stroke(width = line))
+                        if ((row + col) % 2 == 0) {
+                            drawLine(ink, center - Offset(radius * .5f, 0f),
+                                center + Offset(radius * .5f, 0f), strokeWidth = line)
+                        } else {
+                            drawCircle(ink, 3.dp.toPx(), center,
+                                style = Stroke(width = line))
+                        }
+                        row++
+                        y += spacing
+                    }
+                    col++
+                    x += spacing
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3372,7 +3407,12 @@ private fun MessageBubble(
             }
 
             Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
-                val bubbleShape = RoundedCornerShape(17.dp)
+                val bubbleShape = RoundedCornerShape(
+                    topStart = if (isMine) 16.dp else 4.dp,
+                    topEnd = if (isMine) 4.dp else 16.dp,
+                    bottomStart = 16.dp,
+                    bottomEnd = 16.dp
+                )
                 Column(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
@@ -3381,7 +3421,12 @@ private fun MessageBubble(
                             brush = if (isMine) palette.outgoingBrush() else Brush.linearGradient(listOf(palette.incomingBubble, palette.incomingBubble)),
                             shape = bubbleShape
                         )
-                        .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
+                        .border(
+                            1.dp,
+                            if (palette.mode == MessageThemeMode.DARK) Color.Transparent
+                            else palette.border.copy(alpha = .55f),
+                            bubbleShape
+                        )
                 ) {
                     if (message.isForwarded) {
                         Text(
