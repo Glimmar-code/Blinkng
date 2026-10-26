@@ -199,6 +199,10 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                         "10 Coins for each completed ad • Android ad support", Icons.Rounded.PlayArrow) {
                         tab = 1
                     }
+                    DesktopWalletAction("Complete daily tasks",
+                        "Earn BLINK Coins and level XP (HP) from daily missions", Icons.Rounded.TaskAlt) {
+                        tab = 2
+                    }
                 }
             }
             item {
