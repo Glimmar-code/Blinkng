@@ -44,7 +44,6 @@ import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
 import com.example.data.models.FeedPost
-import com.example.data.models.MarketItem
 import com.example.data.repository.FollowStateStore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -77,7 +76,6 @@ internal fun BlinkReferenceSearchScreen(
     posts: List<FeedPost>,
     serverProfiles: List<UserProfile>,
     serverPosts: List<FeedPost>,
-    marketItems: List<MarketItem>,
     currentUsername: String,
     myProfile: UserProfile,
     onProfileClick: (String) -> Unit,
@@ -87,7 +85,6 @@ internal fun BlinkReferenceSearchScreen(
     onSharePost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
-    onMarketItemClick: (MarketItem) -> Unit,
     onGameClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     hasUnreadNotifications: Boolean,
