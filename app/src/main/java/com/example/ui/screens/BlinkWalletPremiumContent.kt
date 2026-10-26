@@ -234,9 +234,8 @@ internal fun BlinkWalletPremiumContent(
                                             fontWeight = FontWeight.Black, color = Color.White)
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
-                                    IconButton(onClick = { /* balance is already the current page */ }) {
-                                        Icon(Icons.Rounded.AddCircle, "Coins and wallet", tint = Color(0xFFB768FF))
-                                    }
+                                    Icon(Icons.Rounded.MonetizationOn, "BLINK Coins", tint = Color(0xFFB768FF),
+                                        modifier = Modifier.size(34.dp))
                                 }
                                 HorizontalDivider(color = Color.White.copy(alpha = .18f))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -312,7 +311,7 @@ internal fun BlinkWalletPremiumContent(
                                             color = soft, fontSize = 13.sp)
                                     }
                                 }
-                                val max = policy.rewardedAdDailyLimit
+                                val max = policy.effectiveAdDailyLimit(isVerified)
                                 Text("Ads watched today • " + adsToday.coerceAtLeast(0) + " / " + max,
                                     color = Color.White, fontWeight = FontWeight.Bold)
                                 LinearProgressIndicator(
@@ -325,20 +324,27 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Daily Milestones", "Bonus Coins are credited automatically.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
+                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.PlayCircle,
                                         m.ads.toString() + " Ads",
                                         m.totalCoins.toString() + " Coins Total" +
-                                            if (adsToday >= m.ads) " • Credited" else "",
-                                        action = { page = 2 })
+                                            if (locked) " • Verified accounts only" else
+                                                if (adsToday >= m.ads) " • Credited" else "",
+                                        locked = locked,
+                                        action = { page = if (locked) 3 else 2 })
                                 }
                             }
                         }
                         item {
                             GradientButton(
-                                if (policy.canWatchRewardedAd(adsToday)) "Watch Ad" else "Daily limit reached",
+                                if (policy.canWatchRewardedAd(adsToday, isVerified)) "Watch Ad"
+                                else if (!isVerified && adsToday >= 10) "Get Verified to unlock 15 ads"
+                                else "Daily limit reached",
                                 icon = Icons.Rounded.PlayArrow,
-                                enabled = policy.canWatchRewardedAd(adsToday),
-                                onClick = onWatchAd)
+                                enabled = policy.canWatchRewardedAd(adsToday, isVerified) ||
+                                    (!isVerified && adsToday >= 10),
+                                onClick = if (!isVerified && adsToday >= 10)
+                                    ({ page = 3 }) else onWatchAd)
                         }
                         item { Text("Rewards require completed, server-confirmed ads. New ads may not be available.",
                             modifier = Modifier.fillMaxWidth(), color = soft, fontSize = 12.sp) }
@@ -364,12 +370,15 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Claim Rewards", "Never claim the same reward twice.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
+                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.CardGiftcard,
                                         "Watch " + m.ads + " Ads",
-                                        if (adsToday >= m.ads) "Reward already credited to your wallet"
+                                        if (locked) "Verified accounts only"
+                                        else if (adsToday >= m.ads) "Reward already credited to your wallet"
                                         else adsToday.coerceAtLeast(0).toString() + " / " + m.ads,
-                                        trailing = m.totalCoins.toString() + " total",
-                                        action = { page = 1 })
+                                        trailing = if (locked) "Locked" else m.totalCoins.toString() + " total",
+                                        locked = locked,
+                                        action = { page = if (locked) 3 else 1 })
                                 }
                             }
                         }
