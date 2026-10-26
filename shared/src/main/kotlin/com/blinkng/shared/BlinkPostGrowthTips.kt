@@ -8,7 +8,7 @@ object BlinkPostGrowthTips {
     val feedCategories = listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment")
 
     fun disallowedFeedCategory(category: String): Boolean =
-        category.trim().lowercase() in setOf("marketplace", "market", "buy & sell")
+        category.trim().lowercase() in setOf("marketplace", "market", "buy & sell", "for sale", "selling")
 
     /**
      * All Feed composers must apply one rule, including saved and scheduled posts.
