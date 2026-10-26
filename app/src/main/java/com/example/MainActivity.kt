@@ -152,6 +152,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showRewardedAdForCoins() {
+        val rewardState = viewModel.uiState.value
+        val verified = rewardState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE
+        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday, verified)) {
+            viewModel.rewardedAdUnavailable(
+                if (verified) "Today's rewarded ads are complete."
+                else "You've watched 10 ads. Verify your account to unlock up to 15 per day."
+            )
+            return
+        }
         if (!BlinkAdsRuntime.canRequestAds.value) {
             // UMP may still be refreshing after a cold start or account change.
             // Re-check consent on a deliberate tap; never request an ad before UMP permits it.
@@ -1659,7 +1668,7 @@ fun MainAppContent(
                             }
                         },
                         onItemsClick = { feedUtilitySheet = "items" },
-                        onGetCoinsClick = { viewModel.buyBlinkCoins() },
+                        onGetCoinsClick = { showWallet = true },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
                             if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
@@ -3201,6 +3210,9 @@ fun MainAppContent(
                 missions = uiState.dailyMissions,
                 loadingMissions = uiState.isDailyMissionsLoading,
                 isDark = uiState.isDarkMode,
+                isVerified = uiState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
+                onVerifyCoins = { viewModel.verifyBlueWithCoins() },
+                onBuyPack = { pack -> startV2Checkout("coin_pack", pack.id, 1) },
                 onBack = { showWallet = false; viewModel.openMenu(true) },
                 onRefresh = { viewModel.refreshProfileRewards() },
                 onClaimMission = { viewModel.claimDailyMission(it) },
