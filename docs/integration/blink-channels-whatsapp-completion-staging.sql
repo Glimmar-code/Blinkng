@@ -158,7 +158,7 @@ begin
    if v_media_path is null or
      left(v_media_path,length(p_channel_id::text||'/'||auth.uid()::text||'/'))
        != p_channel_id::text||'/'||auth.uid()::text||'/' or
-     v_media_path !~ '^[-a-f0-9]+/[-a-f0-9]+/[-a-f0-9]+\.(jpg|jpeg|png|webp|mp4|mp3|m4a|pdf)
+     v_media_path !~ ('^[-a-f0-9]+/[-a-f0-9]+/[-a-f0-9]+[.](jpg|jpeg|png|webp|mp4|mp3|m4a|pdf)' || chr(36))
    then raise exception 'INVALID_CHANNEL_MEDIA_PATH'; end if;
  elsif v_media_path is not null then raise exception 'MEDIA_NOT_ALLOWED'; end if;
  if p_media_kind='poll' then
