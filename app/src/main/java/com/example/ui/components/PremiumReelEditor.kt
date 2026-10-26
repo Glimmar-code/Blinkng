@@ -49,7 +49,8 @@ internal fun PremiumReelEditor(
     uri: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
-    onExporting: (Boolean) -> Unit
+    onExporting: (Boolean) -> Unit,
+    onPendingEdits: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -115,6 +116,7 @@ internal fun PremiumReelEditor(
         musicUri = musicUri
     )
     val hasPendingEdits = durationMs >= 500L && spec.hasChanges(durationMs)
+    LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
     val white = Color.White
     val surface = Color(0xFF1B1B20)
     val accent = Color(0xFFB976FC)
