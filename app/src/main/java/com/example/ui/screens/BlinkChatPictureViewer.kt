@@ -36,6 +36,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChatMessage
 import com.example.data.repository.ProfileRepository
+import com.example.data.local.BlinkStickerLibrary
+import com.example.data.supabase.BlinkGroupAvatarClient
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +72,8 @@ internal fun BlinkChatPictureViewer(
     onNext: () -> Unit = {},
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
+    groupConversationId: String? = null,
+    onAskBlinkAi: (Uri) -> Unit = {},
 ) {
     if (message.imageViewOnce || message.deletedForEveryone ||
         message.attachedImageUrl.isNullOrBlank()) return
@@ -85,6 +89,8 @@ internal fun BlinkChatPictureViewer(
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
+    var savingSticker by remember(message.id) { mutableStateOf(false) }
+    var settingGroupIcon by remember(message.id) { mutableStateOf(false) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -239,6 +245,26 @@ internal fun BlinkChatPictureViewer(
                                         }
                                     }
                                 }, leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(
+                                text = { Text("Create reusable sticker") },
+                                enabled = savedUri != null && !savingSticker,
+                                onClick = { moreOpen = false; confirmation = "sticker" },
+                                leadingIcon = { Icon(Icons.Default.EmojiEmotions, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Ask BLINK AI about this picture") },
+                                enabled = savedUri != null,
+                                onClick = { moreOpen = false; confirmation = "ai" },
+                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
+                            )
+                            if (!groupConversationId.isNullOrBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Set as group picture") },
+                                    enabled = savedUri != null && !settingGroupIcon,
+                                    onClick = { moreOpen = false; confirmation = "group" },
+                                    leadingIcon = { Icon(Icons.Default.Groups, null) }
+                                )
+                            }
                             DropdownMenuItem(text = { Text("Set as my profile picture") },
                                 enabled = savedUri != null && !settingProfilePhoto,
                                 onClick = { moreOpen = false; confirmation = "profile" },
@@ -364,6 +390,9 @@ internal fun BlinkChatPictureViewer(
             title={Text(when(confirmation) {
                 "external_search" -> "Share photo with another app?"
                 "profile" -> "Use this picture as your BLINK avatar?"
+                "group" -> "Set this group picture?"
+                "sticker" -> "Save as reusable sticker?"
+                "ai" -> "Send image to BLINK AI?"
                 else -> "Edited copy created"
             })},
             text={Text(when(confirmation) {
@@ -371,10 +400,57 @@ internal fun BlinkChatPictureViewer(
                     "Another app may upload or analyze this image. Choose only an app you trust."
                 "profile" ->
                     "Your profile picture will change for other students. The chat picture stays unchanged."
+                "group" ->
+                    "Only group owners and admins can change this picture. It will be visible to group members."
+                "sticker" ->
+                    "Save a reusable copy in this device's private sticker library. Do not save someone else's private photo without permission."
+                "ai" ->
+                    "BLINK AI may process the selected picture. It will be attached to a draft; nothing is sent until you press Send."
                 else -> "Your original picture in BLINK has not been changed."
             })},
             confirmButton={TextButton(onClick={
-                if (confirmation=="profile") {
+                if (confirmation=="sticker") {
+                    val image = savedUri
+                    if (image != null) {
+                        savingSticker=true
+                        scope.launch {
+                            val outcome=runCatching {
+                                val id=SupabaseService().getCurrentUserId()
+                                    ?: error("Sign in to save stickers.")
+                                BlinkStickerLibrary.create(context,id,image)
+                            }
+                            downloadError=outcome.fold(
+                                onSuccess={ "Sticker saved. Open Attachments → Stickers to reuse." },
+                                onFailure={ it.message ?: "Couldn't save sticker." })
+                            savingSticker=false
+                        }
+                    }
+                } else if (confirmation=="ai") {
+                    savedUri?.let(onAskBlinkAi)
+                } else if (confirmation=="group") {
+                    val image = savedUri
+                    val group = groupConversationId
+                    if (image != null && group != null) {
+                        settingGroupIcon=true
+                        scope.launch {
+                            val result=runCatching {
+                                val service=SupabaseService()
+                                val id=service.getCurrentUserId()
+                                    ?: error("Sign in to edit group pictures.")
+                                val avatar=ProfileRepository().uploadAvatar(context,image,id)
+                                    ?: error("Unable to upload group picture.")
+                                check(BlinkGroupAvatarClient.setAvatar(group,avatar)) {
+                                    "Only group owners or admins can change this picture."
+                                }
+                            }
+                            downloadError=result.fold(
+                                onSuccess={ "Group picture changed. Refresh the chat to see it." },
+                                onFailure={ it.message ?: "Couldn't update group picture." }
+                            )
+                            settingGroupIcon=false
+                        }
+                    }
+                } else if (confirmation=="profile") {
                     val picture = savedUri
                     if (picture != null) {
                         settingProfilePhoto=true
