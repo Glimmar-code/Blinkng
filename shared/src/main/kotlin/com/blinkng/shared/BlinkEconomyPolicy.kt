@@ -51,6 +51,19 @@ data class BlinkEconomyPolicy(
         return (balance.toFloat() / blueVerificationCoinCost.toFloat()).coerceIn(0f, 1f)
     }
 
+    /** Ad #11 through #15 is available to currently verified users only.
+     * The actual server-side entitlement must be checked again before awarding Coins.
+     * Coin totals and the original XP/HP progression algorithm remain unchanged.
+     */
+    fun effectiveAdDailyLimit(isVerified: Boolean): Int =
+        if (isVerified) rewardedAdDailyLimit else minOf(rewardedAdDailyLimit, 10)
+
+    fun canWatchRewardedAd(completedAds: Int, isVerified: Boolean): Boolean =
+        completedAds < effectiveAdDailyLimit(isVerified)
+
+    /** Retained for binary compatibility. Callers granting ad access should
+     * use the verified-aware overload, not this older single-argument method.
+     */
     fun canWatchRewardedAd(completedAds: Int): Boolean =
         completedAds < rewardedAdDailyLimit
 }
