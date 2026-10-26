@@ -20,7 +20,11 @@ test('web rich preview uses inert text and never injects remote metadata HTML', 
   assert.match(code, /rel="noopener noreferrer"/);
   assert.match(code, /IntersectionObserver/);
   for (const surface of ['post.text', 'comment.content', 'm.content', 's.caption', 'r.text'])
-    assert.ok(app.includes('richLinkCard(' + surface), surface);
+    assert.ok(app.includes(surface), surface);
+  for (const marker of [
+    'richLinkCard([post.text', 'richLinkCard(comment.content)',
+    'richLinkCard(m.content)', 'richLinkCard(s.caption', 'richLinkCard([r.text'
+  ]) assert.ok(app.includes(marker), marker);
 });
 
 test('Android and Windows share one URL recognition policy', () => {
