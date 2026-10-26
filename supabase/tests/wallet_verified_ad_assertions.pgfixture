@@ -1,0 +1,56 @@
+\set ON_ERROR_STOP on
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare
+ v_free uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ v_gold uuid := 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ v_blue uuid := 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+ v_return jsonb;
+ v_claim uuid;
+ v_coin bigint;
+begin
+  if private.blink_active_rewarded_ad_limit(v_free,15) <> 10 then
+    raise exception 'Unverified limit must be 10'; end if;
+  if (public.get_blink_economy_status()->>'rewarded_ad_daily_limit')::int <> 10 then
+    raise exception 'Free user status advertised 15 ads'; end if;
+  begin
+    perform public.begin_blink_rewarded_ad_claim();
+    raise exception 'Unverified account admitted ad 11';
+  exception when raise_exception then
+    if SQLERRM <> 'REWARDED_AD_DAILY_LIMIT' then raise; end if;
+  end;
+  perform set_config('request.jwt.claim.sub',v_gold::text,true);
+  if (public.get_blink_economy_status()->>'rewarded_ad_daily_limit')::int <> 15 then
+    raise exception 'Lifetime gold status did not advertise 15 ads'; end if;
+  perform set_config('request.jwt.claim.sub',v_blue::text,true);
+  if (public.get_blink_economy_status()->>'rewarded_ad_daily_limit')::int <> 15 then
+    raise exception 'Active blue status did not advertise 15 ads'; end if;
+
+  -- Grant valid Blue to the free account after its tenth accepted ad.
+  update public.profiles set verification_badge='BLUE',
+    verification_expires_at=now()+interval '30 days' where id=v_free;
+  perform set_config('request.jwt.claim.sub',v_free::text,true);
+  v_return := public.begin_blink_rewarded_ad_claim();
+  v_claim := (v_return->>'claim_id')::uuid;
+  if v_claim is null then raise exception 'Verified user cannot open ad 11'; end if;
+  update public.blink_rewarded_ad_claims
+  set started_at=now()-interval '15 seconds' where id=v_claim;
+  v_return := public.complete_blink_rewarded_ad_claim(v_claim);
+  if (v_return->>'ads_today')::int <> 11
+    or (v_return->>'daily_limit')::int <> 15
+    or (v_return->>'reward_amount')::int <> 10 then
+      raise exception 'Ad 11 changed original Coin rules: %',v_return;
+  end if;
+  select spendable_coin_balance::bigint into v_coin from public.user_balances where user_id=v_free;
+  if v_coin <> 10 then raise exception 'Original ad 11 Coin base was modified: %',v_coin; end if;
+  update public.profiles set verification_expires_at=now()-interval '1 day' where id=v_free;
+  if (public.get_blink_economy_status()->>'rewarded_ad_daily_limit')::int <> 10 then
+    raise exception 'Expired blue must revert to free cap'; end if;
+  begin
+    perform public.begin_blink_rewarded_ad_claim();
+    raise exception 'Expired blue account admitted ad 12';
+  exception when raise_exception then
+    if SQLERRM <> 'REWARDED_AD_DAILY_LIMIT' then raise; end if;
+  end;
+  raise notice 'PASS: free 10, active Blue/Gold 15, expiration, server admission and original Coin reward';
+end $check$;
