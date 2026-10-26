@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { isSettledReferralDelivery, isPersistedOutboxFinish } from "./delivery-result.mjs";
 
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
@@ -34,6 +35,7 @@ Deno.serve(async (request) => {
     "blink_claim_referral_pushes", { p_limit: 10 },
   );
   if (claimError) return reply({ error: "Unable to claim referral outbox" }, 503);
+  if (!Array.isArray(items)) return reply({ error: "Invalid outbox claim response" }, 503);
 
   const results = await Promise.all((items ?? []).map(async (
     item: { notification_id: string; attempt_count: number },
@@ -52,31 +54,29 @@ Deno.serve(async (request) => {
         signal: AbortSignal.timeout(18_000),
       });
       const responseBody = await response.json() as Record<string, unknown>;
-      const skip = String(responseBody.skipped ?? "");
-      // Honor recipient opt-out permanently; transient missing tokens still retry.
-      success = response.ok && (
-        Number(responseBody.delivered ?? 0) > 0 ||
-        skip === "already_sent" ||
-        skip === "recipient_preferences" ||
-        skip === "self_or_missing_recipient"
-      );
+      // A transient skip is retryable; the only terminal skips are privacy
+      // preferences, previously sent, or a self/missing recipient.
+      success = isSettledReferralDelivery(response.ok, responseBody);
       reason = success ? "" : String(responseBody.error ?? responseBody.skipped ?? response.status);
     } catch (e) {
       reason = e instanceof Error ? e.message : "Push request failed";
     }
-    const { error: finishError } = await admin.rpc("blink_finish_referral_push", {
+    const { data: finishResult, error: finishError } = await admin.rpc("blink_finish_referral_push", {
       p_notification_id: item.notification_id,
       p_succeeded: success,
       p_error: reason.slice(0, 400),
       p_attempt_count: item.attempt_count,
     });
-    return { success, persisted: !finishError };
+    // SQL can return false for a stale lease without returning an error.
+    // Never acknowledge a push as persisted unless the lease was updated.
+    return { success, persisted: isPersistedOutboxFinish(finishResult, finishError) };
   }));
 
+  const stateUpdateErrors = results.filter((x) => !x.persisted).length;
   return reply({
-    claimed: (items ?? []).length,
+    claimed: items.length,
     delivered: results.filter((x) => x.success && x.persisted).length,
     retryable: results.filter((x) => !x.success).length,
-    stateUpdateErrors: results.filter((x) => !x.persisted).length,
-  });
+    stateUpdateErrors,
+  }, stateUpdateErrors > 0 ? 503 : 200);
 });
