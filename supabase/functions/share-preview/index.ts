@@ -1,6 +1,6 @@
 const SHARE_ORIGIN = "https://blink.com.ng";
 const PLAY_STORE_URL = "https://blink.com.ng/download/";
-const ALLOWED_TYPES = new Set(["profile", "post", "reel"]);
+const ALLOWED_TYPES = new Set(["profile", "post", "reel", "market"]);
 
 function firstKeyFromJsonEnv(name: string): string {
   const raw = Deno.env.get(name);
@@ -123,6 +123,26 @@ async function buildPreview(type: string, id: string): Promise<Preview | null> {
   }
 
   if (!isUuid(id)) return null;
+  if (type === "market") {
+    const listings = await rest(
+      `market_items?id=eq.${encodeURIComponent(id)}&status=eq.active&is_sold=eq.false&moderation_state=eq.approved&select=id,title,description,image_url,image_urls,seller_id,price,currency&limit=1`
+    );
+    const item = listings[0] as Record<string, unknown> | undefined;
+    if (!item) return null;
+    const seller = await rest(
+      `profiles?id=eq.${encodeURIComponent(String(item.seller_id || ""))}&select=is_seller_active,seller_status,is_verified&limit=1`
+    );
+    const approved = seller[0] as Record<string, unknown> | undefined;
+    if (!approved || approved.is_seller_active !== true ||
+        approved.seller_status !== "active" || approved.is_verified !== true) return null;
+    const imgs = Array.isArray(item.image_urls) ? item.image_urls.filter(Boolean).map(String) : [];
+    return {
+      type, id, title: `${cleanText(item.title, 105) || "Market item"} on Blink Market`,
+      description: cleanText(item.description, 180) || "Explore this listing on Blink Market.",
+      image: String(imgs[0] || item.image_url || ""),
+      canonicalUrl
+    };
+  }
   const result = await publicContent(id, type);
   if (!result) return null;
   const content = (result.content || {}) as Record<string, unknown>;
