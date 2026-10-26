@@ -153,12 +153,8 @@ class MainActivity : ComponentActivity() {
 
     private fun showRewardedAdForCoins() {
         val rewardState = viewModel.uiState.value
-        val verified = rewardState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE
-        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday, verified)) {
-            viewModel.rewardedAdUnavailable(
-                if (verified) "Today's rewarded ads are complete."
-                else "You've watched 10 ads. Verify your account to unlock up to 15 per day."
-            )
+        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday)) {
+            viewModel.rewardedAdUnavailable("Today's rewarded ads are complete.")
             return
         }
         if (!BlinkAdsRuntime.canRequestAds.value) {
@@ -2830,6 +2826,13 @@ fun MainAppContent(
                             label = { Text("Gift message (optional)") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.closeCoinPackPicker()
+                                showGiftPurchase = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🎁 Gift BLINK Coins to a friend") }
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 enabled = !v2PaymentBusy &&
