@@ -16,9 +16,6 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.down
-import androidx.compose.ui.test.moveBy
-import androidx.compose.ui.test.up
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.components.BlinkElasticSwipeDirection
