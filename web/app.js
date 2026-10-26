@@ -1130,7 +1130,7 @@
         if(x) growth.textContent='Real profile views this week: '+fmt(x.profile_views_this_week)+
           ' · Followers gained this week: '+fmt(x.followers_gained_this_week)+
           ' · Invite share actions: '+fmt(x.share_actions)+
-          ' · Source-level Search/recommendation attribution is not yet tracked.';
+          ' · See Search and recommendation profile opens above for recorded source attribution.';
       }
       const sources=document.getElementById('referral-sources');
       if(sources?.isConnected && sourceResult.status==='fulfilled'){
