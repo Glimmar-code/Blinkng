@@ -46,8 +46,8 @@ class BlinkChatMediaGesturePolicyTest {
     }
 
     @Test fun backdrop_reveals_chat_and_is_bounded() {
-        assertEquals(1f, BlinkChatMediaGesturePolicy.backdropAlpha(0f, 800f))
-        assertEquals(.25f, BlinkChatMediaGesturePolicy.backdropAlpha(-800f, 800f))
-        assertEquals(1f, BlinkChatMediaGesturePolicy.backdropAlpha(400f, 0f))
+        assertEquals(1f, BlinkChatMediaGesturePolicy.backdropAlpha(0f, 800f), .001f)
+        assertEquals(.25f, BlinkChatMediaGesturePolicy.backdropAlpha(-800f, 800f), .001f)
+        assertEquals(1f, BlinkChatMediaGesturePolicy.backdropAlpha(400f, 0f), .001f)
     }
 }
