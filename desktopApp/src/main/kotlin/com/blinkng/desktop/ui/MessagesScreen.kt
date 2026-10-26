@@ -142,7 +142,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var aiImageFile by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var showStickerTray by remember(myUserId) { mutableStateOf(false) }
-    var stickerRevision by remember(myUserId) { mutableIntStateOf(0) }
+    var stickerRevision by remember(myUserId) { mutableStateOf(0) }
     var stickerToDelete by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoReviewItems by remember(myUserId) {
         mutableStateOf<List<DesktopSelectedPhoto>>(emptyList())
