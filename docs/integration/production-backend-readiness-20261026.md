@@ -1,6 +1,28 @@
-# BLINK Supabase remediation — deployment readiness, 26 October 2026
+# BLINK — Verified hosted backend foundation changes, 26 October 2026
 
-**Status: STAGING/CI ONLY. NOT DEPLOYED TO PRODUCTION.**
+**Production foundation fix applied and verified. Full Refer & Grow and Communities activation remains blocked pending hosted multi-account/Auth/RLS verification.**
+
+The connected BLINK Supabase production project recorded the following **actual applied migration versions**:
+
+| Hosted version | Migration | Verified outcome |
+| --- | --- | --- |
+| `20261026052402` | `harden_private_message_media_bucket_limits_20261026` | `message-media` stays private, 80 MiB bucket ceiling, exactly 24 allowed MIME types, pre-existing 3 media objects preserved |
+| `20261026052615` | `secure_referral_community_foundation_tables_20261026` | Five new tables created, RLS on all five, own-user/public community read policies, anonymous reads prohibited, direct client writes prohibited |
+| `20261026052715` | `index_blink_community_owner_foreign_key_20261026` | Indexed the community owner foreign key |
+
+The five created foundation tables are `public.blink_referrals`, `public.blink_referral_achievements`, `public.blink_referral_share_events`, `public.blink_communities`, and `public.blink_community_members`. **These tables are currently empty foundations, not a complete working referral attribution or community invitation system.**
+
+The already-written October 24–25 **full** referral and groups migrations are still not deployed, and their signup triggers, privileged server functions, anti-fraud/push workers, moderation RPCs and end-to-end mobile/desktop integration **must not be represented as live**. Community and referral write access is deliberately blocked until those contracts pass independent account tests. The global project Storage file-size ceiling may be below the bucket's 80 MiB cap; bucket settings were verified via SQL, not an authenticated real upload test.
+
+The matching **replay-safe files** were added to `supabase/migrations/` under each hosted version so the repo records hosted changes and a later clean deployment can converge without overriding fully activated referral/community grants. Production migration history was recorded by Supabase (not forged manually), without changing existing user data or disabling RLS. No paid staging project or branch was created.
+
+**Release controls:** Test all new migration replay paths in CI; verify genuine two-account signup/referral, consent/invites, RLS and real Storage MIME/size rejection on isolated Supabase before activating the remaining backend. Revalidate all checks before merging the PR. Never treat a populated schema as proof that feature workflows operate.
+
+---
+
+## Pre-change audit snapshot (historical; superseded where noted)
+
+**Historical status (before 26 October production foundation fixes): STAGING/CI ONLY.**
 Project inspected read-only: `Blink` (`jhwgifrlxwspoedxjaly`). No paid Supabase environment has been provisioned, and no production migration, Storage update, Auth setting or Edge Function deployment was performed in this PR.
 
 ## Exact drift found
