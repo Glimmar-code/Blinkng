@@ -196,7 +196,7 @@ $$;
 -- there too, not only in the new updates-page RPC.
 create or replace function public.blink_channel_react(p_update_id uuid,p_emoji text)
 returns text language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_channel uuid; v_old text;
 begin
  if auth.uid() is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -224,7 +224,7 @@ begin
   set emoji=excluded.emoji,created_at=now();
  return p_emoji;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_poll_vote(
  p_update_id uuid,p_option integer
@@ -344,7 +344,7 @@ revoke select on public.blink_channel_updates from authenticated,anon;
 create or replace function public.blink_channel_mute(
  p_channel_id uuid,p_muted boolean
 ) returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if auth.uid() is null or not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -353,16 +353,16 @@ begin
  on conflict(channel_id,user_id) do update set muted=excluded.muted;
  return true;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_is_muted(p_channel_id uuid)
 returns boolean language sql stable security definer set search_path=''
-as $
+as $$
  select case when not public.blink_channel_can_read(p_channel_id) then true
  else coalesce((select muted from public.blink_channel_notifications
                 where channel_id=p_channel_id and user_id=auth.uid()),false)
  end
-$;
+$$;
 revoke all on function public.blink_channel_mute(uuid,boolean),
  public.blink_channel_is_muted(uuid) from public,anon;
 grant execute on function public.blink_channel_mute(uuid,boolean),
@@ -373,7 +373,7 @@ grant execute on function public.blink_channel_mute(uuid,boolean),
 -- cursors remain private to the signed-in viewer.
 create or replace function public.blink_channel_unread_count(p_channel_id uuid)
 returns integer language sql stable security definer set search_path=''
-as $
+as $$
  select case when public.blink_channel_can_read(p_channel_id) then
   least(99, (select count(*)::integer from public.blink_channel_updates u
    where u.channel_id=p_channel_id and u.removed_at is null
@@ -382,10 +382,10 @@ as $
        select n.last_seen_at from public.blink_channel_notifications n
        where n.channel_id=p_channel_id and n.user_id=auth.uid()),'-infinity'::timestamptz)
   )) else 0 end;
-$;
+$$;
 create or replace function public.blink_channel_mark_seen(p_channel_id uuid)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -394,11 +394,11 @@ begin
    on conflict(channel_id,user_id) do update set last_seen_at=excluded.last_seen_at;
  return true;
 end
-$;
+$$;
 create or replace function public.blink_channel_scheduled_page(p_channel_id uuid)
 returns table(id uuid,body text,scheduled_at timestamptz)
 language plpgsql stable security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_is_admin(p_channel_id) then
   raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
@@ -407,10 +407,10 @@ begin
  where u.channel_id=p_channel_id and u.scheduled_at>now() and u.removed_at is null
  order by u.scheduled_at asc limit 100;
 end
-$;
+$$;
 create or replace function public.blink_channel_cancel_scheduled(p_update_id uuid)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_channel uuid;
 begin
  select u.channel_id into v_channel from public.blink_channel_updates u
@@ -421,7 +421,7 @@ begin
  where id=p_update_id;
  return found;
 end
-$;
+$$;
 revoke all on function public.blink_channel_unread_count(uuid),
  public.blink_channel_mark_seen(uuid),
  public.blink_channel_scheduled_page(uuid),
@@ -441,7 +441,7 @@ alter table public.blink_channel_reports
 create or replace function public.blink_channel_reports_page(p_channel_id uuid)
 returns table(id uuid,update_id uuid,reason text,created_at timestamptz,reviewed boolean)
 language plpgsql stable security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_is_admin(p_channel_id) then
   raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
@@ -452,11 +452,11 @@ begin
  where u.channel_id=p_channel_id
  order by (r.reviewed_at is null) desc,r.created_at desc limit 100;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_review_report(p_report_id uuid,p_remove boolean)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_update uuid; v_channel uuid;
 begin
  select r.update_id,u.channel_id into v_update,v_channel
@@ -474,7 +474,7 @@ begin
  where id=p_report_id;
  return found;
 end
-$;
+$$;
 revoke all on function public.blink_channel_reports_page(uuid),
  public.blink_channel_review_report(uuid,boolean) from public,anon;
 grant execute on function public.blink_channel_reports_page(uuid),
@@ -650,7 +650,7 @@ revoke select on public.blink_channel_updates from authenticated,anon;
 create or replace function public.blink_channel_mute(
  p_channel_id uuid,p_muted boolean
 ) returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if auth.uid() is null or not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -659,16 +659,16 @@ begin
  on conflict(channel_id,user_id) do update set muted=excluded.muted;
  return true;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_is_muted(p_channel_id uuid)
 returns boolean language sql stable security definer set search_path=''
-as $
+as $$
  select case when not public.blink_channel_can_read(p_channel_id) then true
  else coalesce((select muted from public.blink_channel_notifications
                 where channel_id=p_channel_id and user_id=auth.uid()),false)
  end
-$;
+$$;
 revoke all on function public.blink_channel_mute(uuid,boolean),
  public.blink_channel_is_muted(uuid) from public,anon;
 grant execute on function public.blink_channel_mute(uuid,boolean),
@@ -731,7 +731,7 @@ $$;
 -- there too, not only in the new updates-page RPC.
 create or replace function public.blink_channel_react(p_update_id uuid,p_emoji text)
 returns text language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_channel uuid; v_old text;
 begin
  if auth.uid() is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
@@ -759,7 +759,7 @@ begin
   set emoji=excluded.emoji,created_at=now();
  return p_emoji;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_poll_vote(
  p_update_id uuid,p_option integer
@@ -879,7 +879,7 @@ revoke select on public.blink_channel_updates from authenticated,anon;
 create or replace function public.blink_channel_mute(
  p_channel_id uuid,p_muted boolean
 ) returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if auth.uid() is null or not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -888,16 +888,16 @@ begin
  on conflict(channel_id,user_id) do update set muted=excluded.muted;
  return true;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_is_muted(p_channel_id uuid)
 returns boolean language sql stable security definer set search_path=''
-as $
+as $$
  select case when not public.blink_channel_can_read(p_channel_id) then true
  else coalesce((select muted from public.blink_channel_notifications
                 where channel_id=p_channel_id and user_id=auth.uid()),false)
  end
-$;
+$$;
 revoke all on function public.blink_channel_mute(uuid,boolean),
  public.blink_channel_is_muted(uuid) from public,anon;
 grant execute on function public.blink_channel_mute(uuid,boolean),
@@ -908,7 +908,7 @@ grant execute on function public.blink_channel_mute(uuid,boolean),
 -- cursors remain private to the signed-in viewer.
 create or replace function public.blink_channel_unread_count(p_channel_id uuid)
 returns integer language sql stable security definer set search_path=''
-as $
+as $$
  select case when public.blink_channel_can_read(p_channel_id) then
   least(99, (select count(*)::integer from public.blink_channel_updates u
    where u.channel_id=p_channel_id and u.removed_at is null
@@ -917,10 +917,10 @@ as $
        select n.last_seen_at from public.blink_channel_notifications n
        where n.channel_id=p_channel_id and n.user_id=auth.uid()),'-infinity'::timestamptz)
   )) else 0 end;
-$;
+$$;
 create or replace function public.blink_channel_mark_seen(p_channel_id uuid)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -929,11 +929,11 @@ begin
    on conflict(channel_id,user_id) do update set last_seen_at=excluded.last_seen_at;
  return true;
 end
-$;
+$$;
 create or replace function public.blink_channel_scheduled_page(p_channel_id uuid)
 returns table(id uuid,body text,scheduled_at timestamptz)
 language plpgsql stable security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_is_admin(p_channel_id) then
   raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
@@ -942,10 +942,10 @@ begin
  where u.channel_id=p_channel_id and u.scheduled_at>now() and u.removed_at is null
  order by u.scheduled_at asc limit 100;
 end
-$;
+$$;
 create or replace function public.blink_channel_cancel_scheduled(p_update_id uuid)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_channel uuid;
 begin
  select u.channel_id into v_channel from public.blink_channel_updates u
@@ -956,7 +956,7 @@ begin
  where id=p_update_id;
  return found;
 end
-$;
+$$;
 revoke all on function public.blink_channel_unread_count(uuid),
  public.blink_channel_mark_seen(uuid),
  public.blink_channel_scheduled_page(uuid),
@@ -976,7 +976,7 @@ alter table public.blink_channel_reports
 create or replace function public.blink_channel_reports_page(p_channel_id uuid)
 returns table(id uuid,update_id uuid,reason text,created_at timestamptz,reviewed boolean)
 language plpgsql stable security definer set search_path=''
-as $
+as $$
 begin
  if not public.blink_channel_is_admin(p_channel_id) then
   raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
@@ -987,11 +987,11 @@ begin
  where u.channel_id=p_channel_id
  order by (r.reviewed_at is null) desc,r.created_at desc limit 100;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_review_report(p_report_id uuid,p_remove boolean)
 returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_update uuid; v_channel uuid;
 begin
  select r.update_id,u.channel_id into v_update,v_channel
@@ -1009,7 +1009,7 @@ begin
  where id=p_report_id;
  return found;
 end
-$;
+$$;
 revoke all on function public.blink_channel_reports_page(uuid),
  public.blink_channel_review_report(uuid,boolean) from public,anon;
 grant execute on function public.blink_channel_reports_page(uuid),
@@ -1185,7 +1185,7 @@ revoke select on public.blink_channel_updates from authenticated,anon;
 create or replace function public.blink_channel_mute(
  p_channel_id uuid,p_muted boolean
 ) returns boolean language plpgsql security definer set search_path=''
-as $
+as $$
 begin
  if auth.uid() is null or not public.blink_channel_can_read(p_channel_id) then
    raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
@@ -1194,16 +1194,16 @@ begin
  on conflict(channel_id,user_id) do update set muted=excluded.muted;
  return true;
 end
-$;
+$$;
 
 create or replace function public.blink_channel_is_muted(p_channel_id uuid)
 returns boolean language sql stable security definer set search_path=''
-as $
+as $$
  select case when not public.blink_channel_can_read(p_channel_id) then true
  else coalesce((select muted from public.blink_channel_notifications
                 where channel_id=p_channel_id and user_id=auth.uid()),false)
  end
-$;
+$$;
 revoke all on function public.blink_channel_mute(uuid,boolean),
  public.blink_channel_is_muted(uuid) from public,anon;
 grant execute on function public.blink_channel_mute(uuid,boolean),
