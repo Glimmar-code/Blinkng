@@ -41,6 +41,20 @@ class BlinkEconomyPolicyTest {
         assertFalse(policy.canWatchRewardedAd(15))
     }
     @Test
+    fun verifiedOnlyAdFifteenDoesNotChangeOriginalCoinTotals() {
+        assertEquals(10, policy.effectiveAdDailyLimit(isVerified = false))
+        assertEquals(15, policy.effectiveAdDailyLimit(isVerified = true))
+        assertTrue(policy.canWatchRewardedAd(9, isVerified = false))
+        assertFalse(policy.canWatchRewardedAd(10, isVerified = false))
+        assertTrue(policy.canWatchRewardedAd(10, isVerified = true))
+        assertTrue(policy.canWatchRewardedAd(14, isVerified = true))
+        assertFalse(policy.canWatchRewardedAd(15, isVerified = true))
+        assertEquals(60, policy.totalRewardForAds(5))
+        assertEquals(130, policy.totalRewardForAds(10))
+        assertEquals(210, policy.totalRewardForAds(15))
+    }
+
+    @Test
     fun coinPacksAndVerificationPricingMatchLaunchEconomy() {
         assertEquals(800, policy.blueVerificationCashNgn)
         assertEquals(3_000, policy.blueVerificationCoinCost)
