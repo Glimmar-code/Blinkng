@@ -159,6 +159,7 @@ fun CreatePostSheet(
     savedDrafts: List<PostDraft> = emptyList(),
     scheduledPosts: List<ScheduledPost> = emptyList(),
     onDismiss: () -> Unit,
+    onOpenMarket: () -> Unit = {},
     onSubmitPost: (
         String,
         String,
@@ -244,6 +245,7 @@ fun CreatePostSheet(
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
+    val marketOnlyWarning = BlinkPostGrowthTips.marketOnlyReason(category, text, altText = altText)
 
     imageToEdit?.let { source ->
         BlinkUniversalPhotoEditor(
@@ -535,8 +537,8 @@ fun CreatePostSheet(
     }
 
     fun scheduleAt(timeMillis: Long) {
-        if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
-            Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
+        if (marketOnlyWarning != null) {
+            Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
         if (!canSubmit) return
@@ -598,8 +600,8 @@ fun CreatePostSheet(
             return
         }
         // Older saved drafts may still contain the removed Marketplace category.
-        if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
-            Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
+        if (marketOnlyWarning != null) {
+            Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
         if (canSubmit && !tagsValid) {
@@ -858,9 +860,22 @@ fun CreatePostSheet(
                         Text(BlinkPostGrowthTips.hashtagHint,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(BlinkPostGrowthTips.marketHint,
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Text("Product sales belong in BLINK Market",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface)
+                        Text("Regular Feed posts cannot advertise products for sale. Create a Market listing instead.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (marketOnlyWarning != null) {
+                            Text("This looks like a product advertisement. Publishing it to Feed is blocked.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                        TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
+                            Text("Create a Market listing")
+                        }
                     }
                 }
 
