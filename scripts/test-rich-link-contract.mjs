@@ -35,7 +35,7 @@ test('Android and Windows share one URL recognition policy', () => {
 
 test('private Android chat preview preference still gates metadata', () => {
   const messages = read('app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt');
-  assert.match(messages, /if \(allowLinkPreviews\) \{/);
+  assert.match(messages, /if \(allowLinkPreviews && !message\.imageViewOnce && !message\.deletedForEveryone\) \{/);
   assert.match(messages, /BlinkRichLinkPreview/);
 });
 
