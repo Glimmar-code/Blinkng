@@ -1687,12 +1687,13 @@ private fun PremiumChatDetail(
         if (uri != null) pendingVideoReview = uri
         onPresenceChange("online")
     }
+    var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendAttachment(uri, "audio")
+        if (uri != null) pendingFileReview = uri to true
         onPresenceChange("online")
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, "document")
+        if (uri != null) pendingFileReview = uri to false
         onPresenceChange("online")
     }
     val startDictation = rememberSpeechInput { spoken ->
@@ -2691,6 +2692,21 @@ private fun PremiumChatDetail(
         )
     }
 
+    pendingFileReview?.let { (selected, audio) ->
+        BlinkChatAttachmentReviewDialog(
+            uri = selected,
+            isAudio = audio,
+            onSend = {
+                pendingFileReview = null
+                onPresenceChange("uploading")
+                onSendAttachment(it, if (audio) "audio" else "document")
+            },
+            onDismiss = {
+                pendingFileReview = null
+                onPresenceChange("online")
+            }
+        )
+    }
     pendingVideoReview?.let { selected ->
         BlinkChatVideoEditorDialog(
             sourceUri = selected,
