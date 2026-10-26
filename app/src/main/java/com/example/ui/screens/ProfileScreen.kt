@@ -1786,6 +1786,11 @@ private fun AboutSection(
                 }
                 if (profile.links.website.isNotBlank()) {
                     ProfileLink(Icons.Default.Language, "Website", profile.links.website)
+                    com.example.ui.components.BlinkRichLinkPreview(
+                        text = profile.links.website,
+                        modifier = Modifier.padding(top = 6.dp),
+                        compact = true
+                    )
                 }
                 if (profile.links.linkedin.isNotBlank()) {
                     ProfileLink(Icons.Default.Link, "LinkedIn", profile.links.linkedin)
