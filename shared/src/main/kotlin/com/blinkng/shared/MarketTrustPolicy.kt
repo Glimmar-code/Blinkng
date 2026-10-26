@@ -40,7 +40,7 @@ object MarketTrustPolicy {
  */
 object MarketIntentPolicy {
     private val salePhrases = Regex(
-        """(?i)\b(for sale|selling this|available for purchase|order now|dm to buy|buy now|price is)\b"""
+        """(?i)\b(for sale|selling (?:this|my|a|an)|available for (?:purchase|sale)|order now|dm to (?:buy|order)|buy now|price is)\b"""
     )
     private val priceSignal = Regex("""(?i)(?:₦|ngn\s*)\s*[0-9][0-9,]*""")
 

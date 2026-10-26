@@ -1,3 +1,30 @@
+## 2026-10-26 — Premium Profile, Status and Reels (PR #581 integration)
+
+- **Android:** Owner-visible six profile themes, exact-reference-inspired profile cards/grid, three-dot Edit menu, story viewer rail and immersive Reels controls. A functional in-app Reel editor now offers trim, filmstrip, grayscale, rotation, text, emoji and audio using Media3 export; no mock-only trimming is shipped. Pixel-by-pixel reference equivalence still requires actual screenshot review.
+- **Windows:** Reads public owner theme and persists theme edits through the existing owner-only profile policy.
+- **Web:** Displays the public owner palette independently of visitor theme and offers an owner theme selector. Dedicated privacy-gated public-theme RPC exposes only a color ID for publicly viewable profiles.
+- **Database:** Production additive `profile_theme` schema and six allowed values applied on October 26, 2026. Public web theme RPC applied and grants/RLS constraints reviewed; no paid Supabase staging branch was created. App-level cross-platform tests and media export checks must pass before release.
+- **Preservation:** Integrate without losing market-only Feed protections, universal photo editor, coins/wallet, referral work or messaging improvements merged to main from concurrent PRs.
+
+## 2026-10-26 — Market listings are not ordinary Feed posts (Testlab candidate)
+
+- **Shared rule:** Android and Windows use `BlinkPostGrowthTips.marketOnlyReason` for prohibited Market categories and obvious text/alt-description product advertisements. Legitimate student discussions remain publishable.
+- **Android:** Create Post explains that product sales belong in Market, flags likely sales copy before publishing, and offers an explicit **Create a Market listing** action that closes the composer and selects Market. Immediate and scheduled publishing repeat validation in the ViewModel.
+- **Windows:** The Create Post area contains the same market-only message, highlights blocked sales copy, and refuses prohibited posts using the shared rule. Users navigate to Market via the desktop tab.
+- **Database candidate:** Existing production text-only trigger is not sufficient. Staged SQL adds category, caption, alt-text, sponsored impersonation, and UPDATE checks. It is deliberately NOT applied to production until isolated role/RLS, paid-sponsor, legacy-client and rollback tests pass.
+- **Limitations:** Image pixels with no readable description cannot be classified reliably from client-side strings. This requires a separately reviewed server-side visual moderation workflow and user reports. Do not describe this restriction as fully enforced in production until hosted integration is verified.
+- **Release gates:** shared JVM tests, Android quality/runtime, Windows desktop build, PGlite SQL role tests, marketplace paid placements, and signed APK verification are mandatory before promotion.
+
+## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
+
+- **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.
+- **Windows:** Five wallet destinations with authenticated Coin pack offers, verified account balance, daily missions, verification and history. Desktop Coin display navigates into Wallet.
+- **Unchanged economy:** Preserve the existing 10 base Coins per rewarded ad, server-configured 15-ad daily limit, cumulative 5/10/15 milestones (60/130/210), Coin packs and 3,000-Coin Blue Verification. Do not alter SQL functions or ad entitlement algorithms in this UI PR. The server is authoritative for all rewards.
+- **Coin gifting stays:** Profile Interact retains the original authenticated, idempotent 20/50/100 Coin gifting using `gift_blink_coins_once`. Existing paid Coin gifts and provider rules also remain unchanged. Gift recipients get Coins; the giver's wallet is debited only when the server confirms the transfer.
+- **Daily missions award both Coins and progression XP:** The original `claim_daily_mission` RPC supplies the authoritative `coinReward` and `xpReward`. UI describes XP as level XP (HP), without adding a new balance, changing rates, or allowing users to transfer XP/HP. Claims are server-idempotent.
+- **PARITY-EXCEPTION: windows-rewarded-ad-playback-wallet-20261026** — AdMob playback remains Android-only; Windows shows server-backed progress/rewards and does not fabricate advertisement completion.
+- **Release gate:** Check Android/Windows builds, wallet navigation, Coin transfer regression, missions granting both Coin and XP, checkout webhook and status, accessibility, screenshot fidelity and full CI before merging. No production migration or account balance changes in this branch.
+
 ## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
 
 - **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.
@@ -1423,12 +1450,3 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
-
-
-## 2026-10-26 — Premium profile themes, reference Story/Reels UI (Testlab PR, not deployed)
-
-- **Public profile data:** six stable owner-selected `profile_theme` identifiers (`black`, `royal_purple`, `sapphire`, `emerald`, `rose`, `amber`). The additive migration has NOT been run in production; profile save/read and live cross-device behavior depend on migrating the column and testing authorization first.
-- **Android:** premium owner-selected profile gradients/cards, four reference-style stats, two-column content thumbnails, three-dot Edit/Share menu, removed profile bottom navigation, compact rank/Earn Coins/Get Verified actions, Edit Profile theme selector and preview. Status now has the creator-avatar rail and preserves time on pause. Expanded Reels gain reference back/create buttons and bottom comment entry; preview expands using the existing continuously mounted pager. Create Reel video preview is portrait on pure black with real seek, play/pause and volume controls. Existing extended settings remain below the editor.
-- **Windows:** reads and displays the same theme palette and offers owners a theme picker with authenticated profile update.
-- **Web:** no web UI changes in this PR. Theme contract requires a parity follow-up before claiming Web visual equivalence. Do not interpret this note as complete visual parity.
-- **Checks required before main:** migration in compatible isolated database, screenshot comparison at several screen/font sizes, Android current-head UI/build tests, Windows current-head tests, cross-device theme propagation, real status video/like/reply and Reel publishing/upload tests, full-editor functional checks, playback state retention, and staged RLS review. No production DB writes or auto-deployment were performed here.
