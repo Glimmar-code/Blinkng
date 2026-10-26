@@ -62,7 +62,7 @@ internal fun BlinkNativeShareSheet(
         contentColor = Color.White
     ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(if (post.isReel) "Share Reel" else "Share Post",
@@ -115,7 +115,7 @@ internal fun BlinkNativeShareSheet(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(
                     Triple(Icons.Rounded.ContentCopy, "Copy Link", onCopyLink),
-                    Triple(Icons.Rounded.AutoStories, "My Story", onStory),
+                    Triple(Icons.Rounded.AutoStories, "Add to Story", onStory),
                     Triple(Icons.Rounded.Chat, "WhatsApp", onWhatsApp),
                     Triple(Icons.Rounded.Share, "Other Apps", onOtherApps)
                 ).forEach { (icon, label, action) ->

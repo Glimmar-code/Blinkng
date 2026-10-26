@@ -1417,6 +1417,7 @@ fun MainAppContent(
 
     var startReelComposer by rememberSaveable { mutableStateOf(false) }
     var sharingPostId by rememberSaveable { mutableStateOf<String?>(null) }
+    var storySharePrefill by rememberSaveable { mutableStateOf("") }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -2682,9 +2683,9 @@ fun MainAppContent(
                         sharingPostId = null
                     },
                     onStory = {
-                        // No verified story-editor link-attachment API exists yet.
-                        ShareLinkManager.copyLink(context, type, sharedPost.id,
-                            "Link copied — paste into your Story")
+                        // Prefill the real permalink in Story composer, without claiming
+                        // to have published anything or bypassing the media picker.
+                        storySharePrefill = url
                         sharingPostId = null
                         viewModel.openCreateStory(true)
                     },
@@ -3048,8 +3049,13 @@ fun MainAppContent(
             CreateStoryScreen(
                 profile = uiState.myProfile,
                 isUploading = uiState.isCreatingStory,
-                onBack = { viewModel.openCreateStory(false) },
+                initialCaption = storySharePrefill,
+                onBack = {
+                    storySharePrefill = ""
+                    viewModel.openCreateStory(false)
+                },
                 onPublish = { uri, caption, isVideo ->
+                    storySharePrefill = ""
                     viewModel.publishStory(uri, caption, isVideo)
                 }
             )

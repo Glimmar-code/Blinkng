@@ -34,8 +34,8 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 
 @Composable
-fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,onPublish:(String,String,Boolean)->Unit){
-    var selectedUri by rememberSaveable{mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable{mutableStateOf("")};var imageToEdit by remember {mutableStateOf<android.net.Uri?>(null)}
+fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,onPublish:(String,String,Boolean)->Unit,initialCaption:String=""){
+    var selectedUri by rememberSaveable{mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable(initialCaption){mutableStateOf(initialCaption.take(500))};var imageToEdit by remember {mutableStateOf<android.net.Uri?>(null)}
     val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{imageToEdit=it;isVideo=false}}
     val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=true}}
     imageToEdit?.let { source ->
