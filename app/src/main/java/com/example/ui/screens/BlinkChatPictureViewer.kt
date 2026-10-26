@@ -35,6 +35,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChatMessage
+import com.example.data.repository.ProfileRepository
+import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -82,6 +84,7 @@ internal fun BlinkChatPictureViewer(
     var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -236,6 +239,10 @@ internal fun BlinkChatPictureViewer(
                                         }
                                     }
                                 }, leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(text = { Text("Set as my profile picture") },
+                                enabled = savedUri != null && !settingProfilePhoto,
+                                onClick = { moreOpen = false; confirmation = "profile" },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, null) })
                             DropdownMenuItem(text = { Text("Set as wallpaper") },
                                 enabled = savedUri != null,
                                 onClick = {
@@ -354,13 +361,42 @@ internal fun BlinkChatPictureViewer(
     if (confirmation != null) {
         AlertDialog(
             onDismissRequest={confirmation=null},
-            title={Text(if(confirmation=="external_search")
-                "Share photo with another app?" else "Edited copy created")},
-            text={Text(if(confirmation=="external_search")
-                "Another app may upload or analyze this image. Choose only an app you trust."
-                else "Your original picture in BLINK has not been changed.")},
+            title={Text(when(confirmation) {
+                "external_search" -> "Share photo with another app?"
+                "profile" -> "Use this picture as your BLINK avatar?"
+                else -> "Edited copy created"
+            })},
+            text={Text(when(confirmation) {
+                "external_search" ->
+                    "Another app may upload or analyze this image. Choose only an app you trust."
+                "profile" ->
+                    "Your profile picture will change for other students. The chat picture stays unchanged."
+                else -> "Your original picture in BLINK has not been changed."
+            })},
             confirmButton={TextButton(onClick={
-                if (confirmation=="external_search") {
+                if (confirmation=="profile") {
+                    val picture = savedUri
+                    if (picture != null) {
+                        settingProfilePhoto=true
+                        scope.launch {
+                            val success=runCatching {
+                                val repository=ProfileRepository()
+                                val id=SupabaseService().getCurrentUserId()
+                                    ?: error("Please sign in.")
+                                val current=repository.fetchById(id)
+                                    ?: error("Profile unavailable.")
+                                val url=repository.uploadAvatar(context,picture,id)
+                                    ?: error("Photo upload failed.")
+                                check(repository.updateProfile(current.copy(avatarUrl=url))) {
+                                    "Could not update your profile."
+                                }
+                            }.isSuccess
+                            downloadError=if(success) "Your BLINK profile picture was updated."
+                                else "Could not update profile picture. Try again."
+                            settingProfilePhoto=false
+                        }
+                    }
+                } else if (confirmation=="external_search") {
                     savedUri?.let { uri ->
                         runCatching {
                             context.startActivity(Intent.createChooser(
