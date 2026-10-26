@@ -1830,10 +1830,10 @@ fun MainAppContent(
                         onSendPhotoAlbum = { partner, uris, quality ->
                             val photos = uris.take(10)
                             val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
-                            photos.forEachIndexed { index, uri ->
+                            photos.forEachIndexed { index, photo ->
                                 viewModel.sendAttachmentMessage(
-                                    partner, uri, com.blinkng.shared.BlinkChatAttachmentKind.IMAGE,
-                                    imageQuality = quality,
+                                    partner, photo.first, com.blinkng.shared.BlinkChatAttachmentKind.IMAGE,
+                                    caption = photo.second, imageQuality = quality,
                                     album = if (albumId == null) com.blinkng.shared.BlinkChatPhotoAlbum.single()
                                     else com.blinkng.shared.BlinkChatPhotoAlbum.of(albumId, index, photos.size)
                                 )

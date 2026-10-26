@@ -61,9 +61,9 @@ fun MessagesScreen(
         onSendPhotoAlbum = { partner, uris, quality ->
             val photos = uris.take(10)
             val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
-            photos.forEachIndexed { index, uri ->
+            photos.forEachIndexed { index, photo ->
                 onSendAttachment(
-                    partner, uri, BlinkChatAttachmentKind.IMAGE, 0L, "", quality,
+                    partner, photo.first, BlinkChatAttachmentKind.IMAGE, 0L, photo.second, quality,
                     if (albumId == null) BlinkChatPhotoAlbum.single()
                     else BlinkChatPhotoAlbum.of(albumId, index, photos.size)
                 )
@@ -136,9 +136,9 @@ fun ChatConversationView(
         onSendPhotoAlbum = { _, uris, quality ->
             val photos = uris.take(10)
             val albumId = if (photos.size > 1) java.util.UUID.randomUUID().toString() else null
-            photos.forEachIndexed { index, uri ->
+            photos.forEachIndexed { index, photo ->
                 onSendAttachment(
-                    uri, BlinkChatAttachmentKind.IMAGE, 0L, "", quality,
+                    photo.first, BlinkChatAttachmentKind.IMAGE, 0L, photo.second, quality,
                     if (albumId == null) BlinkChatPhotoAlbum.single()
                     else BlinkChatPhotoAlbum.of(albumId, index, photos.size)
                 )

@@ -17,6 +17,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatMediaPreferences
+import com.example.data.supabase.BlinkChatPhotoEditor
 import com.blinkng.shared.BlinkChatImageQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import android.speech.RecognizerIntent
@@ -199,6 +201,12 @@ import kotlin.math.abs
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
+private data class ChatPhotoReviewItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val uri: Uri,
+    val caption: String = ""
+)
+
 private enum class MessageCallKind { AUDIO, VIDEO }
 private typealias MessageInboxTab = com.blinkng.shared.BlinkMessageInbox
 
@@ -243,7 +251,7 @@ fun PremiumMessagesScreen(
     onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
-    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
+    onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
@@ -503,7 +511,7 @@ private fun PremiumMessagesMasterDetail(
     onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
-    onSendPhotoAlbum: (String, List<Uri>, BlinkChatImageQuality) -> Unit,
+    onSendPhotoAlbum: (String, List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (String, Uri, String, BlinkChatImageQuality) -> Unit,
     onPresenceChange: (String, String) -> Unit,
     allowLinkPreviews: Boolean,
@@ -1428,7 +1436,7 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
-    onSendPhotoAlbum: (List<Uri>, BlinkChatImageQuality) -> Unit,
+    onSendPhotoAlbum: (List<Pair<Uri, String>>, BlinkChatImageQuality) -> Unit,
     onSendViewOncePicture: (Uri) -> Unit,
     onPresenceChange: (String) -> Unit,
     allowLinkPreviews: Boolean,
@@ -1547,13 +1555,94 @@ private fun PremiumChatDetail(
     var selectedPhotoQuality by remember(conversation.id) {
         mutableStateOf(BlinkChatImageQuality.STANDARD)
     }
-    val photoAlbumPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(10)
-    ) { uris ->
-        if (uris.isNotEmpty()) onSendPhotoAlbum(uris, selectedPhotoQuality)
+    var pendingPhotoReview by remember(conversation.id) {
+        mutableStateOf<List<ChatPhotoReviewItem>>(emptyList())
+    }
+    var photoEditBusy by remember(conversation.id) { mutableStateOf(false) }
+
+    // Only delete files produced by BLINK's non-destructive editor. Never touch
+    // files returned by the Android Photo Picker or another application.
+    fun cleanupReviewEdit(uri: Uri) {
+        if (uri.scheme != "file") return
+        val file = java.io.File(uri.path.orEmpty())
+        val isEditorCopy = file.parentFile?.canonicalFile ==
+            context.cacheDir.canonicalFile && file.name.startsWith("blink-edited-")
+        val isCameraCapture = file.parentFile?.name == "blink-camera" &&
+            file.parentFile?.parentFile?.canonicalFile == context.cacheDir.canonicalFile &&
+            file.name.startsWith("blink-camera-")
+        if (isEditorCopy || isCameraCapture) {
+            runCatching { file.delete() }
+        }
+    }
+
+    fun dismissPhotoReview() {
+        pendingPhotoReview.forEach { cleanupReviewEdit(it.uri) }
+        pendingPhotoReview = emptyList()
         selectedPhotoQuality = BlinkChatImageQuality.STANDARD
         onPresenceChange("online")
     }
+
+    val photoAlbumPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingPhotoReview = uris.take(10).map { ChatPhotoReviewItem(uri = it) }
+        } else {
+            selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        }
+        onPresenceChange("online")
+    }
+    var cameraOutputFile by remember(conversation.id) {
+        mutableStateOf<java.io.File?>(null)
+    }
+    val captureChatPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val file = cameraOutputFile
+        if (success && file != null && file.isFile && file.length() > 0L) {
+            pendingPhotoReview = listOf(ChatPhotoReviewItem(uri = Uri.fromFile(file)))
+        } else {
+            file?.delete()
+        }
+        cameraOutputFile = null
+        onPresenceChange("online")
+    }
+    fun launchChatCamera() {
+        runCatching {
+            val directory = java.io.File(context.cacheDir, "blink-camera").apply {
+                mkdirs()
+            }
+            val file = java.io.File.createTempFile(
+                "blink-camera-", ".jpg", directory
+            )
+            cameraOutputFile = file
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.chatfiles", file
+            )
+            captureChatPhoto.launch(uri)
+        }.onFailure { failure ->
+            cameraOutputFile?.delete()
+            cameraOutputFile = null
+            Toast.makeText(
+                context, failure.message ?: "Camera is unavailable.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) launchChatCamera()
+        else Toast.makeText(context, "Camera permission is required.", Toast.LENGTH_SHORT).show()
+    }
+    fun requestChatCamera() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) launchChatCamera()
+        else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
     var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -2225,6 +2314,170 @@ private fun PremiumChatDetail(
         )
     }
 
+
+    // Review before sending: selections and captions stay aligned while reordering,
+    // removing, rotating or cropping individual images. Originals are not modified.
+    if (pendingPhotoReview.isNotEmpty()) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!photoEditBusy) dismissPhotoReview() },
+            title = {
+                Text("Review ${pendingPhotoReview.size} photo(s)", color = palette.textPrimary)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { selectedPhotoQuality = BlinkChatImageQuality.STANDARD },
+                            enabled = !photoEditBusy
+                        ) {
+                            Text(
+                                if (selectedPhotoQuality == BlinkChatImageQuality.STANDARD)
+                                    "✓ Standard" else "Standard",
+                                color = palette.textPrimary
+                            )
+                        }
+                        androidx.compose.material3.TextButton(
+                            onClick = { selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL },
+                            enabled = !photoEditBusy
+                        ) {
+                            Text(
+                                if (selectedPhotoQuality == BlinkChatImageQuality.ORIGINAL)
+                                    "✓ Original / HD" else "Original / HD",
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(pendingPhotoReview, key = { _, item -> item.id }) { index, item ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = item.uri,
+                                        contentDescription = "Photo ${index + 1} preview",
+                                        modifier = Modifier.size(76.dp)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Photo ${index + 1}",
+                                            color = palette.textPrimary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Row {
+                                            androidx.compose.material3.TextButton(
+                                                enabled = !photoEditBusy && index > 0,
+                                                onClick = {
+                                                    pendingPhotoReview = pendingPhotoReview.toMutableList()
+                                                        .apply { add(index - 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↑ Up") }
+                                            androidx.compose.material3.TextButton(
+                                                enabled = !photoEditBusy &&
+                                                    index < pendingPhotoReview.lastIndex,
+                                                onClick = {
+                                                    pendingPhotoReview = pendingPhotoReview.toMutableList()
+                                                        .apply { add(index + 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↓ Down") }
+                                        }
+                                    }
+                                    androidx.compose.material3.TextButton(
+                                        enabled = !photoEditBusy,
+                                        onClick = {
+                                            cleanupReviewEdit(item.uri)
+                                            pendingPhotoReview =
+                                                pendingPhotoReview.filterNot { it.id == item.id }
+                                            if (pendingPhotoReview.isEmpty()) {
+                                                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                                            }
+                                        }
+                                    ) { Text("Remove", color = palette.danger) }
+                                }
+                                TextField(
+                                    value = item.caption,
+                                    onValueChange = { value ->
+                                        pendingPhotoReview = pendingPhotoReview.map {
+                                            if (it.id == item.id) it.copy(caption = value.take(1024))
+                                            else it
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Caption (optional)") },
+                                    maxLines = 3,
+                                    enabled = !photoEditBusy
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf(
+                                        "Rotate" to BlinkChatPhotoEditor.Edit.ROTATE_RIGHT,
+                                        "Square crop" to BlinkChatPhotoEditor.Edit.CENTER_SQUARE
+                                    ).forEach { (label, operation) ->
+                                        androidx.compose.material3.TextButton(
+                                            enabled = !photoEditBusy,
+                                            onClick = {
+                                                photoEditBusy = true
+                                                scrollScope.launch {
+                                                    runCatching {
+                                                        BlinkChatPhotoEditor.edit(
+                                                            context, item.uri, operation
+                                                        )
+                                                    }.onSuccess { editedUri ->
+                                                        pendingPhotoReview = pendingPhotoReview.map {
+                                                            if (it.id == item.id) it.copy(uri = editedUri)
+                                                            else it
+                                                        }
+                                                        cleanupReviewEdit(item.uri)
+                                                    }.onFailure { failure ->
+                                                        Toast.makeText(
+                                                            context,
+                                                            failure.message ?: "This photo cannot be edited.",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    photoEditBusy = false
+                                                }
+                                            }
+                                        ) { Text(label, color = palette.textSecondary) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !photoEditBusy && pendingPhotoReview.isNotEmpty(),
+                    onClick = {
+                        val photos = pendingPhotoReview.map {
+                            it.uri to it.caption.trim().take(1024)
+                        }
+                        val quality = selectedPhotoQuality
+                        // Do not delete edited sources: the durable upload queue needs
+                        // them until staging has completed.
+                        pendingPhotoReview = emptyList()
+                        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                        onPresenceChange("uploading")
+                        onSendPhotoAlbum(photos, quality)
+                    }
+                ) { Text("Send ${pendingPhotoReview.size}", color = palette.accent) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !photoEditBusy,
+                    onClick = { dismissPhotoReview() }
+                ) { Text("Cancel", color = palette.textSecondary) }
+            }
+        )
+    }
+
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
@@ -2235,6 +2488,10 @@ private fun PremiumChatDetail(
                 photoAlbumPicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
+            },
+            onCamera = {
+                showAttachmentSheet = false
+                requestChatCamera()
             },
             onOriginalPhotos = {
                 selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
@@ -3522,6 +3779,44 @@ private fun SharedChatContentSheet(
     val starred = remember(conversation.messages) {
         conversation.messages.filter { it.isStarred }
     }
+    var historicalPictures by remember(conversation.id) {
+        mutableStateOf<List<ChatMessage>>(emptyList())
+    }
+    var photoOffset by remember(conversation.id) { mutableIntStateOf(0) }
+    var photoHasMore by remember(conversation.id) { mutableStateOf(true) }
+    var photoLoading by remember(conversation.id) { mutableStateOf(false) }
+    var photoError by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var photoViewerId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    val photoScope = rememberCoroutineScope()
+
+    suspend fun loadNextPhotoPage() {
+        if (photoLoading || !photoHasMore ||
+            conversation.id.isBlank() || conversation.id.startsWith("local_")) return
+        photoLoading = true
+        MessageMediaService.fetchConversationPhotoPage(
+            conversation.id, photoOffset, 24
+        ).fold(
+            onSuccess = { photos ->
+                historicalPictures = (historicalPictures + photos).distinctBy { it.id }
+                photoOffset += 24
+                photoHasMore = photos.size >= 24
+                photoError = null
+            },
+            onFailure = { photoError = it.message ?: "Could not load shared photos." }
+        )
+        photoLoading = false
+    }
+
+    LaunchedEffect(conversation.id) {
+        loadNextPhotoPage()
+    }
+    val galleryPictures = historicalPictures.ifEmpty {
+        if (photoError != null) media.filter { !it.attachedImageUrl.isNullOrBlank() }
+        else emptyList()
+    }
+    val galleryOtherMedia = remember(media) {
+        media.filter { it.attachedImageUrl.isNullOrBlank() }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3570,26 +3865,80 @@ private fun SharedChatContentSheet(
         ) {
             when (tab) {
                 "media" -> {
-                    if (media.isEmpty()) {
+                    if (galleryPictures.isEmpty() && galleryOtherMedia.isEmpty() &&
+                        !photoLoading && !photoHasMore) {
                         item { SharedContentEmpty("No shared media yet", palette) }
-                    } else {
-                        items(media, key = { "media:${it.id}" }) { message ->
-                            val url = message.attachedImageUrl
-                                ?: message.attachedVideoUrl
-                                ?: message.attachedAudioUrl
-                            SharedContentRow(
-                                title = when {
-                                    !message.attachedImageUrl.isNullOrBlank() -> "Photo"
-                                    !message.attachedVideoUrl.isNullOrBlank() -> "Video"
-                                    message.isVoiceNote -> "Voice message"
-                                    else -> "Audio"
-                                },
-                                subtitle = message.timestamp,
-                                palette = palette,
-                                onClick = {
-                                    url?.let { openExternalUri(context, Uri.parse(it)) }
+                    }
+                    items(galleryPictures, key = { "photo:${it.id}" }) { picture ->
+                        Surface(
+                            color = palette.glassElevated,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, palette.border),
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { photoViewerId = picture.id }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = picture.imagePreviewUrl ?: picture.attachedImageUrl,
+                                    contentDescription = "Private shared picture",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(76.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Photo", color = palette.textPrimary,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        picture.text.takeIf { it != "Image" }.orEmpty()
+                                            .ifBlank { picture.timestamp },
+                                        color = palette.textSecondary,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        fontSize = 11.sp
+                                    )
                                 }
+                            }
+                        }
+                    }
+                    items(galleryOtherMedia, key = { "other:${it.id}" }) { message ->
+                        val url = message.attachedVideoUrl ?: message.attachedAudioUrl
+                        SharedContentRow(
+                            title = when {
+                                !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                message.isVoiceNote -> "Voice message"
+                                else -> "Audio"
+                            },
+                            subtitle = message.timestamp,
+                            palette = palette,
+                            onClick = { url?.let { openExternalUri(context, Uri.parse(it)) } }
+                        )
+                    }
+                    if (photoLoading) {
+                        item {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp)
                             )
+                        }
+                    }
+                    photoError?.let { error ->
+                        item {
+                            Column {
+                                Text(error, color = palette.danger, fontSize = 11.sp)
+                                androidx.compose.material3.TextButton(
+                                    enabled = !photoLoading,
+                                    onClick = { photoScope.launch { loadNextPhotoPage() } }
+                                ) { Text("Retry") }
+                            }
+                        }
+                    }
+                    if (photoHasMore && !photoLoading && photoError == null) {
+                        item {
+                            androidx.compose.material3.TextButton(
+                                onClick = { photoScope.launch { loadNextPhotoPage() } }
+                            ) { Text("Load older photos") }
                         }
                     }
                 }
@@ -3650,6 +3999,60 @@ private fun SharedChatContentSheet(
             }
         }
         Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+
+    val currentPhoto = galleryPictures.indexOfFirst { it.id == photoViewerId }
+    if (currentPhoto >= 0) {
+        val photo = galleryPictures[currentPhoto]
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { photoViewerId = null },
+            title = {
+                Text("Photo ${currentPhoto + 1} of ${galleryPictures.size}",
+                    color = palette.textPrimary)
+            },
+            text = {
+                var horizontalDrag by remember(photo.id) { mutableStateOf(0f) }
+                AsyncImage(
+                    model = photo.attachedImageUrl,
+                    contentDescription = "Full-size photo. Swipe for the next or previous image.",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+                        .pointerInput(currentPhoto, galleryPictures.size) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (horizontalDrag < -65f &&
+                                        currentPhoto < galleryPictures.lastIndex) {
+                                        photoViewerId = galleryPictures[currentPhoto + 1].id
+                                    } else if (horizontalDrag > 65f && currentPhoto > 0) {
+                                        photoViewerId = galleryPictures[currentPhoto - 1].id
+                                    }
+                                    horizontalDrag = 0f
+                                }
+                            ) { change, amount ->
+                                horizontalDrag += amount
+                                change.consume()
+                            }
+                        }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { photoViewerId = null }
+                ) { Text("Close") }
+            },
+            dismissButton = {
+                Row {
+                    androidx.compose.material3.TextButton(
+                        enabled = currentPhoto > 0,
+                        onClick = { photoViewerId = galleryPictures[currentPhoto - 1].id }
+                    ) { Text("Previous") }
+                    androidx.compose.material3.TextButton(
+                        enabled = currentPhoto < galleryPictures.lastIndex,
+                        onClick = { photoViewerId = galleryPictures[currentPhoto + 1].id }
+                    ) { Text("Next") }
+                }
+            }
+        )
     }
 }
 
@@ -3789,6 +4192,7 @@ private fun ChatNotificationSettingsSheet(
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
+    onCamera: () -> Unit,
     onViewOnce: () -> Unit,
     onOriginalPhotos: () -> Unit,
     onVideo: () -> Unit,
@@ -3832,6 +4236,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onImage
+            )
+            AttachmentOption(
+                label = "Camera",
+                description = "Take a picture and review before sending",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onCamera
             )
             AttachmentOption(
                 label = "Original photos",
@@ -4064,6 +4475,11 @@ private fun ChatPrivacySettingsSheet(
     onChange: (ChatPrivacySettings) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var autoWifi by remember { mutableStateOf(BlinkChatMediaPreferences.wifiAuto(context)) }
+    var autoMobile by remember { mutableStateOf(BlinkChatMediaPreferences.mobileAuto(context)) }
+    var dataSaver by remember { mutableStateOf(BlinkChatMediaPreferences.dataSaver(context)) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = palette.glass,
@@ -4176,6 +4592,49 @@ private fun ChatPrivacySettingsSheet(
                     settings.allowLinkPreviews,
                     palette
                 ) { onChange(settings.copy(allowLinkPreviews = it)) }
+            }
+
+            item {
+                Text(
+                    "Photo downloads",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Automatically download on Wi-Fi",
+                    "Load normal-quality private photos over Wi-Fi.",
+                    autoWifi,
+                    palette
+                ) {
+                    autoWifi = it
+                    BlinkChatMediaPreferences.update(context, wifi = it)
+                }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Automatically download on mobile data",
+                    "Off by default to save mobile data.",
+                    autoMobile,
+                    palette
+                ) {
+                    autoMobile = it
+                    BlinkChatMediaPreferences.update(context, mobile = it)
+                }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Data Saver",
+                    "Show small picture previews until you choose to open more.",
+                    dataSaver,
+                    palette
+                ) {
+                    dataSaver = it
+                    BlinkChatMediaPreferences.update(context, saver = it)
+                }
             }
 
             item {

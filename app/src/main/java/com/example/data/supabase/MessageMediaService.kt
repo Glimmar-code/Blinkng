@@ -232,6 +232,69 @@ object MessageMediaService {
         }
     }
 
+    /**
+     * The deployed history RPC predates photo albums. Read the new metadata
+     * through the same conversation's RLS-protected messages endpoint, without
+     * replacing any message or exposing a private Storage object key in the UI.
+     * Old backend deployments still return the original individual photo rows.
+     */
+    suspend fun hydratePhotoAlbumMetadata(
+        messages: List<ChatMessage>, conversationId: String
+    ): List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.none { it.messageType.equals("image", ignoreCase = true) } ||
+            !photoMetadataSupported()) return@withContext messages
+        val owner = uid() ?: return@withContext messages
+        val convo = runCatching { UUID.fromString(conversationId).toString() }.getOrNull()
+            ?: return@withContext messages
+        val ids = messages.filter { it.messageType.equals("image", ignoreCase = true) }
+            .mapNotNull { runCatching { UUID.fromString(it.id).toString() }.getOrNull() }
+        if (ids.isEmpty()) return@withContext messages
+
+        val metadata = runCatching {
+            val path = "/rest/v1/messages?conversation_id=eq.$convo" +
+                "&id=in.(${ids.joinToString(",")})" +
+                "&select=id,sender_id,image_album_id,image_album_position," +
+                "image_album_size,image_preview_url&limit=100"
+            client.newCall(builder(path).get().build()).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyMap<String, JSONObject>()
+                val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+                buildMap<String, JSONObject> {
+                    for (i in 0 until rows.length()) {
+                        val row = rows.optJSONObject(i) ?: continue
+                        val mid = row.optString("id")
+                        if (mid in ids) put(mid, row)
+                    }
+                }
+            }
+        }.getOrDefault(emptyMap())
+        if (uid() != owner || metadata.isEmpty()) return@withContext messages
+
+        messages.map { message ->
+            val row = metadata[message.id] ?: return@map message
+            if (!message.messageType.equals("image", ignoreCase = true) ||
+                message.imageViewOnce || row.optString("sender_id") != message.senderId) {
+                return@map message
+            }
+            val groupId = row.optString("image_album_id").takeIf { value ->
+                runCatching { UUID.fromString(value) }.isSuccess
+            }
+            val count = row.optInt("image_album_size", 1)
+            val position = row.optInt("image_album_position", 0)
+            val safeGroup = groupId != null && count in 2..10 && position in 0 until count
+            val preview = row.optString("image_preview_url").takeIf { path ->
+                path.startsWith(
+                    "$PRIVATE_BUCKET:conversations/$convo/users/${message.senderId}/preview/"
+                )
+            }?.removePrefix("$PRIVATE_BUCKET:")?.let(::signedUrl)
+            message.copy(
+                imageAlbumId = groupId.takeIf { safeGroup },
+                imageAlbumPosition = if (safeGroup) position else 0,
+                imageAlbumSize = if (safeGroup) count else 1,
+                imagePreviewUrl = preview ?: message.imagePreviewUrl
+            )
+        }
+    }
+
     suspend fun sendVideoMessage(
         context: Context,
         receiverUsername: String,
