@@ -1516,6 +1516,7 @@ private fun PremiumChatDetail(
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1972,6 +1973,7 @@ private fun PremiumChatDetail(
                                 }
                             },
                             onActions = { selectedMessage = message },
+                            onOpenImage = { viewedImageMessage = it },
                             onRetry = { onRetry(message) },
                             onCancelAttachment = { onCancelAttachment(message) },
                             allowLinkPreviews = allowLinkPreviews
@@ -2082,6 +2084,53 @@ private fun PremiumChatDetail(
                 onVoiceStart = { beginVoiceRecording() },
                 onVoiceStop = { finishVoiceRecording(true) },
                 onVoiceCancel = { finishVoiceRecording(false) }
+            )
+        }
+    }
+
+    viewedImageMessage?.let { requestedImage ->
+        val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
+        if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
+            BlinkChatPictureViewer(
+                message = message,
+                senderName = if (message.isFromMe) "You" else conversation.partnerName,
+                onDismiss = { viewedImageMessage = null },
+                onShowInChat = {
+                    viewedImageMessage = null
+                    searchQuery = ""
+                    pinnedOnly = false
+                    starredOnly = false
+                    val position = conversation.messages.indexOfFirst { it.id == message.id }
+                    if (position >= 0) scrollScope.launch {
+                        delay(100)
+                        listState.animateScrollToItem(position + if (isLoadingOlder) 1 else 0)
+                    }
+                },
+                onForward = {
+                    forwardingMessage = message
+                    viewedImageMessage = null
+                },
+                onReply = {
+                    replyingTo = message
+                    editingMessage = null
+                    viewedImageMessage = null
+                },
+                onStar = {
+                    interactionActions.onToggleStar(conversation.partnerUsername, message)
+                    viewedImageMessage = null
+                },
+                onDeleteForMe = {
+                    interactionActions.onDeleteForMe(conversation.partnerUsername, message)
+                    viewedImageMessage = null
+                },
+                onOpenAllMedia = {
+                    viewedImageMessage = null
+                    showSharedContent = true
+                },
+                onReact = { emoji ->
+                    interactionActions.onReact(conversation.partnerUsername, message, emoji)
+                    viewedImageMessage = null
+                }
             )
         }
     }
@@ -2936,6 +2985,7 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
+    onOpenImage: (ChatMessage) -> Unit,
     onRetry: () -> Unit,
     onCancelAttachment: () -> Unit,
     allowLinkPreviews: Boolean
@@ -3061,7 +3111,8 @@ private fun MessageBubble(
                         isMine = isMine,
                         palette = palette,
                         allowLinkPreviews = allowLinkPreviews,
-                        onCancelAttachment = onCancelAttachment
+                        onCancelAttachment = onCancelAttachment,
+                        onOpenImage = onOpenImage
                     )
                     // Compact inside-bubble timestamp and one overlapping double-check glyph.
                     val metadata = when (message.status) {
@@ -3133,7 +3184,8 @@ private fun MessageContent(
     isMine: Boolean,
     palette: MessagePalette,
     allowLinkPreviews: Boolean,
-    onCancelAttachment: () -> Unit
+    onCancelAttachment: () -> Unit,
+    onOpenImage: (ChatMessage) -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -3242,6 +3294,7 @@ private fun MessageContent(
                     contentDescription = "Shared image",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
+                        .clickable { onOpenImage(message) }
                 )
             }
             if (!message.attachedVideoUrl.isNullOrBlank()) {
