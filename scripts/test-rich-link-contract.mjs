@@ -7,10 +7,12 @@ const read = path => fs.readFileSync(new URL('../' + path, import.meta.url), 'ut
 
 test('browser script parses after link-card injection', () => {
   assert.doesNotThrow(() => new vm.Script(read('web/app.js')));
+  assert.doesNotThrow(() => new vm.Script(read('web/link-previews.js')));
 });
 
 test('web rich preview uses inert text and never injects remote metadata HTML', () => {
-  const code = read('web/app.js');
+  const code = read('web/link-previews.js');
+  const app = read('web/app.js');
   assert.match(code, /function richLinkCard\(text\)/);
   assert.match(code, /title\.textContent =/);
   assert.match(code, /desc\.textContent =/);
@@ -18,7 +20,7 @@ test('web rich preview uses inert text and never injects remote metadata HTML', 
   assert.match(code, /rel="noopener noreferrer"/);
   assert.match(code, /IntersectionObserver/);
   for (const surface of ['post.text', 'comment.content', 'm.content', 's.caption', 'r.text'])
-    assert.ok(code.includes('richLinkCard(' + surface), surface);
+    assert.ok(app.includes('richLinkCard(' + surface), surface);
 });
 
 test('Android and Windows share one URL recognition policy', () => {
@@ -26,9 +28,9 @@ test('Android and Windows share one URL recognition policy', () => {
   assert.match(shared, /object BlinkRichLinks/);
   assert.match(shared, /rawUserInfo != null/);
   assert.match(read('app/src/main/java/com/example/ui/components/BlinkRichLinkPreview.kt'),
-    /BlinkRichLinks\.first\(text\)/);
+    /BlinkRichLinks\.all\(text\)/);
   assert.match(read('desktopApp/src/main/kotlin/com/blinkng/desktop/ui/DesktopRichLinkPreview.kt'),
-    /BlinkRichLinks\.first\(text\)/);
+    /BlinkRichLinks\.all\(text\)/);
 });
 
 test('private Android chat preview preference still gates metadata', () => {
@@ -54,16 +56,13 @@ test('profile sharing uses the official domain instead of temporary placeholder'
 });
 
 test('browser previews render three distinct links, safely, with no inline HTML', () => {
-  const js = read('web/app.js');
-  const start = js.indexOf('  function previewLinkInText(text) {');
-  const end = js.indexOf('  async function linkMetadata(url) {', start);
-  assert.ok(start >= 0 && end > start, 'browser link renderer not found');
-  const escape = value => String(value).replace(/[&<>"']/g, char =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'" :'&#39;'}[char]));
-  const {previewLinkInText, richLinkCard} =
-    new Function('esc', js.slice(start, end) + ';return {previewLinkInText, richLinkCard};')(escape);
-  assert.equal(previewLinkInText('javascript:alert(1)'), null);
-  assert.equal(previewLinkInText('https://user:password@example.com'), null);
+  const window = {};
+  vm.runInNewContext(read('web/link-previews.js'), {
+    window, URL, location: {origin:'https://blink.com.ng'}
+  });
+  const richLinkCard = window.BlinkLinkPreview.card;
+  assert.equal(richLinkCard('javascript:alert(1)'), '');
+  assert.equal(richLinkCard('https://user:password@example.com'), '');
   const cards = richLinkCard('https://one.example/path https://two.example/ https://one.example/path https://three.example/ https://four.example/');
   assert.equal((cards.match(/class="rich-link-card"/g)||[]).length, 3);
   assert.ok(cards.includes('one.example'));
