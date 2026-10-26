@@ -217,7 +217,8 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                                 actionBusy = true
                                 runCatching {
                                     val response = actions.initializePaystackCoinCheckout(pack.id)
-                                    val url = response.optString("checkout_url")
+                                    val url = response.optString("authorization_url")
+                                        .ifBlank { response.optString("checkout_url") }
                                         .ifBlank { response.optString("checkoutUrl") }
                                     require(com.blinkng.shared.BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url)) {
                                         "A trusted payment page was not returned."
