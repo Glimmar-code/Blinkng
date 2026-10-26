@@ -166,10 +166,10 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  // Service-role dispatch may ONLY send confirmed referral notifications.
-  // This allows a trusted outbox worker to deliver without the new user reopening BLINK.
-  const serverReferralDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
-  if (!actorId && !serverReferralDispatch) return json({ error: "Unauthorized" }, 401);
+  // Service-role dispatch is restricted to independently verified events,
+  // never arbitrary notification IDs submitted by an untrusted caller.
+  const serverAuthorizedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
+  if (!actorId && !serverAuthorizedDispatch) return json({ error: "Unauthorized" }, 401);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
   if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
@@ -196,20 +196,53 @@ Deno.serve(async (req) => {
   if (!notification) return json({ error: "Notification not found" }, 404);
 
   // Ordinary user notifications still require the authenticated originating actor.
-  if (serverReferralDispatch) {
-    if (notification.metadata?.kind !== "blink_referral_confirmed" ||
-        !notification.actor_id || !notification.user_id) {
-      return json({ error: "Server dispatch is restricted to confirmed referrals" }, 403);
-    }
-    const { data: referral, error: referralError } = await admin
-      .from("blink_referrals")
-      .select("referred_user_id")
-      .eq("referred_user_id", String(notification.actor_id))
-      .eq("referrer_user_id", String(notification.user_id))
-      .eq("status", "confirmed")
-      .maybeSingle();
-    if (referralError || !referral) {
-      return json({ error: "Referral record was not independently verified" }, 403);
+  if (serverAuthorizedDispatch) {
+    const kind = String(notification.metadata?.kind ?? "");
+    if (kind === "blink_referral_confirmed") {
+      if (!notification.actor_id || !notification.user_id) {
+        return json({ error: "Invalid referral notification" }, 403);
+      }
+      const { data: referral, error: referralError } = await admin
+        .from("blink_referrals")
+        .select("referred_user_id")
+        .eq("referred_user_id", String(notification.actor_id))
+        .eq("referrer_user_id", String(notification.user_id))
+        .eq("status", "confirmed")
+        .maybeSingle();
+      if (referralError || !referral) {
+        return json({ error: "Referral record was not independently verified" }, 403);
+      }
+    } else if (kind === "blink_channel_update" && notification.target_type === "channel") {
+      // Every recipient is rechecked at delivery time: unfollowing, banning
+      // and muting must prevent delayed/retried pushes.
+      const updateId = String(notification.metadata?.update_id ?? "");
+      const channelId = String(notification.metadata?.channel_id ?? "");
+      if (!updateId || !channelId || channelId !== String(notification.target_id)) {
+        return json({ error: "Invalid channel notification" }, 403);
+      }
+      const [u, member, channel, muted] = await Promise.all([
+        admin.from("blink_channel_updates").select("id,author_id,channel_id,scheduled_at,removed_at")
+          .eq("id", updateId).maybeSingle(),
+        admin.from("blink_community_members").select("status")
+          .eq("community_id", channelId).eq("user_id", String(notification.user_id)).maybeSingle(),
+        admin.from("blink_communities").select("owner_id")
+          .eq("id", channelId).maybeSingle(),
+        admin.from("blink_channel_notifications").select("muted")
+          .eq("channel_id", channelId).eq("user_id", String(notification.user_id)).maybeSingle(),
+      ]);
+      const update = u.data;
+      const scheduled = update?.scheduled_at ? Date.parse(String(update.scheduled_at)) : 0;
+      if (u.error || member.error || channel.error || muted.error ||
+          !update || update.removed_at || (scheduled && scheduled > Date.now()) ||
+          update.channel_id !== channelId ||
+          String(update.author_id) !== String(notification.actor_id) ||
+          String(notification.user_id) === String(update.author_id) ||
+          String(notification.user_id) === String(channel.data?.owner_id) ||
+          member.data?.status !== "active" || muted.data?.muted === true) {
+        return json({ ok: true, skipped: "channel_access_or_preferences_revoked" });
+      }
+    } else {
+      return json({ error: "Server dispatch is restricted to confirmed referrals and channel updates" }, 403);
     }
   } else if (!notification.actor_id || String(notification.actor_id) !== actorId) {
     return json({ error: "Forbidden" }, 403);
