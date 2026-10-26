@@ -3530,7 +3530,7 @@ private fun MessageContent(
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
-                if (allowLinkPreviews) {
+                if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
                     com.example.ui.components.BlinkRichLinkPreview(
                         text = message.text,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
