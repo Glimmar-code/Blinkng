@@ -95,6 +95,56 @@ object BlinkChannelMediaService {
             }
         }
 
+    /** Explicit forwarding copies readable media to the destination owner's private folder.
+     * An original private object URL is never exposed to the destination's followers.
+     * Both the original read and destination write remain protected by Storage RLS.
+     */
+    suspend fun forwardCopy(
+        context: Context, sourcePath: String, destinationChannelId: String
+    ): Uploaded = withContext(Dispatchers.IO) {
+        val signed = signedUrl(sourcePath) ?: error("Source media is not accessible.")
+        val base = SupabaseConfig.url.trimEnd('/')
+        require(signed.startsWith("$base/storage/v1/")) { "Unexpected source media host." }
+        val ext = sourcePath.substringAfterLast('.').lowercase()
+        val mime = allowed.entries.firstOrNull { it.value.second == ext }?.key
+            ?: error("Unsupported Channel media type.")
+        val kind = allowed.getValue(mime).first
+        val tmp = File.createTempFile("blink_forward_", ".$ext", context.cacheDir)
+        try {
+            http.newCall(Request.Builder().url(signed).get().build()).execute().use { response ->
+                check(response.isSuccessful) { "Couldn't read the original Channel media." }
+                val stream = response.body?.byteStream() ?: error("Original media is empty.")
+                stream.use { input ->
+                    tmp.outputStream().use { output ->
+                        val buf = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val length = input.read(buf)
+                            if (length < 0) break
+                            total += length
+                            require(total <= MAX_BYTES) { "Channel attachment exceeds 25 MB." }
+                            output.write(buf, 0, length)
+                        }
+                        require(total > 0L) { "Original media is empty." }
+                    }
+                }
+            }
+            val uid = SupabaseService().getCurrentUserId() ?: error("Sign in again.")
+            val id = UUID.fromString(destinationChannelId).toString()
+            val path = "$id/$uid/${UUID.randomUUID()}.$ext"
+            http.newCall(
+                authenticated("/storage/v1/object/$BUCKET/${encoded(path)}")
+                    .header("Content-Type", mime)
+                    .header("x-upsert", "false")
+                    .post(tmp.asRequestBody(mime.toMediaType()))
+                    .build()
+            ).execute().use { response ->
+                check(response.isSuccessful) { "Channel media forwarding failed (HTTP ${response.code})." }
+            }
+            Uploaded(kind, path)
+        } finally { tmp.delete() }
+    }
+
     suspend fun signedUrl(objectPath: String): String? = withContext(Dispatchers.IO) {
         if (objectPath.isBlank()) return@withContext null
         val request = authenticated("/storage/v1/object/sign/$BUCKET/${encoded(objectPath)}")
