@@ -165,7 +165,8 @@ fun BlinkChannelDetail(
                         showScheduled = true
                     } catch (e: Exception) { error = e.message }
                 }
-            }) { Text("Scheduled") }            TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
+            }) { Text("Scheduled") }
+            TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
                 Text("Refresh")
             }
         }
@@ -275,7 +276,7 @@ fun BlinkChannelDetail(
                         }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             item { TextButton(onClick = {
-                                val message = "${channel.name} — BLINK Channel\\n${update.body}"
+                                val message = "${channel.name} — BLINK Channel\n${update.body}"
                                 context.startActivity(Intent.createChooser(
                                     Intent(Intent.ACTION_SEND).setType("text/plain")
                                         .putExtra(Intent.EXTRA_TEXT, message),
