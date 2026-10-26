@@ -186,6 +186,7 @@ fun CreatePostSheet(
     onPublishScheduledPostNow: (String) -> Unit = {},
     onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
+    startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
     searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
@@ -206,7 +207,7 @@ fun CreatePostSheet(
     LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
-    var mode by rememberSaveable { mutableStateOf("post") }
+    var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
         scope = composerScope
@@ -277,6 +278,13 @@ fun CreatePostSheet(
         }
     }
 
+    LaunchedEffect(startInReelMode) {
+        if (startInReelMode && selectedVideo == null) {
+            mode = "reel"
+            videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        }
+    }
+
     fun imagePayload(images: List<String>): String? {
         return when (images.size) {
             0 -> null
@@ -332,7 +340,7 @@ fun CreatePostSheet(
                 selectedImages = parseDraftImages(value.optString("image_uri"))
                 selectedVideo = value.optString("video_uri")
                     .takeIf { it.isNotBlank() && it != "null" }
-                mode = value.optString(
+                if (!startInReelMode) mode = value.optString(
                     "mode",
                     if (selectedVideo == null) "post" else "reel"
                 )
@@ -737,7 +745,7 @@ fun CreatePostSheet(
             ComposerTopBar(
                 isSubmitting = isSubmitting,
                 canSubmit = canSubmit,
-                isReel = selectedVideo != null,
+                isReel = selectedVideo != null || mode == "reel",
                 onDismiss = ::requestDismiss,
                 onSubmit = ::submit
             )
