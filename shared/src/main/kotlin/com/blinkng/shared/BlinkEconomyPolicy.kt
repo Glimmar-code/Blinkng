@@ -51,6 +51,16 @@ data class BlinkEconomyPolicy(
         return (balance.toFloat() / blueVerificationCoinCost.toFloat()).coerceIn(0f, 1f)
     }
 
+    /** The fifteenth-ad tier is reserved for active verified accounts.
+     * The server MUST re-check this entitlement when opening and crediting a claim.
+     */
+    fun effectiveAdDailyLimit(isVerified: Boolean): Int =
+        if (isVerified) rewardedAdDailyLimit else minOf(rewardedAdDailyLimit, 10)
+
+    fun canWatchRewardedAd(completedAds: Int, isVerified: Boolean): Boolean =
+        completedAds < effectiveAdDailyLimit(isVerified)
+
+    // Backward compatibility for existing callers. Do not use for user-facing eligibility.
     fun canWatchRewardedAd(completedAds: Int): Boolean =
         completedAds < rewardedAdDailyLimit
 }
