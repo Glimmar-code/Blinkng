@@ -3719,6 +3719,44 @@ private fun SharedChatContentSheet(
     val starred = remember(conversation.messages) {
         conversation.messages.filter { it.isStarred }
     }
+    var historicalPictures by remember(conversation.id) {
+        mutableStateOf<List<ChatMessage>>(emptyList())
+    }
+    var photoOffset by remember(conversation.id) { mutableIntStateOf(0) }
+    var photoHasMore by remember(conversation.id) { mutableStateOf(true) }
+    var photoLoading by remember(conversation.id) { mutableStateOf(false) }
+    var photoError by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var photoViewerId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    val photoScope = rememberCoroutineScope()
+
+    suspend fun loadNextPhotoPage() {
+        if (photoLoading || !photoHasMore ||
+            conversation.id.isBlank() || conversation.id.startsWith("local_")) return
+        photoLoading = true
+        MessageMediaService.fetchConversationPhotoPage(
+            conversation.id, photoOffset, 24
+        ).fold(
+            onSuccess = { photos ->
+                historicalPictures = (historicalPictures + photos).distinctBy { it.id }
+                photoOffset += 24
+                photoHasMore = photos.size >= 24
+                photoError = null
+            },
+            onFailure = { photoError = it.message ?: "Could not load shared photos." }
+        )
+        photoLoading = false
+    }
+
+    LaunchedEffect(conversation.id) {
+        loadNextPhotoPage()
+    }
+    val galleryPictures = historicalPictures.ifEmpty {
+        if (photoError != null) media.filter { !it.attachedImageUrl.isNullOrBlank() }
+        else emptyList()
+    }
+    val galleryOtherMedia = remember(media) {
+        media.filter { it.attachedImageUrl.isNullOrBlank() }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3767,26 +3805,80 @@ private fun SharedChatContentSheet(
         ) {
             when (tab) {
                 "media" -> {
-                    if (media.isEmpty()) {
+                    if (galleryPictures.isEmpty() && galleryOtherMedia.isEmpty() &&
+                        !photoLoading && !photoHasMore) {
                         item { SharedContentEmpty("No shared media yet", palette) }
-                    } else {
-                        items(media, key = { "media:${it.id}" }) { message ->
-                            val url = message.attachedImageUrl
-                                ?: message.attachedVideoUrl
-                                ?: message.attachedAudioUrl
-                            SharedContentRow(
-                                title = when {
-                                    !message.attachedImageUrl.isNullOrBlank() -> "Photo"
-                                    !message.attachedVideoUrl.isNullOrBlank() -> "Video"
-                                    message.isVoiceNote -> "Voice message"
-                                    else -> "Audio"
-                                },
-                                subtitle = message.timestamp,
-                                palette = palette,
-                                onClick = {
-                                    url?.let { openExternalUri(context, Uri.parse(it)) }
+                    }
+                    items(galleryPictures, key = { "photo:${it.id}" }) { picture ->
+                        Surface(
+                            color = palette.glassElevated,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, palette.border),
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { photoViewerId = picture.id }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = picture.imagePreviewUrl ?: picture.attachedImageUrl,
+                                    contentDescription = "Private shared picture",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(76.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Photo", color = palette.textPrimary,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        picture.text.takeIf { it != "Image" }.orEmpty()
+                                            .ifBlank { picture.timestamp },
+                                        color = palette.textSecondary,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        fontSize = 11.sp
+                                    )
                                 }
+                            }
+                        }
+                    }
+                    items(galleryOtherMedia, key = { "other:${it.id}" }) { message ->
+                        val url = message.attachedVideoUrl ?: message.attachedAudioUrl
+                        SharedContentRow(
+                            title = when {
+                                !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                message.isVoiceNote -> "Voice message"
+                                else -> "Audio"
+                            },
+                            subtitle = message.timestamp,
+                            palette = palette,
+                            onClick = { url?.let { openExternalUri(context, Uri.parse(it)) } }
+                        )
+                    }
+                    if (photoLoading) {
+                        item {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp)
                             )
+                        }
+                    }
+                    photoError?.let { error ->
+                        item {
+                            Column {
+                                Text(error, color = palette.danger, fontSize = 11.sp)
+                                androidx.compose.material3.TextButton(
+                                    enabled = !photoLoading,
+                                    onClick = { photoScope.launch { loadNextPhotoPage() } }
+                                ) { Text("Retry") }
+                            }
+                        }
+                    }
+                    if (photoHasMore && !photoLoading && photoError == null) {
+                        item {
+                            androidx.compose.material3.TextButton(
+                                onClick = { photoScope.launch { loadNextPhotoPage() } }
+                            ) { Text("Load older photos") }
                         }
                     }
                 }
@@ -3847,6 +3939,60 @@ private fun SharedChatContentSheet(
             }
         }
         Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+
+    val currentPhoto = galleryPictures.indexOfFirst { it.id == photoViewerId }
+    if (currentPhoto >= 0) {
+        val photo = galleryPictures[currentPhoto]
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { photoViewerId = null },
+            title = {
+                Text("Photo ${currentPhoto + 1} of ${galleryPictures.size}",
+                    color = palette.textPrimary)
+            },
+            text = {
+                var horizontalDrag by remember(photo.id) { mutableStateOf(0f) }
+                AsyncImage(
+                    model = photo.attachedImageUrl,
+                    contentDescription = "Full-size photo. Swipe for the next or previous image.",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+                        .pointerInput(currentPhoto, galleryPictures.size) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (horizontalDrag < -65f &&
+                                        currentPhoto < galleryPictures.lastIndex) {
+                                        photoViewerId = galleryPictures[currentPhoto + 1].id
+                                    } else if (horizontalDrag > 65f && currentPhoto > 0) {
+                                        photoViewerId = galleryPictures[currentPhoto - 1].id
+                                    }
+                                    horizontalDrag = 0f
+                                }
+                            ) { change, amount ->
+                                horizontalDrag += amount
+                                change.consume()
+                            }
+                        }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { photoViewerId = null }
+                ) { Text("Close") }
+            },
+            dismissButton = {
+                Row {
+                    androidx.compose.material3.TextButton(
+                        enabled = currentPhoto > 0,
+                        onClick = { photoViewerId = galleryPictures[currentPhoto - 1].id }
+                    ) { Text("Previous") }
+                    androidx.compose.material3.TextButton(
+                        enabled = currentPhoto < galleryPictures.lastIndex,
+                        onClick = { photoViewerId = galleryPictures[currentPhoto + 1].id }
+                    ) { Text("Next") }
+                }
+            }
+        )
     }
 }
 
