@@ -17,6 +17,9 @@ returns table (
   video_url text,
   window_views bigint,
   total_views integer,
+  likes integer,
+  comments integer,
+  shares integer,
   window_start timestamptz,
   next_refresh timestamptz,
   verified boolean,
@@ -56,10 +59,13 @@ begin
     fp.video_url::text,
     c.twelve_hour_views,
     coalesce(fp.view_count,0),
+    coalesce(fp.like_count,0),
+    coalesce(fp.comment_count,0),
+    coalesce(fp.share_count,0),
     v_start - interval '12 hours',
     v_start + interval '12 hours',
     coalesce(p.is_verified,false),
-    coalesce(p.verification_badge,'NONE')::text,
+    coalesce(p.verification_badge::text,'NONE')::text,
     fp.created_at
   from counters c
   join public.feed_posts fp on fp.id = c.post_id
