@@ -182,6 +182,7 @@ internal fun ConnectReferenceLanding(
     val campus = current?.university?.takeIf { it.isNotBlank() && it != "null" }.orEmpty()
     val following by FollowStateStore.followingIds.collectAsState()
     var showAllPeople by rememberSaveable(accountId) { mutableStateOf(false) }
+    var showAllUpdates by rememberSaveable(accountId) { mutableStateOf(false) }
     BackHandler(showAllPeople) { showAllPeople = false }
 
     val sameCampus = remember(profiles, campus, accountId) {
@@ -309,13 +310,14 @@ internal fun ConnectReferenceLanding(
             item {
                 ConnectReferenceSectionTitle(
                     if (campus.isBlank()) "What's happening on BLINK" else "What's happening on campus",
-                    "See all", onOpenAllPosts
+                    if (showAllUpdates) "Show less" else "See all",
+                    { showAllUpdates = !showAllUpdates }
                 )
             }
             if (campusPosts.isEmpty()) {
                 item { ConnectReferenceEmpty("No campus updates to show yet.", onOpenAllPosts, "Explore posts") }
             } else {
-                items(campusPosts.take(2), key = { "campus_post_" + it.id }) { post ->
+                items(campusPosts.take(if (showAllUpdates) 8 else 1), key = { "campus_post_" + it.id }) { post ->
                     ConnectReferencePostCard(
                         post = post,
                         onProfile = { onProfile(post.authorUsername.ifBlank { post.author }) },
