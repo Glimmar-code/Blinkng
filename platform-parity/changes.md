@@ -1,3 +1,12 @@
+## 2026-10-26 — Market listings are not ordinary Feed posts (Testlab candidate)
+
+- **Shared rule:** Android and Windows use `BlinkPostGrowthTips.marketOnlyReason` for prohibited Market categories and obvious text/alt-description product advertisements. Legitimate student discussions remain publishable.
+- **Android:** Create Post explains that product sales belong in Market, flags likely sales copy before publishing, and offers an explicit **Create a Market listing** action that closes the composer and selects Market. Immediate and scheduled publishing repeat validation in the ViewModel.
+- **Windows:** The Create Post area contains the same market-only message, highlights blocked sales copy, and refuses prohibited posts using the shared rule. Users navigate to Market via the desktop tab.
+- **Database candidate:** Existing production text-only trigger is not sufficient. Staged SQL adds category, caption, alt-text, sponsored impersonation, and UPDATE checks. It is deliberately NOT applied to production until isolated role/RLS, paid-sponsor, legacy-client and rollback tests pass.
+- **Limitations:** Image pixels with no readable description cannot be classified reliably from client-side strings. This requires a separately reviewed server-side visual moderation workflow and user reports. Do not describe this restriction as fully enforced in production until hosted integration is verified.
+- **Release gates:** shared JVM tests, Android quality/runtime, Windows desktop build, PGlite SQL role tests, marketplace paid placements, and signed APK verification are mandatory before promotion.
+
 ## 2026-10-26 — Staged universal link previews (NOT production verified)
 
 - **Shared contract:** `BlinkRichLinks` recognizes safe HTTP(S) URLs and distinguishes actual BLINK domains from impostor names. Android and Windows reuse this policy.

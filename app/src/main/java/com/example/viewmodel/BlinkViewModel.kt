@@ -3883,6 +3883,15 @@ private suspend fun restoreSupabaseSession() {
 
     fun schedulePost(post: FeedPost, timeMillis: Long, timeFormatted: String) {
         if (_uiState.value.isCreatingPost) return
+        if (com.blinkng.shared.BlinkPostGrowthTips.marketOnlyReason(
+                category = post.category,
+                text = post.text,
+                altText = post.altText
+            ) != null
+        ) {
+            showToast(com.blinkng.shared.BlinkPostGrowthTips.marketHint)
+            return
+        }
         if (timeMillis < System.currentTimeMillis() + 60_000L) {
             showToast("Choose a time at least one minute from now.")
             return
@@ -3967,6 +3976,17 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun publishScheduledPostNow(id: String) {
+        val scheduled = _uiState.value.scheduledPosts.firstOrNull { it.id == id }
+        if (scheduled != null &&
+            com.blinkng.shared.BlinkPostGrowthTips.marketOnlyReason(
+                category = scheduled.post.category,
+                text = scheduled.post.text,
+                altText = scheduled.post.altText
+            ) != null
+        ) {
+            showToast(com.blinkng.shared.BlinkPostGrowthTips.marketHint)
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 scheduledPostRepository.publishNow(id)
@@ -4006,9 +4026,13 @@ private suspend fun restoreSupabaseSession() {
         clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
-        if (com.blinkng.shared.BlinkPostGrowthTips.disallowedFeedCategory(category) ||
-            com.blinkng.shared.MarketIntentPolicy.likelyProductAdvertisement(text)) {
-            showToast("Item sales belong in BLINK Market. Open Market to list your product.")
+        if (com.blinkng.shared.BlinkPostGrowthTips.marketOnlyReason(
+                category = category,
+                text = text,
+                altText = altText
+            ) != null
+        ) {
+            showToast(com.blinkng.shared.BlinkPostGrowthTips.marketHint)
             return
         }
 

@@ -36,9 +36,24 @@ export async function stagedMarketCommunityContractTests() {
         category text not null default 'Campus Life',
         is_sponsored boolean not null default false,
         ad_label text,
-        text text
+        ad_cta text,
+        text text,
+        caption text,
+        alt_text text
       );
       grant select, insert, update, delete on public.feed_posts to authenticated, service_role;
+      create function public.route_product_ads_to_market()
+      returns trigger language plpgsql as $legacy$
+      begin
+        if new.text ~* 'for sale' and new.text ~* 'NGN[[:space:]]*[0-9]' then
+          raise exception 'PRODUCT_ADS_MARKET_ONLY';
+        end if;
+        return new;
+      end;
+      $legacy$;
+      create trigger feed_route_product_ads_trigger
+      before insert or update of text on public.feed_posts
+      for each row execute function public.route_product_ads_to_market();
       create table public.conversations (
         id uuid primary key default gen_random_uuid(), title text, description text, avatar_url text,
         is_group boolean not null default false, created_by uuid,
@@ -59,6 +74,12 @@ export async function stagedMarketCommunityContractTests() {
       'utf8'
     );
     await db.exec(market);
+    const oldGuardCount = await db.query(`
+      select count(*)::integer as total from pg_trigger
+      where tgname='feed_route_product_ads_trigger' and not tgisinternal
+    `);
+    assert.equal(oldGuardCount.rows[0].total, 0,
+      'Staged migration must replace the older, conflicting product-ad trigger');
 
     await db.exec(`set role authenticated`);
     await rejects(() => db.exec(`
@@ -67,13 +88,44 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       insert into public.feed_posts(category,is_sponsored,ad_label)
       values ('Campus Life',true,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,is_sponsored,ad_label)
+      values ('Campus Life',false,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,is_sponsored,ad_cta)
+      values ('Campus Life',false,'Buy now')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec(`
       insert into public.feed_posts(category,text) values ('Campus Life','Discussion of a product')`);
+    await db.exec(`
+      insert into public.feed_posts(category,text) values ('Academic','How expensive are laptops this semester?')`);
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text)
+      values ('Campus Life','Selling this laptop for NGN 150000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text)
+      values ('Campus Life','Selling my backpack for NGN 5000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text,caption)
+      values ('Campus Life','Campus photos','For sale NGN 4500')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text,alt_text)
+      values ('Campus Life','Campus photos','Buy now ₦20000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
+      update public.feed_posts set caption='Selling this bag for NGN 1500'
+      where text='Discussion of a product'`),
+      'BLINK_MARKET_LISTING_ONLY');
     await rejects(() => db.exec(`
       update public.feed_posts set category='Market' where category='Campus Life'`),
       'BLINK_MARKET_LISTING_ONLY');
     await rejects(() => db.exec(`
       update public.feed_posts set is_sponsored=true where category='Campus Life'`),
+      'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      update public.feed_posts set ad_cta='Shop' where category='Campus Life'`),
       'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec('reset role');
     await db.exec('set role service_role');
