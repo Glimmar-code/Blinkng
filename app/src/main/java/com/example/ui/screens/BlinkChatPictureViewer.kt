@@ -9,7 +9,11 @@ import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +66,10 @@ internal fun BlinkChatPictureViewer(
     onDeleteForMe: () -> Unit,
     onOpenAllMedia: () -> Unit,
     onReact: (String) -> Unit,
+    onPrevious: () -> Unit = {},
+    onNext: () -> Unit = {},
+    hasPrevious: Boolean = false,
+    hasNext: Boolean = false,
 ) {
     if (message.imageViewOnce || message.deletedForEveryone ||
         message.attachedImageUrl.isNullOrBlank()) return
@@ -70,6 +79,11 @@ internal fun BlinkChatPictureViewer(
     var captionExpanded by remember(message.id) { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
     var rotateDegrees by remember(message.id) { mutableIntStateOf(0) }
+    var zoom by remember(message.id) { mutableFloatStateOf(1f) }
+    var pan by remember(message.id) { mutableStateOf(Offset.Zero) }
+    var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
+    var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -92,8 +106,44 @@ internal fun BlinkChatPictureViewer(
                 contentDescription = "Full-size shared photo",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
-                    .graphicsLayer { rotationZ = rotateDegrees.toFloat() }
-                    .clickable { chromeVisible = !chromeVisible }
+                    .graphicsLayer {
+                        rotationZ = rotateDegrees.toFloat()
+                        scaleX = zoom
+                        scaleY = zoom
+                        translationX = pan.x
+                        translationY = pan.y
+                    }
+                    .pointerInput(message.id) {
+                        detectTransformGestures { _,delta,scale,_ ->
+                            zoom = (zoom * scale).coerceIn(1f,4f)
+                            pan = if (zoom > 1f) pan + delta else Offset.Zero
+                        }
+                    }
+                    .pointerInput(message.id,zoom) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change,amount ->
+                                if (zoom <= 1.05f) {
+                                    horizontalDrag += amount
+                                    change.consume()
+                                }
+                            },
+                            onDragEnd = {
+                                if (horizontalDrag < -100f && hasNext) onNext()
+                                else if (horizontalDrag > 100f && hasPrevious) onPrevious()
+                                horizontalDrag = 0f
+                            },
+                            onDragCancel = { horizontalDrag = 0f }
+                        )
+                    }
+                    .pointerInput(message.id) {
+                        detectTapGestures(
+                            onTap = { chromeVisible = !chromeVisible },
+                            onDoubleTap = {
+                                zoom = if (zoom > 1f) 1f else 2f
+                                pan = Offset.Zero
+                            }
+                        )
+                    }
             )
             if (chromeVisible) {
                 Row(
@@ -145,6 +195,10 @@ internal fun BlinkChatPictureViewer(
                             Icon(Icons.Default.MoreVert, "More picture actions", tint = Color.White)
                         }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                            DropdownMenuItem(text = { Text("Edit") },
+                                enabled = savedUri != null,
+                                onClick = { moreOpen = false; editingPhoto = savedUri },
+                                leadingIcon = { Icon(Icons.Default.Edit,null) })
                             DropdownMenuItem(text = { Text("Share") }, enabled = savedUri != null,
                                 onClick = {
                                     moreOpen = false
@@ -184,6 +238,26 @@ internal fun BlinkChatPictureViewer(
                                         }
                                     }
                                 }, leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(text = { Text("Set as wallpaper") },
+                                enabled = savedUri != null,
+                                onClick = {
+                                    moreOpen = false
+                                    savedUri?.let { uri ->
+                                        runCatching {
+                                            context.startActivity(
+                                                android.app.WallpaperManager
+                                                    .getInstance(context)
+                                                    .getCropAndSetWallpaperIntent(uri)
+                                            )
+                                        }.onFailure {
+                                            downloadError = "Wallpaper setting unavailable on this device."
+                                        }
+                                    }
+                                }, leadingIcon = { Icon(Icons.Default.Wallpaper, null) })
+                            DropdownMenuItem(text = { Text("Search with another app") },
+                                enabled = savedUri != null,
+                                onClick = { moreOpen = false; confirmation = "external_search" },
+                                leadingIcon = { Icon(Icons.Default.Search,null) })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Delete for me") },
                                 onClick = { moreOpen = false; onDeleteForMe() },
@@ -251,6 +325,58 @@ internal fun BlinkChatPictureViewer(
                 }
             }
         }
+        if (hasPrevious || hasNext) {
+            Row(Modifier.align(Alignment.Center).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                IconButton(onClick=onPrevious,enabled=hasPrevious) {
+                    Icon(Icons.Default.ChevronLeft,"Previous photo",
+                        tint=if(hasPrevious) Color.White else Color.Transparent)
+                }
+                IconButton(onClick=onNext,enabled=hasNext) {
+                    Icon(Icons.Default.ChevronRight,"Next photo",
+                        tint=if(hasNext) Color.White else Color.Transparent)
+                }
+            }
+        }
+    }
+    editingPhoto?.let { saved ->
+        BlinkUniversalPhotoEditor(
+            originalUri=saved,
+            onEdited={ result ->
+                editingPhoto=null
+                confirmation="edit_saved"
+                // The edited image is a new private copy; the original chat message stays intact.
+                // The user can save the new image using the system photo action after confirmation.
+            },
+            onDismiss={editingPhoto=null}
+        )
+    }
+    if (confirmation != null) {
+        AlertDialog(
+            onDismissRequest={confirmation=null},
+            title={Text(if(confirmation=="external_search")
+                "Share photo with another app?" else "Edited copy created")},
+            text={Text(if(confirmation=="external_search")
+                "Another app may upload or analyze this image. Choose only an app you trust."
+                else "Your original picture in BLINK has not been changed.")},
+            confirmButton={TextButton(onClick={
+                if (confirmation=="external_search") {
+                    savedUri?.let { uri ->
+                        runCatching {
+                            context.startActivity(Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type="image/jpeg"
+                                    putExtra(Intent.EXTRA_STREAM,uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }, "Choose an image search app"
+                            ))
+                        }
+                    }
+                }
+                confirmation=null
+            }) { Text("Continue") }},
+            dismissButton={TextButton(onClick={confirmation=null}){Text("Cancel")}}
+        )
     }
 }
 
