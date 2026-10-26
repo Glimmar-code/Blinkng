@@ -56,7 +56,7 @@ assert.ok(desktop.includes('BlinkPostGrowthTips.marketOnlyReason('),
   'Windows must check Market-only posts');
 
 const sql=readFileSync('docs/integration/marketplace-feed-server-policy-staging-20261025.sql','utf8');
-for(const marker of ['before insert or update of category, text, caption, alt_text, is_sponsored, ad_label',
+for(const marker of ['before insert or update of category, text, caption, alt_text, is_sponsored, ad_label, ad_cta',
   'feed_route_product_ads_trigger','BLINK_AD_REQUIRES_SERVER_APPROVAL','BLINK_MARKET_LISTING_ONLY']){
   assert.ok(sql.includes(marker),`Missing staging database protection: ${marker}`);
 }
