@@ -24,6 +24,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ChatConversation
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
+import kotlinx.coroutines.delay
 
 /** Real DM recipients, not simulated share suggestions. Every action is user initiated. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +33,7 @@ internal fun BlinkNativeShareSheet(
     post: FeedPost,
     recentChats: List<ChatConversation>,
     suggestedUsers: List<UserProfile>,
+    searchUsers: suspend (String) -> List<UserProfile>,
     currentUsername: String,
     onDismiss: () -> Unit,
     onSendToUsers: (List<String>) -> Unit,
@@ -42,6 +44,29 @@ internal fun BlinkNativeShareSheet(
 ) {
     var search by remember(post.id) { mutableStateOf("") }
     val selectedRecipients = remember(post.id) { mutableStateListOf<String>() }
+    val directoryResults = remember(post.id) { mutableStateListOf<UserProfile>() }
+    var directorySearching by remember(post.id) { mutableStateOf(false) }
+    var directoryError by remember(post.id) { mutableStateOf(false) }
+    LaunchedEffect(search, post.id) {
+        directoryResults.clear()
+        directoryError = false
+        val query = search.trim().removePrefix("@")
+        if (query.length < 2) {
+            directorySearching = false
+        } else {
+            directorySearching = true
+            delay(300)
+            try {
+                directoryResults.addAll(searchUsers(query).take(60))
+            } catch (exception: kotlinx.coroutines.CancellationException) {
+                throw exception
+            } catch (_: Exception) {
+                directoryError = true
+            } finally {
+                directorySearching = false
+            }
+        }
+    }
     val recents = remember(recentChats) {
         recentChats.filter { !it.isGroup && it.partnerUsername.isNotBlank() }
             .distinctBy { it.partnerUsername.lowercase() }.take(10)
@@ -52,7 +77,9 @@ internal fun BlinkNativeShareSheet(
             it.username.lowercase() !in known
     }.distinctBy { it.username.lowercase() }.take(12)
     val people = (recents.map { Triple(it.partnerUsername, it.partnerName, it.partnerAvatar) } +
-        suggestions.map { Triple(it.username, it.fullName, it.avatarUrl) })
+        suggestions.map { Triple(it.username, it.fullName, it.avatarUrl) } +
+        directoryResults.filter { it.username.isNotBlank() && !it.username.equals(currentUsername, true) }
+            .map { Triple(it.username, it.fullName, it.avatarUrl) })
         .filter { search.isBlank() || it.first.contains(search, true) || it.second.contains(search, true) }
         .distinctBy { it.first.lowercase() }
 
@@ -89,6 +116,8 @@ internal fun BlinkNativeShareSheet(
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 placeholder = { Text("Search BLINK users") },
                 shape = RoundedCornerShape(15.dp))
+            if (directorySearching) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (directoryError) Text("Search is unavailable. Retry by editing the name.", color = Color(0xFFFFA9BF), fontSize = 12.sp)
             if (people.isNotEmpty()) {
                 Text(if (search.isNotBlank()) "People" else "Recent chats & suggested",
                     fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -133,11 +162,11 @@ internal fun BlinkNativeShareSheet(
                     shape = RoundedCornerShape(15.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6721E8))
                 ) {
-                    Text(if (selectedRecipients.size == 1) "Send Reel Link" else
+                    Text(if (selectedRecipients.size == 1) "Send ${if (post.isReel) "Reel" else "Post"} Link" else
                         "Send to ${selectedRecipients.size} people")
                 }
             } else {
-                Text("Select up to 15 people to send a Reel link.",
+                Text("Select up to 15 people to share this ${if (post.isReel) "Reel" else "Post"}.",
                     color = Color(0xFFC1B9CF), fontSize = 11.sp)
             }
             HorizontalDivider(color = Color.White.copy(alpha = .12f))

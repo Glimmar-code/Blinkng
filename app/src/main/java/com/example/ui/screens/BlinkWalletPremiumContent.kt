@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
@@ -200,7 +203,15 @@ internal fun BlinkWalletPremiumContent(
     val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
-    Column(Modifier.fillMaxSize().background(night).statusBarsPadding().testTag("blink_wallet_premium")) {
+    Column(
+        Modifier.fillMaxSize()
+            .blinkElasticSwipeAction(
+                direction = BlinkElasticSwipeDirection.RIGHT,
+                onAction = { if (page == 0) onBack() else page = 0 }
+            )
+            .background(night).statusBarsPadding()
+            .testTag("blink_wallet_premium")
+    ) {
         Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (page == 0) onBack() else page = 0 }) {
@@ -215,7 +226,7 @@ internal fun BlinkWalletPremiumContent(
         }
         Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
             val listState = rememberLazyListState()
-            LazyColumn(Modifier.fillMaxSize(), state = listState,
+            LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = listState,
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (error != null) item {

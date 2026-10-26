@@ -1,3 +1,11 @@
+## 2026-10-26 — Rubber swipe engine (Testlab candidate; release not verified)
+
+- **Shared contract:** Added `BlinkElasticGesturePhysics`, a platform-independent, bounded visual resistance and release policy that allows long deliberate drags or short velocity-confirmed flicks; incomplete slow gestures spring back and wrong-direction velocity never triggers actions. Existing navigation routes, data, Coin/XP and server contracts remain unchanged.
+- **Android:** Velocity-aware horizontal fallback navigation, chat reply and close, story dismissal, chat photo paging/dismiss, Feed image gallery down-to-dismiss, Market listing-image paging, profile return and Reels preview expand / first-page collapse. Existing five-tab `HorizontalPager` continues to own its native interactive swipes, and child media retains priority. Backend transactions are not attached to these gestures.
+- **Windows:** Desktop chat photo viewer accepts mouse/trackpad drag with the same spring, page and dismissal rules; clickable Previous/Next/Close controls remain as accessible alternatives. The five-section desktop shell retains its native navigation instead of requiring touch swipes; that is the appropriate desktop-equivalent platform exception.
+- **Web:** No new gesture routing added because its existing pointer interactions are distinct and there is no equivalent native chat photo viewer; preserve browser scroll, back and accessibility controls.
+- **Quality gates:** Run shared physics tests, Android JVM/instrumented gesture tests, full affected Android build, Windows UI compilation and manual nested-scroll/media/zoom, reduced-motion, accessibility and low-end-device acceptance. Changes remain isolated in a Testlab-named branch until these gates pass; no production deploy or APK publication is implied.
+
 ## 2026-10-26 — Wallet final reward eligibility and reference interactions
 
 - **Android:** The five-page neon Wallet retains the BLINK Coin balance and working [+] shortcut, now scrolling to the Buy Coins packs. Earn Coins/Rewards shows ad #15 as verified-only; expired or unverified users see a locked milestone and a Get Verified route. Other screen affordances and existing 10-Coin base payouts remain unchanged.
@@ -1475,3 +1483,10 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows in-app sharing parity:** Desktop Reels and Profile Reel tiles now offer a recipient picker using the authenticated conversation RPC, real recent DMs, optional suggested profiles, searchable handles and server-authorized message sends. Clipboard copy stays available. WhatsApp is an external URL through the platform browser rather than Android intents, and Windows has no device-native Story creation flow in this patch. These differences are platform capability distinctions, not production mocks.
 
 - **Direct Reel→Story card:** Android now creates a locally rendered 9:16 branded Reel share card and inserts the verified BLINK permalink into the Story caption, while keeping explicit user Publish and the existing server-confirmed Story media upload. This avoids copying/reuploading another creator's video or using untrusted remote images. Viewers already see a rich clickable link preview for caption URLs. Windows Story creation remains a platform exception (no native Story composer in desktop yet). Inspect image generation with visual/device tests.
+
+## 2026-10-26 — PR #598 integration follow-up
+
+- Conflict in BlinkWalletPremiumContent resolved by retaining main's elastic right-swipe gesture and Testlab's compact hero/header, status/nav insets and five wallet views.
+- Android and Windows share pickers now debounce authenticated server-side profile directory searches rather than only filtering cached suggestions; existing recipient ACLs apply. Android multi-send queues one explicit link per selected recipient; queued is not falsely reported as delivered.
+- Coins plus button has a 48dp interaction box with its original 32dp visual footprint.
+- This change does not replace real-device playback, high-font visual reviews, recipient delivery verification, desktop native Reel playback or the Windows Story composer. Re-validate final merge commit before promoting to main.

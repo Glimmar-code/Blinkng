@@ -95,6 +95,8 @@ import com.example.ui.components.trackContentExposure
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkPink
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.delay
@@ -550,7 +552,10 @@ private fun ReelsContent(
         if (isScreenActive) latestBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
         )
     }
     // Hide the system-owned BLINK bottom bar when expanded; restore it on tab change.
@@ -601,7 +606,9 @@ private fun ReelsContent(
 
                 override suspend fun onPreFling(available: Velocity): Velocity {
                     if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
-                        val target = shouldKeepReelFullscreen(expansion.value)
+                        val fastDownwardFlick = available.y > with(density) { 1100.dp.toPx() }
+                        val target = if (fastDownwardFlick) false
+                            else shouldKeepReelFullscreen(expansion.value)
                         if (target == expanded) {
                             animationScope.launch {
                                 expansion.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
@@ -621,10 +628,15 @@ private fun ReelsContent(
                 .pointerInput(resumeUserKey, expanded) {
                     if (!expanded) {
                         var distance = 0f
+                        var velocity = VelocityTracker()
                         detectVerticalDragGestures(
-                            onDragStart = { distance = 0f },
+                            onDragStart = {
+                                distance = 0f
+                                velocity = VelocityTracker()
+                            },
                             onVerticalDrag = { change, delta ->
                                 distance -= delta
+                                velocity.addPosition(change.uptimeMillis, change.position)
                                 change.consume()
                                 animationScope.launch {
                                     expansion.snapTo(
@@ -633,7 +645,12 @@ private fun ReelsContent(
                                 }
                             },
                             onDragEnd = {
-                                val target = shouldExpandReelPreview(
+                                val fastFlick = distance > 0f &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        distance, -velocity.calculateVelocity().y,
+                                        65.dp.toPx(), 28.dp.toPx(), 1100.dp.toPx()
+                                    )
+                                val target = fastFlick || shouldExpandReelPreview(
                                     expansion.value, distance, 65.dp.toPx()
                                 )
                                 if (target == expanded) animationScope.launch {

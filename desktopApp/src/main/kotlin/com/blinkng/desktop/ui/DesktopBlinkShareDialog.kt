@@ -14,6 +14,7 @@ import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.net.URI
 import java.awt.Desktop
 
@@ -28,6 +29,9 @@ internal fun DesktopBlinkShareDialog(
     var recent by remember(postId) { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var suggested by remember(postId) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var search by remember(postId) { mutableStateOf("") }
+    var directory by remember(postId) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var directorySearching by remember(postId) { mutableStateOf(false) }
+    var directoryError by remember(postId) { mutableStateOf<String?>(null) }
     var busy by remember(postId) { mutableStateOf(false) }
     var error by remember(postId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -39,6 +43,19 @@ internal fun DesktopBlinkShareDialog(
         runCatching { state.client.fetchOnboardingSuggestions(24) }
             .onSuccess { suggested = it }
     }
+    LaunchedEffect(postId, search) {
+        directory = emptyList()
+        directoryError = null
+        val q = search.trim().removePrefix("@")
+        if (q.length >= 2) {
+            directorySearching = true
+            delay(300)
+            try { directory = state.client.searchMentionProfiles(q, limit = 60) }
+            catch (c: kotlinx.coroutines.CancellationException) { throw c }
+            catch (_: Exception) { directoryError = "Directory search unavailable. Try again." }
+            finally { directorySearching = false }
+        } else directorySearching = false
+    }
     val recents = recent.mapNotNull { convo ->
         convo.partnerUsername?.takeIf(String::isNotBlank)?.let { handle -> handle to convo.title }
     }
@@ -49,7 +66,9 @@ internal fun DesktopBlinkShareDialog(
                 !it.equals(state.profile?.username, ignoreCase = true)
         }?.let { it to profile.fullName }
     }
-    val matches = (recents + suggestedHandles).distinctBy { it.first.lowercase() }
+    val matches = (recents + suggestedHandles + directory.map { it.username to it.fullName })
+        .filter { it.first.isNotBlank() && !it.first.equals(state.profile?.username, ignoreCase = true) }
+        .distinctBy { it.first.lowercase() }
         .filter { (username, name) ->
             search.isBlank() || username.contains(search, ignoreCase = true) ||
                 name.contains(search, ignoreCase = true)
@@ -66,6 +85,8 @@ internal fun DesktopBlinkShareDialog(
                     label = { Text("Search recent chats and people") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth())
+                if (directorySearching) LinearProgressIndicator(Modifier.fillMaxWidth())
+                directoryError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (matches.isEmpty()) {
                     Text("No matching conversations or suggestions.",
                         style = MaterialTheme.typography.bodySmall)

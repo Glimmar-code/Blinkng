@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -372,32 +374,44 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
-                .pointerInput(profile.id) {
+                .pointerInput(profile.id, overlayThresholdPx) {
+                    var rawDrag = 0f
+                    var tracker = VelocityTracker()
                     detectHorizontalDragGestures(
+                        onDragStart = {
+                            rawDrag = 0f
+                            tracker = VelocityTracker()
+                        },
                         onHorizontalDrag = { change, dragAmount ->
+                            // Keep the original left-to-close direction; resist overshooting.
+                            rawDrag = (rawDrag + dragAmount).coerceAtMost(0f)
+                            tracker.addPosition(change.uptimeMillis, change.position)
                             change.consume()
                             overlayScope.launch {
-                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtMost(0f))
+                                overlayOffset.snapTo(
+                                    BlinkElasticGesturePhysics.visualDistance(rawDrag, overlayThresholdPx)
+                                )
                             }
                         },
                         onDragEnd = {
+                            val commit = rawDrag < 0f && BlinkElasticGesturePhysics.shouldCommit(
+                                rawDrag, tracker.calculateVelocity().x, overlayThresholdPx,
+                                28.dp.toPx(), 1100.dp.toPx()
+                            )
                             overlayScope.launch {
-                                if (overlayOffset.value <= -overlayThresholdPx) {
-                                    onBack()
-                                } else {
-                                    overlayOffset.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
+                                if (commit) onBack()
+                                else overlayOffset.animateTo(0f, spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ))
                             }
                         },
                         onDragCancel = {
                             overlayScope.launch {
-                                overlayOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+                                overlayOffset.animateTo(0f, spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ))
                             }
                         }
                     )
@@ -1124,8 +1138,52 @@ private fun PremiumProfileTabs(
         if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
         if (isMe) Icons.Default.BookmarkBorder else Icons.Default.Info
     )
+    val density = LocalDensity.current
+    val tabActivation = with(density) { 76.dp.toPx() }
+    var rawTabDrag by remember(selectedTab) { mutableFloatStateOf(0f) }
+    var tabDragging by remember(selectedTab) { mutableStateOf(false) }
+    val tabVisual by animateFloatAsState(
+        targetValue = BlinkElasticGesturePhysics.visualDistance(rawTabDrag, tabActivation) * .32f,
+        animationSpec = if (tabDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ), label = "profileTabElastic"
+    )
     Row(
         modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationX = tabVisual }
+            .pointerInput(selectedTab, tabs) {
+                var velocity = VelocityTracker()
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        velocity = VelocityTracker()
+                        tabDragging = true
+                        rawTabDrag = 0f
+                    },
+                    onHorizontalDrag = { change, delta ->
+                        rawTabDrag += delta
+                        velocity.addPosition(change.uptimeMillis, change.position)
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        val commit = BlinkElasticGesturePhysics.shouldCommit(
+                            rawTabDrag, velocity.calculateVelocity().x, tabActivation,
+                            28.dp.toPx(), 1100.dp.toPx()
+                        )
+                        if (commit) {
+                            val target = (selectedTab + if (rawTabDrag < 0f) 1 else -1)
+                                .coerceIn(0, tabs.lastIndex)
+                            if (target != selectedTab) onTabSelected(target)
+                        }
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    },
+                    onDragCancel = {
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    }
+                )
+            }
             .padding(horizontal = 17.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically

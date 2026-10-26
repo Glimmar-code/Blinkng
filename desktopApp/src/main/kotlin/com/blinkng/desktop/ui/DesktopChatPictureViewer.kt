@@ -1,6 +1,17 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import kotlin.math.abs
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,6 +64,25 @@ internal fun DesktopChatPictureViewer(
     var editing by remember(message.id){mutableStateOf<File?>(null)}
     var privacyWarning by remember(message.id){mutableStateOf(false)}
     var confirmAction by remember(message.id){mutableStateOf<String?>(null)}
+    var imageDragX by remember(message.id) { mutableFloatStateOf(0f) }
+    var imageDragY by remember(message.id) { mutableFloatStateOf(0f) }
+    var draggingImage by remember(message.id) { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val activation = with(density) { 110.dp.toPx() }
+    val minimumFlick = with(density) { 28.dp.toPx() }
+    val fastVelocity = with(density) { 1100.dp.toPx() }
+    val visualX by animateFloatAsState(
+        BlinkElasticGesturePhysics.visualDistance(imageDragX, activation),
+        if (draggingImage) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
+        ), label = "desktopPictureElasticX"
+    )
+    val visualY by animateFloatAsState(
+        BlinkElasticGesturePhysics.visualDistance(imageDragY, activation),
+        if (draggingImage) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
+        ), label = "desktopPictureElasticY"
+    )
     DisposableEffect(message.id) {onDispose{downloadJob?.cancel()}}
     AlertDialog(
         onDismissRequest={if(!busy)onClose()},
@@ -74,6 +104,60 @@ internal fun DesktopChatPictureViewer(
                         contentDescription="Full-size shared picture",
                         contentScale=ContentScale.Fit,
                         modifier=Modifier.fillMaxWidth().height(480.dp)
+                            .graphicsLayer { translationX = visualX; translationY = visualY }
+                            .pointerInput(message.id, hasPrevious, hasNext, activation) {
+                                var totalX = 0f
+                                var totalY = 0f
+                                var axis = 0
+                                var tracker = VelocityTracker()
+                                detectDragGestures(
+                                    onDragStart = {
+                                        totalX = 0f
+                                        totalY = 0f
+                                        axis = 0
+                                        tracker = VelocityTracker()
+                                        imageDragX = 0f
+                                        imageDragY = 0f
+                                        draggingImage = true
+                                    },
+                                    onDrag = { change, delta ->
+                                        totalX += delta.x
+                                        totalY += delta.y
+                                        if (axis == 0) {
+                                            if (abs(totalX) > abs(totalY) * 1.25f) axis = 1
+                                            else if (abs(totalY) > abs(totalX) * 1.25f) axis = 2
+                                        }
+                                        tracker.addPosition(change.uptimeMillis, change.position)
+                                        if (axis == 1) imageDragX = totalX
+                                        else if (axis == 2) imageDragY = totalY
+                                        if (axis != 0) change.consume()
+                                    },
+                                    onDragEnd = {
+                                        val speed = tracker.calculateVelocity()
+                                        val horizontal = axis == 1 &&
+                                            BlinkElasticGesturePhysics.shouldCommit(
+                                                imageDragX, speed.x, activation, minimumFlick, fastVelocity
+                                            )
+                                        val vertical = axis == 2 &&
+                                            BlinkElasticGesturePhysics.shouldCommit(
+                                                imageDragY, speed.y, activation, minimumFlick, fastVelocity
+                                            )
+                                        draggingImage = false
+                                        imageDragX = 0f
+                                        imageDragY = 0f
+                                        when {
+                                            horizontal && totalX < 0f && hasNext -> onNext()
+                                            horizontal && totalX > 0f && hasPrevious -> onPrevious()
+                                            vertical -> onClose()
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        draggingImage = false
+                                        imageDragX = 0f
+                                        imageDragY = 0f
+                                    }
+                                )
+                            }
                     )
                 }
                 if(message.content.isNotBlank() &&

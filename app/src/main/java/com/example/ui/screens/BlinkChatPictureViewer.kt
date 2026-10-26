@@ -8,7 +8,15 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import kotlin.math.abs
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -85,7 +93,22 @@ internal fun BlinkChatPictureViewer(
     var rotateDegrees by remember(message.id) { mutableIntStateOf(0) }
     var zoom by remember(message.id) { mutableFloatStateOf(1f) }
     var pan by remember(message.id) { mutableStateOf(Offset.Zero) }
-    var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var pictureDragX by remember(message.id) { mutableFloatStateOf(0f) }
+    var pictureDragY by remember(message.id) { mutableFloatStateOf(0f) }
+    var pictureIsDragging by remember(message.id) { mutableStateOf(false) }
+    val pictureSwipeThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val pictureDisplayX by animateFloatAsState(
+        BlinkElasticGesturePhysics.visualDistance(pictureDragX, pictureSwipeThresholdPx),
+        if (pictureIsDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
+        ), label = "pictureElasticHorizontal"
+    )
+    val pictureDisplayY by animateFloatAsState(
+        BlinkElasticGesturePhysics.visualDistance(pictureDragY, pictureSwipeThresholdPx),
+        if (pictureIsDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
+        ), label = "pictureElasticVertical"
+    )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
@@ -117,8 +140,8 @@ internal fun BlinkChatPictureViewer(
                         rotationZ = rotateDegrees.toFloat()
                         scaleX = zoom
                         scaleY = zoom
-                        translationX = pan.x
-                        translationY = pan.y
+                        translationX = pan.x + pictureDisplayX
+                        translationY = pan.y + pictureDisplayY
                     }
                     .pointerInput(message.id) {
                         detectTransformGestures { _,delta,scale,_ ->
@@ -126,20 +149,65 @@ internal fun BlinkChatPictureViewer(
                             pan = if (zoom > 1f) pan + delta else Offset.Zero
                         }
                     }
-                    .pointerInput(message.id,zoom) {
-                        detectHorizontalDragGestures(
-                            onHorizontalDrag = { change,amount ->
+                    .pointerInput(message.id, zoom, hasPrevious, hasNext, pictureSwipeThresholdPx) {
+                        var sumX = 0f
+                        var sumY = 0f
+                        var axis = 0 // 1 = horizontal photo paging; 2 = vertical dismiss
+                        var velocity = VelocityTracker()
+                        detectDragGestures(
+                            onDragStart = {
+                                sumX = 0f
+                                sumY = 0f
+                                axis = 0
+                                velocity = VelocityTracker()
+                                pictureDragX = 0f
+                                pictureDragY = 0f
+                                pictureIsDragging = true
+                            },
+                            onDrag = { change, delta ->
+                                // A zoomed photo belongs to pan/zoom, not page navigation.
                                 if (zoom <= 1.05f) {
-                                    horizontalDrag += amount
-                                    change.consume()
+                                    sumX += delta.x
+                                    sumY += delta.y
+                                    if (axis == 0) {
+                                        if (abs(sumX) > abs(sumY) * 1.25f &&
+                                            abs(sumX) >= 8.dp.toPx()) axis = 1
+                                        else if (abs(sumY) > abs(sumX) * 1.25f &&
+                                            abs(sumY) >= 8.dp.toPx()) axis = 2
+                                    }
+                                    if (axis != 0) {
+                                        velocity.addPosition(change.uptimeMillis, change.position)
+                                        if (axis == 1) pictureDragX = sumX else pictureDragY = sumY
+                                        change.consume()
+                                    }
                                 }
                             },
                             onDragEnd = {
-                                if (horizontalDrag < -100f && hasNext) onNext()
-                                else if (horizontalDrag > 100f && hasPrevious) onPrevious()
-                                horizontalDrag = 0f
+                                val pxVelocity = velocity.calculateVelocity()
+                                val navigate = axis == 1 &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        pictureDragX, pxVelocity.x, pictureSwipeThresholdPx,
+                                        28.dp.toPx(), 1100.dp.toPx()
+                                    )
+                                val dismiss = axis == 2 &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        pictureDragY, pxVelocity.y, pictureSwipeThresholdPx,
+                                        28.dp.toPx(), 1100.dp.toPx()
+                                    )
+                                pictureIsDragging = false
+                                pictureDragX = 0f
+                                pictureDragY = 0f
+                                when {
+                                    navigate && sumX < 0f && hasNext -> onNext()
+                                    navigate && sumX > 0f && hasPrevious -> onPrevious()
+                                    dismiss -> onDismiss()
+                                }
                             },
-                            onDragCancel = { horizontalDrag = 0f }
+                            onDragCancel = {
+                                pictureIsDragging = false
+                                pictureDragX = 0f
+                                pictureDragY = 0f
+                            }
                         )
                     }
                     .pointerInput(message.id) {

@@ -2681,6 +2681,7 @@ fun MainAppContent(
                     post = sharedPost,
                     recentChats = uiState.conversations,
                     suggestedUsers = (uiState.profiles + uiState.discoverProfiles).distinctBy { it.id },
+                    searchUsers = { query -> viewModel.searchMentionProfiles(query, limit = 60) },
                     currentUsername = uiState.myProfile.username,
                     onDismiss = { sharingPostId = null },
                     onSendToUsers = { usernames ->
@@ -2689,7 +2690,10 @@ fun MainAppContent(
                                 viewModel.sendMessage(username, url)
                             }
                         // One share event per explicit send action, not per selected recipient.
-                        if (usernames.isNotEmpty()) viewModel.sharePost(sharedPost.id)
+                        if (usernames.isNotEmpty()) {
+                            viewModel.sharePost(sharedPost.id)
+                            viewModel.showToast("Queued ${usernames.size} share message(s). Check Messages for delivery.")
+                        }
                         sharingPostId = null
                     },
                     onCopyLink = {
