@@ -65,6 +65,23 @@ class UserInteractionRepository {
             }.getOrDefault(false)
         }
 
+    /** HP is server-awarded level XP, never a peer-to-peer coin transaction. */
+    suspend fun giftHpOnce(profileId: String, amount: Int, requestId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val receiver = profileId.trim()
+            if (receiver.isBlank() || amount !in setOf(20, 50, 100) ||
+                runCatching { java.util.UUID.fromString(requestId) }.isFailure
+            ) return@withContext false
+            runCatching {
+                val result = JSONObject(rpc("gift_blink_hp_once",
+                    JSONObject().put("p_receiver_id", receiver)
+                        .put("p_amount", amount)
+                        .put("p_request_id", requestId)))
+                result.optBoolean("success") &&
+                    (result.optInt("awarded_hp") > 0 || result.optBoolean("already_gifted"))
+            }.getOrDefault(false)
+        }
+
     private fun rpc(name: String, body: JSONObject): String {
         val token = SupabaseService.accessToken()
             ?: throw IllegalStateException("Please sign in again.")
