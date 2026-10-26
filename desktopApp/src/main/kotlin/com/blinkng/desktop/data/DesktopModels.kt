@@ -85,6 +85,7 @@ data class DesktopFeedPost(
     val isBookmarked: Boolean = false,
     val isRepostedByMe: Boolean = false,
     val repostCount: Int = 0,
+    val linkUrl: String? = null,
 )
 
 data class DesktopComment(
