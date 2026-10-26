@@ -1,3 +1,13 @@
+## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
+
+- **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.
+- **Windows:** Five wallet destinations with authenticated Coin pack offers, verified account balance, daily missions, verification and history. Desktop Coin display navigates into Wallet.
+- **Unchanged economy:** Preserve the existing 10 base Coins per rewarded ad, server-configured 15-ad daily limit, cumulative 5/10/15 milestones (60/130/210), Coin packs and 3,000-Coin Blue Verification. Do not alter SQL functions or ad entitlement algorithms in this UI PR. The server is authoritative for all rewards.
+- **Coin gifting stays:** Profile Interact retains the original authenticated, idempotent 20/50/100 Coin gifting using `gift_blink_coins_once`. Existing paid Coin gifts and provider rules also remain unchanged. Gift recipients get Coins; the giver's wallet is debited only when the server confirms the transfer.
+- **Daily missions award both Coins and progression XP:** The original `claim_daily_mission` RPC supplies the authoritative `coinReward` and `xpReward`. UI describes XP as level XP (HP), without adding a new balance, changing rates, or allowing users to transfer XP/HP. Claims are server-idempotent.
+- **PARITY-EXCEPTION: windows-rewarded-ad-playback-wallet-20261026** — AdMob playback remains Android-only; Windows shows server-backed progress/rewards and does not fabricate advertisement completion.
+- **Release gate:** Check Android/Windows builds, wallet navigation, Coin transfer regression, missions granting both Coin and XP, checkout webhook and status, accessibility, screenshot fidelity and full CI before merging. No production migration or account balance changes in this branch.
+
 ## 2026-10-25 — Android touch Reels preview/fullscreen transition (Testlab only)
 
 - **PARITY-EXCEPTION: android-reels-touch-preview-expand-20261025** — Android's requested compact Reels preview enlarges into an immersive vertical, edge-to-edge video player on a tap or gesture. This is a phone-specific interaction built around Android Compose gesture input, the bottom navigation rail and Media3 playback; it does not change the shared reel data, server response or engagement permissions.

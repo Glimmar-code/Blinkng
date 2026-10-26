@@ -152,6 +152,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showRewardedAdForCoins() {
+        val rewardState = viewModel.uiState.value
+        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday)) {
+            viewModel.rewardedAdUnavailable("Today's rewarded ads are complete.")
+            return
+        }
         if (!BlinkAdsRuntime.canRequestAds.value) {
             // UMP may still be refreshing after a cold start or account change.
             // Re-check consent on a deliberate tap; never request an ad before UMP permits it.
@@ -1094,6 +1099,7 @@ fun MainAppContent(
     }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var walletOpenedFromMenu by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
@@ -1659,7 +1665,7 @@ fun MainAppContent(
                             }
                         },
                         onItemsClick = { feedUtilitySheet = "items" },
-                        onGetCoinsClick = { viewModel.buyBlinkCoins() },
+                        onGetCoinsClick = { walletOpenedFromMenu = false; showWallet = true },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
                             if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
@@ -2531,6 +2537,7 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onOpenCoinsWallet = { walletOpenedFromMenu = false; showWallet = true },
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
                     selectedMainTabRoute = when (uiState.selectedTab) {
@@ -2819,6 +2826,13 @@ fun MainAppContent(
                             label = { Text("Gift message (optional)") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.closeCoinPackPicker()
+                                showGiftPurchase = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🎁 Gift BLINK Coins to a friend") }
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 enabled = !v2PaymentBusy &&
@@ -2926,13 +2940,7 @@ fun MainAppContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.closeCoinPackPicker()
-                                showGiftPurchase = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("🎁 Gift BLINK Coins to a friend") }
+
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 onClick = { startV2Checkout("coin_pack", pack.id, 1); viewModel.closeCoinPackPicker() },
@@ -3051,6 +3059,7 @@ fun MainAppContent(
                 },
                 onWallet = {
                     viewModel.openMenu(false)
+                    walletOpenedFromMenu = true
                     showWallet = true
                 },
                 onNotifications = {
@@ -3201,7 +3210,13 @@ fun MainAppContent(
                 missions = uiState.dailyMissions,
                 loadingMissions = uiState.isDailyMissionsLoading,
                 isDark = uiState.isDarkMode,
-                onBack = { showWallet = false; viewModel.openMenu(true) },
+                isVerified = uiState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
+                onVerifyCoins = { viewModel.verifyBlueWithCoins() },
+                onBuyPack = { pack -> startV2Checkout("coin_pack", pack.id, 1) },
+                onBack = {
+                    showWallet = false
+                    if (walletOpenedFromMenu) viewModel.openMenu(true)
+                },
                 onRefresh = { viewModel.refreshProfileRewards() },
                 onClaimMission = { viewModel.claimDailyMission(it) },
                 onWatchOptionalAd = onWatchAdForCoins,
