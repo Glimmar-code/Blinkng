@@ -453,8 +453,7 @@ fun DesktopChannelDetail(
                                         saving = true
                                         try {
                                             check(state.client.forwardChannelUpdateToChat(
-                                                recipient.username, channel.name, channel.id,
-                                                selected.id, selected.body
+                                                recipient.username, channel.name, selected
                                             )) { "Forwarding was not confirmed." }
                                             info = "Forwarded to @${recipient.username}"
                                             error = null
