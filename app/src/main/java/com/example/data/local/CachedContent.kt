@@ -180,6 +180,9 @@ interface CachedContentDao {
     @Query("UPDATE message_outbox SET attempt_count = :attemptCount, next_retry_at = :nextRetryAt, last_error = :error WHERE owner_username = :ownerUsername AND local_id = :localId")
     suspend fun markOutboxFailure(ownerUsername: String, localId: String, attemptCount: Int, nextRetryAt: Long, error: String)
 
+    @Query("UPDATE message_outbox SET attempt_count = 1000, last_error = :error WHERE owner_username = :ownerUsername AND local_id = :localId")
+    suspend fun markOutboxPermanent(ownerUsername: String, localId: String, error: String)
+
     @Query("UPDATE message_outbox SET attempt_count = 0, next_retry_at = 0, last_error = '' WHERE owner_username = :ownerUsername AND local_id = :localId")
     suspend fun resetOutbox(ownerUsername: String, localId: String)
 
