@@ -2983,6 +2983,10 @@ fun MainAppContent(
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
+                onOpenMarket = {
+                    viewModel.openCreatePost(false)
+                    viewModel.setTab(MainTab.MARKET)
+                },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
                     // closes it only after success, so a failed publish keeps the user's draft.
