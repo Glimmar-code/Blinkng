@@ -335,12 +335,22 @@ begin
   v_previous_total := (v_ad_number-1)*v_base;
   v_target_total := v_ad_number*v_base;
 
-  select greatest(v_previous_total,coalesce(max((m->>'total_coins')::integer),v_previous_total))
+  -- Milestone totals are CUMULATIVE. After hitting 5/10/15 ads, each
+  -- later ad adds just the 10-Coin base until the next milestone.
+  -- Without carrying base Coins forward after a milestone, the 10th/15th
+  -- claim overcredits the wallet (140/250 instead of 130/210).
+  select greatest(v_previous_total,coalesce(max(
+      (m->>'total_coins')::integer
+        + (v_ad_number-1-(m->>'ads')::integer)*v_base
+    ),v_previous_total))
     into v_previous_total
     from jsonb_array_elements(v_milestones) m
    where (m->>'ads')::integer <= v_ad_number-1;
 
-  select greatest(v_target_total,coalesce(max((m->>'total_coins')::integer),v_target_total))
+  select greatest(v_target_total,coalesce(max(
+      (m->>'total_coins')::integer
+        + (v_ad_number-(m->>'ads')::integer)*v_base
+    ),v_target_total))
     into v_target_total
     from jsonb_array_elements(v_milestones) m
    where (m->>'ads')::integer <= v_ad_number;
