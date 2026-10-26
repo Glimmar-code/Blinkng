@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fullscreen
@@ -3062,6 +3063,45 @@ private fun MessageBubble(
                         allowLinkPreviews = allowLinkPreviews,
                         onCancelAttachment = onCancelAttachment
                     )
+                    // Compact inside-bubble timestamp and one overlapping double-check glyph.
+                    val metadata = when (message.status) {
+                        MessageStatus.SENDING -> "Sending…"
+                        MessageStatus.FAILED -> "Failed • tap to retry"
+                        MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ ->
+                            message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 9.dp, end = 8.dp, bottom = 5.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (message.isPinned) Text("📌", fontSize = 10.sp)
+                        if (message.isStarred) Text("★", color = palette.accent, fontSize = 10.sp)
+                        Text(
+                            metadata,
+                            color = if (message.status == MessageStatus.FAILED)
+                                palette.danger else palette.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (isMine && message.status in setOf(
+                                MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ
+                            )) {
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                imageVector = if (message.status == MessageStatus.SENT)
+                                    Icons.Default.Check else Icons.Default.DoneAll,
+                                contentDescription = when (message.status) {
+                                    MessageStatus.READ -> "Read"
+                                    MessageStatus.DELIVERED -> "Delivered"
+                                    else -> "Sent"
+                                },
+                                tint = if (message.status == MessageStatus.READ)
+                                    Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -3081,36 +3121,7 @@ private fun MessageBubble(
                     }
                 }
 
-                Spacer(Modifier.height(3.dp))
-                val metadata = when (message.status) {
-                    MessageStatus.SENDING -> "Sending…"
-                    MessageStatus.FAILED -> "Failed • tap to retry"
-                    MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ -> message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
-                }
-                val receipt = if (!isMine) "" else when (message.status) {
-                    MessageStatus.SENT -> "✓"
-                    MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
-                    else -> ""
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (message.isPinned) Text("📌 ", fontSize = 11.sp)
-                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 11.sp)
-                    Text(
-                        metadata,
-                        color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (receipt.isNotBlank()) {
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            receipt,
-                            color = if (message.status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+
             }
         }
     }
