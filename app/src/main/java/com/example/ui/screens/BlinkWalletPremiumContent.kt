@@ -307,7 +307,7 @@ internal fun BlinkWalletPremiumContent(
                                             color = soft, fontSize = 13.sp)
                                     }
                                 }
-                                val max = policy.effectiveAdDailyLimit(isVerified)
+                                val max = policy.rewardedAdDailyLimit
                                 Text("Ads watched today • " + adsToday.coerceAtLeast(0) + " / " + max,
                                     color = Color.White, fontWeight = FontWeight.Bold)
                                 LinearProgressIndicator(
@@ -320,23 +320,20 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Daily Milestones", "Bonus Coins are credited automatically.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
-                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.PlayCircle,
                                         m.ads.toString() + " Ads",
                                         m.totalCoins.toString() + " Coins Total" +
-                                            if (locked) " • Verified users only" else if (adsToday >= m.ads) " • Credited" else "",
-                                        locked = locked,
+                                            if (adsToday >= m.ads) " • Credited" else "",
                                         action = { page = 2 })
                                 }
                             }
                         }
                         item {
                             GradientButton(
-                                if (policy.canWatchRewardedAd(adsToday, isVerified)) "Watch Ad"
-                                else if (isVerified) "Daily limit reached" else "Verify to unlock 15 ads",
+                                if (policy.canWatchRewardedAd(adsToday)) "Watch Ad" else "Daily limit reached",
                                 icon = Icons.Rounded.PlayArrow,
-                                onClick = if (policy.canWatchRewardedAd(adsToday, isVerified))
-                                    onWatchAd else ({ page = 3 }))
+                                enabled = policy.canWatchRewardedAd(adsToday),
+                                onClick = onWatchAd)
                         }
                         item { Text("Rewards require completed, server-confirmed ads. New ads may not be available.",
                             modifier = Modifier.fillMaxWidth(), color = soft, fontSize = 12.sp) }
@@ -344,7 +341,7 @@ internal fun BlinkWalletPremiumContent(
                     2 -> {
                         item {
                             NeonCard(hero = true) {
-                                WalletHeading("Reward Center", "Watch ads, complete tasks and earn BLINK Coins.")
+                                WalletHeading("Reward Center", "Daily tasks reward both BLINK Coins and level XP (HP).")
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     CoinArtwork(Modifier.size(84.dp))
                                     Spacer(Modifier.width(12.dp))
@@ -365,12 +362,10 @@ internal fun BlinkWalletPremiumContent(
                                     val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.CardGiftcard,
                                         "Watch " + m.ads + " Ads",
-                                        if (locked) "Verified users only"
-                                        else if (adsToday >= m.ads) "Reward already credited to your wallet"
+                                        if (adsToday >= m.ads) "Reward already credited to your wallet"
                                         else adsToday.coerceAtLeast(0).toString() + " / " + m.ads,
-                                        trailing = if (locked) "Locked" else m.totalCoins.toString() + " total",
-                                        locked = locked,
-                                        action = if (locked) ({ page = 3 }) else ({ page = 1 }))
+                                        trailing = m.totalCoins.toString() + " total",
+                                        action = { page = 1 })
                                 }
                             }
                         }
@@ -382,7 +377,7 @@ internal fun BlinkWalletPremiumContent(
                                 else missions.forEach { mission ->
                                     NeonRow(Icons.Rounded.EmojiEvents, mission.title,
                                         mission.progress.toString() + "/" + mission.target +
-                                            " • +" + mission.coinReward + " Coins / +" + mission.xpReward + " XP",
+                                            " • +" + mission.coinReward + " Coins / +" + mission.xpReward + " level XP (HP)",
                                         trailing = if (mission.claimed) "Claimed" else null,
                                         action = if (BlinkEarningHubPolicy.action(mission) ==
                                             BlinkEarningHubPolicy.MissionAction.CLAIM)
