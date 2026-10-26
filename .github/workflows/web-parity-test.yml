@@ -10,6 +10,7 @@ on:
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -29,6 +30,7 @@ on:
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
       - 'scripts/test_web_seo_static.mjs'
+      - 'scripts/test_web_referral_invitation.mjs'
       - 'scripts/test_blink_indexnow.mjs'
       - 'scripts/indexnow_public_urls.mjs'
       - 'scripts/submit_blink_indexnow.mjs'
@@ -75,6 +77,9 @@ jobs:
 
       - name: Check mobile asset budgets and locally opt-in Core Web Vitals
         run: node scripts/test_mobile_web_performance.mjs
+
+      - name: Verify referral invitation privacy and signup attribution
+        run: node --test scripts/test_web_referral_invitation.mjs
 
       - name: Test Phase 3 resilient authentication and private-route SEO
         run: node scripts/test_web_production_phase3_authseo.mjs
