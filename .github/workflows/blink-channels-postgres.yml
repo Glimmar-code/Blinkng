@@ -1,0 +1,56 @@
+name: BLINK Channels PostgreSQL Privacy Integration
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/integration/blink-channels-*.sql'
+      - 'supabase/tests/blink_channels_*'
+      - '.github/workflows/blink-channels-postgres.yml'
+  push:
+    branches:
+      - 'Testlab/**'
+    paths:
+      - 'docs/integration/blink-channels-*.sql'
+      - 'supabase/tests/blink_channels_*'
+      - '.github/workflows/blink-channels-postgres.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  channel-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: blink_channel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_channel_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ci_only_password
+      PGDATABASE: blink_channel_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL CLI
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create completely synthetic Supabase-style actors and storage
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_fixture.pgfixture
+      - name: Install original broadcast SQL draft
+        run: psql -v ON_ERROR_STOP=1 -f docs/integration/blink-channels-broadcast-staging.sql
+      - name: Install privacy, polls, media, reporting SQL draft
+        run: psql -v ON_ERROR_STOP=1 -f docs/integration/blink-channels-whatsapp-completion-staging.sql
+      - name: Assert security and behavior with independent identities
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_assertions.pgfixture
+      - name: Confirm production untouched
+        run: echo "Only an ephemeral PostgreSQL service received SQL; production credentials were not used."
