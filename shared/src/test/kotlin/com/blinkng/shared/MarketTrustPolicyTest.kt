@@ -20,6 +20,8 @@ class MarketTrustPolicyTest {
 
     @Test fun onlyStrongSaleIntentRoutesToMarket() {
         assertTrue(MarketIntentPolicy.likelyProductAdvertisement("Phone for sale ₦250,000, DM to buy"))
+        assertTrue(MarketIntentPolicy.likelyProductAdvertisement("Selling my book for NGN 1500"))
+        assertTrue(MarketIntentPolicy.likelyProductAdvertisement("Available for sale ₦2000"))
         assertFalse(MarketIntentPolicy.likelyProductAdvertisement("I bought my laptop for ₦250,000 today!"))
         assertFalse(MarketIntentPolicy.likelyProductAdvertisement("For sale: old phone. This is a poem."))
     }
