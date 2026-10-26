@@ -359,7 +359,6 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Claim Rewards", "Never claim the same reward twice.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
-                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.CardGiftcard,
                                         "Watch " + m.ads + " Ads",
                                         if (adsToday >= m.ads) "Reward already credited to your wallet"
