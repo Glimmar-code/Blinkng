@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -399,6 +400,56 @@ fun DesktopUserProfileDialog(
                                     },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        } else if (selectedTab == "Reels") {
+                            // Three-column Reel browser, mirroring the mobile profile density.
+                            // Never instantiate nine media players just to draw thumbnail tiles.
+                            items(
+                                items = filteredContent.chunked(3),
+                                key = { row -> "desktop_profile_reels_" + row.first().id }
+                            ) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    row.forEach { reel ->
+                                        Surface(
+                                            modifier = Modifier.weight(1f).aspectRatio(.72f)
+                                                .clickable {
+                                                    runCatching {
+                                                        java.awt.Desktop.getDesktop().browse(
+                                                            java.net.URI(DesktopShareLinkManager.generate(reel.id, true))
+                                                        )
+                                                    }.onFailure {
+                                                        statusMessage = "Unable to open Reel. Use Copy link instead."
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
+                                        ) {
+                                            Column(
+                                                Modifier.fillMaxSize().padding(8.dp),
+                                                verticalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("▶", fontSize = 24.sp,
+                                                    color = MaterialTheme.colorScheme.primary)
+                                                Text(
+                                                    reel.caption?.takeIf(String::isNotBlank)
+                                                        ?: reel.text.orEmpty().ifBlank { "Reel" },
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    fontSize = 11.sp
+                                                )
+                                                Text(
+                                                    "${reel.viewCount.coerceAtLeast(0)} views",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         } else {
                             items(filteredContent, key = { it.id }) { post ->
