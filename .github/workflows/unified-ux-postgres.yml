@@ -1,0 +1,71 @@
+name: BLINK Unified UX PostgreSQL Integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261026113000_featured_reels_completed_12h.sql'
+      - 'supabase/migrations/20261026114500_google_onboarding_referral_claim.sql'
+      - 'supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql'
+      - 'supabase/tests/unified_ux_feature_*'
+      - '.github/workflows/unified-ux-postgres.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/migrations/20261026113000_featured_reels_completed_12h.sql'
+      - 'supabase/migrations/20261026114500_google_onboarding_referral_claim.sql'
+      - 'supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql'
+      - 'supabase/tests/unified_ux_feature_*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unified-ux-postgres-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-reel-referral-outbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: blink_unified_ux
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_unified_ux"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ci_only_password
+      PGDATABASE: blink_unified_ux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL client
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Create clean synthetic Supabase auth and profiles fixture
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_fixture.pgfixture
+      - name: Install existing referral accounting contract
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261024203000_blink_refer_and_grow.sql
+      - name: Create synthetic messages and Reel view events
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/unified_ux_feature_pgfixture.sql
+      - name: Install featured public Reel ranking on disposable database
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026113000_featured_reels_completed_12h.sql
+      - name: Install late-onboarding referral attribution on disposable database
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026114500_google_onboarding_referral_claim.sql
+      - name: Install idempotent direct and group messaging on disposable database
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql
+      - name: Verify privacy and idempotency assertions
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/unified_ux_feature_assertions.sql
+      - name: Confirm production remains untouched
+        run: echo "Disposable Postgres assertions finished. No production Supabase connection was used."
