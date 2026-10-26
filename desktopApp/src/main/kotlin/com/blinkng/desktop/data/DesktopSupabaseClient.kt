@@ -2755,6 +2755,38 @@ class DesktopSupabaseClient(
         }
     }
 
+    /** Same authenticated user_chat_privacy settings as Android; no new tables or API. */
+    suspend fun fetchChatLinkPreviewsEnabled(): Boolean = withContext(Dispatchers.IO) {
+        val rows = getArray("/rest/v1/user_chat_privacy?user_id=eq.${encode(requireSession().userId)}" +
+            "&select=allow_link_previews&limit=1")
+        rows.optJSONObject(0)?.optBoolean("allow_link_previews", true) ?: true
+    }
+
+    /** Preserve every unrelated chat-privacy field in the existing all-fields RPC. */
+    suspend fun setChatLinkPreviewsEnabled(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val fields = "who_can_message,who_can_call,who_can_group_invite,show_online," +
+            "show_last_seen,send_read_receipts,show_typing,show_recording," +
+            "show_profile_photo_in_chat,allow_link_previews,notification_preview"
+        val rows = getArray("/rest/v1/user_chat_privacy?user_id=eq.${encode(requireSession().userId)}" +
+            "&select=$fields&limit=1")
+        val row = rows.optJSONObject(0) ?: JSONObject()
+        val request = JSONObject()
+            .put("p_who_can_message", row.optString("who_can_message", "everyone"))
+            .put("p_who_can_call", row.optString("who_can_call", "everyone"))
+            .put("p_who_can_group_invite", row.optString("who_can_group_invite", "everyone"))
+            .put("p_show_online", row.optBoolean("show_online", true))
+            .put("p_show_last_seen", row.optBoolean("show_last_seen", true))
+            .put("p_send_read_receipts", row.optBoolean("send_read_receipts", true))
+            .put("p_show_typing", row.optBoolean("show_typing", true))
+            .put("p_show_recording", row.optBoolean("show_recording", true))
+            .put("p_show_profile_photo_in_chat", row.optBoolean("show_profile_photo_in_chat", true))
+            .put("p_allow_link_previews", enabled)
+            .put("p_notification_preview", row.optString("notification_preview", "full"))
+        val result = execute(authenticatedRequest("/rest/v1/rpc/update_chat_privacy")
+            .post(request.toString().toRequestBody(jsonMedia)).build())
+        result.trim().equals("true", ignoreCase = true)
+    }
+
     suspend fun fetchSettings(): DesktopUserSettings = withContext(Dispatchers.IO) {
         val rows = getArray(
             "/rest/v1/user_settings?user_id=eq.${encode(requireSession().userId)}&select=theme,language,push_notifs_enabled,email_notifs_enabled,dm_privacy,private_account,show_online_status,read_receipts,autoplay_videos,data_saver,reduce_motion&limit=1",
