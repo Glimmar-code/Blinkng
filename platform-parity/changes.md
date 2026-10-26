@@ -1,3 +1,11 @@
+## 2026-10-26 — Wallet final reward eligibility and reference interactions
+
+- **Android:** The five-page neon Wallet retains the BLINK Coin balance and working [+] shortcut, now scrolling to the Buy Coins packs. Earn Coins/Rewards shows ad #15 as verified-only; expired or unverified users see a locked milestone and a Get Verified route. Other screen affordances and existing 10-Coin base payouts remain unchanged.
+- **Windows:** Equivalent 15-ad verified-only display, reward progress and locked milestone navigation. Correct wallet copy explicitly permits user-to-user Coin gifting.
+- **Supabase:** The `get_blink_economy_status`, `begin_blink_rewarded_ad_claim` and `complete_blink_rewarded_ad_claim` functions re-evaluate Blue/Gold verification and its expiration to block old APK clients from earning ad #11–15 without active verification. No XP/HP level formula, Coin gift RPC, transaction rate or existing user wallet data changes.
+- **Tests:** New disposable PostgreSQL integration with fake accounts checks 10-vs-15 caps, expiration and preserved ad rewards. Android unit tests cover original cumulative milestone totals. Windows AdMob playback remains intentionally unavailable (Android-only SDK).
+- **Staging/release:** Do not deploy the migration or merge until full CI success. See screenshot references from this wallet conversation for strict final visual acceptance; passing code tests alone does not establish pixel-perfect UI parity.
+
 ## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
 
 - **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.
