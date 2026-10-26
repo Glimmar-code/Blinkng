@@ -306,13 +306,46 @@
     } catch { return null; }
   }
   function richLinkCard(text) {
-    const url = previewLinkInText(text);
-    if(!url) return '';
-    return `<a class="rich-link-card" data-link-card="${esc(url.href)}" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(url.hostname)} link">
+    const raw = String(text || '').match(/https?:\/\/[^\s<>"']+/gi) || [];
+    const seen = new Set();
+    return raw.map(value => previewLinkInText(value)).filter(url => {
+      if(!url || seen.has(url.href)) return false;
+      seen.add(url.href); return true;
+    }).slice(0,3).map(url => `<a class="rich-link-card" data-link-card="${esc(url.href)}" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(url.hostname)} link">
       <span class="rich-link-host">${esc(url.hostname)}</span>
       <strong class="rich-link-title">${esc(url.hostname)}</strong>
       <span class="rich-link-description">${esc(url.href.slice(0,180))}</span>
-    </a>`;
+    </a>`).join('');
+  }
+  // This reads the same RLS-protected account setting as Android and Windows.
+  async function readChatPreviewPrivacy() {
+    try {
+      const rows = await table('user_chat_privacy', 'select=who_can_message,who_can_call,who_can_group_invite,show_online,show_last_seen,send_read_receipts,show_typing,show_recording,show_profile_photo_in_chat,allow_link_previews,notification_preview&limit=1');
+      const row = rows?.[0] || {};
+      return { allowed: row.allow_link_previews !== false, row, available: true };
+    } catch {
+      // Never load remote chat previews when the user's preference is unknown.
+      return { allowed: false, row: null, available: false };
+    }
+  }
+  async function saveChatPreviewPrivacy(privacy, enabled) {
+    if(!privacy.available) throw Error('Chat privacy settings are temporarily unavailable.');
+    const row = privacy.row || {};
+    const normal = (key, fallback) => row[key] == null ? fallback : row[key];
+    const result = await rpc('update_chat_privacy', {
+      p_who_can_message: normal('who_can_message', 'everyone'),
+      p_who_can_call: normal('who_can_call', 'everyone'),
+      p_who_can_group_invite: normal('who_can_group_invite', 'everyone'),
+      p_show_online: normal('show_online', true),
+      p_show_last_seen: normal('show_last_seen', true),
+      p_send_read_receipts: normal('send_read_receipts', true),
+      p_show_typing: normal('show_typing', true),
+      p_show_recording: normal('show_recording', true),
+      p_show_profile_photo_in_chat: normal('show_profile_photo_in_chat', true),
+      p_allow_link_previews: !!enabled,
+      p_notification_preview: normal('notification_preview', 'full')
+    });
+    if(result !== true) throw Error('Could not save link preview preference.');
   }
   async function linkMetadata(url) {
     if(richPreviewCache.has(url)) return richPreviewCache.get(url);
@@ -1483,13 +1516,24 @@
       else if(isGroup){patch('conversation_participants',`conversation_id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{last_read_at:new Date().toISOString()}).catch(()=>{});}
       const rows=await rpc('get_conversation_messages_page',{p_conversation_id:id,p_limit:100,p_before:null,p_before_id:null});
       const profiles=await fetchProfiles((rows||[]).map(x=>x.sender_id));
+      const chatPreviewPrivacy = await readChatPreviewPrivacy();
       const title=isGroup?(conversationMeta?.title||'Group chat'):(partner?`@${partner}`:'Conversation');
       const messages=(rows||[]).slice().reverse().map(m=>{
         const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},attachment=safeUrl(m.media_url);
-        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${!m.deleted_for_everyone?richLinkCard(m.content):''}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
+        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${!m.deleted_for_everyone&&chatPreviewPrivacy.allowed?richLinkCard(m.content):''}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
       }).join('');
-      const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
+      const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div><label class="small" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="chat-link-preview" ${chatPreviewPrivacy.allowed?'checked':''} ${!chatPreviewPrivacy.available?'disabled':''}>Link previews</label></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
       ROOT.innerHTML=shell(html,title);bindCommon();
+      document.getElementById('chat-link-preview')?.addEventListener('change',async event=>{
+        const input=event.currentTarget, desired=input.checked;
+        input.disabled=true;
+        try {
+          await saveChatPreviewPrivacy(chatPreviewPrivacy,desired);
+          renderConversation(id,target);
+        } catch(error) {
+          input.checked=!desired;toast(error.message);input.disabled=false;
+        }
+      });
       const scroll=document.getElementById('chat-messages');scroll.scrollTop=scroll.scrollHeight;
       document.getElementById('chat-form').onsubmit=async e=>{
         e.preventDefault();const form=e.currentTarget,text=String(new FormData(form).get('text')||'').trim();if(!text){return;}
@@ -1585,6 +1629,7 @@
       return;
     }
     await loadMyProfile();const p=state.profile||{};
+    const chatPreviewPrivacy = await readChatPreviewPrivacy();
     let missionPayload={missions:[]};
     try{missionPayload=await rpc('get_my_daily_missions',{})||missionPayload;}catch(err){console.warn('daily missions',err);}
     const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
@@ -1593,8 +1638,15 @@
       const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
       return `<div class="card" style="padding:12px;margin-top:9px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:flex-start"><div class="grow"><strong>${esc(m.title||'Daily mission')}</strong><div class="muted small">${esc(m.description||'')}</div></div><span class="small"><strong>${Math.min(progress,target)}/${target}</strong></span></div><div style="height:6px;border-radius:99px;overflow:hidden;background:var(--surface-2,#e5e7eb);margin:9px 0"><div style="height:100%;width:${pct}%;background:currentColor"></div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span class="muted small">+${fmt(m.coin_reward||0)} coins · +${fmt(m.xp_reward||0)} XP</span><button type="button" class="btn small-btn ${m.claimable?'primary':'ghost'}" data-claim-mission="${esc(m.key||'')}" ${m.claimable?'':'disabled'}>${status}</button></div></div>`;
     }).join('');
-    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
+    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Message link previews</h3><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" id="settings-link-preview" ${chatPreviewPrivacy.allowed?'checked':''} ${!chatPreviewPrivacy.available?'disabled':''}>Automatically show public link previews in private conversations</label><p class="muted small">This setting is synced with Android and Windows. Turning it off stops new preview requests.</p></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
     bindCommon();
+    document.getElementById('settings-link-preview')?.addEventListener('change',async event=>{
+      const input=event.currentTarget, desired=input.checked;
+      input.disabled=true;
+      try { await saveChatPreviewPrivacy(chatPreviewPrivacy,desired);toast('Link preview setting saved'); }
+      catch(error) { input.checked=!desired;toast(error.message); }
+      finally { input.disabled=false; }
+    });
     document.querySelectorAll('[data-claim-mission]').forEach(button=>button.onclick=async()=>{
       const key=button.dataset.claimMission;if(!key)return;button.disabled=true;button.textContent='Claiming…';
       try{const result=await rpc('claim_daily_mission',{p_mission_key:key});toast(`+${fmt(result?.coin_reward||0)} Blink Coins · +${fmt(result?.xp_reward||0)} XP`);await loadMyProfile();renderSettings('/settings/profile');}
