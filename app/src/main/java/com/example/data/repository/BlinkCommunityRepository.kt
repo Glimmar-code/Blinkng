@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.blinkng.shared.BlinkCommunityPolicy
 import com.blinkng.shared.BlinkChannelPolicy
 import com.blinkng.shared.BlinkChannelUpdate
+import com.blinkng.shared.BlinkChannelReport
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
@@ -295,6 +296,23 @@ class BlinkCommunityRepository {
     suspend fun cancelScheduledChannelUpdate(id: String): Boolean =
         rpc("blink_channel_cancel_scheduled",
             JSONObject().put("p_update_id", id)) == "true"
+
+
+    suspend fun channelReports(channelId: String): List<BlinkChannelReport> {
+        val raw = request("rpc/blink_channel_reports_page", "POST",
+            JSONObject().put("p_channel_id", channelId))
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { row ->
+                BlinkChannelReport(row.optString("id"), row.optString("update_id"),
+                    row.optString("reason"), row.optBoolean("reviewed", false))
+            }
+        }
+    }
+
+    suspend fun reviewChannelReport(reportId: String, remove: Boolean): Boolean =
+        rpc("blink_channel_review_report",
+            JSONObject().put("p_report_id", reportId).put("p_remove", remove)) == "true"
 
     suspend fun leave(communityId: String): Boolean =
         rpc("blink_community_leave", JSONObject().put("p_community_id", communityId)) == "true"
