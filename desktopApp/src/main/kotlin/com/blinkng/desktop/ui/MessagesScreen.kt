@@ -140,6 +140,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var photoReviewItems by remember(myUserId) {
         mutableStateOf<List<DesktopSelectedPhoto>>(emptyList())
     }
+    var desktopEditingPhoto by remember(myUserId) { mutableStateOf<DesktopSelectedPhoto?>(null) }
     var photoReviewQuality by remember(myUserId) {
         mutableStateOf(BlinkChatImageQuality.STANDARD)
     }
@@ -1024,6 +1025,18 @@ fun MessagesScreen(state: DesktopAppState) {
         }
     }
 
+    desktopEditingPhoto?.let { item ->
+        DesktopUniversalPhotoEditor(
+            sourceFile = item.file,
+            onEdited = { result ->
+                photoReviewItems = photoReviewItems.map {
+                    if (it.file == item.file) it.copy(file = result) else it
+                }
+                desktopEditingPhoto = null
+            },
+            onDismiss = { desktopEditingPhoto = null }
+        )
+    }
     if (photoReviewItems.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { if (!photoBusy) photoReviewItems = emptyList() },
@@ -1081,6 +1094,10 @@ fun MessagesScreen(state: DesktopAppState) {
                                                         .apply { add(index + 1, removeAt(index)) }
                                                 }
                                             ) { Text("↓") }
+                                            TextButton(
+                                                enabled = !photoBusy,
+                                                onClick = { desktopEditingPhoto = item }
+                                            ) { Text("Edit") }
                                             TextButton(
                                                 enabled = !photoBusy,
                                                 onClick = {
