@@ -1,6 +1,8 @@
 package com.example.data.repository
 
 import com.blinkng.shared.BlinkCommunityPolicy
+import com.blinkng.shared.BlinkChannelPolicy
+import com.blinkng.shared.BlinkChannelUpdate
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +48,7 @@ class BlinkCommunityRepository {
         represent: Boolean = false
     ): String = withContext(Dispatchers.IO) {
         val token = SupabaseService.accessToken()
-            ?: throw IllegalStateException("Please sign in to use Communities.")
+            ?: throw IllegalStateException("Please sign in to use Channels.")
         val builder = Request.Builder()
             .url(SupabaseConfig.url.trimEnd('/') + "/rest/v1/" + path)
             .header("apikey", SupabaseConfig.anonKey)
@@ -61,7 +63,7 @@ class BlinkCommunityRepository {
             if (!response.isSuccessful) {
                 val message = runCatching { JSONObject(raw).optString("message") }
                     .getOrNull().orEmpty()
-                throw IllegalStateException(message.ifBlank { "Community request failed (HTTP " + response.code + ")." })
+                throw IllegalStateException(message.ifBlank { "Channel request failed (HTTP " + response.code + ")." })
             }
             raw
         }
@@ -99,7 +101,7 @@ class BlinkCommunityRepository {
         coverUrl: String? = null
     ): BlinkCommunity {
         val owner = SupabaseService().getCurrentUserId()
-            ?: error("Sign in before creating a community.")
+            ?: error("Sign in before creating a channel.")
         val body = JSONObject()
             .put("owner_id", owner)
             .put("name", BlinkCommunityPolicy.validatedName(name))
@@ -111,7 +113,7 @@ class BlinkCommunityRepository {
         if (!coverUrl.isNullOrBlank()) body.put("cover_url", coverUrl)
         val raw = request("blink_communities?select=*", "POST", body, represent = true)
         val row = JSONArray(raw).optJSONObject(0)
-            ?: error("Community was not confirmed by Supabase.")
+            ?: error("Channel was not confirmed by Supabase.")
         return parse(row)
     }
 
@@ -158,6 +160,48 @@ class BlinkCommunityRepository {
             JSONObject().put("p_community_id", communityId)
                 .put("p_target", memberId).put("p_action", action)) == "true"
     }
+
+
+    /** The membership query is scoped to the current user by the backend RLS. */
+    suspend fun myChannelRole(channelId: String): String =
+        rpc("blink_channel_my_role", JSONObject().put("p_channel_id", channelId))
+
+    suspend fun channelFollowerCount(channelId: String): Int =
+        rpc("blink_channel_follower_count", JSONObject().put("p_channel_id", channelId))
+            .toIntOrNull() ?: 0
+
+    suspend fun channelUpdates(channelId: String): List<BlinkChannelUpdate> {
+        val raw = request(
+            "rpc/blink_channel_updates_page", "POST",
+            JSONObject().put("p_channel_id", channelId).put("p_limit", 100)
+        )
+        val rows = JSONArray(raw.ifBlank { "[]" })
+        return (0 until rows.length()).mapNotNull { index ->
+            val row = rows.optJSONObject(index) ?: return@mapNotNull null
+            val reactions = row.optJSONObject("reactions") ?: JSONObject()
+            val counts = mutableMapOf<String, Int>()
+            reactions.keys().forEach { key -> counts[key] = reactions.optInt(key) }
+            BlinkChannelUpdate(
+                id = row.optString("id"),
+                channelId = row.optString("channel_id"),
+                authorId = row.optString("author_id"),
+                body = row.optString("body"),
+                createdAt = row.optString("created_at"),
+                reactions = counts,
+                myReaction = row.optString("my_reaction").takeIf { it.isNotBlank() && it != "null" }
+            )
+        }.reversed()
+    }
+
+    suspend fun publishChannelUpdate(channelId: String, body: String): String =
+        rpc("blink_channel_publish",
+            JSONObject().put("p_channel_id", channelId)
+                .put("p_body", BlinkChannelPolicy.validatedUpdate(body)))
+
+    suspend fun reactToChannelUpdate(updateId: String, emoji: String): String =
+        rpc("blink_channel_react",
+            JSONObject().put("p_update_id", updateId)
+                .put("p_emoji", BlinkChannelPolicy.validatedReaction(emoji)))
 
     suspend fun leave(communityId: String): Boolean =
         rpc("blink_community_leave", JSONObject().put("p_community_id", communityId)) == "true"
