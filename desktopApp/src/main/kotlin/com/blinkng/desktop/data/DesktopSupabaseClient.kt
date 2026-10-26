@@ -1560,16 +1560,55 @@ class DesktopSupabaseClient(
         communityRpc("blink_channel_review_report",
             JSONObject().put("p_report_id", reportId).put("p_remove", remove)) == "true"
 
-    suspend fun forwardChannelUpdateToChat(username: String, channelName: String,
-        channelId: String, updateId: String, body: String): Boolean {
+    suspend fun forwardChannelUpdateToChat(
+        username: String,
+        channelName: String,
+        source: com.blinkng.shared.BlinkChannelUpdate
+    ): Boolean = withContext(Dispatchers.IO) {
         val recipient = username.trim().removePrefix("@")
         require(recipient.isNotEmpty()) { "Choose a BLINK account." }
-        val url = "https://blink.com.ng/channel/$channelId/update/$updateId"
-        val content = "Forwarded from $channelName: ${body.take(1000)}\\n$url"
+        val url = "https://blink.com.ng/channel/${source.channelId}/update/${source.id}"
+        val content = "Forwarded from $channelName: ${source.body.take(900)}\n$url"
+        if (source.mediaKind == "image" && source.mediaPath != null) {
+            val signed = signedChannelMedia(source.mediaPath)
+                ?: throw IllegalStateException("Source image is not accessible.")
+            require(signed.startsWith("$baseUrl/storage/v1/")) { "Unexpected private image host." }
+            val ext = source.mediaPath.substringAfterLast('.').lowercase()
+            require(ext in setOf("jpg", "jpeg", "png", "webp"))
+            val file = File.createTempFile("blink_channel_dm_", ".$ext")
+            try {
+                http.newCall(Request.Builder().url(signed).get().build()).execute().use { response ->
+                    check(response.isSuccessful) { "Unable to download Channel image." }
+                    val sourceStream = response.body?.byteStream() ?: error("Missing Channel picture.")
+                    sourceStream.use { input ->
+                        file.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var total = 0L
+                            while (true) {
+                                val size = input.read(buffer)
+                                if (size < 0) break
+                                total += size
+                                require(total <= 15L * 1024L * 1024L) {
+                                    "Image is too large for private messaging."
+                                }
+                                output.write(buffer, 0, size)
+                            }
+                            require(total > 0) { "Empty Channel image." }
+                        }
+                    }
+                }
+                val conversationId = getOrCreateDirectConversationForShare(recipient)
+                sendChatImage(
+                    conversationId, file, content.take(1024),
+                    BlinkChatImageQuality.STANDARD
+                )
+                return@withContext true
+            } finally { file.delete() }
+        }
         val result = communityRpc("send_message", JSONObject()
             .put("p_receiver_username", recipient)
             .put("p_content", content))
-        return runCatching { UUID.fromString(result) }.isSuccess
+        runCatching { UUID.fromString(result) }.isSuccess
     }
 
     suspend fun searchMentionProfiles(
