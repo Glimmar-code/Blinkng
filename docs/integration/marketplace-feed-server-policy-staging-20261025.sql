@@ -50,6 +50,10 @@ begin
 end;
 $$;
 
+-- Replaces the narrower old text-only trigger atomically. Keeping both would
+-- block even a trusted, payment-approved Sponsored Market placement.
+-- Keep the old function for a reversible rollback; do NOT deploy untested.
+drop trigger if exists feed_route_product_ads_trigger on public.feed_posts;
 drop trigger if exists blink_feed_market_category_guard on public.feed_posts;
 create trigger blink_feed_market_category_guard
 before insert or update of category, text, caption, alt_text, is_sponsored, ad_label
@@ -82,3 +86,7 @@ commit;
 -- 8. Rollback (staging): drop trigger if exists
 --    blink_feed_market_category_guard on public.feed_posts;
 --    drop function if exists public.blink_validate_feed_market_category();
+--    Recreate the former text-only trigger ONLY IF this known legacy function
+--    still exists, using BEFORE INSERT OR UPDATE OF text:
+--    public.route_product_ads_to_market(). Verify the full previous definition
+--    before relying on this rollback in a deployed environment.
