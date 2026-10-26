@@ -67,8 +67,22 @@ internal suspend fun reelFilmstrip(context: Context, uri: Uri, count: Int = 6): 
                 )?.toLongOrNull()?.coerceAtLeast(1L) ?: 1L
                 (0 until count).mapNotNull { index ->
                     val timestampUs = (durationMs * index / count) * 1_000L
-                    retriever.getFrameAtTime(timestampUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        ?.let { Bitmap.createScaledBitmap(it, 84, 132, true) }
+                    // Decode scaled frames on Android 8.1+ to avoid allocating 4K bitmaps
+                    // repeatedly on budget student phones while scrolling the editor.
+                    if (android.os.Build.VERSION.SDK_INT >= 27) {
+                        retriever.getScaledFrameAtTime(
+                            timestampUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            84, 132
+                        )
+                    } else {
+                        retriever.getFrameAtTime(
+                            timestampUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                        )?.let { full ->
+                            val scaled = Bitmap.createScaledBitmap(full, 84, 132, true)
+                            if (scaled !== full) full.recycle()
+                            scaled
+                        }
+                    }
                 }
             } finally {
                 retriever.release()
