@@ -2,6 +2,14 @@ package com.example.ui.components
 
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkPostFormat
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.abs
 
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -1247,6 +1255,18 @@ private fun ImageFullscreenDialog(
         initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0))
     )
     var entered by remember { mutableStateOf(false) }
+    var dragDown by remember { mutableFloatStateOf(0f) }
+    var gestureActive by remember { mutableStateOf(false) }
+    val dismissActivation = with(LocalDensity.current) { 110.dp.toPx() }
+    val flickMinimum = with(LocalDensity.current) { 28.dp.toPx() }
+    val flickVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
+    val visualDown by animateFloatAsState(
+        targetValue = BlinkElasticGesturePhysics.visualDistance(dragDown, dismissActivation),
+        animationSpec = if (gestureActive) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ), label = "feedImageElasticDismiss"
+    )
     val scope = rememberCoroutineScope()
 
     fun dismissAnimated() {
@@ -1276,7 +1296,42 @@ private fun ImageFullscreenDialog(
             )
         ) {
             Surface(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationY = visualDown }
+                    .pointerInput(images, dismissActivation) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val velocity = VelocityTracker()
+                            velocity.addPosition(down.uptimeMillis, down.position)
+                            var handledByChild = false
+                            var committed = false
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                if (event.changes.size > 1) handledByChild = true
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.pressed && change.isConsumed) handledByChild = true
+                                velocity.addPosition(change.uptimeMillis, change.position)
+                                val deltaX = change.position.x - down.position.x
+                                val deltaY = change.position.y - down.position.y
+                                val downward = deltaY > 0f && deltaY > abs(deltaX) * 1.35f
+                                if (change.pressed) {
+                                    gestureActive = !handledByChild && downward
+                                    dragDown = if (gestureActive) deltaY else 0f
+                                } else {
+                                    committed = !handledByChild && downward &&
+                                        BlinkElasticGesturePhysics.shouldCommit(
+                                            deltaY, velocity.calculateVelocity().y,
+                                            dismissActivation, flickMinimum, flickVelocity
+                                        )
+                                    break
+                                }
+                            }
+                            gestureActive = false
+                            dragDown = 0f
+                            if (committed) dismissAnimated()
+                        }
+                    },
                 color = Color.Black.copy(alpha = 0.97f)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {

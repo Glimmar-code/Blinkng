@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -126,7 +129,18 @@ fun BlinkReferenceMenuScreen(
         else onDismiss()
     }
 
-    Column(Modifier.fillMaxSize().background(background).statusBarsPadding().testTag("blink_reference_menu")) {
+    Column(
+        Modifier.fillMaxSize()
+            .blinkElasticSwipeAction(
+                direction = BlinkElasticSwipeDirection.RIGHT,
+                onAction = {
+                    if (page != "menu") page = "menu"
+                    else if (!showLogoutConfirm) onDismiss()
+                },
+                enabled = !showLogoutConfirm
+            )
+            .background(background).statusBarsPadding().testTag("blink_reference_menu")
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp)
                 .padding(horizontal = 17.dp, vertical = 7.dp),

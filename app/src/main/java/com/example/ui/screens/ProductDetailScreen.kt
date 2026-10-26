@@ -7,6 +7,16 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -94,6 +104,17 @@ fun ProductDetailScreen(
     val context = LocalContext.current
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     var selectedImageIndex by remember(item.id) { mutableIntStateOf(0) }
+    var imageSwipeDrag by remember(item.id) { mutableFloatStateOf(0f) }
+    var imageSwipeActive by remember(item.id) { mutableStateOf(false) }
+    val imageSwipeActivation = with(LocalDensity.current) { 88.dp.toPx() }
+    val imageSwipeFlick = with(LocalDensity.current) { 28.dp.toPx() }
+    val imageSwipeVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
+    val imageVisualX by animateFloatAsState(
+        BlinkElasticGesturePhysics.visualDistance(imageSwipeDrag, imageSwipeActivation),
+        if (imageSwipeActive) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
+        ), label = "marketImageElastic"
+    )
     var showOrderDialog by remember { mutableStateOf(false) }
     var showOfferDialog by remember { mutableStateOf(false) }
     var showModerationAppeal by remember { mutableStateOf(false) }
@@ -148,7 +169,42 @@ fun ProductDetailScreen(
                         fallback = painterResource(android.R.drawable.ic_menu_gallery),
                         contentDescription = item.title,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { translationX = imageVisualX }
+                            .pointerInput(item.id, item.images.size, imageSwipeActivation) {
+                                if (item.images.size < 2) return@pointerInput
+                                var velocity = VelocityTracker()
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        velocity = VelocityTracker()
+                                        imageSwipeDrag = 0f
+                                        imageSwipeActive = true
+                                    },
+                                    onHorizontalDrag = { change, amount ->
+                                        imageSwipeDrag += amount
+                                        velocity.addPosition(change.uptimeMillis, change.position)
+                                        change.consume()
+                                    },
+                                    onDragEnd = {
+                                        val movePage = BlinkElasticGesturePhysics.shouldCommit(
+                                            imageSwipeDrag, velocity.calculateVelocity().x,
+                                            imageSwipeActivation, imageSwipeFlick, imageSwipeVelocity
+                                        )
+                                        if (movePage) {
+                                            selectedImageIndex = (
+                                                selectedImageIndex + if (imageSwipeDrag < 0f) 1 else -1
+                                            ).coerceIn(0, item.images.lastIndex)
+                                        }
+                                        imageSwipeActive = false
+                                        imageSwipeDrag = 0f
+                                    },
+                                    onDragCancel = {
+                                        imageSwipeActive = false
+                                        imageSwipeDrag = 0f
+                                    }
+                                )
+                            }
                     )
 
                     Row(

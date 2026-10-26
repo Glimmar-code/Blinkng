@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkReplySwipePhysics
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 
 import com.example.ui.components.BlinkSkeletonChatHistory
 
@@ -467,35 +469,39 @@ fun PremiumMessagesScreen(
 
 private fun Modifier.observeLeftSwipeToClose(
     thresholdPx: Float,
-    onSwipeLeft: () -> Unit
-): Modifier = pointerInput(thresholdPx, onSwipeLeft) {
+    onSwipeLeft: () -> Unit,
+    onDragProgress: (Float) -> Unit,
+    onRelease: () -> Unit
+): Modifier = pointerInput(thresholdPx) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        var horizontal = 0f
-        var vertical = 0f
-        var fired = false
-
+        val tracker = VelocityTracker()
+        tracker.addPosition(down.uptimeMillis, down.position)
+        var committed = false
+        var childHandled = false
         while (true) {
-            // Observe in the Initial pass so message-bubble gestures can still consume
-            // their own left swipe later without blocking the screen-level right swipe.
-            val event = awaitPointerEvent(PointerEventPass.Initial)
+            // Final pass lets a photo carousel or child swipe claim its own gesture.
+            // This observer never consumes pointer changes from the conversation.
+            val event = awaitPointerEvent(PointerEventPass.Final)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            val delta = change.positionChange()
-            horizontal += delta.x
-            vertical += delta.y
-
-            if (
-                !fired &&
-                horizontal <= -thresholdPx &&
-                -horizontal > abs(vertical) * 1.25f
-            ) {
-                fired = true
-                onSwipeLeft()
+            if (change.pressed && change.isConsumed) childHandled = true
+            tracker.addPosition(change.uptimeMillis, change.position)
+            val horizontal = change.position.x - down.position.x
+            val vertical = change.position.y - down.position.y
+            val leftIntent = horizontal < 0f && -horizontal > abs(vertical) * 1.35f
+            if (change.pressed) {
+                if (!childHandled && leftIntent) onDragProgress(horizontal)
+                else onDragProgress(0f)
+            } else {
+                committed = !childHandled && leftIntent && BlinkElasticGesturePhysics.shouldCommit(
+                    horizontal, tracker.calculateVelocity().x, thresholdPx,
+                    thresholdPx * 0.36f, thresholdPx * 14.5f
+                )
                 break
             }
-
-            if (!change.pressed) break
         }
+        onRelease()
+        if (committed) onSwipeLeft()
     }
 }
 
@@ -530,14 +536,26 @@ private fun PremiumMessagesMasterDetail(
     val density = LocalDensity.current
     val groupContext = LocalContext.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
+    var closeDragPx by remember(activeConversation.partnerUsername) { mutableStateOf(0f) }
+    var closeDragging by remember(activeConversation.partnerUsername) { mutableStateOf(false) }
+    val closeVisual by animateFloatAsState(
+        targetValue = BlinkElasticGesturePhysics.visualDistance(closeDragPx, swipeThresholdPx),
+        animationSpec = if (closeDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ), label = "chatElasticClose"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { translationX = closeVisual }
             .semantics { contentDescription = "Chat" }
             .observeLeftSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeLeft = onCloseConversation
+                onSwipeLeft = onCloseConversation,
+                onDragProgress = { closeDragging = true; closeDragPx = it },
+                onRelease = { closeDragging = false; closeDragPx = 0f }
             )
     ) {
         AnimatedContent(
@@ -3160,6 +3178,7 @@ private fun MessageBubble(
     var dragOffset by remember(message.id) { mutableStateOf(0f) }
     var isDragging by remember(message.id) { mutableStateOf(false) }
     var replyArmed by remember(message.id) { mutableStateOf(false) }
+    var replyVelocity by remember(message.id) { mutableStateOf(VelocityTracker()) }
     val displayOffset by animateFloatAsState(
         targetValue = BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
         animationSpec = if (isDragging) snap() else spring(
@@ -3184,8 +3203,12 @@ private fun MessageBubble(
                 .graphicsLayer { translationX = displayOffset }
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
-                        onDragStart = { isDragging = true },
-                        onHorizontalDrag = { _, amount ->
+                        onDragStart = {
+                            replyVelocity = VelocityTracker()
+                            isDragging = true
+                        },
+                        onHorizontalDrag = { change, amount ->
+                            replyVelocity.addPosition(change.uptimeMillis, change.position)
                             dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 2f)
                             val active = BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)
                             if (active && !replyArmed) {
@@ -3194,7 +3217,9 @@ private fun MessageBubble(
                             replyArmed = active
                         },
                         onDragEnd = {
-                            if (BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)) onReply()
+                            if (BlinkReplySwipePhysics.shouldReply(
+                                    dragOffset, threshold, replyVelocity.calculateVelocity().x
+                                )) onReply()
                             isDragging = false
                             replyArmed = false
                             dragOffset = 0f
