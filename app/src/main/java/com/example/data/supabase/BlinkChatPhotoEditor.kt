@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.graphics.Matrix
 import android.net.Uri
 import com.blinkng.shared.BlinkChatAttachmentKind
@@ -98,4 +101,82 @@ internal object BlinkChatPhotoEditor {
                 photo.recycle()
             }
         }
+
+    /**
+     * Composable editor adjustment pipeline. All values are constrained and all
+     * output is a new app-private cache copy; original device photos are untouched.
+     */
+    suspend fun adjust(
+        context: Context,
+        uri: Uri,
+        exposure: Float,
+        contrast: Float,
+        saturation: Float
+    ): Uri = withContext(Dispatchers.IO) {
+        val mime = if (uri.scheme == "file") {
+            when (File(uri.path.orEmpty()).extension.lowercase()) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "heic" -> "image/heic"
+                "heif" -> "image/heif"
+                else -> ""
+            }
+        } else context.contentResolver.getType(uri)?.lowercase().orEmpty()
+        require(mime in setOf("image/jpeg", "image/png", "image/heic", "image/heif")) {
+            "Animation is not supported by the still-photo editor."
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        } ?: throw IllegalArgumentException("Photo unavailable.")
+        require(bounds.outWidth in 1..20000 && bounds.outHeight in 1..20000)
+        var sample = 1
+        while (maxOf(bounds.outWidth,bounds.outHeight) / sample > 2048) sample *= 2
+        val decoded = context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply {
+                inSampleSize = sample
+            })
+        } ?: throw IllegalArgumentException("Photo cannot be edited.")
+        val original = try {
+            BlinkChatImageOrientation.apply(context, uri, decoded)
+        } catch (err: Exception) {
+            decoded.recycle()
+            throw err
+        }
+        if (original !== decoded) decoded.recycle()
+        val output = File.createTempFile("blink-edited-", ".jpg", context.cacheDir)
+        try {
+            val result = Bitmap.createBitmap(original.width, original.height, Bitmap.Config.ARGB_8888)
+            try {
+                val canvas = Canvas(result)
+                canvas.drawColor(Color.WHITE)
+                val c = contrast.coerceIn(.5f, 1.5f)
+                val offset = (1f - c) * 128f + exposure.coerceIn(-1f, 1f) * 75f
+                val colorTransform = ColorMatrix().apply {
+                    setSaturation(saturation.coerceIn(0f, 2f))
+                    postConcat(ColorMatrix(floatArrayOf(
+                        c, 0f, 0f, 0f, offset,
+                        0f, c, 0f, 0f, offset,
+                        0f, 0f, c, 0f, offset,
+                        0f, 0f, 0f, 1f, 0f
+                    )))
+                }
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                    colorFilter = ColorMatrixColorFilter(colorTransform)
+                }
+                canvas.drawBitmap(original, 0f, 0f, paint)
+                FileOutputStream(output).use { stream ->
+                    require(result.compress(Bitmap.CompressFormat.JPEG, 90, stream)) {
+                        "Failed to export picture."
+                    }
+                }
+                BlinkChatAttachmentKind.IMAGE.verify("image/jpeg", output.length())
+                Uri.fromFile(output)
+            } finally { result.recycle() }
+        } catch (error: Exception) {
+            output.delete()
+            throw error
+        } finally { original.recycle() }
+    }
+
 }
