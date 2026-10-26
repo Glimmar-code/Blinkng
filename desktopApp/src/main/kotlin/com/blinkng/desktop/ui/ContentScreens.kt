@@ -1392,6 +1392,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var marketImagePath by remember { mutableStateOf("") }
+    var marketImageToEdit by remember { mutableStateOf<java.io.File?>(null) }
     var marketVideoPath by remember { mutableStateOf("") }
     var showListingPreview by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
@@ -1409,6 +1410,16 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    marketImageToEdit?.let { source ->
+        DesktopUniversalPhotoEditor(
+            sourceFile = source,
+            onEdited = { result ->
+                marketImagePath = result.absolutePath
+                marketImageToEdit = null
+            },
+            onDismiss = { marketImageToEdit = null }
+        )
+    }
     LaunchedEffect(state.client) {
         marketCheckoutEnabled = runCatching {
             DesktopRpcActions(state.client).getEconomyStatus().optBoolean("cash_checkout_enabled", false)
@@ -1759,7 +1770,15 @@ fun MarketplaceScreen(state: DesktopAppState) {
                                 marketImagePath = chooser.selectedFile.absolutePath
                             }
                         }) { Text(if (marketImagePath.isBlank()) "Choose product photo" else "Replace product photo") }
-                        if (marketImagePath.isNotBlank()) Text(java.io.File(marketImagePath).name)
+                        if (marketImagePath.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(java.io.File(marketImagePath).name,
+                                    modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    marketImageToEdit = java.io.File(marketImagePath)
+                                }) { Text("Edit photo") }
+                            }
+                        }
                         OutlinedButton(onClick = {
                             val chooser = javax.swing.JFileChooser()
                             chooser.dialogTitle = "Choose an optional product video"
