@@ -1508,7 +1508,10 @@ private fun ReelPage(
             }
             if (!isPreview && reel.text.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                ExpandableCaption(reel.text)
+                ExpandableCaption(listOfNotNull(
+                            reel.text.takeIf(String::isNotBlank),
+                            reel.linkUrl?.takeIf(String::isNotBlank)
+                        ).joinToString(" "))
             }
             reel.audioTitle?.takeIf { !isPreview && it.isNotBlank() }?.let { audio ->
                 Spacer(Modifier.height(8.dp))
