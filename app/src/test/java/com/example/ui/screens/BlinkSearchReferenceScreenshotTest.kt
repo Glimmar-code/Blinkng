@@ -13,12 +13,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.models.FeedPost
-import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.BlinkTheme
@@ -62,13 +62,6 @@ class BlinkSearchReferenceScreenshotTest {
         text = "Best study spots on campus? Share your favourites!",
         likes = 124, commentsCount = 36, sharesCount = 12,
     )
-    private val item = MarketItem(
-        id = "search-visual-item", title = "Laptop for sale", price = 520000L,
-        images = emptyList(), sellerUsername = "student2", sellerAvatar = "",
-        sellerName = "Tobi Ade", university = "FUTA",
-        location = "Akure", category = "Laptops", description = "Working laptop",
-    )
-
     private fun render(dark: Boolean, fontScale: Float, width: Dp? = null) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("blink_reference_search", Context.MODE_PRIVATE)
@@ -87,7 +80,6 @@ class BlinkSearchReferenceScreenshotTest {
                             myProfile = owner,
                             profiles = friends + owner,
                             posts = listOf(post),
-                            marketItems = listOf(item),
                             currentUsername = owner.username,
                             serverProfiles = emptyList(),
                             serverPosts = emptyList(),
@@ -98,7 +90,6 @@ class BlinkSearchReferenceScreenshotTest {
                             onSharePost = {},
                             onBookmarkPost = {},
                             onOptionsClick = {},
-                            onMarketItemClick = {},
                             onGameClick = {},
                             onNotificationsClick = {},
                             hasUnreadNotifications = true,
@@ -110,6 +101,14 @@ class BlinkSearchReferenceScreenshotTest {
                 }
             }
         }
+    }
+
+    @Test fun marketAndCommunitiesAreNotSearchCategories() {
+        render(false, 1.0f)
+        rule.onNodeWithText("Market").assertDoesNotExist()
+        rule.onNodeWithText("Communities").assertDoesNotExist()
+        rule.onNodeWithText("People").assertExists()
+        rule.onNodeWithText("Posts").assertExists()
     }
 
     @Test fun searchReferenceLight() {
