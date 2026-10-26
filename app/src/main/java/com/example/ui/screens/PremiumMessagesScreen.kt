@@ -1586,6 +1586,7 @@ private fun PremiumChatDetail(
     }
     var showStickers by remember(conversation.id) { mutableStateOf(false) }
     var aiPhotoUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
+    var aiAudioUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var historicalViewerPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
@@ -2790,6 +2791,11 @@ private fun PremiumChatDetail(
                 onPresenceChange("uploading")
                 onSendAttachment(it, if (audio) "audio" else "document")
             },
+            onOpenBlinkAi = { selectedAudio ->
+                pendingFileReview = null
+                aiAudioUri = selectedAudio
+                onPresenceChange("online")
+            },
             onDismiss = {
                 pendingFileReview = null
                 onPresenceChange("online")
@@ -2825,6 +2831,12 @@ private fun PremiumChatDetail(
         )
     }
 
+    aiAudioUri?.let { selected ->
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { aiAudioUri = null },
+            initialAudioUri = selected
+        )
+    }
     aiPhotoUri?.let { selected ->
         com.example.ui.components.BlinkAiSheet(
             onDismiss = { aiPhotoUri = null },
