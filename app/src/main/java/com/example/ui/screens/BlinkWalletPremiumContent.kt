@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkEarningHubPolicy
 import java.text.NumberFormat
+import kotlinx.coroutines.launch
 
 // Screenshot-inspired surfaces. Coin totals, claims, verification and payment remain server-authoritative.
 private val night = Color(0xFF05020E)
@@ -195,6 +197,7 @@ internal fun BlinkWalletPremiumContent(
 ) {
     var page by remember(accountId) { mutableIntStateOf(0) }
     var filter by remember(accountId) { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
     Column(Modifier.fillMaxSize().background(night).testTag("blink_wallet_premium")) {
@@ -211,7 +214,8 @@ internal fun BlinkWalletPremiumContent(
             }
         }
         Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
-            LazyColumn(Modifier.fillMaxSize(),
+            val listState = rememberLazyListState()
+            LazyColumn(Modifier.fillMaxSize(), state = listState,
                 contentPadding = PaddingValues(start = 15.dp, end = 15.dp, bottom = 44.dp),
                 verticalArrangement = Arrangement.spacedBy(17.dp)) {
                 if (error != null) item {
@@ -234,8 +238,16 @@ internal fun BlinkWalletPremiumContent(
                                             fontWeight = FontWeight.Black, color = Color.White)
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
-                                    Icon(Icons.Rounded.MonetizationOn, "BLINK Coins", tint = Color(0xFFB768FF),
-                                        modifier = Modifier.size(34.dp))
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            // Error/loading banners may precede the three overview sections.
+                                            listState.animateScrollToItem(
+                                                2 + (if (error != null) 1 else 0) + (if (loading) 1 else 0))
+                                        }
+                                    }, modifier = Modifier.size(44.dp)) {
+                                        Icon(Icons.Rounded.AddCircle, "Browse Coin packs",
+                                            tint = Color(0xFFB768FF), modifier = Modifier.size(34.dp))
+                                    }
                                 }
                                 HorizontalDivider(color = Color.White.copy(alpha = .18f))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
