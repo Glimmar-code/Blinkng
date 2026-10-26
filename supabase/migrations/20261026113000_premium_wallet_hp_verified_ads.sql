@@ -50,6 +50,7 @@ create index if not exists blink_hp_gifts_receiver_day
 alter table public.blink_hp_gifts enable row level security;
 revoke all on public.blink_hp_gifts from anon, authenticated;
 grant select on public.blink_hp_gifts to authenticated;
+grant select on public.blink_hp_gifts to service_role;
 drop policy if exists blink_hp_gifts_my_history on public.blink_hp_gifts;
 create policy blink_hp_gifts_my_history
 on public.blink_hp_gifts for select to authenticated
