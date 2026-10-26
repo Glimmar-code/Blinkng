@@ -69,7 +69,6 @@ internal fun BlinkChatPictureViewer(
     var chromeVisible by remember(message.id) { mutableStateOf(true) }
     var captionExpanded by remember(message.id) { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
-    var setAsOpen by remember { mutableStateOf(false) }
     var rotateDegrees by remember(message.id) { mutableIntStateOf(0) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
@@ -146,14 +145,21 @@ internal fun BlinkChatPictureViewer(
                             Icon(Icons.Default.MoreVert, "More picture actions", tint = Color.White)
                         }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
-                            DropdownMenuItem(text = { Text("Share") }, onClick = {
-                                moreOpen = false
-                                val share = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Shared picture in BLINK")
-                                }
-                                context.startActivity(Intent.createChooser(share, "Share"))
-                            }, leadingIcon = { Icon(Icons.Default.Share, null) })
+                            DropdownMenuItem(text = { Text("Share") }, enabled = savedUri != null,
+                                onClick = {
+                                    moreOpen = false
+                                    savedUri?.let { uri ->
+                                        runCatching {
+                                            context.startActivity(Intent.createChooser(
+                                                Intent(Intent.ACTION_SEND).apply {
+                                                    type = "image/jpeg"
+                                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }, "Share picture"
+                                            ))
+                                        }
+                                    }
+                                }, leadingIcon = { Icon(Icons.Default.Share, null) })
                             DropdownMenuItem(text = { Text(if (message.isStarred) "Unstar" else "Star") },
                                 onClick = { moreOpen = false; onStar() },
                                 leadingIcon = { Icon(Icons.Default.Star, null) })
