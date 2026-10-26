@@ -1277,7 +1277,23 @@ class DesktopSupabaseClient(
                     body = row.optString("body"),
                     createdAt = row.optString("created_at"),
                     reactions = counts,
-                    myReaction = row.optNullableString("my_reaction")
+                    myReaction = row.optNullableString("my_reaction"),
+                    mediaKind = row.optString("media_kind").ifBlank { "text" },
+                    mediaPath = row.optNullableString("media_path"),
+                    pollQuestion = row.optNullableString("poll_question"),
+                    pollOptions = row.optJSONArray("poll_options")?.let { poll ->
+                        (0 until poll.length()).map { index -> poll.optString(index) }
+                    }.orEmpty(),
+                    pollCounts = row.optJSONObject("poll_counts")?.let { counts ->
+                        buildMap<Int, Int> {
+                            counts.keys().forEach { key ->
+                                key.toIntOrNull()?.let { put(it, counts.optInt(key)) }
+                            }
+                        }
+                    }.orEmpty(),
+                    myVote = if (row.isNull("my_vote")) null else row.optInt("my_vote"),
+                    pinned = row.optBoolean("pinned", false),
+                    viewCount = row.optLong("view_count", 0)
                 )
             }.reversed()
         }
@@ -1291,6 +1307,59 @@ class DesktopSupabaseClient(
         communityRpc("blink_channel_react",
             JSONObject().put("p_update_id", updateId)
                 .put("p_emoji", com.blinkng.shared.BlinkChannelPolicy.validatedReaction(emoji)))
+
+
+    suspend fun publishRichChannelUpdate(
+        id: String, body: String, kind: String = "text",
+        mediaPath: String? = null, pollQuestion: String? = null,
+        options: List<String> = emptyList(), scheduledAt: String? = null,
+        forwardedFrom: String? = null
+    ): String {
+        com.blinkng.shared.BlinkChannelPolicy.validatedMediaKind(kind)
+        val poll = if (kind == "poll")
+            com.blinkng.shared.BlinkChannelPolicy.validatedPoll(pollQuestion.orEmpty(), options)
+            else null
+        return communityRpc("blink_channel_publish_rich",
+            JSONObject().put("p_channel_id", id)
+                .put("p_body", body.trim().take(com.blinkng.shared.BlinkChannelPolicy.MAX_UPDATE_LENGTH))
+                .put("p_media_kind", kind)
+                .put("p_media_path", mediaPath ?: JSONObject.NULL)
+                .put("p_poll_question", poll?.first ?: JSONObject.NULL)
+                .put("p_poll_options", poll?.second?.let { JSONArray(it) } ?: JSONObject.NULL)
+                .put("p_scheduled_at", scheduledAt ?: JSONObject.NULL)
+                .put("p_forwarded_from", forwardedFrom ?: JSONObject.NULL))
+    }
+
+    suspend fun voteChannelPoll(updateId: String, option: Int): Boolean =
+        communityRpc("blink_channel_poll_vote", JSONObject()
+            .put("p_update_id", updateId).put("p_option", option)) == "true"
+
+    suspend fun recordChannelView(updateId: String): Boolean =
+        communityRpc("blink_channel_view", JSONObject()
+            .put("p_update_id", updateId)) == "true"
+
+    suspend fun reportChannelUpdate(updateId: String, reason: String): Boolean =
+        communityRpc("blink_channel_report", JSONObject()
+            .put("p_update_id", updateId).put("p_reason", reason.trim().take(280))) == "true"
+
+    suspend fun moderateChannelUpdate(updateId: String, action: String): Boolean {
+        require(action in setOf("pin", "unpin", "remove"))
+        return communityRpc("blink_channel_manage_update", JSONObject()
+            .put("p_update_id", updateId).put("p_action", action)) == "true"
+    }
+
+    suspend fun channelStats(id: String): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/blink_channel_statistics",
+            JSONObject().put("p_channel_id", id)) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun muteChannel(id: String, muted: Boolean): Boolean =
+        communityRpc("blink_channel_mute", JSONObject()
+            .put("p_channel_id", id).put("p_muted", muted)) == "true"
+
+    suspend fun isChannelMuted(id: String): Boolean =
+        communityRpc("blink_channel_is_muted", JSONObject()
+            .put("p_channel_id", id)) == "true"
 
     suspend fun searchMentionProfiles(
         query: String,
