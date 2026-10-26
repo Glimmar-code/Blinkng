@@ -136,6 +136,7 @@ fun ProfileScreen(
     onDirectMessage: (String) -> Unit,
     onEndorseSkill: (String) -> Unit,
     onLikePost: (String) -> Unit,
+    onOpenPost: (String) -> Unit = {},
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
     onSharePost: (String) -> Unit,
@@ -226,7 +227,7 @@ fun ProfileScreen(
 
     val tabs = remember(isMe) {
         if (isMe) {
-            listOf("Posts", "Reels", "Market", "Skills", "About", "You")
+            listOf("Posts", "Reels", "Market", "Skills", "About", "You", "Liked", "Saved")
         } else {
             listOf("Posts", "Reels", "Market", "Skills", "About")
         }
@@ -556,72 +557,39 @@ fun ProfileScreen(
                 }
 
                 item(key = "tabs") {
-                    AnimatedTabRow(
+                    PremiumProfileTabs(
                         tabs = tabs,
                         selectedTab = selectedTab,
                         onTabSelected = { selectedTab = it },
-                        cardBg = cardBg,
-                        borderColor = borderColor,
-                        textPrimary = textPrimary
+                        isMe = isMe,
+                        selectedThemeCard = cardBg
                     )
                 }
 
                 // Keep post cards as real LazyColumn items and keep private activity owner-only.
                 when (tabs.getOrNull(selectedTab)) {
-                    "Posts" -> profilePostItems(
-                        keyPrefix = "posts",
-                        posts = matchingContent(reelsOnly = false),
-                        isLoading = isPostsLoading,
-                        loadFailed = hasPostsLoadError,
-                        onRetry = onRefreshProfile,
-                        profile = profile,
-                        canDelete = isMe,
-                        onDelete = onDeletePost,
-                        isDark = isDark,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        onLike = onLikePost,
-                        onComment = onCommentPost,
-                        onBookmark = onBookmarkPost,
-                        onShare = onSharePost,
-                        onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick,
-                        onPin = if (isMe) { post ->
-                            overlayScope.launch {
-                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
-                                if (changed) onRefreshProfile()
-                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
-                            }
-                        } else null
+                    "Posts" -> premiumProfileGridItems(
+                        items = matchingContent(reelsOnly = false),
+                        emptyMessage = if (isPostsLoading) "Loading posts..." else "No posts yet",
+                        onOpen = onOpenPost
                     )
 
-                    "Reels" -> profilePostItems(
-                        keyPrefix = "reels",
-                        posts = matchingContent(reelsOnly = true),
-                        isLoading = isPostsLoading,
-                        loadFailed = hasPostsLoadError,
-                        onRetry = onRefreshProfile,
-                        profile = profile,
-                        canDelete = isMe,
-                        onDelete = onDeletePost,
-                        isDark = isDark,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        emptyTitle = "No reels yet",
-                        emptySubtitle = if (isMe) "Your reels will appear here." else "@${profile.username} has not posted a reel yet.",
-                        onLike = onLikePost,
-                        onComment = onCommentPost,
-                        onBookmark = onBookmarkPost,
-                        onShare = onSharePost,
-                        onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick,
-                        onPin = if (isMe) { post ->
-                            overlayScope.launch {
-                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
-                                if (changed) onRefreshProfile()
-                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
-                            }
-                        } else null
+                    "Reels" -> premiumProfileGridItems(
+                        items = matchingContent(reelsOnly = true),
+                        emptyMessage = if (isPostsLoading) "Loading reels..." else "No reels yet",
+                        onOpen = onOpenPost
+                    )
+
+                    "Liked" -> if (isMe) premiumProfileGridItems(
+                        items = likedPosts,
+                        emptyMessage = "Nothing liked yet",
+                        onOpen = onOpenPost
+                    )
+
+                    "Saved" -> if (isMe) premiumProfileGridItems(
+                        items = savedPosts,
+                        emptyMessage = "Nothing saved yet",
+                        onOpen = onOpenPost
                     )
 
                     "Market" -> profileMarketItems(
@@ -1131,6 +1099,129 @@ fun ProfileScreen(
                 ) { Text("Cancel") }
             }
         )
+    }
+}
+
+
+/** Four-icon primary chrome matching the compact reference. Existing sections remain in More. */
+@Composable
+private fun PremiumProfileTabs(
+    tabs: List<String>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    isMe: Boolean,
+    selectedThemeCard: Color
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    val primary = if (isMe) listOf("Posts", "Reels", "Liked", "Saved")
+                  else listOf("Posts", "Reels", "Market", "About")
+    val icons = listOf(
+        Icons.Default.GridView, Icons.Default.Videocam,
+        if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
+        if (isMe) Icons.Default.BookmarkBorder else Icons.Default.InfoOutline
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 17.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        primary.forEachIndexed { i, name ->
+            val selected = tabs.getOrNull(selectedTab) == name
+            IconButton(
+                onClick = { onTabSelected(tabs.indexOf(name)) },
+                modifier = Modifier.size(54.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) selectedThemeCard else Color.Transparent)
+                    .testTag("premium_profile_tab_${name.lowercase()}")
+            ) {
+                Icon(
+                    icons[i], contentDescription = name,
+                    tint = if (selected) Color.White else Color.White.copy(alpha = .62f),
+                    modifier = Modifier.size(25.dp)
+                )
+            }
+        }
+        Box {
+            IconButton(
+                onClick = { moreOpen = true },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.MoreHoriz, "Other profile sections", tint = Color.White)
+            }
+            DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                tabs.filterNot { it in primary }.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = { moreOpen = false; onTabSelected(tabs.indexOf(name)) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.premiumProfileGridItems(
+    items: List<FeedPost>,
+    emptyMessage: String,
+    onOpen: (String) -> Unit
+) {
+    if (items.isEmpty()) {
+        item(key = "premium_grid_empty_${emptyMessage}") {
+            Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                Text(emptyMessage, color = Color.White.copy(alpha = .72f), fontSize = 12.sp)
+            }
+        }
+    } else {
+        items.chunked(2).forEachIndexed { index, pair ->
+            item(key = "premium_grid_row_${index}_${pair.first().id}") {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    pair.forEach { post ->
+                        Box(
+                            modifier = Modifier.weight(1f)
+                                .aspectRatio(.86f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF1B1525))
+                                .clickable { onOpen(post.id) }
+                                .testTag("premium_profile_post_${post.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val image = post.images.firstOrNull()
+                            if (!image.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = image, contentDescription = "Open post",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else if (post.videoUrl != null) {
+                                Icon(Icons.Default.PlayCircleFilled, "Open reel",
+                                    tint = Color.White, modifier = Modifier.size(35.dp))
+                            } else {
+                                Text(
+                                    post.text, color = Color.White,
+                                    maxLines = 6, overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp, lineHeight = 16.sp,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                            if (post.isReel) {
+                                Icon(
+                                    Icons.Default.PlayArrow, null,
+                                    tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
 
