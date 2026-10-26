@@ -592,7 +592,7 @@ fun GetVerifiedSheet(
                 val progress = economyPolicy.verificationProgress(blinkCoinBalance)
                 val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
                 val nextAdReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
-                val canWatch = economyPolicy.canWatchRewardedAd(rewardedAdsToday)
+                val canWatch = economyPolicy.canWatchRewardedAd(rewardedAdsToday, profile.verificationBadge != VerificationBadge.NONE)
                 val alreadyBlueOrGold = profile.verificationBadge != VerificationBadge.NONE
 
                 if (selectedBadge == VerificationBadge.BLUE) {
