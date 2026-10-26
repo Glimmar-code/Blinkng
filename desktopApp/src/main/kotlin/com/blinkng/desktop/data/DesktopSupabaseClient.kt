@@ -1251,6 +1251,47 @@ class DesktopSupabaseClient(
                 .put("p_target", userId).put("p_action", action)).equals("true", ignoreCase = true)
     }
 
+
+    /** Public followers never receive other followers' IDs, only aggregate counts. */
+    suspend fun channelRole(id: String): String =
+        communityRpc("blink_channel_my_role", JSONObject().put("p_channel_id", id))
+
+    suspend fun channelFollowerCount(id: String): Int =
+        communityRpc("blink_channel_follower_count", JSONObject().put("p_channel_id", id))
+            .toIntOrNull() ?: 0
+
+    suspend fun channelUpdates(id: String): List<com.blinkng.shared.BlinkChannelUpdate> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_updates_page",
+                JSONObject().put("p_channel_id", id).put("p_limit", 100),
+                prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val reactions = row.optJSONObject("reactions") ?: JSONObject()
+                val counts = mutableMapOf<String, Int>()
+                reactions.keys().forEach { emoji -> counts[emoji] = reactions.optInt(emoji) }
+                com.blinkng.shared.BlinkChannelUpdate(
+                    id = row.optString("id"),
+                    channelId = row.optString("channel_id"),
+                    authorId = row.optString("author_id"),
+                    body = row.optString("body"),
+                    createdAt = row.optString("created_at"),
+                    reactions = counts,
+                    myReaction = row.optNullableString("my_reaction")
+                )
+            }.reversed()
+        }
+
+    suspend fun publishChannelUpdate(id: String, body: String): String =
+        communityRpc("blink_channel_publish",
+            JSONObject().put("p_channel_id", id)
+                .put("p_body", com.blinkng.shared.BlinkChannelPolicy.validatedUpdate(body)))
+
+    suspend fun reactToChannelUpdate(updateId: String, emoji: String): String =
+        communityRpc("blink_channel_react",
+            JSONObject().put("p_update_id", updateId)
+                .put("p_emoji", com.blinkng.shared.BlinkChannelPolicy.validatedReaction(emoji)))
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
