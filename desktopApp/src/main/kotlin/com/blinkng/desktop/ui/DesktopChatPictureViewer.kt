@@ -14,16 +14,9 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.blinkng.desktop.data.DesktopMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URI
 import javax.swing.JFileChooser
 
 /**
@@ -43,6 +36,7 @@ internal fun DesktopChatPictureViewer(
     onStar: () -> Unit,
     onDeleteForMe: () -> Unit,
     onClose: () -> Unit,
+    authorizedDownload: suspend (File) -> File,
     groupPhotoEnabled: Boolean = false,
     onSaveSticker: (File) -> Unit = {},
     onAskBlinkAi: (File) -> Unit = {},
@@ -121,7 +115,7 @@ internal fun DesktopChatPictureViewer(
                         error=null
                         downloadJob=scope.launch {
                             runCatching {
-                                downloadDesktopChatImage(message.mediaUrl!!,output) {progress=it}
+                                authorizedDownload(output)
                             }.onSuccess {saved=it;progress=100}
                                 .onFailure {
                                     if(it !is CancellationException)
@@ -198,45 +192,3 @@ internal fun DesktopChatPictureViewer(
     }
 }
 
-private suspend fun downloadDesktopChatImage(
-    remote: String,
-    destination: File,
-    onProgress: (Int) -> Unit
-): File = withContext(Dispatchers.IO) {
-    val url=URI.create(remote)
-    require(url.scheme=="https"){"HTTPS is required for private pictures."}
-    val connection=url.toURL().openConnection() as HttpURLConnection
-    connection.connectTimeout=12_000
-    connection.readTimeout=15_000
-    val temp=File(destination.parentFile,"${destination.name}.blink-partial")
-    try {
-        require(connection.responseCode in 200..299){"Picture download was denied."}
-        val mime=connection.contentType.orEmpty()
-        require(mime.startsWith("image/")){"Unexpected content type."}
-        val length=connection.contentLengthLong
-        require(length < 30L*1024*1024){"Photo is too large."}
-        var nBytes=0L
-        connection.inputStream.use {input->
-            temp.outputStream().use { output->
-                val chunk=ByteArray(16384)
-                while(true) {
-                    currentCoroutineContext().ensureActive()
-                    val n=input.read(chunk)
-                    if(n<0)break
-                    nBytes+=n
-                    require(nBytes<=30L*1024*1024){"Photo is too large."}
-                    output.write(chunk,0,n)
-                    if(length>0)withContext(Dispatchers.Main) {
-                        onProgress((100*nBytes/length).toInt().coerceIn(0,99))
-                    }
-                }
-            }
-        }
-        require(nBytes>0){"No picture data received."}
-        require(temp.renameTo(destination)){"Cannot save selected picture."}
-        destination
-    } catch(e:Throwable) {
-        temp.delete()
-        throw e
-    } finally {connection.disconnect()}
-}
