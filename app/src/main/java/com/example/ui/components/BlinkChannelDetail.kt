@@ -192,9 +192,25 @@ fun BlinkChannelDetail(
                         finally { saving = false }
                     }
                 },
-                enabled = !saving && role != "pending",
+                enabled = !saving && role != "pending" && role != "banned",
                 modifier = Modifier.fillMaxWidth().padding(12.dp)
-            ) { Text(if (role == "pending") "Follow requested" else "Follow channel") }
+            ) { Text(when (role) { "pending" -> "Follow requested"; "banned" -> "Channel restricted"; else -> "Follow channel" }) }
+
+        } else if (role == "follower") {
+            TextButton(
+                enabled = !saving,
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                onClick = {
+                    scope.launch {
+                        saving = true
+                        try {
+                            backend.leave(channel.id)
+                            onBack()
+                        } catch (e: Exception) { error = e.message }
+                        finally { saving = false }
+                    }
+                }
+            ) { Text("Unfollow channel") }
         }
     }
 }
