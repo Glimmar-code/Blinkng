@@ -6,6 +6,10 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -93,6 +97,17 @@ internal fun BlinkChatPictureViewer(
     var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var verticalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var viewerHeightPx by remember { mutableFloatStateOf(1200f) }
+    var draggingPicture by remember(message.id) { mutableStateOf(false) }
+    val animatedVerticalDrag by animateFloatAsState(
+        targetValue = verticalDrag,
+        animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
+        label = "chat_photo_vertical_drag"
+    )
+    val animatedHorizontalDrag by animateFloatAsState(
+        targetValue = horizontalDrag,
+        animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
+        label = "chat_photo_horizontal_drag"
+    )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
@@ -180,7 +195,7 @@ internal fun BlinkChatPictureViewer(
         Box(Modifier.fillMaxSize()
             .onSizeChanged { viewerHeightPx = it.height.toFloat().coerceAtLeast(1f) }
             .background(Color.Black.copy(alpha =
-                BlinkChatMediaGesturePolicy.backdropAlpha(verticalDrag, viewerHeightPx)))) {
+                BlinkChatMediaGesturePolicy.backdropAlpha(animatedVerticalDrag, viewerHeightPx)))) {
             AsyncImage(
                 model = message.attachedImageUrl,
                 contentDescription = "Full-size shared photo",
@@ -188,12 +203,12 @@ internal fun BlinkChatPictureViewer(
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer {
                         rotationZ = rotateDegrees.toFloat()
-                        val dismissFraction = (kotlin.math.abs(verticalDrag) /
+                        val dismissFraction = (kotlin.math.abs(animatedVerticalDrag) /
                             viewerHeightPx).coerceIn(0f, .18f)
                         scaleX = zoom * (1f - dismissFraction)
                         scaleY = zoom * (1f - dismissFraction)
-                        translationX = pan.x + horizontalDrag
-                        translationY = pan.y + verticalDrag
+                        translationX = pan.x + animatedHorizontalDrag
+                        translationY = pan.y + animatedVerticalDrag
                     }
                     .pointerInput(message.id, hasPrevious, hasNext) {
                         // One gesture owner prevents pan/zoom, horizontal paging, and
@@ -227,6 +242,7 @@ internal fun BlinkChatPictureViewer(
                                 } else if (active.size == 1) {
                                     val change = active.first()
                                     val delta = change.position - change.previousPosition
+                                    if (delta.getDistance() > 0f) draggingPicture = true
                                     if (zoom > BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
                                         pan += delta
                                     } else if (!multiTouch) {
@@ -258,6 +274,7 @@ internal fun BlinkChatPictureViewer(
                                     BlinkChatMediaSwipe.NONE -> Unit
                                 }
                             }
+                            draggingPicture = false
                             horizontalDrag = 0f
                             verticalDrag = 0f
                             if (zoom <= BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
