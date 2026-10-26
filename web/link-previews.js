@@ -81,5 +81,35 @@
   }
 
 
-  window.BlinkLinkPreview = Object.freeze({card: richLinkCard, hydrate: hydrateLinkCards});
+  // This reads the same RLS-protected account setting as Android and Windows.
+  async function readChatPreviewPrivacy(table) {
+    try {
+      const rows = await table('user_chat_privacy', 'select=who_can_message,who_can_call,who_can_group_invite,show_online,show_last_seen,send_read_receipts,show_typing,show_recording,show_profile_photo_in_chat,allow_link_previews,notification_preview&limit=1');
+      const row = rows?.[0] || {};
+      return { allowed: row.allow_link_previews !== false, row, available: true };
+    } catch {
+      // Never load remote chat previews when the user's preference is unknown.
+      return { allowed: false, row: null, available: false };
+    }
+  }
+  async function saveChatPreviewPrivacy(privacy, enabled, rpc) {
+    if(!privacy.available) throw Error('Chat privacy settings are temporarily unavailable.');
+    const row = privacy.row || {};
+    const normal = (key, fallback) => row[key] == null ? fallback : row[key];
+    const result = await rpc('update_chat_privacy', {
+      p_who_can_message: normal('who_can_message', 'everyone'),
+      p_who_can_call: normal('who_can_call', 'everyone'),
+      p_who_can_group_invite: normal('who_can_group_invite', 'everyone'),
+      p_show_online: normal('show_online', true),
+      p_show_last_seen: normal('show_last_seen', true),
+      p_send_read_receipts: normal('send_read_receipts', true),
+      p_show_typing: normal('show_typing', true),
+      p_show_recording: normal('show_recording', true),
+      p_show_profile_photo_in_chat: normal('show_profile_photo_in_chat', true),
+      p_allow_link_previews: !!enabled,
+      p_notification_preview: normal('notification_preview', 'full')
+    });
+    if(result !== true) throw Error('Could not save link preview preference.');
+  }
+  window.BlinkLinkPreview = Object.freeze({card: richLinkCard, hydrate: hydrateLinkCards, readPrivacy: readChatPreviewPrivacy, savePrivacy: saveChatPreviewPrivacy});
 })();
