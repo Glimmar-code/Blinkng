@@ -31,7 +31,9 @@ declare
 begin
   -- Sponsored flags are server-owned. A regular authenticated client MUST NOT
   -- be able to claim feed-ad status simply by choosing a benign category.
-  if new.is_sponsored is true and current_user not in ('postgres', 'service_role') then
+  if (new.is_sponsored is true
+      or length(btrim(coalesce(new.ad_label,''))) > 0)
+     and current_user not in ('postgres', 'service_role') then
     raise exception 'BLINK_AD_REQUIRES_SERVER_APPROVAL'
       using errcode = '42501',
             hint = 'Paid feed promotion must be created by BLINK payment-verified server logic.';
