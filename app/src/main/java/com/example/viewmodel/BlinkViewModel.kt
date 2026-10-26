@@ -1470,8 +1470,9 @@ private suspend fun restoreSupabaseSession() {
 
     suspend fun beginRewardedAdClaim(): String? {
         val state = _uiState.value
-        if (!state.economyPolicy.canWatchRewardedAd(state.rewardedAdsToday)) {
-            showToast("You've reached today's ${state.economyPolicy.rewardedAdDailyLimit}-ad rewarded limit.")
+        if (!state.economyPolicy.canWatchRewardedAd(state.rewardedAdsToday, state.myProfile.hasActiveMarketVerification())) {
+            showToast(if (state.myProfile.hasActiveMarketVerification())
+                "You've reached today's rewarded-ad limit." else "Verify to unlock rewarded ads 11–15.")
             return null
         }
         if (!state.isOnline || state.myProfile.id.isBlank()) {

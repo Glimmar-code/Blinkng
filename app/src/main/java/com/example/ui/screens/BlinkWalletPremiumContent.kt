@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkEarningHubPolicy
 import java.text.NumberFormat
+import kotlinx.coroutines.launch
 
 // Screenshot-inspired surfaces. Coin totals, claims, verification and payment remain server-authoritative.
 private val night = Color(0xFF05020E)
@@ -195,6 +197,7 @@ internal fun BlinkWalletPremiumContent(
 ) {
     var page by remember(accountId) { mutableIntStateOf(0) }
     var filter by remember(accountId) { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
     Column(Modifier.fillMaxSize().background(night).testTag("blink_wallet_premium")) {
@@ -211,7 +214,8 @@ internal fun BlinkWalletPremiumContent(
             }
         }
         Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
-            LazyColumn(Modifier.fillMaxSize(),
+            val listState = rememberLazyListState()
+            LazyColumn(Modifier.fillMaxSize(), state = listState,
                 contentPadding = PaddingValues(start = 15.dp, end = 15.dp, bottom = 44.dp),
                 verticalArrangement = Arrangement.spacedBy(17.dp)) {
                 if (error != null) item {
@@ -234,8 +238,15 @@ internal fun BlinkWalletPremiumContent(
                                             fontWeight = FontWeight.Black, color = Color.White)
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
-                                    IconButton(onClick = { /* balance is already the current page */ }) {
-                                        Icon(Icons.Rounded.AddCircle, "Coins and wallet", tint = Color(0xFFB768FF))
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            // Error/loading banners may precede the three overview sections.
+                                            listState.animateScrollToItem(
+                                                2 + (if (error != null) 1 else 0) + (if (loading) 1 else 0))
+                                        }
+                                    }, modifier = Modifier.size(44.dp)) {
+                                        Icon(Icons.Rounded.AddCircle, "Browse Coin packs",
+                                            tint = Color(0xFFB768FF), modifier = Modifier.size(34.dp))
                                     }
                                 }
                                 HorizontalDivider(color = Color.White.copy(alpha = .18f))
@@ -312,7 +323,7 @@ internal fun BlinkWalletPremiumContent(
                                             color = soft, fontSize = 13.sp)
                                     }
                                 }
-                                val max = policy.rewardedAdDailyLimit
+                                val max = policy.effectiveAdDailyLimit(isVerified)
                                 Text("Ads watched today • " + adsToday.coerceAtLeast(0) + " / " + max,
                                     color = Color.White, fontWeight = FontWeight.Bold)
                                 LinearProgressIndicator(
@@ -325,20 +336,27 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Daily Milestones", "Bonus Coins are credited automatically.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
+                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.PlayCircle,
                                         m.ads.toString() + " Ads",
                                         m.totalCoins.toString() + " Coins Total" +
-                                            if (adsToday >= m.ads) " • Credited" else "",
-                                        action = { page = 2 })
+                                            if (locked) " • Verified accounts only" else
+                                                if (adsToday >= m.ads) " • Credited" else "",
+                                        locked = locked,
+                                        action = { page = if (locked) 3 else 2 })
                                 }
                             }
                         }
                         item {
                             GradientButton(
-                                if (policy.canWatchRewardedAd(adsToday)) "Watch Ad" else "Daily limit reached",
+                                if (policy.canWatchRewardedAd(adsToday, isVerified)) "Watch Ad"
+                                else if (!isVerified && adsToday >= 10) "Get Verified to unlock 15 ads"
+                                else "Daily limit reached",
                                 icon = Icons.Rounded.PlayArrow,
-                                enabled = policy.canWatchRewardedAd(adsToday),
-                                onClick = onWatchAd)
+                                enabled = policy.canWatchRewardedAd(adsToday, isVerified) ||
+                                    (!isVerified && adsToday >= 10),
+                                onClick = if (!isVerified && adsToday >= 10)
+                                    ({ page = 3 }) else onWatchAd)
                         }
                         item { Text("Rewards require completed, server-confirmed ads. New ads may not be available.",
                             modifier = Modifier.fillMaxWidth(), color = soft, fontSize = 12.sp) }
@@ -364,12 +382,15 @@ internal fun BlinkWalletPremiumContent(
                             NeonCard {
                                 WalletHeading("Claim Rewards", "Never claim the same reward twice.")
                                 policy.rewardedMilestones.sortedBy { it.ads }.forEach { m ->
+                                    val locked = m.ads > 10 && !isVerified
                                     NeonRow(Icons.Rounded.CardGiftcard,
                                         "Watch " + m.ads + " Ads",
-                                        if (adsToday >= m.ads) "Reward already credited to your wallet"
+                                        if (locked) "Verified accounts only"
+                                        else if (adsToday >= m.ads) "Reward already credited to your wallet"
                                         else adsToday.coerceAtLeast(0).toString() + " / " + m.ads,
-                                        trailing = m.totalCoins.toString() + " total",
-                                        action = { page = 1 })
+                                        trailing = if (locked) "Locked" else m.totalCoins.toString() + " total",
+                                        locked = locked,
+                                        action = { page = if (locked) 3 else 1 })
                                 }
                             }
                         }

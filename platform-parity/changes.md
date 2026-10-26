@@ -1,11 +1,18 @@
-
 ## 2026-10-26 — Chat media viewer gesture and action foundation (Testlab draft)
 
 - **Shared:** Added `BlinkChatMediaGesturePolicy` for directional thresholds, ambiguous diagonal rejection, zoom lock, and opacity calculation, with unit tests. No server-side/media visibility rules changed.
 - **Android:** Chat composer now places emoji, paperclip, camera and voice button in reference order. Conversation-only dark palette uses charcoal incoming and deep-green outgoing bubbles without changing inbox/theme settings. Normal downloaded/sent picture viewer now handles one-finger vertical up/down dismissal, left/right conversation paging, two-finger zoom with pan, message position display, and a menu workflow which can download a photo after explicit confirmation then resume the selected edit/share/gallery/sticker/AI/profile/wallpaper action. Saved picture remains an independent copy. Normal gallery browsing combines loaded and historical authorized pictures; view-once/deleted messages stay excluded.
 - **Windows:** Dark chat bubbles have matching deep-green/charcoal colours while light-theme bubbles retain existing presentation. Retains existing previous/next and downloaded-copy actions; adds left/right keyboard navigation and Escape dismissal as the desktop equivalents of touch swipes.
-- **Not yet verified:** Exact visual screenshot parity, actual on-device pointer competition/double-tap behavior, CI builds and end-to-end Android↔Windows transfers. The much broader attachment-sheet, advanced photo/video/audio/document/AI studio plan is not implemented by this foundation commit; do not claim complete until integrated and tested.
+- **Not yet verified:** Exact visual screenshot parity, actual on-device pointer competition/double-tap behavior, CI builds and end-to-end Android↔Windows transfers. An opt-in Telegram-reference three-column gallery, up-to-10 photo selection, Media3 chat video trimming/filter/music/export, audio playback and PDF first-page document review, and photo editor undo/redo/presets have been added in this PR; full professional AI enhancement, stickers/scan features, exhaustive visual and device testing remain outstanding.
 - **Promotion gate:** Testlab branch first; no `main` merge, live database edit or signed APK publication without green applicable Android, shared and Windows checks plus device gesture verification.
+
+## 2026-10-26 — Wallet final reward eligibility and reference interactions
+
+- **Android:** The five-page neon Wallet retains the BLINK Coin balance and working [+] shortcut, now scrolling to the Buy Coins packs. Earn Coins/Rewards shows ad #15 as verified-only; expired or unverified users see a locked milestone and a Get Verified route. Other screen affordances and existing 10-Coin base payouts remain unchanged.
+- **Windows:** Equivalent 15-ad verified-only display, reward progress and locked milestone navigation. Correct wallet copy explicitly permits user-to-user Coin gifting.
+- **Supabase:** The `get_blink_economy_status`, `begin_blink_rewarded_ad_claim` and `complete_blink_rewarded_ad_claim` functions re-evaluate Blue/Gold verification and its expiration to block old APK clients from earning ad #11–15 without active verification. No XP/HP level formula, Coin gift RPC, transaction rate or existing user wallet data changes.
+- **Tests:** New disposable PostgreSQL integration with fake accounts checks 10-vs-15 caps, expiration and preserved ad rewards. Android unit tests cover original cumulative milestone totals. Windows AdMob playback remains intentionally unavailable (Android-only SDK).
+- **Staging/release:** Do not deploy the migration or merge until full CI success. See screenshot references from this wallet conversation for strict final visual acceptance; passing code tests alone does not establish pixel-perfect UI parity.
 
 ## 2026-10-26 — Premium Profile, Status and Reels (PR #581 integration)
 
