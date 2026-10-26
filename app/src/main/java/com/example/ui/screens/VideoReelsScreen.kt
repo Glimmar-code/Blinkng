@@ -1203,7 +1203,8 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
-                fillViewport = true,
+                // Preserve the complete source frame for square, landscape and portrait uploads.
+                fillViewport = false,
                 isActive = shouldPlayReel(
                     selected = isActive,
                     foreground = true,
@@ -1568,7 +1569,7 @@ private fun ReelPage(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
-                .padding(bottom = if (isPreview) 0.dp else 6.dp, start = 10.dp, end = 10.dp)
+                .padding(bottom = if (isPreview) 0.dp else 84.dp, start = 10.dp, end = 10.dp)
         )
     }
 }

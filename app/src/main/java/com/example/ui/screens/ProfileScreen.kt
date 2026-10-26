@@ -554,16 +554,32 @@ fun ProfileScreen(
 
                 // Keep post cards as real LazyColumn items and keep private activity owner-only.
                 when (tabs.getOrNull(selectedTab)) {
-                    "Posts" -> premiumProfileGridItems(
-                        items = matchingContent(reelsOnly = false),
-                        emptyMessage = if (isPostsLoading) "Loading posts..." else "No posts yet",
-                        onOpen = onOpenPost
+                    "Posts" -> profilePostItems(
+                        keyPrefix = "published",
+                        posts = matchingContent(reelsOnly = false),
+                        isLoading = isPostsLoading,
+                        loadFailed = hasPostsLoadError,
+                        onRetry = onRefreshProfile,
+                        profile = profile,
+                        canDelete = isMe,
+                        onDelete = onDeletePost,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onLike = onLikePost,
+                        onComment = onCommentPost,
+                        onBookmark = onBookmarkPost,
+                        onShare = onSharePost,
+                        onOptions = onOptionsClick,
+                        onProfileClick = onProfileClick,
+                        onOpenPost = onOpenPost
                     )
 
                     "Reels" -> premiumProfileGridItems(
                         items = matchingContent(reelsOnly = true),
                         emptyMessage = if (isPostsLoading) "Loading reels..." else "No reels yet",
-                        onOpen = onOpenPost
+                        onOpen = onOpenPost,
+                        columns = 3
                     )
 
                     "Liked" -> if (isMe) premiumProfileGridItems(
@@ -1152,7 +1168,8 @@ private fun PremiumProfileTabs(
 private fun LazyListScope.premiumProfileGridItems(
     items: List<FeedPost>,
     emptyMessage: String,
-    onOpen: (String) -> Unit
+    onOpen: (String) -> Unit,
+    columns: Int = 2
 ) {
     if (items.isEmpty()) {
         item(key = "premium_grid_empty_${emptyMessage}") {
@@ -1161,18 +1178,18 @@ private fun LazyListScope.premiumProfileGridItems(
             }
         }
     } else {
-        items.chunked(2).forEachIndexed { index, pair ->
+        items.chunked(columns).forEachIndexed { index, pair ->
             item(key = "premium_grid_row_${index}_${pair.first().id}") {
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = if (columns == 3) 9.dp else 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (columns == 3) 6.dp else 8.dp)
                 ) {
                     pair.forEach { post ->
                         Box(
                             modifier = Modifier.weight(1f)
-                                .aspectRatio(.86f)
-                                .clip(RoundedCornerShape(14.dp))
+                                .aspectRatio(if (columns == 3) .72f else .86f)
+                                .clip(RoundedCornerShape(if (columns == 3) 9.dp else 14.dp))
                                 .background(Color(0xFF1B1525))
                                 .clickable { onOpen(post.id) }
                                 .testTag("premium_profile_post_${post.id}"),
@@ -1203,10 +1220,26 @@ private fun LazyListScope.premiumProfileGridItems(
                                     modifier = Modifier.align(Alignment.TopEnd)
                                         .padding(8.dp).size(18.dp)
                                 )
+                                Row(
+                                    modifier = Modifier.align(Alignment.BottomStart)
+                                        .fillMaxWidth()
+                                        .background(Color.Black.copy(alpha = .52f))
+                                        .padding(horizontal = 6.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(Icons.Default.Visibility, null, tint = Color.White,
+                                        modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = post.viewsCount.coerceAtLeast(0).toString(),
+                                        color = Color.White, fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
                     }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    repeat(columns - pair.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -1375,7 +1408,8 @@ private fun LazyListScope.profilePostItems(
     onShare: (String) -> Unit,
     onOptions: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
-    onPin: ((FeedPost) -> Unit)? = null
+    onPin: ((FeedPost) -> Unit)? = null,
+    onOpenPost: ((String) -> Unit)? = null
 ) {
     if (posts.isEmpty() && isLoading) {
         items(3, key = { index -> "${keyPrefix}_skeleton_$index" }, contentType = { "profile_skeleton" }) {
@@ -1436,7 +1470,9 @@ private fun LazyListScope.profilePostItems(
                 onOptionsClick = { onOptions(post) },
                 onProfileClick = onProfileClick,
                 isAuthor = canDelete && authoredByProfile,
-                onDelete = { onDelete(post.id) }
+                onDelete = { onDelete(post.id) },
+                onOpenPost = { onOpenPost?.invoke(post.id) },
+                xFeedStyle = true
             )
 
             if (canDelete && authoredByProfile && onPin != null) {

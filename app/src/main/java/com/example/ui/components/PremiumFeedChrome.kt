@@ -387,6 +387,7 @@ fun FeedReferenceStatsRow(
         Surface(
             modifier = Modifier.weight(1f).height(64.dp)
                 .clickable(role = Role.Button, onClick = onRankClick)
+                .semantics { contentDescription = "Open World Leaderboard, rank $rankLabel" }
                 .testTag("feed_world_rank_card"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -400,7 +401,7 @@ fun FeedReferenceStatsRow(
             ) {
                 Icon(Icons.Outlined.Language, contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(30.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("World Rank", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(rankLabel, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface,
@@ -415,11 +416,14 @@ fun FeedReferenceStatsRow(
                         }
                     }
                 }
+                Icon(Icons.Default.ChevronRight, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
             }
         }
         Surface(
             modifier = Modifier.weight(1f).height(64.dp)
                 .clickable(role = Role.Button, onClick = onCoinsClick)
+                .semantics { contentDescription = "Open Coins & Wallet, balance $coinLabel" }
                 .testTag("feed_coins_card"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -441,8 +445,6 @@ fun FeedReferenceStatsRow(
                 Box(
                     modifier = Modifier.size(32.dp)
                         .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(8.dp))
-                        .clickable(role = Role.Button, onClick = onCoinsClick)
-                        .semantics { contentDescription = "Open Coins & Wallet" }
                         .testTag("feed_add_coins"),
                     contentAlignment = Alignment.Center
                 ) {

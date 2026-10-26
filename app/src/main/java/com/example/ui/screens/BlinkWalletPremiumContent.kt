@@ -68,16 +68,16 @@ private fun CoinArtwork(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(durationMillis = 2400), RepeatMode.Reverse),
         label = "coin_hover"
     )
-    Box(modifier.size(112.dp).graphicsLayer {
+    Box(modifier.graphicsLayer {
         translationY = if (reduceMotion) 0f else floatOffset
     }, contentAlignment = Alignment.Center) {
-        Box(Modifier.size(88.dp).background(
+        Box(Modifier.size(68.dp).background(
             Brush.radialGradient(listOf(violet.copy(alpha = .48f), Color.Transparent)), CircleShape))
-        Box(Modifier.size(76.dp).background(
+        Box(Modifier.size(60.dp).background(
             Brush.linearGradient(listOf(Color(0xFFFFFA98), Color(0xFFEF9700), Color(0xFF9B4700))),
             CircleShape).border(3.dp, gold, CircleShape),
             contentAlignment = Alignment.Center) {
-            Text("B", color = Color(0xFF79410D), fontSize = 43.sp, fontWeight = FontWeight.Black)
+            Text("B", color = Color(0xFF79410D), fontSize = 32.sp, fontWeight = FontWeight.Black)
         }
     }
 }
@@ -94,8 +94,8 @@ private fun NeonCard(
         else Brush.linearGradient(listOf(panel, Color(0xFF0C0C22), Color(0xFF210D39))))
         .border(1.dp, if (hero) rim else Brush.linearGradient(
             listOf(Color(0xFF4C4390), Color(0xFF32105F))), shape)) {
-        Column(Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(13.dp), content = content)
+        Column(Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }
 
@@ -115,19 +115,19 @@ private fun NeonRow(
         modifier.fillMaxWidth().clip(shape)
             .background(Brush.horizontalGradient(listOf(Color(0xFF1A1333), Color(0xFF110C2A))))
             .border(1.dp, Color(0xFF3D2A77), shape).then(click)
-            .padding(horizontal = 14.dp, vertical = 16.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(Modifier.size(48.dp).clip(RoundedCornerShape(13.dp))
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF3115A0), Color(0xFF34105B))))
             .border(1.dp, violet, RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
             Icon(if (locked) Icons.Rounded.Lock else icon, null,
                 tint = if (locked) soft else Color(0xFF9F75FF),
-                modifier = Modifier.size(28.dp))
+                modifier = Modifier.size(23.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White,
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(detail, fontSize = 12.sp, color = soft, maxLines = 3)
         }
@@ -169,7 +169,7 @@ private fun GradientButton(
 @Composable
 private fun WalletHeading(title: String, subtitle: String) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(title, fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.White)
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
         Text(subtitle, fontSize = 12.sp, color = soft)
     }
 }
@@ -200,14 +200,14 @@ internal fun BlinkWalletPremiumContent(
     val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
-    Column(Modifier.fillMaxSize().background(night).testTag("blink_wallet_premium")) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 70.dp).padding(horizontal = 12.dp),
+    Column(Modifier.fillMaxSize().background(night).statusBarsPadding().testTag("blink_wallet_premium")) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (page == 0) onBack() else page = 0 }) {
                 Icon(Icons.Rounded.ArrowBackIosNew, "Back", tint = Color.White)
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text(allTitles[page], fontSize = 23.sp, fontWeight = FontWeight.Black, color = Color.White)
+                Text(allTitles[page], fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
             IconButton(onClick = onRetry, enabled = !loading && accountId.isNotBlank()) {
                 Icon(Icons.Rounded.Refresh, "Refresh Coins and rewards", tint = Color(0xFFC67EFF))
@@ -216,8 +216,8 @@ internal fun BlinkWalletPremiumContent(
         Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
             val listState = rememberLazyListState()
             LazyColumn(Modifier.fillMaxSize(), state = listState,
-                contentPadding = PaddingValues(start = 15.dp, end = 15.dp, bottom = 44.dp),
-                verticalArrangement = Arrangement.spacedBy(17.dp)) {
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (error != null) item {
                     NeonCard {
                         Text(error, color = Color(0xFFFFA9BF))
@@ -230,11 +230,11 @@ internal fun BlinkWalletPremiumContent(
                         item {
                             NeonCard(hero = true) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CoinArtwork(Modifier.size(106.dp))
+                                    CoinArtwork(Modifier.size(72.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text("Your BLINK Coins", color = soft)
-                                        Text(balance?.let(::comma) ?: "—", fontSize = 38.sp,
+                                        Text(balance?.let(::comma) ?: "—", fontSize = 30.sp,
                                             fontWeight = FontWeight.Black, color = Color.White)
                                         Text("🟡 Coins", color = gold, fontWeight = FontWeight.SemiBold)
                                     }
@@ -267,12 +267,18 @@ internal fun BlinkWalletPremiumContent(
                         item {
                             NeonCard {
                                 WalletHeading("Overview", "Earn more. Do more on BLINK.")
-                                NeonRow(Icons.Rounded.PlayCircle, "Earn a lot of coins watching ads",
-                                    "Watch rewarded ads and earn 10 coins per completed ad.",
-                                    action = { page = 1 })
-                                NeonRow(Icons.Rounded.TaskAlt, "Complete daily tasks",
-                                    "Earn BLINK Coins and level XP (HP) from verified daily missions.",
-                                    action = { page = 2 })
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(Modifier.weight(1f)) {
+                                        NeonRow(Icons.Rounded.PlayCircle, "Watch Ads",
+                                            "10 Coins per completed ad",
+                                            action = { page = 1 })
+                                    }
+                                    Box(Modifier.weight(1f)) {
+                                        NeonRow(Icons.Rounded.TaskAlt, "Daily Tasks",
+                                            "Earn Coins and HP",
+                                            action = { page = 2 })
+                                    }
+                                }
                             }
                         }
                         item {
