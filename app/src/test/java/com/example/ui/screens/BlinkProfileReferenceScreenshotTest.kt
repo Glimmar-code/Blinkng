@@ -61,7 +61,7 @@ class BlinkProfileReferenceScreenshotTest {
         ),
     )
 
-    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null) {
+    private fun render(dark: Boolean, fontScale: Float, viewportWidth: Dp? = null, themeId: String = "royal_purple", visitor: Boolean = false) {
         rule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
@@ -75,8 +75,8 @@ class BlinkProfileReferenceScreenshotTest {
                         LazyColumn(Modifier.fillMaxSize()) {
                             item {
                                 BlinkPremiumProfileDashboard(
-                                    profile = profile,
-                                    isMe = true,
+                                    profile = profile.copy(profileTheme = themeId),
+                                    isMe = !visitor,
                                     blinkCoinBalance = 1250L,
                                     isDark = dark,
                                     isFollowing = false,
@@ -132,4 +132,26 @@ class BlinkProfileReferenceScreenshotTest {
         render(dark = true, fontScale = 1.0f)
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-dark.png")
     }
+    @Test fun blackProfileStaysBlackForOwnerInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "black")
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-owner.png")
+    }
+
+    @Test fun blackProfileStaysBlackForVisitorInDarkApp() {
+        render(dark = true, fontScale = 1.0f, themeId = "black", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-black-visitor.png")
+    }
+
+    @Test fun purpleProfileStaysPurpleForVisitorInLightApp() {
+        render(dark = false, fontScale = 1.0f, themeId = "royal_purple", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-purple-visitor.png")
+    }
+
+    @Test fun alternateThemesRender() {
+        listOf("sapphire", "emerald", "rose", "amber").forEach { theme ->
+            render(dark = false, fontScale = 1.0f, themeId = theme, visitor = true)
+            rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-${theme}.png")
+        }
+    }
+
 }
