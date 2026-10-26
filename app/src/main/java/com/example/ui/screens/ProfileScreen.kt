@@ -236,11 +236,13 @@ fun ProfileScreen(
         if (selectedTab !in tabs.indices) selectedTab = 0
     }
 
-    val bgColor = if (isDark) DarkBackground else LightBackground
-    val cardBg = if (isDark) DarkSurface else LightSurface
-    val textPrimary = if (isDark) Color.White else LightTextPrimary
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val borderColor = if (isDark) DarkBorder else LightBorder
+    // The profile owner's saved palette is public and independent of viewer theme.
+    val savedProfileTheme = com.blinkng.shared.BlinkProfileThemes.resolve(profile.profileTheme)
+    val bgColor = Color(savedProfileTheme.bottomArgb)
+    val cardBg = Color(savedProfileTheme.cardArgb)
+    val textPrimary = Color.White
+    val textSecondary = Color.White.copy(alpha = .72f)
+    val borderColor = Color.White.copy(alpha = .13f)
 
     if (showReferGrow && isMe) {
         BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
@@ -406,7 +408,7 @@ fun ProfileScreen(
 
             LazyColumn(
                 state = scrollState,
-                contentPadding = PaddingValues(bottom = 130.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.fillMaxSize().statusBarsPadding()
             ) {
 
@@ -414,7 +416,7 @@ fun ProfileScreen(
                 // COVER HEADER — parallax + gradient wash
                 // ============================================================
                 item(key = "reference_dashboard") {
-                    BlinkReferenceProfileDashboard(
+                    BlinkPremiumProfileDashboard(
                         profile = profile,
                         isMe = isMe,
                         blinkCoinBalance = blinkCoinBalance,
@@ -422,6 +424,8 @@ fun ProfileScreen(
                         isFollowing = isFollowing,
                         followBusy = followBusy,
                         postCount = userPosts.count { !it.isReel },
+                        totalLoadedViews = userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
+                        totalLoadedLikes = userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
                         profileCompletion = profileCompletion,
                         onAvatarClick = { showAvatarViewer = true },
                         onBack = onBack,
@@ -739,7 +743,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(end = 18.dp, bottom = 82.dp),
+                    .padding(end = 18.dp, bottom = 18.dp),
                 enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
                 exit = scaleOut() + fadeOut()
             ) {
@@ -755,13 +759,6 @@ fun ProfileScreen(
                         modifier = Modifier.graphicsLayer { rotationZ = refreshRotation }
                     )
                 }
-            }
-            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-                BlinkReferenceProfileBottomNav(
-                    isDark = isDark,
-                    selectedRoute = selectedMainTabRoute,
-                    onNavigate = onNavigateMainTab
-                )
             }
         }
     }
@@ -967,6 +964,15 @@ fun ProfileScreen(
             isMuted = profileMuted,
             notificationMode = profileNotificationMode,
             onDismiss = { showMoreSheet = false },
+            onEdit = {
+                showMoreSheet = false
+                onEditProfileClick()
+            },
+            onCopyUsername = {
+                showMoreSheet = false
+                clipboard.setText(AnnotatedString("@" + profile.username))
+                Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+            },
             onSearch = {
                 showMoreSheet = false
                 profileSearchActive = true
@@ -2299,6 +2305,8 @@ private fun ProfileMoreSheet(
     isMuted: Boolean,
     notificationMode: ProfileNotificationMode,
     onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onCopyUsername: () -> Unit,
     onSearch: () -> Unit,
     onShare: () -> Unit,
     onNotifications: () -> Unit,
@@ -2310,6 +2318,12 @@ private fun ProfileMoreSheet(
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(10.dp))
+            if (isMe) {
+                ProfileOption(Icons.Default.Edit, "Edit profile",
+                    "Personal details, pictures and profile theme", onEdit)
+            }
+            ProfileOption(Icons.Default.ContentCopy, "Copy profile username",
+                "@${profile.username}", onCopyUsername)
 
             ProfileOption(
                 Icons.Default.Search,
