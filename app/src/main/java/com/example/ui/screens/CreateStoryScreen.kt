@@ -34,8 +34,21 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 
 @Composable
-fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,onPublish:(String,String,Boolean)->Unit,initialCaption:String=""){
-    var selectedUri by rememberSaveable{mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable(initialCaption){mutableStateOf(initialCaption.take(500))};var imageToEdit by remember {mutableStateOf<android.net.Uri?>(null)}
+fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,onPublish:(String,String,Boolean)->Unit,initialCaption:String="",initialShareCardLabel:String=""){
+    var selectedUri by rememberSaveable(initialCaption){mutableStateOf<String?>(null)};var isVideo by rememberSaveable{mutableStateOf(false)};var caption by rememberSaveable(initialCaption){mutableStateOf(initialCaption.take(500))};var imageToEdit by remember {mutableStateOf<android.net.Uri?>(null)}
+    val shareContext = androidx.compose.ui.platform.LocalContext.current
+    // A user-requested Reel share opens with a ready-to-publish 9:16 preview card.
+    // It never downloads/reuploads another creator's actual video or bypasses Story publishing.
+    LaunchedEffect(initialCaption, initialShareCardLabel) {
+        if (initialShareCardLabel.isNotBlank() && initialCaption.isNotBlank() && selectedUri == null) {
+            val cardUri = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.media.BlinkStoryShareCard.create(
+                    shareContext, initialShareCardLabel, initialCaption
+                )
+            }
+            if (selectedUri == null) selectedUri = cardUri?.toString()
+        }
+    }
     val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{imageToEdit=it;isVideo=false}}
     val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=true}}
     imageToEdit?.let { source ->

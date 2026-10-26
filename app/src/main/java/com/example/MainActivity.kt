@@ -1418,6 +1418,7 @@ fun MainAppContent(
     var startReelComposer by rememberSaveable { mutableStateOf(false) }
     var sharingPostId by rememberSaveable { mutableStateOf<String?>(null) }
     var storySharePrefill by rememberSaveable { mutableStateOf("") }
+    var storyShareCardLabel by rememberSaveable { mutableStateOf("") }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -2695,6 +2696,10 @@ fun MainAppContent(
                         // Prefill the real permalink in Story composer, without claiming
                         // to have published anything or bypassing the media picker.
                         storySharePrefill = url
+                        storyShareCardLabel = listOf(
+                            sharedPost.author.trim(),
+                            sharedPost.text.trim().take(180)
+                        ).filter { it.isNotBlank() }.joinToString("\n")
                         sharingPostId = null
                         viewModel.openCreateStory(true)
                     },
@@ -3059,12 +3064,15 @@ fun MainAppContent(
                 profile = uiState.myProfile,
                 isUploading = uiState.isCreatingStory,
                 initialCaption = storySharePrefill,
+                initialShareCardLabel = storyShareCardLabel,
                 onBack = {
                     storySharePrefill = ""
+                    storyShareCardLabel = ""
                     viewModel.openCreateStory(false)
                 },
                 onPublish = { uri, caption, isVideo ->
                     storySharePrefill = ""
+                    storyShareCardLabel = ""
                     viewModel.publishStory(uri, caption, isVideo)
                 }
             )
