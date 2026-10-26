@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -75,6 +76,13 @@ fun BlinkChannelDetail(
     LaunchedEffect(channel.id) { refresh() }
     val admin = role == "owner" || role == "moderator"
     val following = admin || role == "follower"
+    val updatesListState = rememberLazyListState()
+    // Like a broadcast conversation, opening a channel reveals its newest update.
+    LaunchedEffect(channel.id, loading, updates.lastOrNull()?.id) {
+        if (!loading && updates.isNotEmpty()) {
+            updatesListState.scrollToItem(updates.size)
+        }
+    }
 
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
@@ -93,6 +101,7 @@ fun BlinkChannelDetail(
         }
         HorizontalDivider()
         LazyColumn(
+            state = updatesListState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
