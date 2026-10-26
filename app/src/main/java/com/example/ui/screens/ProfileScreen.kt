@@ -459,14 +459,14 @@ fun ProfileScreen(
                                     java.util.UUID.randomUUID().toString()
                                 }
                                 overlayScope.launch {
-                                    val sent = interactionRepository.giftHpOnce(
+                                    val sent = interactionRepository.giftCoinsOnce(
                                         profile.id, amount, requestId
                                     )
                                     if (sent) pendingGiftRequests.remove(amount)
                                     Toast.makeText(
                                         context,
-                                        if (sent) "Sent $amount HP toward their level"
-                                        else "HP gift not confirmed. Please try again.",
+                                        if (sent) "Sent $amount BLINK Coins"
+                                        else "Coin gift not confirmed. No transfer shown.",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -794,7 +794,7 @@ fun ProfileScreen(
     // EARN BLINK COIN — server-controlled rewarded economy
     // ================================================================
     if (showEarnCoinDialog && isMe) {
-        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday, profile.verificationBadge != VerificationBadge.NONE)
+        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday)
         val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
         val nextReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
 
