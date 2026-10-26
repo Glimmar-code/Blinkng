@@ -96,6 +96,7 @@ internal fun BlinkChatMediaGallerySheet(
     onPhotosSelected: (List<Uri>) -> Unit,
     onCamera: () -> Unit,
     onDocument: () -> Unit,
+    onDocumentScan: () -> Unit,
     onAudio: () -> Unit,
     onVideo: () -> Unit,
     onSticker: () -> Unit,
@@ -228,6 +229,7 @@ internal fun BlinkChatMediaGallerySheet(
             listOf(
                 Destination("Gallery", Icons.Default.PhotoLibrary, onSystemPhotoPicker),
                 Destination("File", Icons.Default.InsertDriveFile, onDocument),
+                Destination("Scan", Icons.Default.Description, onDocumentScan),
                 Destination("Camera", Icons.Default.CameraAlt, onCamera),
                 Destination("Video", Icons.Default.Videocam, onVideo),
                 Destination("Music", Icons.Default.MusicNote, onAudio),
