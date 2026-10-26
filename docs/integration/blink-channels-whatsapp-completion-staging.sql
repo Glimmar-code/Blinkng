@@ -431,6 +431,55 @@ grant execute on function public.blink_channel_unread_count(uuid),
  public.blink_channel_scheduled_page(uuid),
  public.blink_channel_cancel_scheduled(uuid) to authenticated;
 
+
+-- Channel moderation inbox: reporter identity remains private even from
+-- channel administrators; only aggregate issue, reason and update ID appear.
+alter table public.blink_channel_reports
+ add column if not exists reviewed_at timestamptz,
+ add column if not exists resolution text;
+
+create or replace function public.blink_channel_reports_page(p_channel_id uuid)
+returns table(id uuid,update_id uuid,reason text,created_at timestamptz,reviewed boolean)
+language plpgsql stable security definer set search_path=''
+as $
+begin
+ if not public.blink_channel_is_admin(p_channel_id) then
+  raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
+ return query
+ select r.id,r.update_id,r.reason,r.created_at,r.reviewed_at is not null
+ from public.blink_channel_reports r
+ join public.blink_channel_updates u on u.id=r.update_id
+ where u.channel_id=p_channel_id
+ order by (r.reviewed_at is null) desc,r.created_at desc limit 100;
+end
+$;
+
+create or replace function public.blink_channel_review_report(p_report_id uuid,p_remove boolean)
+returns boolean language plpgsql security definer set search_path=''
+as $
+declare v_update uuid; v_channel uuid;
+begin
+ select r.update_id,u.channel_id into v_update,v_channel
+ from public.blink_channel_reports r
+ join public.blink_channel_updates u on u.id=r.update_id
+ where r.id=p_report_id;
+ if v_channel is null or not public.blink_channel_is_admin(v_channel) then
+   raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
+ if p_remove then
+   update public.blink_channel_updates set removed_at=now(),pinned=false
+   where id=v_update and removed_at is null;
+ end if;
+ update public.blink_channel_reports
+ set reviewed_at=now(),resolution=case when p_remove then 'removed' else 'dismissed' end
+ where id=p_report_id;
+ return found;
+end
+$;
+revoke all on function public.blink_channel_reports_page(uuid),
+ public.blink_channel_review_report(uuid,boolean) from public,anon;
+grant execute on function public.blink_channel_reports_page(uuid),
+ public.blink_channel_review_report(uuid,boolean) to authenticated;
+
 revoke all on function public.blink_channel_updates_page(uuid,integer),
  public.blink_channel_publish_rich(uuid,text,text,text,text,jsonb,timestamptz,uuid),
  public.blink_channel_poll_vote(uuid,integer),
