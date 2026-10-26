@@ -148,6 +148,7 @@ fun AccountOnboardingScreen(
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
+    var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
 
     val selectedInterests = remember(profile.id) {
         mutableStateListOf<String>().apply {
@@ -163,7 +164,17 @@ fun AccountOnboardingScreen(
     val avatarPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri != null) pendingAvatarUri = uri
+        if (uri != null) avatarUriToEdit = uri
+    }
+    avatarUriToEdit?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { result ->
+                pendingAvatarUri = result
+                avatarUriToEdit = null
+            },
+            onDismiss = { avatarUriToEdit = null }
+        )
     }
 
     val followingIds by FollowStateStore.followingIds.collectAsState()
