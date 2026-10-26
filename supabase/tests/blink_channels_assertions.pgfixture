@@ -1,0 +1,115 @@
+-- Fail-fast privacy and functional tests in a disposable PostgreSQL runner.
+\set ON_ERROR_STOP on
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+
+do $$
+declare v uuid;
+begin
+ if public.blink_channel_my_role('10000000-0000-4000-8000-000000000001') <> 'owner' then raise exception 'owner role unavailable'; end if;
+ v := public.blink_channel_publish_rich(
+  p_channel_id=>'10000000-0000-4000-8000-000000000001',
+  p_body=>'Welcome to our BLINK Channel');
+ if v is null then raise exception 'owner publish failed'; end if;
+ if (select count(*) from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100))<>1 then
+   raise exception 'owner page read failed';
+ end if;
+ perform public.blink_channel_publish_rich(
+  p_channel_id=>'10000000-0000-4000-8000-000000000001',
+  p_body=>'A scheduled announcement',p_scheduled_at=>now()+interval '3 days');
+ if (select count(*) from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100))<>1 then
+  raise exception 'scheduled announcements were exposed';
+ end if;
+end $$;
+
+-- Synthetic active follower can read and react, but may never publish.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+do $$
+declare v uuid; got_error boolean:=false;
+begin
+ if public.blink_channel_my_role('10000000-0000-4000-8000-000000000001')<>'follower' then raise exception 'follower role incorrect'; end if;
+ if public.blink_channel_follower_count('10000000-0000-4000-8000-000000000001')<>2 then raise exception 'aggregate follower count incorrect'; end if;
+ select id into v from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100) limit 1;
+ if v is null then raise exception 'public channel inaccessible to follower'; end if;
+ begin
+  perform public.blink_channel_publish_rich(p_channel_id=>'10000000-0000-4000-8000-000000000001',p_body=>'hack');
+ exception when insufficient_privilege then got_error:=true;
+ end;
+ if not got_error then raise exception 'follower was able to post'; end if;
+ perform public.blink_channel_react(v,'👍');
+ perform public.blink_channel_react(v,'❤️');
+ if not public.blink_channel_view(v) or not public.blink_channel_view(v) then raise exception 'unique view RPC failed'; end if;
+ if (select view_count from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100) where id=v)<>1 then
+  raise exception 'view event was not idempotent';
+ end if;
+ perform public.blink_channel_report(v,'Spam or misinformation');
+ if not public.blink_channel_mute('10000000-0000-4000-8000-000000000001',true) or not public.blink_channel_is_muted('10000000-0000-4000-8000-000000000001') then
+  raise exception 'private notification mute not saved';
+ end if;
+end $$;
+
+-- Anonymous, pending, and banned users cannot bypass RPCs or read private files.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',false);
+do $$
+declare blocked boolean:=false;
+begin
+ if public.blink_channel_can_read('10000000-0000-4000-8000-000000000002') then raise exception 'pending got private channel access'; end if;
+ begin
+  perform * from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000002',100);
+ exception when insufficient_privilege then blocked:=true;
+ end;
+ if not blocked then raise exception 'private channel leak'; end if;
+end $$;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000005',false);
+do $$
+begin
+ if public.blink_channel_can_read('10000000-0000-4000-8000-000000000001') then raise exception 'banned user can view public channel'; end if;
+end $$;
+
+-- Authenticated moderator may post, admin can review without revealing reporter.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',false);
+do $$
+declare v uuid;
+begin
+ if not public.blink_channel_is_admin('10000000-0000-4000-8000-000000000001') then raise exception 'moderator role broken'; end if;
+ v:=public.blink_channel_publish_rich(
+  p_channel_id=>'10000000-0000-4000-8000-000000000001',p_body=>'Moderator announcement');
+ if v is null then raise exception 'moderator publishing failed'; end if;
+ if (select count(*) from public.blink_channel_reports_page('10000000-0000-4000-8000-000000000001'))<>1 then
+   raise exception 'moderator report queue inaccessible';
+ end if;
+ if (public.blink_channel_statistics('10000000-0000-4000-8000-000000000001')->>'followers')::integer<>2 then
+   raise exception 'admin analytics wrong';
+ end if;
+end $$;
+
+-- Per-user vote uniqueness and tallies.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false);
+select public.blink_channel_publish_rich(
+ p_channel_id=>'10000000-0000-4000-8000-000000000001',p_body=>'',
+ p_media_kind=>'poll',p_poll_question=>'Preferred lecture time?',
+ p_poll_options=>'["Morning","Afternoon"]'::jsonb) as poll_created;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000003',false);
+do $$
+declare v uuid;
+begin
+ select id into v from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100)
+ where media_kind='poll' limit 1;
+ if v is null then raise exception 'poll not available'; end if;
+ if not public.blink_channel_poll_vote(v,0) or not public.blink_channel_poll_vote(v,1) then raise exception 'poll vote rejected'; end if;
+ if (select (poll_counts->>'1')::int from public.blink_channel_updates_page('10000000-0000-4000-8000-000000000001',100) where id=v)<>1 then
+  raise exception 'vote tally incorrect';
+ end if;
+end $$;
+
+-- All follower-sensitive tables are inaccessible directly.
+do $$
+begin
+ if has_table_privilege('authenticated','public.blink_channel_reports','SELECT')
+    or has_table_privilege('authenticated','public.blink_channel_views','SELECT')
+    or has_table_privilege('authenticated','public.blink_channel_reactions','SELECT')
+    or has_table_privilege('authenticated','public.blink_channel_updates','SELECT')
+ then raise exception 'private channel tables leaked through Data API grants'; end if;
+end $$;
+reset role;
+select 'BLINK Channel PostgreSQL RLS, poll and moderator checks passed' as result;
