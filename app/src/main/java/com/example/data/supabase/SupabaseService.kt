@@ -1660,6 +1660,7 @@ fun getCurrentUserId(): String? {
                 put("username", profile.username.trim().lowercase(Locale.US))
                 put("avatar_url", profile.avatarUrl)
                 put("cover_photo_url", profile.coverPhotoUrl)
+                put("profile_theme", com.blinkng.shared.BlinkProfileThemes.normalize(profile.profileTheme))
                 put("professional_headline", profile.professionalHeadline)
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
@@ -4444,6 +4445,7 @@ suspend fun uploadPostMedia(
             username = obj.cleanString("username"),
             avatarUrl = obj.cleanString("avatar_url"),
             coverPhotoUrl = obj.cleanString("cover_photo").ifBlank { obj.cleanString("cover_photo_url").ifBlank { obj.cleanString("cover_url") } },
+            profileTheme = com.blinkng.shared.BlinkProfileThemes.normalize(obj.cleanString("profile_theme")),
             verificationBadge = badge,
             isBlinkVip = obj.optBoolean(
                 "is_blink_vip",
