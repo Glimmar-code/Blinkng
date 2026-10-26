@@ -41,7 +41,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun BlinkCommunitiesPanel(
     searchProfiles: suspend (String, Int, String?, String?) -> List<UserProfile>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChannelOpenChange: (Boolean) -> Unit = {}
 ) {
     val backend = remember { BlinkCommunityRepository() }
     val service = remember { SupabaseService() }
@@ -79,6 +80,11 @@ fun BlinkCommunitiesPanel(
     }
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) refresh() else loading = false
+    }
+
+    androidx.compose.runtime.DisposableEffect(selectedChannel) {
+        onChannelOpenChange(selectedChannel != null)
+        onDispose { onChannelOpenChange(false) }
     }
 
     selectedChannel?.let { channel ->
