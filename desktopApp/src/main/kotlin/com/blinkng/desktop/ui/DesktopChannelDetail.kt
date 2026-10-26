@@ -1,5 +1,14 @@
 package com.blinkng.desktop.ui
 
+import java.awt.Desktop
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
+import java.io.File
+import java.net.URI
+import javax.swing.JFileChooser
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,11 +61,20 @@ fun DesktopChannelDetail(
     var error by remember(channel.id) { mutableStateOf<String?>(null) }
     var draft by remember(channel.id) { mutableStateOf("") }
 
+    var muted by remember(channel.id) { mutableStateOf(false) }
+    var showStats by remember(channel.id) { mutableStateOf(false) }
+    var stats by remember(channel.id) { mutableStateOf("") }
+    var mediaKind by remember(channel.id) { mutableStateOf("text") }
+    var selectedMedia by remember(channel.id) { mutableStateOf<File?>(null) }
+    var pollQuestion by remember(channel.id) { mutableStateOf("") }
+    var pollOptions by remember(channel.id) { mutableStateOf("") }
+    var scheduledAt by remember(channel.id) { mutableStateOf("") }
     suspend fun refresh() {
         loading = true
         try {
             role = state.client.channelRole(channel.id)
             followers = state.client.channelFollowerCount(channel.id)
+            muted = state.client.isChannelMuted(channel.id)
             updates = state.client.channelUpdates(channel.id)
             error = null
         } catch (e: Exception) {
@@ -64,6 +82,12 @@ fun DesktopChannelDetail(
         } finally { loading = false }
     }
     LaunchedEffect(channel.id) { refresh() }
+    LaunchedEffect(channel.id) {
+        while (true) {
+            delay(45_000)
+            if (!saving) runCatching { updates = state.client.channelUpdates(channel.id) }
+        }
+    }
     val admin = role == "owner" || role == "moderator"
     val following = admin || role == "follower"
     val updatesListState = rememberLazyListState()
@@ -82,6 +106,20 @@ fun DesktopChannelDetail(
                 Text(channel.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("$followers followers", style = MaterialTheme.typography.labelMedium)
             }
+            TextButton(onClick = {
+                scope.launch {
+                    saving = true
+                    try { state.client.muteChannel(channel.id, !muted); muted = !muted }
+                    catch (e: Exception) { error = e.message }
+                    finally { saving = false }
+                }
+            }, enabled = !saving) { Text(if (muted) "🔕" else "🔔") }
+            if (admin) TextButton(onClick = {
+                scope.launch {
+                    try { stats = state.client.channelStats(channel.id).toString(2); showStats = true }
+                    catch (e: Exception) { error = e.message }
+                }
+            }) { Text("Analytics") }
             TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
                 Text("Refresh")
             }
@@ -107,10 +145,52 @@ fun DesktopChannelDetail(
                 Text("No channel updates yet.", Modifier.padding(12.dp))
             }
             items(updates, key = { it.id }) { update ->
+                LaunchedEffect(update.id) {
+                    runCatching { state.client.recordChannelView(update.id) }
+                }
+                var signedMedia by remember(update.id, update.mediaPath) { mutableStateOf<String?>(null) }
+                LaunchedEffect(update.mediaPath) {
+                    signedMedia = update.mediaPath?.let {
+                        runCatching { state.client.signedChannelMedia(it) }.getOrNull()
+                    }
+                }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(channel.name, fontWeight = FontWeight.Bold)
-                        Text(update.body, style = MaterialTheme.typography.bodyLarge)
+                        if (update.pinned) Text("📌 Pinned announcement",
+                            color = MaterialTheme.colorScheme.primary)
+                        if (update.body.isNotBlank())
+                            Text(update.body, style = MaterialTheme.typography.bodyLarge)
+                        if (update.mediaPath != null) TextButton(
+                            enabled = signedMedia != null,
+                            onClick = {
+                                signedMedia?.let { address ->
+                                    runCatching { Desktop.getDesktop().browse(URI(address)) }
+                                        .onFailure { error = "Unable to open channel media." }
+                                }
+                            }
+                        ) { Text(if (signedMedia == null) "Loading attachment…" else "Open ${update.mediaKind}") }
+                        if (update.mediaKind == "poll") {
+                            Text(update.pollQuestion.orEmpty(), fontWeight = FontWeight.SemiBold)
+                            update.pollOptions.forEachIndexed { index, option ->
+                                TextButton(
+                                    enabled = following && !saving,
+                                    onClick = {
+                                        scope.launch {
+                                            saving = true
+                                            try {
+                                                state.client.voteChannelPoll(update.id, index)
+                                                updates = state.client.channelUpdates(channel.id)
+                                            } catch (e: Exception) { error = e.message }
+                                            finally { saving = false }
+                                        }
+                                    }
+                                ) {
+                                    Text("${if (update.myVote == index) "●" else "○"} $option · ${update.pollCounts[index] ?: 0}")
+                                }
+                            }
+                        }
+                        Text("${update.viewCount} views", style = MaterialTheme.typography.labelSmall)
                         Text(update.createdAt.take(16).replace('T', ' '),
                             style = MaterialTheme.typography.labelSmall)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -136,6 +216,40 @@ fun DesktopChannelDetail(
                                 }
                             }
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = {
+                                Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                                    StringSelection("${channel.name} — BLINK Channel\\n${update.body}"), null)
+                            }) { Text("Copy / Forward") }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    try {
+                                        state.client.reportChannelUpdate(update.id,
+                                            "Inappropriate or misleading channel update")
+                                        error = null
+                                    } catch (e: Exception) { error = e.message }
+                                }
+                            }) { Text("Report") }
+                            if (admin) {
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        try {
+                                            state.client.moderateChannelUpdate(update.id,
+                                                if (update.pinned) "unpin" else "pin")
+                                            updates = state.client.channelUpdates(channel.id)
+                                        } catch (e: Exception) { error = e.message }
+                                    }
+                                }) { Text(if (update.pinned) "Unpin" else "Pin") }
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        try {
+                                            state.client.moderateChannelUpdate(update.id, "remove")
+                                            updates = state.client.channelUpdates(channel.id)
+                                        } catch (e: Exception) { error = e.message }
+                                    }
+                                }) { Text("Remove") }
+                            }
+                        }
                     }
                 }
             }
@@ -143,25 +257,70 @@ fun DesktopChannelDetail(
         }
         HorizontalDivider()
         if (admin) {
+            LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("text","image","video","audio","document","poll")) { kind ->
+                    FilterChip(
+                        selected = mediaKind == kind,
+                        onClick = {
+                            mediaKind = kind
+                            if (kind in setOf("image","video","audio","document")) {
+                                val chooser = JFileChooser()
+                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                    selectedMedia = chooser.selectedFile
+                                }
+                            }
+                        },
+                        label = { Text(kind.replaceFirstChar(Char::uppercase)) }
+                    )
+                }
+            }
+            if (mediaKind == "poll") {
+                OutlinedTextField(pollQuestion, { pollQuestion = it.take(300) },
+                    label = { Text("Poll question") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(pollOptions, { pollOptions = it.take(800) },
+                    label = { Text("2–8 options, one per line") },
+                    modifier = Modifier.fillMaxWidth(), maxLines = 5)
+            }
+            if (selectedMedia != null) {
+                Text("Selected: ${selectedMedia?.name.orEmpty()}")
+            }
+            OutlinedTextField(scheduledAt, { scheduledAt = it.take(30) },
+                label = { Text("Schedule UTC (optional): 2026-11-01T12:00:00Z") },
+                modifier = Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(draft, { draft = it.take(BlinkChannelPolicy.MAX_UPDATE_LENGTH) },
                     label = { Text("Broadcast update") }, modifier = Modifier.weight(1f), maxLines = 4)
                 Button(
-                    enabled = draft.isNotBlank() && !saving,
+                    enabled = !saving && (draft.isNotBlank() || selectedMedia != null ||
+                        (mediaKind == "poll" && pollQuestion.isNotBlank())),
                     onClick = {
                         scope.launch {
                             saving = true
                             try {
-                                state.client.publishChannelUpdate(channel.id, draft)
-                                draft = ""
+                                val upload = selectedMedia?.let {
+                                    state.client.uploadChannelMedia(channel.id, it)
+                                }
+                                val chosenKind = upload?.first ?: mediaKind
+                                val schedule = scheduledAt.trim().takeIf { it.isNotBlank() }?.let {
+                                    java.time.Instant.parse(it).toString()
+                                }
+                                state.client.publishRichChannelUpdate(
+                                    channel.id, draft, chosenKind, upload?.second,
+                                    if (chosenKind == "poll") pollQuestion else null,
+                                    if (chosenKind == "poll")
+                                        pollOptions.lines().filter { it.isNotBlank() }
+                                    else emptyList(), schedule
+                                )
+                                draft = ""; selectedMedia = null; mediaKind = "text"
+                                pollQuestion = ""; pollOptions = ""; scheduledAt = ""
                                 updates = state.client.channelUpdates(channel.id)
                                 error = null
                             } catch (e: Exception) { error = e.message }
                             finally { saving = false }
                         }
                     }
-                ) { Text("Post") }
+                ) { Text(if (scheduledAt.isBlank()) "Post" else "Schedule") }
             }
         } else if (!following) {
             Button(enabled = role != "pending" && role != "banned" && !saving,
@@ -193,6 +352,14 @@ fun DesktopChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        if (showStats) {
+            AlertDialog(
+                onDismissRequest = { showStats = false },
+                title = { Text("Channel analytics") },
+                text = { Text(stats) },
+                confirmButton = { TextButton(onClick = { showStats = false }) { Text("Close") } }
+            )
         }
     }
 }
