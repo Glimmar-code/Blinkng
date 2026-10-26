@@ -44,6 +44,8 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopCommunity
 import com.blinkng.shared.BlinkChannelPolicy
 import com.blinkng.shared.BlinkChannelUpdate
+import com.blinkng.shared.BlinkChannelReport
+import org.json.JSONObject
 import kotlinx.coroutines.launch
 
 /** Broadcast-channel reader on Windows: same permissions and updates as Android. */
@@ -66,6 +68,10 @@ fun DesktopChannelDetail(
     var showScheduled by remember(channel.id) { mutableStateOf(false) }
     var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var unread by remember(channel.id) { mutableStateOf(0) }
+    var showReports by remember(channel.id) { mutableStateOf(false) }
+    var reports by remember(channel.id) { mutableStateOf<List<BlinkChannelReport>>(emptyList()) }
+    var reportingUpdate by remember(channel.id) { mutableStateOf<String?>(null) }
+    var reportReason by remember(channel.id) { mutableStateOf("Spam or misleading information") }
     var showStats by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
@@ -135,6 +141,14 @@ fun DesktopChannelDetail(
                     } catch (e: Exception) { error = e.message }
                 }
             }) { Text("Scheduled") }
+            if (admin) TextButton(onClick = {
+                scope.launch {
+                    try {
+                        reports = state.client.channelReports(channel.id)
+                        showReports = true
+                    } catch (e: Exception) { error = e.message }
+                }
+            }) { Text("Reports") }
             TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
                 Text("Refresh")
             }
@@ -236,15 +250,7 @@ fun DesktopChannelDetail(
                                 Toolkit.getDefaultToolkit().systemClipboard.setContents(
                                     StringSelection("${channel.name} — BLINK Channel\n${update.body}"), null)
                             }) { Text("Copy / Forward") }
-                            TextButton(onClick = {
-                                scope.launch {
-                                    try {
-                                        state.client.reportChannelUpdate(update.id,
-                                            "Inappropriate or misleading channel update")
-                                        error = null
-                                    } catch (e: Exception) { error = e.message }
-                                }
-                            }) { Text("Report") }
+                            TextButton(onClick = { reportingUpdate = update.id }) { Text("Report") }
                             if (admin) {
                                 TextButton(onClick = {
                                     scope.launch {
@@ -368,6 +374,73 @@ fun DesktopChannelDetail(
                 }
             ) { Text("Unfollow channel") }
         }
+        if (reportingUpdate != null) {
+            AlertDialog(
+                onDismissRequest = { reportingUpdate = null },
+                title = { Text("Report channel update") },
+                text = {
+                    OutlinedTextField(reportReason, { reportReason = it.take(280) },
+                        label = { Text("Reason") })
+                },
+                dismissButton = {
+                    TextButton(onClick = { reportingUpdate = null }) { Text("Cancel") }
+                },
+                confirmButton = {
+                    TextButton(enabled = reportReason.trim().length >= 3 && !saving,
+                        onClick = {
+                            val selected = reportingUpdate ?: return@TextButton
+                            scope.launch {
+                                saving = true
+                                try {
+                                    state.client.reportChannelUpdate(selected, reportReason)
+                                    reportingUpdate = null
+                                    error = null
+                                } catch (e: Exception) { error = e.message }
+                                finally { saving = false }
+                            }
+                        }
+                    ) { Text("Submit report") }
+                }
+            )
+        }
+        if (showReports) {
+            AlertDialog(
+                onDismissRequest = { showReports = false },
+                title = { Text("Channel moderation") },
+                text = {
+                    LazyColumn {
+                        if (reports.isEmpty()) item { Text("No reports.") }
+                        items(reports, key = { it.id }) { report ->
+                            Column {
+                                Text(report.reason)
+                                if (report.reviewed) Text("Reviewed") else Row {
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            try {
+                                                state.client.reviewChannelReport(report.id, false)
+                                                reports = state.client.channelReports(channel.id)
+                                            } catch (e: Exception) { error = e.message }
+                                        }
+                                    }) { Text("Dismiss") }
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            try {
+                                                state.client.reviewChannelReport(report.id, true)
+                                                reports = state.client.channelReports(channel.id)
+                                                updates = state.client.channelUpdates(channel.id)
+                                            } catch (e: Exception) { error = e.message }
+                                        }
+                                    }) { Text("Remove") }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showReports = false }) { Text("Close") }
+                }
+            )
+        }
         if (showScheduled) {
             AlertDialog(
                 onDismissRequest = { showScheduled = false },
@@ -397,7 +470,16 @@ fun DesktopChannelDetail(
             AlertDialog(
                 onDismissRequest = { showStats = false },
                 title = { Text("Channel analytics") },
-                text = { Text(stats) },
+                text = {
+                    val values = runCatching { JSONObject(stats) }.getOrElse { JSONObject() }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf("followers" to "Followers", "updates" to "Published updates",
+                            "views" to "Unique views", "reactions" to "Emoji reactions",
+                            "poll_votes" to "Poll votes").forEach { (key, label) ->
+                            Text("$label: ${values.optLong(key, 0)}")
+                        }
+                    }
+                },
                 confirmButton = { TextButton(onClick = { showStats = false }) { Text("Close") } }
             )
         }
