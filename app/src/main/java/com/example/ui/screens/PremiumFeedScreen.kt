@@ -565,6 +565,7 @@ fun PremiumFeedScreen(
         )
 
         2 -> PremiumConnectHost(
+            posts = posts,
             profiles = profiles,
             currentUserProfile = currentUserProfile,
             currentUsername = currentUsername,
@@ -586,7 +587,12 @@ fun PremiumFeedScreen(
                 onSubTabChanged(0)
             },
             onReelClick = { openReelsAt() },
-            onGameClick = { onSubTabChanged(3) }
+            onGameClick = { onSubTabChanged(3) },
+            onSearchClick = onSearchClick,
+            onOpenPost = onOpenFeedPost,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost
         )
 
         3 -> PremiumGameHost(
@@ -2120,6 +2126,7 @@ private fun PremiumGameHost(
 
 @Composable
 private fun PremiumConnectHost(
+    posts: List<FeedPost>,
     profiles: List<UserProfile>,
     currentUserProfile: UserProfile?,
     currentUsername: String,
@@ -2138,7 +2145,12 @@ private fun PremiumConnectHost(
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit,
     onHomeClick: () -> Unit,
     onReelClick: () -> Unit,
-    onGameClick: () -> Unit
+    onGameClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    onOpenPost: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit
 ) {
     Box(
         Modifier
@@ -2147,6 +2159,12 @@ private fun PremiumConnectHost(
             .statusBarsPadding()
     ) {
         ConnectSection(
+            posts = posts,
+            onSearchClick = onSearchClick,
+            onOpenPost = onOpenPost,
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
             profiles = profiles,
             currentProfile = currentUserProfile,
             currentUsername = currentUsername,
