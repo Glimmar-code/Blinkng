@@ -50,12 +50,12 @@ end $$;
 
 -- Check the committed preference in a distinct statement, not the same PL/pgSQL
 -- snapshot as the upsert.
-do $
+do $$
 begin
  if not public.blink_channel_is_muted('10000000-0000-4000-8000-000000000001') then
   raise exception 'mute preference not persisted';
  end if;
-end $;
+end $$;
 
 -- Anonymous, pending, and banned users cannot bypass RPCs or read private files.
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',false);
