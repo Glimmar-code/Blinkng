@@ -672,9 +672,13 @@ fun PostCard(
                 }
             }
 
-            if (post.text.isNotBlank()) {
+            val postLinks = listOfNotNull(
+                post.text.takeIf { it.isNotBlank() },
+                post.linkUrl?.takeIf { it.isNotBlank() }
+            ).joinToString(" ")
+            if (postLinks.isNotBlank()) {
                 BlinkRichLinkPreview(
-                    text = post.text,
+                    text = postLinks,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                 )
             }
