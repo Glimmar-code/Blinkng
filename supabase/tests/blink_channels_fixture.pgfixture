@@ -5,12 +5,23 @@ create role service_role nologin;
 create schema auth;
 create schema storage;
 create schema private;
+create schema extensions;
+create schema net;
+create extension if not exists pgcrypto with schema extensions;
+create function net.http_post(url text,body jsonb default '{}'::jsonb,headers jsonb default '{}'::jsonb,timeout_milliseconds integer default 5000) returns bigint language sql as $ select 1::bigint $;
 create or replace function auth.uid() returns uuid
 language sql stable set search_path='' as $$
  select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid
 $$;
 create table auth.users(id uuid primary key);
 create type public.notification_type_enum as enum ('system');
+create table public.notification_push_dispatches (
+ notification_id uuid primary key,
+ status text not null check(status in ('sending','sent','failed')),
+ attempts integer not null default 1,
+ updated_at timestamptz not null default now(),
+ last_error text
+);
 create table public.notifications (
  id uuid primary key default gen_random_uuid(),
  user_id uuid references auth.users(id),
