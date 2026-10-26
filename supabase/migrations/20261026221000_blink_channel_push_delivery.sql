@@ -11,7 +11,7 @@ create table if not exists private.blink_channel_worker_credentials (
 alter table private.blink_channel_worker_credentials enable row level security;
 revoke all on private.blink_channel_worker_credentials from public,anon,authenticated,service_role;
 insert into private.blink_channel_worker_credentials(singleton,worker_token)
-values(true,encode(gen_random_bytes(32),'hex')) on conflict(singleton) do nothing;
+values(true,encode(extensions.gen_random_bytes(32),'hex')) on conflict(singleton) do nothing;
 
 create or replace function public.blink_verify_channel_worker(p_token text)
 returns boolean language sql stable security definer set search_path=''
@@ -19,7 +19,7 @@ as $$
  select (length(coalesce(p_token,''))=64)
   and exists(select 1 from private.blink_channel_worker_credentials w
      where w.singleton and
-       digest(w.worker_token,'sha256')=digest(coalesce(p_token,''),'sha256'))
+       extensions.digest(w.worker_token,'sha256')=extensions.digest(coalesce(p_token,''),'sha256'))
 $$;
 revoke all on function public.blink_verify_channel_worker(text) from public,anon,authenticated;
 grant execute on function public.blink_verify_channel_worker(text) to service_role;
