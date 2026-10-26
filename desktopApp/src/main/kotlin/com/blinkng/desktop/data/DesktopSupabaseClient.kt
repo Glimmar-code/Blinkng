@@ -1431,6 +1431,24 @@ class DesktopSupabaseClient(
         communityRpc("blink_channel_cancel_scheduled",
             JSONObject().put("p_update_id", id)) == "true"
 
+
+    suspend fun channelReports(channelId: String): List<com.blinkng.shared.BlinkChannelReport> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_reports_page",
+                JSONObject().put("p_channel_id", channelId), prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { row ->
+                    com.blinkng.shared.BlinkChannelReport(row.optString("id"),
+                        row.optString("update_id"), row.optString("reason"),
+                        row.optBoolean("reviewed", false))
+                }
+            }
+        }
+
+    suspend fun reviewChannelReport(reportId: String, remove: Boolean): Boolean =
+        communityRpc("blink_channel_review_report",
+            JSONObject().put("p_report_id", reportId).put("p_remove", remove)) == "true"
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
