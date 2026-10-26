@@ -673,7 +673,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
                                             if (linkPreviewsAllowed) {
-                                                DesktopRichLinkPreview(message.content, compact = true)
+                                                DesktopRichLinkPreview(message.content)
                                             }
                                         }
                                     }
