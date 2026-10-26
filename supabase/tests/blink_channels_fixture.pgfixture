@@ -4,11 +4,24 @@ create role authenticated nologin;
 create role service_role nologin;
 create schema auth;
 create schema storage;
+create schema private;
 create or replace function auth.uid() returns uuid
 language sql stable set search_path='' as $$
  select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid
 $$;
 create table auth.users(id uuid primary key);
+create type public.notification_type_enum as enum ('system');
+create table public.notifications (
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid references auth.users(id),
+ actor_id uuid references auth.users(id),
+ type public.notification_type_enum not null,
+ target_type text,
+ target_id uuid,
+ text text, sub_text text,
+ is_read boolean not null default false,
+ metadata jsonb not null default '{}'::jsonb
+);
 create table public.blink_communities (
  id uuid primary key default gen_random_uuid(),
  owner_id uuid not null references auth.users(id),
