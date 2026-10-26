@@ -227,7 +227,10 @@ fun PremiumSearchScreen(state: DesktopAppState) {
                     loading = discoveryLoading,
                 )
                 DesktopSearchCollection.PLACES -> DesktopPlacesCollection(
-                    connectListings = connectListings,
+                    // Communities belong in Connect, not the Search experience.
+                    connectListings = connectListings.filterNot {
+                        it.categorySlug.equals("campus_communities", ignoreCase = true)
+                    },
                     loading = discoveryLoading,
                 )
             }
