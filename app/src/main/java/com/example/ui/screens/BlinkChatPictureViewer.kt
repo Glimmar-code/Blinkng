@@ -8,8 +8,8 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import com.blinkng.shared.BlinkChatMediaGesturePolicy
+import com.blinkng.shared.BlinkChatMediaSwipe
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +89,7 @@ internal fun BlinkChatPictureViewer(
     var zoom by remember(message.id) { mutableFloatStateOf(1f) }
     var pan by remember(message.id) { mutableStateOf(Offset.Zero) }
     var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var verticalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
@@ -107,7 +111,8 @@ internal fun BlinkChatPictureViewer(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false
     )) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha =
+            BlinkChatMediaGesturePolicy.backdropAlpha(verticalDrag, 1200f)))) {
             AsyncImage(
                 model = message.attachedImageUrl,
                 contentDescription = "Full-size shared photo",
@@ -115,32 +120,82 @@ internal fun BlinkChatPictureViewer(
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer {
                         rotationZ = rotateDegrees.toFloat()
-                        scaleX = zoom
-                        scaleY = zoom
-                        translationX = pan.x
-                        translationY = pan.y
+                        val dismissFraction = (kotlin.math.abs(verticalDrag) / 1600f).coerceIn(0f, .18f)
+                        scaleX = zoom * (1f - dismissFraction)
+                        scaleY = zoom * (1f - dismissFraction)
+                        translationX = pan.x + horizontalDrag
+                        translationY = pan.y + verticalDrag
                     }
-                    .pointerInput(message.id) {
-                        detectTransformGestures { _,delta,scale,_ ->
-                            zoom = (zoom * scale).coerceIn(1f,4f)
-                            pan = if (zoom > 1f) pan + delta else Offset.Zero
-                        }
-                    }
-                    .pointerInput(message.id,zoom) {
-                        detectHorizontalDragGestures(
-                            onHorizontalDrag = { change,amount ->
-                                if (zoom <= 1.05f) {
-                                    horizontalDrag += amount
-                                    change.consume()
+                    .pointerInput(message.id, hasPrevious, hasNext) {
+                        // One gesture owner prevents pan/zoom, horizontal paging, and
+                        // vertical dismissal from fighting for pointer consumption.
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var travelX = 0f
+                            var travelY = 0f
+                            var multiTouch = false
+                            var previousPinchDistance = 0f
+                            var previousCentroid: Offset? = null
+                            do {
+                                val event = awaitPointerEvent()
+                                val active = event.changes.filter { it.pressed }
+                                if (active.size >= 2) {
+                                    multiTouch = true
+                                    val centroid = (active[0].position + active[1].position) / 2f
+                                    val distance = (active[0].position - active[1].position).getDistance()
+                                    if (previousPinchDistance > 0f) {
+                                        zoom = (zoom * distance / previousPinchDistance)
+                                            .coerceIn(1f, 4f)
+                                        pan = if (zoom > 1f) pan +
+                                            (centroid - (previousCentroid ?: centroid))
+                                            else Offset.Zero
+                                    }
+                                    previousPinchDistance = distance
+                                    previousCentroid = centroid
+                                    horizontalDrag = 0f
+                                    verticalDrag = 0f
+                                    active.forEach { it.consume() }
+                                } else if (active.size == 1) {
+                                    val change = active.first()
+                                    val delta = change.position - change.previousPosition
+                                    if (zoom > BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
+                                        pan += delta
+                                    } else if (!multiTouch) {
+                                        travelX += delta.x
+                                        travelY += delta.y
+                                        if (kotlin.math.abs(travelY) >
+                                            kotlin.math.abs(travelX) * 1.25f) {
+                                            verticalDrag = travelY
+                                            horizontalDrag = 0f
+                                        } else if (kotlin.math.abs(travelX) >
+                                            kotlin.math.abs(travelY) * 1.25f) {
+                                            horizontalDrag = travelX
+                                            verticalDrag = 0f
+                                        }
+                                    }
+                                    // Leave stationary taps to detectTapGestures below.
+                                    if (delta.getDistance() > 0f) change.consume()
                                 }
-                            },
-                            onDragEnd = {
-                                if (horizontalDrag < -100f && hasNext) onNext()
-                                else if (horizontalDrag > 100f && hasPrevious) onPrevious()
-                                horizontalDrag = 0f
-                            },
-                            onDragCancel = { horizontalDrag = 0f }
-                        )
+                            } while (event.changes.any { it.pressed })
+                            if (!multiTouch) {
+                                when (BlinkChatMediaGesturePolicy.action(
+                                    travelX, travelY,
+                                    BlinkChatMediaGesturePolicy.SWIPE_THRESHOLD_DP.dp.toPx(),
+                                    zoom, hasPrevious, hasNext
+                                )) {
+                                    BlinkChatMediaSwipe.DISMISS -> onDismiss()
+                                    BlinkChatMediaSwipe.NEXT -> onNext()
+                                    BlinkChatMediaSwipe.PREVIOUS -> onPrevious()
+                                    BlinkChatMediaSwipe.NONE -> Unit
+                                }
+                            }
+                            horizontalDrag = 0f
+                            verticalDrag = 0f
+                            if (zoom <= BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
+                                zoom = 1f
+                                pan = Offset.Zero
+                            }
+                        }
                     }
                     .pointerInput(message.id) {
                         detectTapGestures(
