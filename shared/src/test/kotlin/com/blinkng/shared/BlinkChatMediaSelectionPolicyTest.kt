@@ -27,6 +27,17 @@ class BlinkChatMediaSelectionPolicyTest {
             BlinkChatMediaSelectionPolicy.toggle(listOf("A", "A"), "A"))
     }
 
+    @Test fun reorder_keeps_unique_ids_and_supports_forward_and_backward_moves() {
+        val ids = listOf("A", "B", "C")
+        assertEquals(listOf("B", "C", "A"),
+            BlinkChatMediaSelectionPolicy.move(ids, 0, 2))
+        assertEquals(listOf("C", "A", "B"),
+            BlinkChatMediaSelectionPolicy.move(ids, 2, 0))
+        assertEquals(ids, BlinkChatMediaSelectionPolicy.move(ids, -1, 1))
+        assertEquals(ids, BlinkChatMediaSelectionPolicy.move(ids, 0, 100))
+        assertEquals(ids, listOf("A","B","C"))
+    }
+
     @Test fun empty_media_ids_not_added() {
         assertEquals(emptyList<String>(),
             BlinkChatMediaSelectionPolicy.toggle(emptyList(), " "))
