@@ -153,6 +153,7 @@ fun ProfileScreen(
     rewardedAdsToday: Int = 0,
     onWatchAdForCoins: () -> Unit = {},
     onBuyBlinkCoins: () -> Unit = {},
+    onOpenCoinsWallet: () -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
@@ -451,7 +452,7 @@ fun ProfileScreen(
                             }
                         },
                         onVerify = onOpenGetVerified,
-                        onEarnCoins = { showEarnCoinDialog = true },
+                        onEarnCoins = onOpenCoinsWallet,
                         onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
                         onShare = { showShareSheet = true },
                         onCopyUsername = {

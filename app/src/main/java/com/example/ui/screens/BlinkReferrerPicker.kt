@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.foundation.shape.CircleShape
@@ -20,10 +24,12 @@ import com.example.data.supabase.BlinkReferralClient
 import kotlinx.coroutines.delay
 
 /** Optional public profile picker for the one immutable signup referrer. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun BlinkReferrerPicker(
     selected: BlinkReferralSuggestion?,
     onSelected: (BlinkReferralSuggestion?) -> Unit,
+    lightSurface: Boolean = false,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var pageOffset by remember { mutableIntStateOf(0) }
@@ -31,6 +37,19 @@ internal fun BlinkReferrerPicker(
     var isLoading by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(false) }
+    val ink = if (lightSurface) Color(0xFF161616) else MaterialTheme.colorScheme.onSurface
+    val hint = if (lightSurface) Color(0xFF626262) else MaterialTheme.colorScheme.onSurfaceVariant
+    val surface = if (lightSurface) Color.White else MaterialTheme.colorScheme.surface
+    val suggestionRequester = remember { BringIntoViewRequester() }
+
+    // When results arrive after the keyboard opens, bring the first match into view.
+    // The signup form itself owns keyboard inset padding and remains scrollable.
+    LaunchedEffect(results.firstOrNull()?.id, selected?.id) {
+        if (results.isNotEmpty() && selected == null) {
+            delay(120)
+            runCatching { suggestionRequester.bringIntoView() }
+        }
+    }
 
     LaunchedEffect(query, pageOffset, selected?.id) {
         val clean = BlinkReferralPolicy.normalizedQuery(query)
@@ -54,7 +73,7 @@ internal fun BlinkReferrerPicker(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Referred by (optional)", style = MaterialTheme.typography.labelMedium)
+        Text("Referred by (optional)", style = MaterialTheme.typography.labelMedium, color = ink)
         if (selected != null) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -62,6 +81,7 @@ internal fun BlinkReferrerPicker(
                     Modifier.weight(1f),
                     maxLines = 1,
                     style = MaterialTheme.typography.bodyMedium,
+                    color = ink,
                 )
                 TextButton(onClick = {
                     query = ""
@@ -81,6 +101,15 @@ internal fun BlinkReferrerPicker(
                 singleLine = true,
                 label = { Text("Search name or @username") },
                 shape = RoundedCornerShape(16.dp),
+                textStyle = LocalTextStyle.current.copy(color = ink),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = ink, unfocusedTextColor = ink,
+                    focusedLabelColor = hint, unfocusedLabelColor = hint,
+                    focusedContainerColor = surface, unfocusedContainerColor = surface,
+                    cursorColor = ink,
+                    focusedBorderColor = if (lightSurface) Color(0xFF181818) else MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = if (lightSurface) Color(0xFFB6B6B6) else MaterialTheme.colorScheme.outline,
+                ),
             )
             if (isLoading && results.isEmpty()) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -90,17 +119,19 @@ internal fun BlinkReferrerPicker(
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.error,
             )
             if (query.isNotBlank() && !isLoading && !failed && results.isEmpty()) {
-                Text("No matching users found.", fontSize = 12.sp)
+                Text("No matching users found.", fontSize = 12.sp, color = hint)
             }
-            results.forEach { person ->
+            results.forEachIndexed { index, person ->
                 Surface(
                     onClick = {
                         onSelected(person)
                         query = ""
                         results = emptyList()
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (index == 0) Modifier.bringIntoViewRequester(suggestionRequester) else Modifier
+                    ),
+                    color = if (lightSurface) Color(0xFFF3F3F3) else MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(12.dp),
                 ) {
                     Row(
@@ -115,9 +146,9 @@ internal fun BlinkReferrerPicker(
                         )
                         Column(Modifier.weight(1f)) {
                             Text(person.fullName.ifBlank { person.username },
-                                style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                style = MaterialTheme.typography.bodyMedium, maxLines = 1, color = ink)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("@${person.username}", style = MaterialTheme.typography.labelSmall)
+                                Text("@${person.username}", style = MaterialTheme.typography.labelSmall, color = hint)
                                 if (person.isVerified) {
                                     Spacer(Modifier.width(4.dp))
                                     Icon(Icons.Rounded.Verified,
@@ -125,9 +156,9 @@ internal fun BlinkReferrerPicker(
                                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                                 }
                             }
-                            person.university?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                            person.university?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = hint) }
                         }
-                        Text("Select", fontSize = 11.sp)
+                        Text("Select", fontSize = 11.sp, color = ink)
                     }
                 }
             }
@@ -138,6 +169,7 @@ internal fun BlinkReferrerPicker(
         Text(
             "Choose one existing BLINK member. Only verified new accounts count as referrals.",
             style = MaterialTheme.typography.labelSmall,
+            color = hint,
         )
     }
 }

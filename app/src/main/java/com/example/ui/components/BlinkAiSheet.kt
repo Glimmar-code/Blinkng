@@ -96,7 +96,8 @@ private data class BlinkAiRequestSnapshot(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlinkAiSheet(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialImageUri: Uri? = null
 ) {
     val context = LocalContext.current
     // This dialog previously used green-black hardcoded colors even in app Dark Mode.
@@ -113,7 +114,11 @@ fun BlinkAiSheet(
     var isSending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var nextId by remember { mutableStateOf(2L) }
-    var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // External photo handoffs only pre-attach. The student still presses Send,
+    // and the current BLINK AI backend already supports private image analysis.
+    var imageUris by remember(initialImageUri) {
+        mutableStateOf(listOfNotNull(initialImageUri))
+    }
     var audioUri by remember { mutableStateOf<Uri?>(null) }
     var usePersonalContext by remember { mutableStateOf(true) }
     var useWebSearch by remember { mutableStateOf(true) }

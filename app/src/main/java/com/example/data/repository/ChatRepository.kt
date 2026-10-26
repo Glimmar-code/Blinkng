@@ -436,7 +436,8 @@ class ChatRepository(
     suspend fun sendMessage(
         receiverUsername: String,
         text: String,
-        replyToMessageId: String? = null
+        replyToMessageId: String? = null,
+        clientMessageId: String = java.util.UUID.randomUUID().toString()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         val receiver = receiverUsername.trim().removePrefix("@")
         val cleanText = text.trim()
@@ -452,10 +453,11 @@ class ChatRepository(
             val body = JSONObject().apply {
                 put("p_receiver_username", receiver)
                 put("p_content", cleanText)
+                put("p_client_message_id", java.util.UUID.fromString(clientMessageId).toString())
             }
             return client.newCall(
                 Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/send_message_v2")
+                     .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_send_direct_text_idempotent")
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer $token")
                     .addHeader("Content-Type", "application/json")
@@ -528,9 +530,14 @@ class ChatRepository(
      * failure; the server may have committed the message already.
      * Sender must refresh history before initiating any intentional resend.
      */
+    /**
+     * Unlike send_group_message, this RPC binds a stable sender-owned UUID so
+     * WorkManager may safely retry the exact message after ambiguous timeouts.
+     */
     suspend fun sendGroupMessage(
         conversationId: String,
-        content: String
+        content: String,
+        clientMessageId: String = java.util.UUID.randomUUID().toString()
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         runCatching {
             require(isServerUuid(conversationId)) { "Invalid group conversation." }
@@ -540,22 +547,29 @@ class ChatRepository(
             require(clean.isNotEmpty() && clean.length <= 5000) {
                 "Messages must contain 1–5,000 characters."
             }
-            val response = postAuthenticatedRpc(
-                "send_group_message",
+            val raw = postAuthenticatedRpc(
+                "blink_send_group_text_idempotent",
                 JSONObject().put("p_conversation_id", conversationId)
                     .put("p_content", clean)
+                    .put("p_client_message_id", java.util.UUID.fromString(clientMessageId).toString())
             )
-            val id = response.trim().removeSurrounding("\"")
-            require(isServerUuid(id)) { "Group message confirmation was incomplete." }
-            val now = Instant.now().toString()
+            val rows = org.json.JSONArray(raw.ifBlank { "[]" })
+            require(rows.length() > 0) { "Group message response was empty." }
+            val item = rows.getJSONObject(0)
+            val id = item.optString("message_id")
+            val serverConversationId = item.optString("conversation_id")
+            require(isServerUuid(id) && serverConversationId == conversationId) {
+                "Group message confirmation was incomplete."
+            }
+            val createdAt = item.optString("created_at").ifBlank { Instant.now().toString() }
             ChatMessage(
                 id = id,
                 conversationId = conversationId,
                 senderId = owner,
                 receiverUsername = com.blinkng.shared.BlinkGroupRoute.key(conversationId),
                 text = clean,
-                rawTimestamp = now,
-                timestamp = formatMessageTime(now),
+                rawTimestamp = createdAt,
+                timestamp = formatMessageTime(createdAt),
                 isFromMe = true,
                 isRead = false,
                 status = MessageStatus.SENT

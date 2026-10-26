@@ -10,6 +10,7 @@ import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkPostGrowthTips
 import com.example.data.repository.SearchDiscoveryRepository
+import com.example.ui.screens.BlinkUniversalPhotoEditor
 
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
@@ -206,6 +207,7 @@ fun CreatePostSheet(
     val tagsRepository = remember { SearchDiscoveryRepository() }
     LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var imageToEdit by remember { mutableStateOf<String?>(null) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var reelExporting by remember { mutableStateOf(false) }
     var reelHasPendingEdits by remember { mutableStateOf(false) }
@@ -242,6 +244,17 @@ fun CreatePostSheet(
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
+
+    imageToEdit?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = Uri.parse(source),
+            onEdited = { edited ->
+                selectedImages = selectedImages.map { if (it == source) edited.toString() else it }
+                imageToEdit = null
+            },
+            onDismiss = { imageToEdit = null }
+        )
+    }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
@@ -980,7 +993,8 @@ fun CreatePostSheet(
                                     selectedImages = selectedImages.toMutableList().also {
                                         it.removeAt(index)
                                     }
-                                }
+                                },
+                                onEdit = { imageToEdit = uri }
                             )
                         }
 
@@ -1947,7 +1961,8 @@ private fun SelectedImagePreview(
     canMoveRight: Boolean,
     onMoveLeft: () -> Unit,
     onMoveRight: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onEdit: () -> Unit
 ) {
     Box(
         Modifier
@@ -1979,6 +1994,16 @@ private fun SelectedImagePreview(
                     modifier = Modifier.padding(6.dp)
                 )
             }
+        }
+
+        Surface(
+            color = Color.Black.copy(alpha = .70f),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.align(Alignment.TopStart)
+                .padding(5.dp).clickable(onClick = onEdit)
+        ) {
+            Text("Edit", color = Color.White, fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
         }
 
         Row(

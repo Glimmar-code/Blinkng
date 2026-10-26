@@ -78,6 +78,8 @@ import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.BlinkEconomyService
 import com.example.data.supabase.ReelRecommendationService
+import com.example.data.supabase.BlinkFeaturedReel
+import com.example.data.supabase.BlinkFeaturedReelsService
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.util.safeInt
@@ -387,6 +389,16 @@ private fun ReelsContent(
         mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
     }
     var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("Reels") }
+    val featuredService = remember { BlinkFeaturedReelsService() }
+    var featuredReels by remember(resumeUserKey) { mutableStateOf<List<BlinkFeaturedReel>>(emptyList()) }
+    LaunchedEffect(isScreenActive, resumeUserKey) {
+        if (!isScreenActive) return@LaunchedEffect
+        // Only poll while Reels is active; database cohorts change at 00:00/12:00 UTC.
+        while (true) {
+            featuredReels = featuredService.fetch()
+            delay(60_000L)
+        }
+    }
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
     // A no-fill response must not strand a viewer on an empty full-screen ad page.
     var unavailableSponsoredSlots by remember(resumeUserKey, selectedTab) {
@@ -405,8 +417,10 @@ private fun ReelsContent(
     var reelsMuted by rememberSaveable(resumeUserKey) {
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
     }
-    val activeReels = remember(selectedTab, reels, followingReels) {
-        selectReelsForTab(reels, followingReels, selectedTab)
+    val activeReels = remember(selectedTab, reels, followingReels, featuredReels) {
+        val source = selectReelsForTab(reels, followingReels, selectedTab)
+        if (selectedTab == "Following") source
+        else (source + featuredReels.map { it.reel }).distinctBy { it.id }
     }
     val activeHasMore = if (selectedTab == "Following") hasMoreFollowing else hasMore
     val activeIsLoadingMore = if (selectedTab == "Following") isLoadingMoreFollowing else isLoadingMore
@@ -554,7 +568,7 @@ private fun ReelsContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
         val density = LocalDensity.current
         val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
-        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 216.dp)
+        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 292.dp)
             .coerceAtMost(maxHeight * 0.48f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = expansion.value.coerceIn(0f, 1f)
@@ -821,6 +835,18 @@ private fun ReelsContent(
                 onGame = onGameClick,
                 onNotifications = onNotificationsClick,
                 onMenu = onMenuClick,
+                featuredReels = featuredReels,
+                onFeaturedReelClick = { reelId ->
+                    refreshScope.launch {
+                        // Banner reels are present in the same vertical pager as feed reels.
+                        val targetPage = reelPageIndex(pagerItems, reelId)
+                        if (targetPage != null) {
+                            pager.scrollToPage(targetPage)
+                            expanded = true
+                        }
+                    }
+                },
+                autoSlideEnabled = isScreenActive && !isInteractionOverlayOpen,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
                     .testTag("reels_reference_chrome")
                     .graphicsLayer {

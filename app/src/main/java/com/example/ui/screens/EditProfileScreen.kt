@@ -239,6 +239,8 @@ fun EditProfileScreen(
     var cropUri by remember {
         mutableStateOf<Uri?>(null)
     }
+    var universalEditUri by remember { mutableStateOf<Uri?>(null) }
+    var universalEditIsAvatar by remember { mutableStateOf(true) }
 
     var cropIsAvatar by remember {
         mutableStateOf(true)
@@ -383,9 +385,21 @@ fun EditProfileScreen(
                         uri
                 }
 
-                cropUri =
-                    null
+                universalEditUri = uri
+                universalEditIsAvatar = cropIsAvatar
+                cropUri = null
             }
+        )
+    }
+    universalEditUri?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { result ->
+                if (universalEditIsAvatar) selectedAvatarUri = result
+                else selectedCoverUri = result
+                universalEditUri = null
+            },
+            onDismiss = { universalEditUri = null }
         )
     }
 
