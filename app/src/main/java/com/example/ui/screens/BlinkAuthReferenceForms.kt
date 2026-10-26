@@ -624,7 +624,7 @@ fun BlinkReferenceCreateAccountScreen(
     ) {
     Box(Modifier.fillMaxSize().background(Color.White)) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())
                 .statusBarsPadding().navigationBarsPadding()
                 .padding(horizontal = 22.dp).padding(top = 12.dp, bottom = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -713,7 +713,8 @@ fun BlinkReferenceCreateAccountScreen(
             Spacer(Modifier.height(10.dp))
             BlinkReferrerPicker(
                 selected = selectedReferrer,
-                onSelected = { selectedReferrer = it }
+                onSelected = { selectedReferrer = it },
+                lightSurface = true,
             )
             Spacer(Modifier.height(6.dp))
             SolidAuthButton("Create Account", enabled = true,
