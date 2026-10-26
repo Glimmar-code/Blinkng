@@ -1,22 +1,41 @@
-# BLINK — Verified hosted backend foundation changes, 26 October 2026
+# BLINK — Live Supabase referral and community activation, 26 October 2026
 
-**Production foundation fix applied and verified. Full Refer & Grow and Communities activation remains blocked pending hosted multi-account/Auth/RLS verification.**
+The connected BLINK production project `jhwgifrlxwspoedxjaly` received **seven** controlled, versioned migrations. All returned success, and the active schema, trigger and grants were checked with read-only follow-up SQL.
 
-The connected BLINK Supabase production project recorded the following **actual applied migration versions**:
-
-| Hosted version | Migration | Verified outcome |
+| Actual hosted version | Change | Live state |
 | --- | --- | --- |
-| `20261026052402` | `harden_private_message_media_bucket_limits_20261026` | `message-media` stays private, 80 MiB bucket ceiling, exactly 24 allowed MIME types, pre-existing 3 media objects preserved |
-| `20261026052615` | `secure_referral_community_foundation_tables_20261026` | Five new tables created, RLS on all five, own-user/public community read policies, anonymous reads prohibited, direct client writes prohibited |
-| `20261026052715` | `index_blink_community_owner_foreign_key_20261026` | Indexed the community owner foreign key |
+| `20261026052402` | Private `message-media` bucket | Private, 80 MiB ceiling, 24 approved MIME types; 3 existing objects retained |
+| `20261026052615` | Referral + community foundation | Five public tables, all RLS-protected |
+| `20261026052715` | Community owner foreign-key index | Active |
+| `20261026054342` | Signup-safe referral attribution + visibility/discovery RPCs | Auth/email-confirmation and profile notification triggers **installed and enabled** |
+| `20261026054503` | Referral milestone Coin engine + discovery-open analytics | Trigger and policy installed; **Coin payouts disabled** |
+| `20261026054537` | Community creation, join/request, invite, leave and owner/moderator RPCs | Functions exposed to authenticated roles with RLS; anonymous mutations denied |
+| `20261026054750` | Private referral-velocity fraud review | Private review table + detection trigger enabled |
 
-The five created foundation tables are `public.blink_referrals`, `public.blink_referral_achievements`, `public.blink_referral_share_events`, `public.blink_communities`, and `public.blink_community_members`. **These tables are currently empty foundations, not a complete working referral attribution or community invitation system.**
+Every hosted version is recorded as a matching versioned SQL file in `supabase/migrations/`. **No paid Supabase branch or project was created.** Existing referrals/community rows were empty before activation; no user accounts or app media were deleted, and the existing Auth profile-creation trigger was preserved.
 
-The already-written October 24–25 **full** referral and groups migrations are still not deployed, and their signup triggers, privileged server functions, anti-fraud/push workers, moderation RPCs and end-to-end mobile/desktop integration **must not be represented as live**. Community and referral write access is deliberately blocked until those contracts pass independent account tests. The global project Storage file-size ceiling may be below the bucket's 80 MiB cap; bucket settings were verified via SQL, not an authenticated real upload test.
+## Verified production postconditions
 
-The matching **replay-safe files** were added to `supabase/migrations/` under each hosted version so the repo records hosted changes and a later clean deployment can converge without overriding fully activated referral/community grants. Production migration history was recorded by Supabase (not forged manually), without changing existing user data or disabling RLS. No paid staging project or branch was created.
+- Auth signup `zz_blink_signup_referral` and profile notifier `zz_blink_notify_referral_on_profile` are enabled. The new referral hooks return the Auth/profile row even if an optional referral credit fails, preventing a referral fault from blocking account creation.
+- Existing referral data cannot be forged via direct `authenticated` INSERT; raw Auth signup hook is not callable by `anon` or `authenticated` REST users.
+- Source-based discovery and referral dashboard functions exist. Confirmed-referral rewards are **temporary profile visibility + durable achievement totals**, not automatically spendable Coins.
+- `blink_community_invite`, `blink_community_join`, `blink_community_request_join`, `blink_community_leave`, `blink_community_moderate`, `blink_community_members_page` exist and authenticated EXECUTE permissions are granted; anonymous moderation is denied.
+- Community members cannot directly INSERT/UPDATE their own role/status. RLS is enabled and owners can manage community metadata through owner-checked policies.
+- The private velocity-review hook is enabled. Referral Coin milestone policy has **zero enabled rewards**; this must not be presented as live Coin payouts.
 
-**Release controls:** Test all new migration replay paths in CI; verify genuine two-account signup/referral, consent/invites, RLS and real Storage MIME/size rejection on isolated Supabase before activating the remaining backend. Revalidate all checks before merging the PR. Never treat a populated schema as proof that feature workflows operate.
+## Remaining validation and activation gaps — do not declare end-to-end completion
+
+1. Hosted two-real-account sign-up, email-confirmation, idempotent credit, and Google sign-in flows have **not** been exercised. The PostgreSQL fixture passes but is not a live Auth emulator.
+2. Hosted private-community invitation, invite acceptance, ban, moderator escalation, departed access and Android/Windows UI handling have **not** been verified with two actual authenticated sessions.
+3. Coin *milestone payouts* are deliberately **disabled** until the award amounts, budget and anti-sybil eligibility rules are authorized, tested and audited; the base referral reward is profile visibility/achievement.
+4. Independent push-outbox worker and server-side retry/acknowledge flow are **not** deployed. Referral in-app notifications are inserted through the signup/profile triggers, but end-to-end device push has not been verified.
+5. Anonymous link-open/conversion analytics, visibility impression analytics and reusable group-conversation invitation consent still have separate staged migrations; none is implied live by community invitations.
+6. App release / website / signed APK inclusion and real Android-Windows flows are outside the applied DB migrations.
+7. Supabase lacks a hosted staging branch. CI's isolated PGlite contract suite passed, but production deployment cannot substitute for real authenticated integration checks. No live synthetic Auth users were created to simulate signups.
+
+## Rollback and operational safeguards
+
+Production changes were additive except for replacing community RLS policies (owner-controlled CRUD) and adding the two referral triggers to existing `auth.users` and `public.profiles`. If an Auth issue emerges, first disable the specific referral triggers (not the existing profile-creation trigger) in an audited migration; preserve underlying attribution rows and account history. For community abuse, revoke authenticated direct community writes and community mutation RPC EXECUTE and restore public/owner-only reads; preserve existing community/member data. Coin payouts remain off. Do **not** delete user data, disable RLS, or manually falsify migration history.
 
 ---
 
