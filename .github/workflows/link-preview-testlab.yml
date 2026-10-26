@@ -39,3 +39,5 @@ jobs:
         run: |
           deno check supabase/functions/link-metadata/index.ts
           deno check supabase/functions/share-preview/index.ts
+      - name: Test metadata handler without network or production access
+        run: deno test --allow-env supabase/functions/link-metadata/index_test.ts
