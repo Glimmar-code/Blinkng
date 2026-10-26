@@ -4,6 +4,7 @@ const db = new PGlite();
 const paths = [
   'supabase/tests/referral_postgres_fixture.pgfixture',
   'supabase/migrations/20261024203000_blink_refer_and_grow.sql',
+  'docs/integration/referral-core-production-activation-staging-20261026.sql',
   'supabase/migrations/20261025114000_referral_coins_and_discovery_attribution.sql',
   'supabase/migrations/20261025153000_referral_delivery_and_link_telemetry.sql',
   'supabase/migrations/20261025190000_blink_group_invitation_requests.sql',

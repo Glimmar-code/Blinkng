@@ -84,6 +84,7 @@ jobs:
         run: |
           node supabase/tests/run-referral-integration.mjs
           node supabase/tests/run-chat-media-integration.mjs
+          node supabase/tests/run-anon-trigger-grants-integration.mjs
 
       - name: Detect complete local schema baseline
         if: steps.scope.outputs.backend == 'true'

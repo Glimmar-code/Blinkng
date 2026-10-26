@@ -211,6 +211,40 @@ export async function stagedMarketCommunityContractTests() {
       select * from public.blink_community_members_page('${requestClub}',50)`),
       'COMMUNITY_ADMIN_REQUIRED');
     await db.exec('reset role');
+    // Two active moderators cannot ban one another, even if both can
+    // otherwise moderate ordinary members. Only the owner may demote or ban.
+    await db.exec(`
+      insert into public.blink_community_members(community_id,user_id,role,status)
+      values ('${requestClub}','${other}','member','active');
+    `);
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    for (const target of [applicant,other]) {
+      const upgraded = await db.query(`
+        select public.blink_community_moderate(
+          '${requestClub}','${target}','promote') as ok`);
+      assert.equal(upgraded.rows[0].ok,true);
+    }
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${applicant}',false)`);
+    await rejects(() => db.exec(`
+      select public.blink_community_moderate(
+        '${requestClub}','${other}','ban')`),
+      'COMMUNITY_OWNER_REQUIRED_FOR_MODERATOR');
+    await rejects(() => db.exec(`
+      select public.blink_community_moderate(
+        '${requestClub}','${other}','remove')`),
+      'COMMUNITY_OWNER_REQUIRED_FOR_MODERATOR');
+    await db.exec('reset role');
+    await db.exec('set role authenticated');
+    await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+    const bannedModerator = await db.query(`
+      select public.blink_community_moderate(
+        '${requestClub}','${other}','ban') as ok`);
+    assert.equal(bannedModerator.rows[0].ok,true);
+    await db.exec('reset role');
+    console.log('PASS community moderator hierarchy and owner-only peer moderation');
     console.log('PASS staged requests, owner-only pending roster, approval and private visibility');
     console.log('PASS staged invite/join/private read/moderation/ban RLS');
 
