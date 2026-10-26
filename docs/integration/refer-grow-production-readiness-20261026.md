@@ -2,8 +2,8 @@
 
 ## Current state (verified through read-only connected production metadata)
 - PR #540 is merged and contains Android, Windows and web referral surfaces and five ordered referral SQL migrations.
-- Production contains the base `blink_referrals`, `blink_referral_achievements`, and `blink_referral_share_events` tables only.
-- The required referral RPCs and signup trigger are not deployed.
+- **Production is changing concurrently:** During a read-only scan, the core referral tables plus `blink_referral_coin_milestones` and `blink_referral_discovery_opens`, the signup trigger, dashboard, search, leaderboard and Coin-status RPCs became visible. The first two guarded referral migrations appeared in the migration ledger. Re-run inventory at the moment of any proposed deployment; never assume an earlier scan still describes production.
+- At the latest read-only scan, `blink_claim_referral_pushes`, `blink_finish_referral_push`, link stats and viewability impression stats were not deployed. The core functions are now partly available.
 - The `blink-referral-push-worker` Edge Function is not deployed.
 - Production's `send-activity-notification` Edge Function predates the referral-specific trusted dispatcher authorization in the repository.
 - No Supabase preview branch is available. Do **not** pay for a new staging branch without explicit owner approval.
@@ -11,8 +11,8 @@
 ## Required promotion order
 1. **Testlab**: run the existing disposable PostgreSQL 16 fixture and referral integration workflow, plus the push-worker contract test. Record exact commit SHA.
 2. **Production-compatible staging**: use an isolated, no-charge disposable Supabase-compatible setup if available, with synthetic accounts (never production credentials or copied personal information). Check RLS, trigger order, stored procedures, permissions, signup and email confirmation, service-role worker, and push dispatch.
-3. **Migration preflight**: compare production tables, columns, enums, existing RPC signatures, policies, triggers, grants, and indexes to all five versioned migrations. Confirm rollback/restore procedure. Do not deploy one migration blindly on the assumption the base tables are identical.
-4. **Deploy in order** after staging passes:
+3. **Migration preflight**: compare production tables, columns, enums, existing RPC signatures, policies, triggers, grants, indexes **and completed guarded migrations** to all five versioned migrations. Confirm rollback/restore procedure. Because production is already being updated separately, do not deploy one migration blindly or replay functions/triggers already installed.
+4. **Reconcile and deploy any still-missing changes** in dependency order after staging passes (never replay blindly):
    - `20261024203000_blink_refer_and_grow.sql`
    - `20261025114000_referral_coins_and_discovery_attribution.sql`
    - `20261025153000_referral_delivery_and_link_telemetry.sql`
