@@ -1820,10 +1820,152 @@ fun MarketplaceScreen(state: DesktopAppState) {
     }
 }
 
+
+/** Windows companion to Android's campus-first Connect reference; all content is live. */
+@Composable
+private fun DesktopConnectCampusOverview(
+    campus: String,
+    people: List<DesktopProfile>,
+    communities: List<com.blinkng.desktop.data.DesktopCommunity>,
+    updates: List<DesktopFeedPost>,
+    followingIds: Set<String>,
+    onOpenStudents: () -> Unit,
+    onOpenPerson: (DesktopProfile) -> Unit,
+    onFollowPerson: (DesktopProfile) -> Unit,
+    onLikePost: (String) -> Unit,
+    onSavePost: (String) -> Unit,
+) {
+    var showAllCommunities by remember(campus) { mutableStateOf(false) }
+    var showAllUpdates by remember(campus) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("BLINK", fontSize = 24.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp, modifier = Modifier.weight(1f))
+            Text("Connect    Campus    Trending",
+                color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (campus.isBlank()) "Students on BLINK" else "People near you",
+                fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onOpenStudents) { Text("See all ›") }
+        }
+        if (people.isEmpty()) {
+            Text("Students from your campus will appear here.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                people.take(10).forEach { student ->
+                    Column(
+                        Modifier.width(100.dp).clickable { onOpenPerson(student) },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        AvatarInitial(student.fullName.ifBlank { student.username }, 54.dp)
+                        Spacer(Modifier.height(5.dp))
+                        Text(student.fullName.ifBlank { student.username }.substringBefore(" "),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                        Text(student.department.orEmpty().ifBlank { student.faculty.orEmpty() },
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (student.isOnline) Text("● Online", fontSize = 10.sp,
+                            color = Color(BlinkDesignTokens.Semantic.Success))
+                    }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Campus Communities", fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = { showAllCommunities = !showAllCommunities }) {
+                Text(if (showAllCommunities) "Show less" else "See all ›")
+            }
+        }
+        if (communities.isEmpty()) {
+            Text("No public communities on this campus yet. Explore Communities in the sidebar.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                communities.take(if (showAllCommunities) 50 else 5).forEach { group ->
+                    Surface(
+                        modifier = Modifier.width(133.dp).height(114.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.Bottom) {
+                            Text(group.name, fontWeight = FontWeight.Black, maxLines = 2,
+                                overflow = TextOverflow.Ellipsis)
+                            Text(group.category, fontSize = 11.sp, maxLines = 1,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (campus.isBlank()) "What's happening on BLINK" else "What's happening on campus",
+                fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = { showAllUpdates = !showAllUpdates }) {
+                Text(if (showAllUpdates) "Show less" else "See all ›")
+            }
+        }
+        if (updates.isEmpty()) {
+            Text("No recent campus posts are available.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            updates.take(if (showAllUpdates) 8 else 1).forEach { post ->
+                Surface(shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .36f)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(post.authorName.ifBlank { post.authorUsername },
+                            fontWeight = FontWeight.Bold)
+                        Text(post.text?.ifBlank { post.caption.orEmpty() }
+                                ?: post.caption.orEmpty(),
+                            maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { onLikePost(post.id) }) {
+                                Text("♡ ${post.likeCount}")
+                            }
+                            Text("${post.commentCount} comments", fontSize = 12.sp)
+                            TextButton(onClick = { onSavePost(post.id) }) { Text("Save") }
+                        }
+                    }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Suggested for you", fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = onOpenStudents) { Text("See all ›") }
+        }
+        people.filter { it.id !in followingIds }.take(3).forEach { student ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                AvatarInitial(student.fullName.ifBlank { student.username }, 38.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f).clickable { onOpenPerson(student) }) {
+                    Text(student.fullName.ifBlank { student.username }, fontWeight = FontWeight.Bold)
+                    Text(student.university.orEmpty(), fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Button(onClick = { onFollowPerson(student) }) { Text("Follow") }
+            }
+        }
+    }
+}
+
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
     var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var campusCommunities by remember(state.profile?.id) {
+        mutableStateOf<List<com.blinkng.desktop.data.DesktopCommunity>>(emptyList())
+    }
+    var campusUpdates by remember(state.profile?.id) {
+        mutableStateOf<List<DesktopFeedPost>>(emptyList())
+    }
     var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var inbox by remember { mutableStateOf(DesktopConnectInbox()) }
     var directoryApplications by remember { mutableStateOf<List<DesktopConnectApplication>>(emptyList()) }
@@ -1889,6 +2031,8 @@ fun ConnectScreen(state: DesktopAppState) {
         val studentsResult = runCatching { state.client.fetchOnboardingSuggestions(100) }
         val followingResult = runCatching { state.client.fetchFollowingIds() }
         val inboxResult = runCatching { state.client.fetchConnectInbox() }
+        val communityResult = runCatching { state.client.fetchCommunities() }
+        val postsResult = runCatching { state.client.fetchFeed(limit = 25) }
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings).distinctBy { it.id }
@@ -1897,6 +2041,15 @@ fun ConnectScreen(state: DesktopAppState) {
         }
         directoryApplications = applicationsResult.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
+        val campus = state.profile?.university.orEmpty()
+        campusCommunities = communityResult.getOrDefault(campusCommunities)
+            .filter { it.visibility.equals("public", true) &&
+                (campus.isBlank() || it.university.equals(campus, true)) }
+        campusUpdates = postsResult.getOrDefault(campusUpdates)
+            .filter { post -> !post.isReel && post.videoUrl.isNullOrBlank() &&
+                (campus.isBlank() || students.any { student ->
+                    student.id == post.userId && student.university.orEmpty().equals(campus, true)
+                }) }.take(8)
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
@@ -1907,6 +2060,8 @@ fun ConnectScreen(state: DesktopAppState) {
             studentsResult.exceptionOrNull()?.let { "Student discovery" },
             followingResult.exceptionOrNull()?.let { "Following" },
             inboxResult.exceptionOrNull()?.let { "Connect inbox" },
+            communityResult.exceptionOrNull()?.let { "Campus communities" },
+            postsResult.exceptionOrNull()?.let { "Campus posts" },
         ).takeIf { it.isNotEmpty() }?.joinToString(", ")
         loading = false
     }
@@ -2069,6 +2224,34 @@ fun ConnectScreen(state: DesktopAppState) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
                     }
                 }
+            }
+
+            item(key = "connect_reference_overview") {
+                DesktopConnectCampusOverview(
+                    campus = myCampus,
+                    people = if (myCampus.isBlank()) visibleStudents
+                        else visibleStudents.filter { it.university.orEmpty().equals(myCampus, true) },
+                    communities = campusCommunities,
+                    updates = campusUpdates,
+                    followingIds = followingIds,
+                    onOpenStudents = { selectedPane = 1 },
+                    onOpenPerson = { selectedStudentProfile = it },
+                    onFollowPerson = { profile ->
+                        scope.launch {
+                            followingIds = runCatching {
+                                state.client.setFollowing(profile.id, profile.id !in followingIds)
+                            }.getOrDefault(followingIds)
+                        }
+                    },
+                    onLikePost = { id -> scope.launch {
+                        runCatching { state.client.toggleLike(id) }
+                        reload()
+                    } },
+                    onSavePost = { id -> scope.launch {
+                        runCatching { state.client.toggleBookmark(id) }
+                        reload()
+                    } }
+                )
             }
 
             if (loadError != null) {

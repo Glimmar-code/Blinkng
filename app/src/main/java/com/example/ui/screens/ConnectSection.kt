@@ -79,6 +79,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.FeedPost
+import com.example.ui.components.BlinkCommunitiesPanel
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
@@ -123,6 +125,15 @@ fun ConnectSection(
     onOpenActivity: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    posts: List<FeedPost> = emptyList(),
+    onSearchClick: () -> Unit = {},
+    onOpenPost: (FeedPost) -> Unit = {},
+    onLikePost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit = {},
+    onBookmarkPost: (String) -> Unit = {},
+    onRepostPost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
@@ -343,11 +354,52 @@ fun ConnectSection(
     }
 
     val connectListState = rememberLazyListState()
+    var referenceTab by rememberSaveable(currentUsername) { mutableStateOf(0) }
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        ConnectReferenceHeader(
+            avatar = userAvatar,
+            currentUsername = currentUsername,
+            onProfile = onProfileClick,
+            onSearch = onSearchClick,
+            onGame = onGameClick,
+            onNotifications = onOpenActivity,
+            hasUnreadNotifications = hasUnreadNotifications
+        )
+        ConnectReferenceTabs(referenceTab) { referenceTab = it }
+        when (referenceTab) {
+            0 -> ConnectReferenceLanding(
+                current = current,
+                profiles = liveProfiles,
+                posts = posts,
+                isLiveDataAvailable = isLiveDataAvailable,
+                onProfile = onProfileClick,
+                onOpenAllPosts = onHomeClick,
+                onOpenPost = onOpenPost,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onRepostPost = onRepostPost,
+                onOptionsClick = onOptionsClick,
+                modifier = Modifier.weight(1f)
+            )
+            1 -> BlinkCommunitiesPanel(
+                searchProfiles = { term, limit, university, _ ->
+                    liveProfiles.asSequence()
+                        .filter { term.isBlank() ||
+                            it.username.contains(term, ignoreCase = true) ||
+                            it.fullName.contains(term, ignoreCase = true) }
+                        .filter { university.isNullOrBlank() ||
+                            it.university.equals(university, ignoreCase = true) }
+                        .take(limit.coerceIn(1, 30))
+                        .toList()
+                },
+                modifier = Modifier.weight(1f)
+            )
+            else -> {
         PullToRefreshBox(
             isRefreshing = isConnectHubLoading,
             onRefresh = {
@@ -698,6 +750,8 @@ fun ConnectSection(
                     )
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+        }
             }
         }
     }
