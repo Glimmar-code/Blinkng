@@ -73,6 +73,10 @@ internal object BlinkChatAudioTrim {
                 if (!extractor.advance()) break
             }
             require(wrote) { "No supported audio samples in the selected range." }
+            // MP4/M4A metadata is finalized by stop(); validate only afterwards.
+            muxer.stop()
+            muxer.release()
+            muxer = null
             com.blinkng.shared.BlinkChatAttachmentKind.VOICE.verify(
                 "audio/mp4", output.length()
             )
