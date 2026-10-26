@@ -1383,3 +1383,11 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** no Windows-specific UI, API shape or behavior change. Shares identical referral attribution and backend notification semantics.
 - **Web:** no web-specific UI, API shape or behavior change. Existing referral landing and dashboard functionality stays intact.
 - **Backend gate:** no production schema/Edge Function deployment or Coin reward activation in this change. Production-compatible staging, RLS, multi-account signup and cross-platform acceptance tests remain mandatory before main promotion.
+
+
+## 2026-10-26 — Refer & Grow completion: invitation and fraud-aware discovery
+- **Shared Supabase contract:** when a referrer's confirmed registrations trigger an unresolved abuse-velocity review, pause their temporary Search and new-user recommendation boost without erasing permanent confirmed-referral achievements; restore after the review is resolved. Referral Coin rewards remain disabled. The public RPC schemas and existing Android/Windows response fields are unchanged.
+- **Android:** uses the same existing discovery RPCs; no Android-only UI changes. Temporary referral boosts return zero while under review.
+- **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
+- **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
+- **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.

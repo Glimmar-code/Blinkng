@@ -1,0 +1,87 @@
+-- Synthetic, disposable Postgres regression checks for abuse-review holds.
+-- No production identities or payouts. Milestone policy remains disabled.
+insert into auth.users(id,created_at,email_confirmed_at)
+values ('00000000-0000-0000-0000-000000001111','2024-01-01T00:00:00Z',now());
+insert into public.profiles(id,username,full_name,university,onboarding_completed)
+values ('00000000-0000-0000-0000-000000001111','fraudreview','Referral Review User','FUTA',true);
+
+do $$
+declare
+  n integer;
+  newcomer uuid;
+begin
+  for n in 1..5 loop
+    newcomer:=('00000000-0000-0000-0000-'||lpad((2200+n)::text,12,'0'))::uuid;
+    insert into auth.users(id,created_at,email_confirmed_at,raw_user_meta_data)
+    values (newcomer,now(),now(),
+      jsonb_build_object('blink_referrer_id','00000000-0000-0000-0000-000000001111'));
+    insert into public.profiles(id,username,full_name,university,onboarding_completed)
+    values(newcomer,'fraudmember'||n,'New Member','FUTA',true);
+  end loop;
+  if (select count(*) from public.blink_referrals
+      where referrer_user_id='00000000-0000-0000-0000-000000001111'
+        and status='confirmed')<>5 then
+    raise exception 'Synthetic confirmed referral setup failed';
+  end if;
+  if not exists(select 1 from private.blink_referral_risk_reviews
+      where referrer_user_id='00000000-0000-0000-0000-000000001111'
+        and resolved_at is null) then
+    raise exception 'Suspicious five-in-an-hour referral velocity was not flagged';
+  end if;
+end $$;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001111',false);
+do $$
+declare
+  points integer;
+  label text;
+begin
+  if not public.blink_my_referral_visibility_paused() then
+    raise exception 'Referrer under review must know visibility is paused';
+  end if;
+  select visibility_points,visibility_label into points,label
+    from public.blink_referral_dashboard();
+  if points<>0 or label<>'Discovery paused for review' then
+    raise exception 'Risk-review dashboard must not promise boost: %/%',points,label;
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+begin
+  if exists(select 1 from public.blink_referral_recommendations(10)
+    where id='00000000-0000-0000-0000-000000001111' and referral_featured) then
+    raise exception 'Suspected artificial referrals appeared as featured recommendation';
+  end if;
+  if exists(select 1 from public.blink_referral_profile_search('fraudreview',20)
+    where id='00000000-0000-0000-0000-000000001111' and visibility_points>0) then
+    raise exception 'Risk-reviewed profile still received Search referral boost';
+  end if;
+end $$;
+reset role;
+
+-- A review can be cleared without destroying achievement history.
+update private.blink_referral_risk_reviews set resolved_at=now()
+where referrer_user_id='00000000-0000-0000-0000-000000001111';
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000001111',false);
+do $$
+declare points integer;
+begin
+  if public.blink_my_referral_visibility_paused() then
+    raise exception 'Review cleared but discovery boost remained paused';
+  end if;
+  select visibility_points into points from public.blink_referral_dashboard();
+  if points<>15 then raise exception 'Legitimate boost not restored after review: %',points; end if;
+end $$;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001',false);
+do $$
+begin
+  if not exists(select 1 from public.blink_referral_profile_search('fraudreview',20)
+    where id='00000000-0000-0000-0000-000000001111' and visibility_points=15) then
+    raise exception 'Search visibility not restored after review';
+  end if;
+end $$;
+reset role;
+select 'Referral abuse hold and release behavior verified' as result;

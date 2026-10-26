@@ -11,7 +11,7 @@ const extract=kind=>{
  assert.ok(m,'Missing Android university list: '+kind);
  return [...m[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(v=>v[1]);
 };
-const source=[...new Set(['federal','state','private'].flatMap(extract))].sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
+const source=[...new Set(['federal','state','private','federalAdditional','stateAdditional','privateAdditional'].flatMap(extract))].sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
 assert.deepEqual(exported.universities,source,'Website university choices must stay synced with Android');
 assert.ok(source.includes('Federal University of Technology, Akure'),'FUTA must be available');
 assert.equal(source.length,new Set(source).size,'No duplicate universities allowed');
