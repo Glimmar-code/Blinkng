@@ -1,3 +1,10 @@
+## 2026-10-26 — Channels production database foundation ACTIVATED, UI release still held
+
+- **Database verified live:** Supabase BLINK production now contains 6 new channel tables, 21 channel RPC functions and one private `blink-channel-media` Storage bucket, applied through `blink_channels_broadcast_media_polls_20261026` and `blink_channels_explicit_data_api_grants_20261026`. The previously existing Community and membership rows were preserved (one each at verification). Both `authenticated` grants for raw channel updates and private reports remain disabled; exposed reads/writes flow through authorization-gated functions.
+- **Test evidence:** PR #601 added a disposable PostgreSQL CI workflow testing owner/moderator/follower/pending/banned and view/reaction/poll permissions; it passed before activation. The PR's Supabase safety gate required an explicit rollback/destructive-operation review and Data API grants; those requirements are incorporated.
+- **Do not confuse backend activation with release:** New Android/Windows Channel code is still in the Testlab PR, not merged into `main`. Production backend availability does **not** establish complete WhatsApp-style functionality. Actual FCM fanout/retry/deep links, native in-BLINK forwarding to chats/Channels/Status, fully in-app media player and exact screenshot parity remain to be completed and verified.
+- **Release decision:** Keep one consolidated PR in draft until current-head Android+Windows builds and interaction/regression checks pass, including full real user/channel scenarios; then merge `main` without losing concurrent work.
+
 ## 2026-10-26 — Channels rich update candidate (PR #601, not production)
 
 - **Android and Windows parity in code:** Media selection/upload to a dedicated private 25 MB channel bucket (images/video/audio/PDF), signed media reads, broadcast polls and votes, external forwarding/copy, mute toggle, scheduled announcement composer/management, deduplicated unique update views, admin analytics, pin/remove controls, follower reporting and administrator moderation inbox.
