@@ -69,6 +69,9 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       insert into public.feed_posts(category,is_sponsored,ad_label)
       values ('Campus Life',true,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,is_sponsored,ad_label)
+      values ('Campus Life',false,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec(`
       insert into public.feed_posts(category,text) values ('Campus Life','Discussion of a product')`);
     await db.exec(`
