@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.theme.MessagePalette
+import com.blinkng.shared.BlinkChatMediaSelectionPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.net.Uri
@@ -136,6 +137,9 @@ internal fun BlinkChatMediaGallerySheet(
                 TextButton(onClick = { selected.clear() }) { Text("Clear") }
                 Button(
                     onClick = { onPhotosSelected(selected.toList()) },
+                    enabled = BlinkChatMediaSelectionPolicy.canContinue(
+                        selected.map { it.toString() }
+                    ),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C9DF3))
                 ) { Text("Next (${selected.size})", color = Color.White) }
             } else {
@@ -190,8 +194,11 @@ internal fun BlinkChatMediaGallerySheet(
                 val position = selected.indexOf(photo.uri)
                 Box(Modifier.aspectRatio(.79f)
                     .clickable {
-                        if (position >= 0) selected.remove(photo.uri)
-                        else if (selected.size < 10) selected.add(photo.uri)
+                        val newIds = BlinkChatMediaSelectionPolicy.toggle(
+                            selected.map { it.toString() }, photo.uri.toString()
+                        )
+                        selected.clear()
+                        selected.addAll(newIds.map(Uri::parse))
                     }) {
                     AsyncImage(
                         model = photo.uri,
