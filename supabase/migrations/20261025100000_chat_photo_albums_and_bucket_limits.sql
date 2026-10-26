@@ -3,7 +3,7 @@
 -- Existing non-picture messages and older clients continue to work unchanged.
 -- A missing or public bucket must not turn this security migration into a
 -- silent no-op. Check prior to changing the message schema.
-do $
+do $$
 begin
     if not exists (
         select 1 from storage.buckets
@@ -12,7 +12,7 @@ begin
         raise exception 'BLINK_MESSAGE_MEDIA_PRIVATE_BUCKET_REQUIRED';
     end if;
 end;
-$;
+$$;
 
 alter table public.messages
     add column if not exists image_album_id uuid,
