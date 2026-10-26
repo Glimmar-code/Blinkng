@@ -273,6 +273,8 @@ dependencies {
   implementation(libs.androidx.work.runtime.ktx)
   implementation("androidx.core:core-telecom:1.1.0-beta01")
   implementation(libs.coil.compose)
+  // Decode one lightweight frame for older Reels without uploaded cover images.
+  implementation("io.coil-kt:coil-video:2.7.0")
   implementation(libs.converter.moshi)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)

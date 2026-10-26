@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -91,6 +94,7 @@ fun DesktopUserProfileDialog(
     var loading by remember(initialProfile.id) { mutableStateOf(true) }
     var busy by remember(initialProfile.id) { mutableStateOf(false) }
     var selectedTab by remember(initialProfile.id) { mutableStateOf("Posts") }
+    var shareReelId by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var searchActive by remember(initialProfile.id) { mutableStateOf(false) }
     var searchQuery by remember(initialProfile.id) { mutableStateOf("") }
     var showNotifications by remember(initialProfile.id) { mutableStateOf(false) }
@@ -400,6 +404,80 @@ fun DesktopUserProfileDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        } else if (selectedTab == "Reels") {
+                            // Three-column Reel browser, mirroring the mobile profile density.
+                            // Never instantiate nine media players just to draw thumbnail tiles.
+                            items(
+                                items = filteredContent.chunked(3),
+                                key = { row -> "desktop_profile_reels_" + row.first().id }
+                            ) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    row.forEach { reel ->
+                                        Surface(
+                                            modifier = Modifier.weight(1f).aspectRatio(.72f)
+                                                .clickable {
+                                                    runCatching {
+                                                        java.awt.Desktop.getDesktop().browse(
+                                                            java.net.URI(DesktopShareLinkManager.generate(reel.id, true))
+                                                        )
+                                                    }.onFailure {
+                                                        statusMessage = "Unable to open Reel. Use Copy link instead."
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
+                                        ) {
+                                            Box(Modifier.fillMaxSize()) {
+                                                reel.images.firstOrNull { it.isNotBlank() }
+                                                    ?.let { thumbnail ->
+                                                        AsyncImage(
+                                                            model = thumbnail,
+                                                            contentDescription = "Reel cover",
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    }
+                                                Column(
+                                                Modifier.fillMaxSize().background(
+                                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                                        listOf(Color.Transparent, Color(0x66000000), Color(0xCC000000))
+                                                    )
+                                                ).padding(8.dp),
+                                                verticalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("▶", fontSize = 24.sp,
+                                                        color = Color.White)
+                                                    Text("↗", modifier = Modifier.clickable {
+                                                        shareReelId = reel.id
+                                                    }, color = Color.White, fontSize = 20.sp)
+                                                }
+                                                Text(
+                                                    reel.caption?.takeIf(String::isNotBlank)
+                                                        ?: reel.text.orEmpty().ifBlank { "Reel" },
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    fontSize = 11.sp
+                                                )
+                                                Text(
+                                                    "${reel.viewCount.coerceAtLeast(0)} views",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 10.sp
+                                                )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
                         } else {
                             items(filteredContent, key = { it.id }) { post ->
                                 Surface(
@@ -440,6 +518,13 @@ fun DesktopUserProfileDialog(
             }
         }
     }
+    }
+
+    shareReelId?.let { id ->
+        DesktopBlinkShareDialog(
+            state = state, postId = id, isReel = true,
+            onDismiss = { shareReelId = null }
+        )
     }
 
     if (showThemePicker && isMe) {

@@ -91,8 +91,8 @@ internal fun ReelsReferenceChrome(
     LaunchedEffect(featured.map { it.reel.id }, autoSlideEnabled) {
         if (autoSlideEnabled && featured.size > 1) {
             while (true) {
-                delay(5_000L)
-                if (!featuredPager.isScrollInProgress) {
+                delay(4_000L)
+                if (!featuredPager.isScrollInProgress && featuredPager.pageCount == featured.size) {
                     featuredPager.animateScrollToPage((featuredPager.currentPage + 1) % featured.size)
                 }
             }

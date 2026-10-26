@@ -1466,3 +1466,27 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
+
+## 2026-10-26 — Consolidated Reels/Profile/Wallet/Intro Testlab candidate
+
+- Shared launch wordmark uses one vector B and consistent LINK letter height and baseline; Android native splash uses window drawable and Android 12 icon. Windows has an existing native launch screen, so Android XML is a platform-specific adapter.
+- Android Profile published posts now reuse the same real PostCard as Feed; Reels have three tiles per row with view overlays. The existing DesktopUserProfileDialog offers native posts/reels tabs but needs equivalent three-column Reel thumbnail verification before promotion.
+- Android Wallet reduces vertical padding, balance hero, rows and quick actions, adding status bar-safe back navigation. Backend coins/HP and purchase prices are unchanged; Windows wallet uses same economy policy but compact-width UI requires QA.
+- Android Reels fit media instead of zoom cropping and lift progress above the comment composer; the featured-banner interval is four seconds while active. Check playback continuity, banners and overlays on physical low-end phones.
+- Native BLINK share picker uses real recent chat recipients, suggested users and the same authenticated send-message route; offers copy, Story-editor-with-copied-link, WhatsApp and Android chooser. Stories do not automatically publish links until editor attachment supports them. Desktop currently has a separate share-link workflow, still needing UI parity.
+- Candidate must NOT merge without final-head Android/Windows builds, UI interaction tests, platform parity, and device validation.
+
+- **Story sharing refinement:** The native BLINK share action now opens the real Story editor with the selected Reel/Post URL prefilled as a caption. Media still requires user selection and explicit Publish; it never auto-uploads someone else's Reel or bypasses permission/asset-copy rules. Android-only editor adapter; Windows keeps its copy-link action while cross-client composer parity is pending.
+
+- **Reel poster reliability:** Android now extracts and uploads a bounded JPEG poster from locally selected Reels using the existing authenticated post media image contract. Reel publication is not blocked if a specific video cannot supply a frame; legacy Reels attempt Coil video-frame decoding lazily. Windows profile grid shows posted cover images instead of blank tiles, keeping no-external-video-download behavior for video-only legacy posts. Require actual Android permission/storage tests and Windows screenshot checks before main.
+
+- **Windows in-app sharing parity:** Desktop Reels and Profile Reel tiles now offer a recipient picker using the authenticated conversation RPC, real recent DMs, optional suggested profiles, searchable handles and server-authorized message sends. Clipboard copy stays available. WhatsApp is an external URL through the platform browser rather than Android intents, and Windows has no device-native Story creation flow in this patch. These differences are platform capability distinctions, not production mocks.
+
+- **Direct Reel→Story card:** Android now creates a locally rendered 9:16 branded Reel share card and inserts the verified BLINK permalink into the Story caption, while keeping explicit user Publish and the existing server-confirmed Story media upload. This avoids copying/reuploading another creator's video or using untrusted remote images. Viewers already see a rich clickable link preview for caption URLs. Windows Story creation remains a platform exception (no native Story composer in desktop yet). Inspect image generation with visual/device tests.
+
+## 2026-10-26 — PR #598 integration follow-up
+
+- Conflict in BlinkWalletPremiumContent resolved by retaining main's elastic right-swipe gesture and Testlab's compact hero/header, status/nav insets and five wallet views.
+- Android and Windows share pickers now debounce authenticated server-side profile directory searches rather than only filtering cached suggestions; existing recipient ACLs apply. Android multi-send queues one explicit link per selected recipient; queued is not falsely reported as delivered.
+- Coins plus button has a 48dp interaction box with its original 32dp visual footprint.
+- This change does not replace real-device playback, high-font visual reviews, recipient delivery verification, desktop native Reel playback or the Windows Story composer. Re-validate final merge commit before promoting to main.
