@@ -234,7 +234,7 @@ fun DesktopChannelDetail(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = {
                                 Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                                    StringSelection("${channel.name} — BLINK Channel\\n${update.body}"), null)
+                                    StringSelection("${channel.name} — BLINK Channel\n${update.body}"), null)
                             }) { Text("Copy / Forward") }
                             TextButton(onClick = {
                                 scope.launch {
