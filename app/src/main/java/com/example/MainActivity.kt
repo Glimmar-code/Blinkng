@@ -1103,6 +1103,7 @@ fun MainAppContent(
     }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var showWallet by remember(uiState.myProfile.id) { mutableStateOf(false) }
+    var walletOpenedFromMenu by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var showSavedProfile by remember(uiState.myProfile.id) { mutableStateOf(false) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
@@ -1668,7 +1669,7 @@ fun MainAppContent(
                             }
                         },
                         onItemsClick = { feedUtilitySheet = "items" },
-                        onGetCoinsClick = { showWallet = true },
+                        onGetCoinsClick = { walletOpenedFromMenu = false; showWallet = true },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = {
                             if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
@@ -2540,7 +2541,7 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
-                    onOpenCoinsWallet = { showWallet = true },
+                    onOpenCoinsWallet = { walletOpenedFromMenu = false; showWallet = true },
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
                     selectedMainTabRoute = when (uiState.selectedTab) {
@@ -3055,6 +3056,7 @@ fun MainAppContent(
                 },
                 onWallet = {
                     viewModel.openMenu(false)
+                    walletOpenedFromMenu = true
                     showWallet = true
                 },
                 onNotifications = {
@@ -3208,7 +3210,10 @@ fun MainAppContent(
                 isVerified = uiState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
                 onVerifyCoins = { viewModel.verifyBlueWithCoins() },
                 onBuyPack = { pack -> startV2Checkout("coin_pack", pack.id, 1) },
-                onBack = { showWallet = false; viewModel.openMenu(true) },
+                onBack = {
+                    showWallet = false
+                    if (walletOpenedFromMenu) viewModel.openMenu(true)
+                },
                 onRefresh = { viewModel.refreshProfileRewards() },
                 onClaimMission = { viewModel.claimDailyMission(it) },
                 onWatchOptionalAd = onWatchAdForCoins,
