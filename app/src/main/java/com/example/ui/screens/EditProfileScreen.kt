@@ -16,6 +16,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.horizontalScroll
+import com.blinkng.shared.BlinkProfileThemes
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +69,10 @@ fun EditProfileScreen(
         remember {
             ProfileRepository()
         }
+
+    var profileTheme by rememberSaveable(profile.id) {
+        mutableStateOf(BlinkProfileThemes.normalize(profile.profileTheme))
+    }
 
     var fullName by rememberSaveable(profile.id) {
         mutableStateOf(
@@ -259,6 +266,7 @@ fun EditProfileScreen(
 
     var showDiscardChangesDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
     val hasUnsavedChanges =
+        profileTheme != BlinkProfileThemes.normalize(profile.profileTheme) ||
         fullName != profile.fullName ||
         username != profile.username ||
         avatarUrl != profile.avatarUrl ||
@@ -527,6 +535,8 @@ fun EditProfileScreen(
                                     val updated =
                                         profile.copy(
 
+                                            profileTheme = BlinkProfileThemes.normalize(profileTheme),
+
                                             fullName =
                                                 fullName.trim(),
 
@@ -713,6 +723,67 @@ fun EditProfileScreen(
                     completion =
                         completion
                 )
+            }
+
+            item(key = "premium_profile_theme") {
+                EditorSection(
+                    title = "Profile theme",
+                    subtitle = "Visitors see your selected profile colors, even in a different app theme."
+                ) {
+                    val preview = BlinkProfileThemes.resolve(profileTheme)
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(preview.topArgb), Color(preview.bottomArgb))
+                                )
+                            )
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text("Your premium profile", color = Color.White,
+                            fontWeight = FontWeight.Black, fontSize = 16.sp)
+                        Text("@${profile.username}", color = Color.White.copy(alpha = .82f),
+                            fontSize = 12.sp)
+                        Text("Preview · ${preview.label}", color = Color.White,
+                            fontSize = 11.sp)
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(BlinkProfileThemes.all, key = { it.id }) { option ->
+                            val selected = option.id == profileTheme
+                            Column(
+                                modifier = Modifier.width(94.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(option.cardArgb))
+                                    .border(
+                                        if (selected) 2.dp else 1.dp,
+                                        if (selected) Color(option.accentArgb) else Color.White.copy(alpha = .15f),
+                                        RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { profileTheme = option.id }
+                                    .padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(46.dp).clip(CircleShape)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color(option.topArgb), Color(option.bottomArgb))
+                                            )
+                                        )
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(option.label, color = Color.White,
+                                    fontSize = 10.sp, maxLines = 2)
+                                if (selected) Text("Selected", color = Color(option.accentArgb),
+                                    fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
             }
 
             item {
@@ -1408,6 +1479,8 @@ fun EditProfileScreen(
 
                                 val updated =
                                     profile.copy(
+
+                                            profileTheme = BlinkProfileThemes.normalize(profileTheme),
 
                                         fullName =
                                             fullName.trim(),
