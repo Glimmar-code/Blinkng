@@ -1416,6 +1416,7 @@ fun MainAppContent(
     }
 
     var startReelComposer by rememberSaveable { mutableStateOf(false) }
+    var sharingPostId by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun sharePostOrReel(postId: String) {
         val post = (
@@ -1429,15 +1430,8 @@ fun MainAppContent(
             viewModel.showToast("This content is unavailable.")
             return
         }
-        viewModel.sharePost(postId)
-        ShareLinkManager.share(
-            context = context,
-            type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
-            id = post.id,
-            title = if (post.isReel) "Share reel" else "Share post",
-            message = post.text.take(180),
-            previewImageUrl = post.images.firstOrNull() ?: post.authorAvatar.takeIf { it.isNotBlank() }
-        )
+        // Keep Reels mounted while the user chooses a BLINK recipient or external app.
+        sharingPostId = postId
     }
 
     LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
@@ -2661,6 +2655,67 @@ fun MainAppContent(
                 },
                 isDark = uiState.isDarkMode
             )
+        }
+
+        sharingPostId?.let { requestedId ->
+            val sharedPost = (uiState.posts + uiState.followingPosts + uiState.reels +
+                uiState.discoverPosts + listOfNotNull(uiState.deepLinkedPost))
+                .firstOrNull { it.id == requestedId }
+            if (sharedPost == null) {
+                LaunchedEffect(requestedId) { sharingPostId = null }
+            } else {
+                val type = if (sharedPost.isReel) ShareContentType.REEL else ShareContentType.POST
+                val url = ShareLinkManager.generateShareLink(type, sharedPost.id)
+                BlinkNativeShareSheet(
+                    post = sharedPost,
+                    recentChats = uiState.conversations,
+                    suggestedUsers = (uiState.profiles + uiState.discoverProfiles).distinctBy { it.id },
+                    currentUsername = uiState.myProfile.username,
+                    onDismiss = { sharingPostId = null },
+                    onSendToUser = { username ->
+                        viewModel.sendMessage(username, url)
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onCopyLink = {
+                        ShareLinkManager.copyLink(context, type, sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onStory = {
+                        // No verified story-editor link-attachment API exists yet.
+                        ShareLinkManager.copyLink(context, type, sharedPost.id,
+                            "Link copied — paste into your Story")
+                        sharingPostId = null
+                        viewModel.openCreateStory(true)
+                    },
+                    onWhatsApp = {
+                        val text = listOfNotNull(sharedPost.text.take(140).takeIf { it.isNotBlank() }, url).joinToString("\n")
+                        var launched = false
+                        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+                            if (launched) break
+                            launched = runCatching {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    setPackage(pkg)
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                })
+                                true
+                            }.getOrDefault(false)
+                        }
+                        if (!launched) ShareLinkManager.share(
+                            context, type, sharedPost.id, "Share on BLINK", sharedPost.text.take(140))
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onOtherApps = {
+                        ShareLinkManager.share(context, type, sharedPost.id,
+                            "Share on BLINK", sharedPost.text.take(180),
+                            sharedPost.images.firstOrNull())
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    }
+                )
+            }
         }
 
         // Modals: Comments Modal Sheet with reply & like interactions

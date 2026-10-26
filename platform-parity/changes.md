@@ -1458,3 +1458,12 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
+
+## 2026-10-26 — Consolidated Reels/Profile/Wallet/Intro Testlab candidate
+
+- Shared launch wordmark uses one vector B and consistent LINK letter height and baseline; Android native splash uses window drawable and Android 12 icon. Windows has an existing native launch screen, so Android XML is a platform-specific adapter.
+- Android Profile published posts now reuse the same real PostCard as Feed; Reels have three tiles per row with view overlays. The existing DesktopUserProfileDialog offers native posts/reels tabs but needs equivalent three-column Reel thumbnail verification before promotion.
+- Android Wallet reduces vertical padding, balance hero, rows and quick actions, adding status bar-safe back navigation. Backend coins/HP and purchase prices are unchanged; Windows wallet uses same economy policy but compact-width UI requires QA.
+- Android Reels fit media instead of zoom cropping and lift progress above the comment composer; the featured-banner interval is four seconds while active. Check playback continuity, banners and overlays on physical low-end phones.
+- Native BLINK share picker uses real recent chat recipients, suggested users and the same authenticated send-message route; offers copy, Story-editor-with-copied-link, WhatsApp and Android chooser. Stories do not automatically publish links until editor attachment supports them. Desktop currently has a separate share-link workflow, still needing UI parity.
+- Candidate must NOT merge without final-head Android/Windows builds, UI interaction tests, platform parity, and device validation.
