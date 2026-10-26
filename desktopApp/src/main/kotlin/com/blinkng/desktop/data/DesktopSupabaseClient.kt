@@ -1449,6 +1449,18 @@ class DesktopSupabaseClient(
         communityRpc("blink_channel_review_report",
             JSONObject().put("p_report_id", reportId).put("p_remove", remove)) == "true"
 
+    suspend fun forwardChannelUpdateToChat(username: String, channelName: String,
+        channelId: String, updateId: String, body: String): Boolean {
+        val recipient = username.trim().removePrefix("@")
+        require(recipient.isNotEmpty()) { "Choose a BLINK account." }
+        val url = "https://blink.com.ng/channel/$channelId/update/$updateId"
+        val content = "Forwarded from $channelName: ${body.take(1000)}\\n$url"
+        val result = communityRpc("send_message", JSONObject()
+            .put("p_receiver_username", recipient)
+            .put("p_content", content))
+        return runCatching { UUID.fromString(result) }.isSuccess
+    }
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
