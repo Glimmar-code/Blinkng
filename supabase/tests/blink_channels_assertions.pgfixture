@@ -43,10 +43,19 @@ begin
   raise exception 'view event was not idempotent';
  end if;
  perform public.blink_channel_report(v,'Spam or misinformation');
- if not public.blink_channel_mute('10000000-0000-4000-8000-000000000001',true) or not public.blink_channel_is_muted('10000000-0000-4000-8000-000000000001') then
+ if not public.blink_channel_mute('10000000-0000-4000-8000-000000000001',true) then
   raise exception 'private notification mute not saved';
  end if;
 end $$;
+
+-- Check the committed preference in a distinct statement, not the same PL/pgSQL
+-- snapshot as the upsert.
+do $
+begin
+ if not public.blink_channel_is_muted('10000000-0000-4000-8000-000000000001') then
+  raise exception 'mute preference not persisted';
+ end if;
+end $;
 
 -- Anonymous, pending, and banned users cannot bypass RPCs or read private files.
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000004',false);
