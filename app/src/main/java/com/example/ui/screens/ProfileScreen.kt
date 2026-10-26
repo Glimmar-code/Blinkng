@@ -1098,7 +1098,7 @@ private fun PremiumProfileTabs(
     val icons = listOf(
         Icons.Default.GridView, Icons.Default.Videocam,
         if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
-        if (isMe) Icons.Default.BookmarkBorder else Icons.Default.InfoOutline
+        if (isMe) Icons.Default.BookmarkBorder else Icons.Default.Info
     )
     Row(
         modifier = Modifier.fillMaxWidth()
