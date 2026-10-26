@@ -100,6 +100,7 @@ import com.blinkng.shared.BlinkMessageDatePolicy
 import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.Instant
