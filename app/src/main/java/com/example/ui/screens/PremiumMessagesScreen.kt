@@ -1682,8 +1682,9 @@ private fun PremiumChatDetail(
         viewOncePictureChoice = false
         onPresenceChange("online")
     }
+    var pendingVideoReview by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendVideo(uri)
+        if (uri != null) pendingVideoReview = uri
         onPresenceChange("online")
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -2686,6 +2687,21 @@ private fun PremiumChatDetail(
                     enabled = !photoEditBusy,
                     onClick = { dismissPhotoReview() }
                 ) { Text("Cancel", color = palette.textSecondary) }
+            }
+        )
+    }
+
+    pendingVideoReview?.let { selected ->
+        BlinkChatVideoEditorDialog(
+            sourceUri = selected,
+            onSend = { finalVideo ->
+                pendingVideoReview = null
+                onPresenceChange("uploading")
+                onSendVideo(finalVideo)
+            },
+            onDismiss = {
+                pendingVideoReview = null
+                onPresenceChange("online")
             }
         )
     }
