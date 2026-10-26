@@ -8,7 +8,7 @@ create schema private;
 create schema extensions;
 create schema net;
 create extension if not exists pgcrypto with schema extensions;
-create function net.http_post(url text,body jsonb default '{}'::jsonb,headers jsonb default '{}'::jsonb,timeout_milliseconds integer default 5000) returns bigint language sql as $ select 1::bigint $;
+create function net.http_post(url text,body jsonb default '{}'::jsonb,headers jsonb default '{}'::jsonb,timeout_milliseconds integer default 5000) returns bigint language sql as 'select 1::bigint';
 create or replace function auth.uid() returns uuid
 language sql stable set search_path='' as $$
  select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid
