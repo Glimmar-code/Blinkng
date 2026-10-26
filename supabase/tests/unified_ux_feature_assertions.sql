@@ -109,7 +109,7 @@ reset role;
 -- that account; even an owner cannot claim another account's storage object.
 set role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000102',false);
-do $
+do $$
 begin
   begin
     perform public.blink_set_group_avatar(
@@ -120,11 +120,11 @@ begin
   exception when sqlstate '42501' then null;
   end;
 end;
-$;
+$$;
 reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000101',false);
-do $
+do $$
 begin
   if public.blink_set_group_avatar(
     '30000000-0000-0000-0000-000000000101',
@@ -139,6 +139,6 @@ begin
     'https://outside.test/bad.png'
   ) then raise exception 'Group owner used an untrusted external picture'; end if;
 end;
-$;
+$$;
 reset role;
 select 'unified UX disposable PostgreSQL tests passed' as outcome;
