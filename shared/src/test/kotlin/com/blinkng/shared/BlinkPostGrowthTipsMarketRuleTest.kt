@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 class BlinkPostGrowthTipsMarketRuleTest {
     @Test
     fun marketplaceCategoriesCannotBeUsedForOrdinaryFeedPosts() {
-        for (category in listOf("Marketplace", "MARKET", " Buy & Sell ")) {
+        for (category in listOf("Marketplace", "MARKET", " Buy & Sell ", "for sale", "Selling")) {
             assertEquals(
                 BlinkPostGrowthTips.marketHint,
                 BlinkPostGrowthTips.marketOnlyReason(category, "Campus announcement")
