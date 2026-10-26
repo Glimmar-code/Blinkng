@@ -36,6 +36,7 @@ export async function stagedMarketCommunityContractTests() {
         category text not null default 'Campus Life',
         is_sponsored boolean not null default false,
         ad_label text,
+        ad_cta text,
         text text,
         caption text,
         alt_text text
@@ -72,6 +73,9 @@ export async function stagedMarketCommunityContractTests() {
     await rejects(() => db.exec(`
       insert into public.feed_posts(category,is_sponsored,ad_label)
       values ('Campus Life',false,'Sponsored')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      insert into public.feed_posts(category,is_sponsored,ad_cta)
+      values ('Campus Life',false,'Buy now')`), 'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec(`
       insert into public.feed_posts(category,text) values ('Campus Life','Discussion of a product')`);
     await db.exec(`
@@ -101,6 +105,9 @@ export async function stagedMarketCommunityContractTests() {
       'BLINK_MARKET_LISTING_ONLY');
     await rejects(() => db.exec(`
       update public.feed_posts set is_sponsored=true where category='Campus Life'`),
+      'BLINK_AD_REQUIRES_SERVER_APPROVAL');
+    await rejects(() => db.exec(`
+      update public.feed_posts set ad_cta='Shop' where category='Campus Life'`),
       'BLINK_AD_REQUIRES_SERVER_APPROVAL');
     await db.exec('reset role');
     await db.exec('set role service_role');
