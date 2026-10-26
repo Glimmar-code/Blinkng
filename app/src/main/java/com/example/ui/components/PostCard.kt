@@ -672,6 +672,13 @@ fun PostCard(
                 }
             }
 
+            if (post.text.isNotBlank()) {
+                BlinkRichLinkPreview(
+                    text = post.text,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+
             post.poll?.let { poll ->
                 PremiumPollCard(
                     poll = poll,
