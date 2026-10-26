@@ -69,14 +69,15 @@ internal object BlinkChatPhotoGeometry {
             else cropHeight = (rotated.width/targetRatio).toInt().coerceIn(1,rotated.height)
             cropWidth = (cropWidth*cropScale).toInt().coerceAtLeast(1)
             cropHeight = (cropHeight*cropScale).toInt().coerceAtLeast(1)
-            cropped = Bitmap.createBitmap(rotated,
+            val cropBitmap = Bitmap.createBitmap(rotated,
                 (rotated.width-cropWidth)/2, (rotated.height-cropHeight)/2,
                 cropWidth,cropHeight)
+            cropped = cropBitmap
             val opaque=Bitmap.createBitmap(cropWidth,cropHeight,Bitmap.Config.RGB_565)
             try {
                 Canvas(opaque).apply {
                     drawColor(Color.WHITE)
-                    drawBitmap(cropped,0f,0f,null)
+                    drawBitmap(cropBitmap,0f,0f,null)
                 }
                 output.outputStream().use {
                     check(opaque.compress(Bitmap.CompressFormat.JPEG,90,it))
