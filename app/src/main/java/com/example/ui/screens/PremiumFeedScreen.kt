@@ -592,7 +592,10 @@ fun PremiumFeedScreen(
             onOpenPost = onOpenFeedPost,
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
-            onBookmarkPost = onBookmarkPost
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onOptionsClick = onOptionsClick,
+            hasUnreadNotifications = hasUnreadNotifications
         )
 
         3 -> PremiumGameHost(
@@ -2150,7 +2153,10 @@ private fun PremiumConnectHost(
     onOpenPost: (FeedPost) -> Unit,
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
-    onBookmarkPost: (String) -> Unit
+    onBookmarkPost: (String) -> Unit,
+    onRepostPost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    hasUnreadNotifications: Boolean
 ) {
     Box(
         Modifier
@@ -2165,6 +2171,9 @@ private fun PremiumConnectHost(
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
             onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onOptionsClick = onOptionsClick,
+            hasUnreadNotifications = hasUnreadNotifications,
             profiles = profiles,
             currentProfile = currentUserProfile,
             currentUsername = currentUsername,
