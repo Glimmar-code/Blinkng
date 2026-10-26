@@ -544,6 +544,64 @@
     window.BLINK_DISCOVERY?.initLanding(ROOT);
   }
 
+  async function renderReferralInvitation(rawUsername){
+    const username=String(rawUsername||'').trim().toLowerCase();
+    const signedIn=isAuthed();
+    setTitle('Join BLINK');
+    ROOT.innerHTML=`<main class="auth-wrap"><section class="card auth-card" id="invite-preview" aria-live="polite">
+      <div class="brand" style="padding:0 0 8px"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">BLINK</div>
+      <h1>You've been invited to BLINK</h1>
+      <p class="muted" id="invite-status">Checking this invitation…</p>
+      <div id="invite-person" class="form-stack" style="margin-bottom:16px"></div>
+      <button class="btn primary" type="button" id="invite-join">${signedIn?'Open BLINK':'Create your BLINK account'}</button>
+      <button class="btn ghost" type="button" id="invite-explore" style="margin-top:8px">Explore BLINK</button>
+      <p class="muted small" style="margin-top:12px">A referral is counted only after a new account is verified. Joining is optional. Invite links do not award Coins for clicks.</p>
+    </section></main>`;
+    ROOT.querySelector('#invite-join')?.addEventListener('click',()=>navigate(signedIn?'/feed':'/login'));
+    ROOT.querySelector('#invite-explore')?.addEventListener('click',()=>navigate(signedIn?'/feed':'/'));
+    const status=ROOT.querySelector('#invite-status');
+    const person=ROOT.querySelector('#invite-person');
+    try{
+      const suggestions=await anonRpc('blink_referrer_suggestions',
+        {p_query:username,p_limit:10,p_offset:0});
+      if(!status?.isConnected)return; // Ignore a response after route change.
+      const match=(Array.isArray(suggestions)?suggestions:[])
+        .find(row=>String(row.username||'').toLowerCase()===username);
+      if(!match){
+        storageRemove(INVITE_REFERRER_KEY);
+        status.textContent='This invitation is no longer available. You can still join BLINK.';
+        return;
+      }
+      if(!signedIn)storageSet(INVITE_REFERRER_KEY,username);
+      status.textContent='Join the BLINK community with an invitation from:';
+      const label=document.createElement('strong');
+      label.textContent=(match.full_name||match.username)+' (@'+match.username+')';
+      person?.replaceChildren(label);
+      if(match.university){
+        const campus=document.createElement('span');
+        campus.className='muted small';
+        campus.textContent=String(match.university);
+        person?.append(campus);
+      }
+      // Estimate browser opens only. Anonymous visitors cannot mint rewards.
+      if(!signedIn){
+        let visitor=storageGet(INVITE_VISITOR_KEY,'');
+        if(!/^[0-9a-f-]{36}$/i.test(visitor)){
+          visitor=crypto.randomUUID();
+          storageSet(INVITE_VISITOR_KEY,visitor);
+        }
+        void anonRpc('blink_record_referral_link_open',{
+          p_username:username,p_visitor:visitor
+        }).catch(()=>{});
+      }
+    }catch{
+      if(status?.isConnected){
+        storageRemove(INVITE_REFERRER_KEY);
+        status.textContent='We could not verify the invitation right now. You can still join BLINK without a referrer.';
+      }
+    }
+  }
+
   function renderLogin(){
     if(isAuthed()){navigate('/feed',true);return;}
     setTitle('Sign in'); ROOT.innerHTML=`<div class="auth-wrap"><div class="card auth-card"><div class="brand" style="padding:0 0 8px"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</div><h1>Welcome back</h1><p class="muted">Use the same account you use in the Android app.</p><div class="auth-tabs"><button class="btn primary" data-auth-tab="login">Sign in</button><button class="btn" data-auth-tab="signup">Create account</button></div><div id="auth-panel"></div><p class="auth-note">Your browser receives a normal user session. Blink's service-role credentials are never exposed to the web.</p><button class="btn ghost" style="width:100%;margin-top:8px" data-nav="/">Browse without signing in</button></div></div>`;
@@ -1581,20 +1639,7 @@
     if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
     const invited=path.match(/^\/invite\/([a-z0-9._-]{2,30})\/?$/i);
-    if(invited){
-      const referrer=invited[1].toLowerCase();
-      storageSet(INVITE_REFERRER_KEY,referrer);
-      // Anonymous per-browser estimate only; no credits or personal identifiers.
-      let visitor=storageGet(INVITE_VISITOR_KEY,'');
-      if(!/^[0-9a-f-]{36}$/i.test(visitor)){
-        visitor=crypto.randomUUID();
-        storageSet(INVITE_VISITOR_KEY,visitor);
-      }
-      void anonRpc('blink_record_referral_link_open',{
-        p_username:referrer,p_visitor:visitor
-      }).catch(()=>{});
-      return navigate('/login',true);
-    }
+    if(invited)return renderReferralInvitation(invited[1]);
     if(path==='/login')return renderLogin();
     if(path==='/site-stats')return renderSiteAnalytics();
     if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
