@@ -1409,6 +1409,28 @@ class DesktopSupabaseClient(
         }
     }
 
+
+    suspend fun channelUnreadCount(id: String): Int =
+        communityRpc("blink_channel_unread_count", JSONObject().put("p_channel_id", id))
+            .toIntOrNull() ?: 0
+
+    suspend fun markChannelSeen(id: String): Boolean =
+        communityRpc("blink_channel_mark_seen", JSONObject().put("p_channel_id", id)) == "true"
+
+    suspend fun scheduledChannelUpdates(id: String): List<Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            val rows = postArray("/rest/v1/rpc/blink_channel_scheduled_page",
+                JSONObject().put("p_channel_id", id), prefer = "return=representation")
+            (0 until rows.length()).mapNotNull { i ->
+                rows.optJSONObject(i)?.let { it.optString("id") to
+                    (it.optString("scheduled_at") + " — " + it.optString("body")) }
+            }
+        }
+
+    suspend fun cancelScheduledChannelUpdate(id: String): Boolean =
+        communityRpc("blink_channel_cancel_scheduled",
+            JSONObject().put("p_update_id", id)) == "true"
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
