@@ -1611,7 +1611,14 @@ fun MainAppContent(
                         // foreground destination may own an active Feed/Reels player.
                         isMainPageActive = selectedPage == page &&
                             pagerState.currentPage == page &&
-                            !pagerState.isScrollInProgress && mainPageSwipeEnabled,
+                            !pagerState.isScrollInProgress &&
+                            // Comments/share are overlays, not navigation away from Reels.
+                            // Keeping the page composed preserves the Media3 player,
+                            // its video frame and its exact playback position.
+                            (mainPageSwipeEnabled ||
+                                uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null),
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -1686,7 +1693,9 @@ fun MainAppContent(
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         unreadNotificationCount = uiState.activities.count { it.isUnread },
                         isInteractionOverlayOpen =
-                            uiState.activeCommentsPostId != null || uiState.activePostOptionsPost != null,
+                            uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null,
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
