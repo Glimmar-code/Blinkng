@@ -17,7 +17,7 @@ Deno.serve(async req => {
     const kind=String(payload.kind||"").toLowerCase();
     const itemCode=String(payload.itemCode||"").trim();
     const months=payload.months === undefined ? 1 : payload.months;
-    if(!["verification","coin_pack","boost","marketplace"].includes(kind)
+    if(!["verification","coin_pack","boost","marketplace","gift"].includes(kind)
       || !/^[a-zA-Z0-9_]{1,30}$/.test(itemCode)
       || !Number.isInteger(months) || ![1,3,6,12].includes(months)
       || (kind!=="verification" && months!==1))
