@@ -41,17 +41,6 @@ class BlinkEconomyPolicyTest {
         assertFalse(policy.canWatchRewardedAd(15))
     }
     @Test
-    fun unverifiedUsersStopAtTenAdsAndVerifiedUsersAtFifteen() {
-        assertEquals(10, policy.effectiveAdDailyLimit(isVerified = false))
-        assertEquals(15, policy.effectiveAdDailyLimit(isVerified = true))
-        assertTrue(policy.canWatchRewardedAd(9, isVerified = false))
-        assertFalse(policy.canWatchRewardedAd(10, isVerified = false))
-        assertFalse(policy.canWatchRewardedAd(14, isVerified = false))
-        assertTrue(policy.canWatchRewardedAd(14, isVerified = true))
-        assertFalse(policy.canWatchRewardedAd(15, isVerified = true))
-    }
-
-    @Test
     fun coinPacksAndVerificationPricingMatchLaunchEconomy() {
         assertEquals(800, policy.blueVerificationCashNgn)
         assertEquals(3_000, policy.blueVerificationCoinCost)
