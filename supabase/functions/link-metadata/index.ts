@@ -22,7 +22,7 @@ const decode = (s: string) => s
   .replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
   .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
   .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Math.min(0x10ffff, Number(code))));
-const allowedUrl = (raw: string): URL | null => {
+export const allowedUrl = (raw: string): URL | null => {
   if (raw.length < 10 || raw.length > 2048) return null;
   try {
     const url = new URL(raw);
@@ -52,7 +52,7 @@ function extract(html: string, page: URL): Partial<Preview> {
     image: resolvedImage?.href || ""
   };
 }
-async function publicPreview(url: URL): Promise<Preview> {
+export async function publicPreview(url: URL): Promise<Preview> {
   const host = url.hostname.toLowerCase();
   const fallback: Preview = { url: url.href, provider: host, title: host, description: url.href.slice(0, 220), image: "" };
   if (!allowedHosts.has(host)) return fallback;
@@ -113,7 +113,7 @@ async function publicPreview(url: URL): Promise<Preview> {
     return { ...fallback, ...metadata, title: metadata.title || host, description: metadata.description || fallback.description };
   } catch { return fallback; }
 }
-Deno.serve(async (req) => {
+export const handleLinkMetadata = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
   const query = new URL(req.url).searchParams.get("url") || "";
@@ -133,4 +133,8 @@ Deno.serve(async (req) => {
   if (cache.size > 200) cache.delete(cache.keys().next().value!);
   cache.set(url.href, { expires: now + 600000, value });
   return Response.json(value, { headers: { ...cors, "Cache-Control": "public, max-age=600" } });
-});
+};
+
+if (Deno.env.get("BLINK_LINK_METADATA_TEST") !== "1") {
+  Deno.serve(handleLinkMetadata);
+}
