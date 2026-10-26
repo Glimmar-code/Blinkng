@@ -77,3 +77,41 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @keyframes blink-feed-pulse{50%{opacity:.4}}
 .feed .post-actions button:focus-visible,.feed .post-head button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.feed-skeleton-line,.feed-skeleton-media{animation:none}}
+
+
+/* Owner-selected public BLINK Profile palettes, identical in signed-in and anonymous web views.
+   Do not inherit viewer light/dark settings or mix with unrelated premium avatar cosmetics. */
+.profile-card.owner-profile-theme{
+  background:linear-gradient(155deg,var(--profile-theme-top,#000),var(--profile-theme-bottom,#000));
+  border:1px solid color-mix(in srgb,var(--profile-theme-accent,#fff) 22%,transparent);
+  color:#fff;
+}
+.profile-card.owner-profile-theme .profile-info,
+.profile-card.owner-profile-theme .profile-info h2{color:#fff}
+.profile-card.owner-profile-theme .profile-meta,
+.profile-card.owner-profile-theme .profile-bio,
+.profile-card.owner-profile-theme .handle{color:rgba(255,255,255,.80)}
+.profile-card.owner-profile-theme .profile-avatar{
+  border-radius:21px;
+  border:2px solid color-mix(in srgb,var(--profile-theme-accent,#fff) 65%,transparent)
+}
+.profile-card.owner-profile-theme .stats-grid .stat{
+  background:var(--profile-theme-card,#111);
+  border-radius:15px;
+  padding:12px 4px;
+}
+.profile-card.owner-profile-theme + .profile-grid .profile-tile{
+  border-color:color-mix(in srgb,var(--profile-theme-accent,#fff) 24%,transparent);
+  background:var(--profile-theme-card,#111);
+}
+.profile-card.owner-profile-theme .btn:not(.primary){
+  background:var(--profile-theme-card,#111);
+  color:#fff;
+  border-color:rgba(255,255,255,.18);
+}
+.profile-card.owner-profile-theme .profile-cover{
+  background:linear-gradient(125deg,var(--profile-theme-top,#000),var(--profile-theme-bottom,#000));
+}
+@media(prefers-reduced-motion:no-preference){
+  .profile-card.owner-profile-theme{transition:background-color .25s ease,border-color .25s ease}
+}

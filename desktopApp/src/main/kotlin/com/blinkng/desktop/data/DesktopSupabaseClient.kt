@@ -598,7 +598,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -622,6 +622,22 @@ class DesktopSupabaseClient(
     suspend fun refreshProfile(userId: String = requireSession().userId): DesktopProfile {
         profileCache.remove(userId)
         return fetchProfile(userId)
+    }
+
+    /** Owner-only profile appearance edit, using the same authenticated RLS as Android. */
+    suspend fun saveProfileTheme(theme: String): DesktopProfile = withContext(Dispatchers.IO) {
+        val userId = requireSession().userId
+        val chosen = com.blinkng.shared.BlinkProfileThemes.normalize(theme)
+        patch(
+            "/rest/v1/profiles?id=eq.${encode(userId)}",
+            JSONObject().put("profile_theme", chosen)
+        )
+        profileCache.remove(userId)
+        fetchProfile(userId).also { updated ->
+            check(updated.profileTheme == chosen) {
+                "Profile theme update did not persist. Verify database migration and account permissions."
+            }
+        }
     }
 
     suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
@@ -2899,6 +2915,7 @@ class DesktopSupabaseClient(
         username = row.optString("username").ifBlank { row.optString("handle") },
         avatarUrl = row.optNullableString("avatar_url"),
         coverPhotoUrl = row.optNullableString("cover_photo_url"),
+        profileTheme = com.blinkng.shared.BlinkProfileThemes.normalize(row.optString("profile_theme")),
         professionalHeadline = row.optNullableString("professional_headline"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
