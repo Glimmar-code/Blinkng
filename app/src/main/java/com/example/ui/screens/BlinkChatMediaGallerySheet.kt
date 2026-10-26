@@ -38,7 +38,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.net.Uri
 
-private data class BlinkGalleryPhoto(val uri: Uri, val album: String)
+private data class BlinkGalleryPhoto(
+    val uri: Uri, val album: String, val name: String
+)
 
 private fun hasGalleryPermission(context: Context): Boolean {
     fun granted(permission: String): Boolean =
@@ -62,19 +64,25 @@ private suspend fun readAvailableGalleryPhotos(context: Context): List<BlinkGall
         if (!hasGalleryPermission(context)) return@withContext emptyList()
         val output = ArrayList<BlinkGalleryPhoto>(80)
         val uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        val projection = arrayOf(MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.DISPLAY_NAME
+        )
         runCatching {
             context.contentResolver.query(
                 uri, projection, null, null, MediaStore.Images.Media.DATE_ADDED + " DESC"
             )?.use { cursor ->
                 val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                 val albumIndex = cursor.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+                val fileNameIndex = cursor.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
                 while (cursor.moveToNext() && output.size < 80) {
                     val id = cursor.getLong(idIndex)
                     val album = if (albumIndex >= 0) cursor.getString(albumIndex)
                         ?: "Gallery" else "Gallery"
-                    output.add(BlinkGalleryPhoto(ContentUris.withAppendedId(uri, id), album))
+                    val name = if (fileNameIndex >= 0) cursor.getString(fileNameIndex)
+                        .orEmpty() else ""
+                    output.add(BlinkGalleryPhoto(ContentUris.withAppendedId(uri, id), album, name))
                 }
             }
         }
@@ -113,14 +121,22 @@ internal fun BlinkChatMediaGallerySheet(
     }
     var images by remember(permissionVersion) { mutableStateOf<List<BlinkGalleryPhoto>>(emptyList()) }
     var album by remember { mutableStateOf("Recent") }
+    var gallerySearchOpen by remember { mutableStateOf(false) }
+    var galleryQuery by remember { mutableStateOf("") }
+    var newestFirst by remember { mutableStateOf(true) }
     val selected = remember { mutableStateListOf<Uri>() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     LaunchedEffect(permissionVersion, permitted) {
         if (permitted) images = readAvailableGalleryPhotos(context)
     }
     val albums = remember(images) { listOf("Recent") + images.map { it.album }.distinct().take(16) }
-    val visible = remember(images, album) {
-        if (album == "Recent") images else images.filter { it.album == album }
+    val visible = remember(images, album, galleryQuery, newestFirst) {
+        val inAlbum = if (album == "Recent") images else images.filter { it.album == album }
+        val filtered = inAlbum.filter {
+            galleryQuery.isBlank() || it.name.contains(galleryQuery, ignoreCase = true) ||
+                it.album.contains(galleryQuery, ignoreCase = true)
+        }
+        if (newestFirst) filtered else filtered.asReversed()
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -138,6 +154,16 @@ internal fun BlinkChatMediaGallerySheet(
         ) {
             Text("Gallery", fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
+            if (selected.isEmpty()) {
+                IconButton(onClick = { gallerySearchOpen = !gallerySearchOpen }) {
+                    Icon(Icons.Default.Search, "Search images by file name",
+                        tint = palette.textPrimary)
+                }
+                IconButton(onClick = { newestFirst = !newestFirst }) {
+                    Icon(Icons.Default.Sort, "Reverse gallery order",
+                        tint = palette.textPrimary)
+                }
+            }
             if (selected.isNotEmpty()) {
                 TextButton(onClick = { selected.clear() }) { Text("Clear") }
                 Button(
@@ -150,6 +176,15 @@ internal fun BlinkChatMediaGallerySheet(
             } else {
                 TextButton(onClick = onSystemPhotoPicker) { Text("All photos") }
             }
+        }
+        if (gallerySearchOpen && permitted) {
+            OutlinedTextField(
+                value = galleryQuery,
+                onValueChange = { galleryQuery = it.take(100) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                singleLine = true,
+                label = { Text("Search file names or albums") }
+            )
         }
         if (permitted && albums.size > 1) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
