@@ -1,3 +1,10 @@
+## 2026-10-26 — Twelve-hour top Reels carousel and compact receipts (Testlab only)
+
+- **Backend (migration staged, NOT deployed):** `blink_featured_reels_12h()` ranks the five highest eligible public Reels by protected view events in the last *completed* 12-hour UTC period. Access requires authentication, filters private/blocked/flagged/expired Reels, and does not expose viewers. The cohort automatically changes on the 00:00/12:00 UTC boundaries; active clients poll without requiring a paid scheduler.
+- **Android:** Reels preview replaces its Story circle row with a photo/creator/caption/views horizontal banner, 5-second automatic paging, and tap-through to the existing vertical reel player. Other Stories surfaces are untouched. New data are loaded from authenticated RPC; no fabricated trend counts are shown. Chat receipts now use one compact double-check glyph beside the timestamp within the bubble.
+- **Windows:** Desktop Reels surfaces the same five server-authoritative items in an auto-advancing, desktop-width carousel. A featured click opens the corresponding BLINK web reel route while native Windows video playback remains unsupported (documented prior parity limitation); no mock video is invented. Existing Windows messaging receipts are functionally the same status states, with desktop-native presentation.
+- **Status / release hold:** CI/build and migration runtime tests have not been confirmed at the latest SHA. The new SQL must be validated in an isolated Supabase environment before production. This PR is intentionally draft and cannot be merged or published until integration, platform and security gates pass.
+
 ## 2026-10-26 — Android referral input contrast and IME safety (unverified branch)
 
 - **Android:** `BlinkReferrerPicker` can explicitly render high-contrast text and suggestions on the white reference-signup surface instead of inheriting a dark-theme color. The form now reserves IME space, and the first matched referral is brought into the visible scroll viewport when results arrive.
