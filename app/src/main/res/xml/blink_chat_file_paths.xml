@@ -2,4 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="chat_camera" path="blink-camera/" />
     <cache-path name="chat_shares" path="blink-share/" />
+    <!-- Private rendered reel exports: readable through own FileProvider for upload and drafts. -->
+    <files-path name="reel_edits" path="reel_edits/" />
 </paths>

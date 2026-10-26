@@ -8,6 +8,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,6 +96,7 @@ fun StoryViewerDialog(
     var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
+    var storyDismissDrag by remember(currentStory.id) { mutableFloatStateOf(0f) }
 
     // Floating reaction animation effect
     LaunchedEffect(floatingReaction) {
@@ -103,8 +107,10 @@ fun StoryViewerDialog(
     }
 
     // 5-second automatic progression
-    LaunchedEffect(currentIndex, isPaused) {
+    LaunchedEffect(currentIndex) {
         progress = 0f
+    }
+    LaunchedEffect(currentIndex, isPaused) {
         val stepMs = 50L
         val totalMs = 5000L
         val increment = stepMs.toFloat() / totalMs.toFloat()
@@ -129,6 +135,22 @@ fun StoryViewerDialog(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .pointerInput(currentStory.id) {
+                detectVerticalDragGestures(
+                    onDragStart = { storyDismissDrag = 0f },
+                    onVerticalDrag = { change, delta ->
+                        if (delta > 0f) {
+                            storyDismissDrag += delta
+                            change.consume()
+                        }
+                    },
+                    onDragEnd = {
+                        if (storyDismissDrag > 110.dp.toPx()) onDismiss()
+                        storyDismissDrag = 0f
+                    },
+                    onDragCancel = { storyDismissDrag = 0f }
+                )
+            }
             .testTag("story_viewer_dialog")
     ) {
         // Story Background Image / Media
@@ -429,31 +451,65 @@ fun StoryViewerDialog(
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            // Quick Emojis Row (Togglable or permanent)
+            // The reference uses circular creator previews above the comment pill.
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 9.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                val reactionEmojis = listOf("🔥", "❤️", "👏", "😂", "⚡", "🙌")
-                reactionEmojis.forEach { emoji ->
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
+                storyList.forEachIndexed { index, story ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(59.dp)
+                            .clickable { currentIndex = index }
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Transparent,
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (index == currentIndex) 2.dp else 1.dp,
+                                if (index == currentIndex) Color(0xFFD37CFF)
+                                else Color.White.copy(alpha = .45f)
+                            ),
+                            modifier = Modifier.size(if (index == currentIndex) 53.dp else 44.dp)
+                        ) {
+                            AsyncImage(
+                                model = story.avatar,
+                                error = painterResource(R.drawable.ic_default_profile),
+                                fallback = painterResource(R.drawable.ic_default_profile),
+                                contentDescription = "View ${story.displayLabel}'s status",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.padding(3.dp).clip(CircleShape)
+                            )
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            story.displayLabel, color = Color.White, fontSize = 10.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            if (showQuickReactions) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("🔥", "❤️", "👏", "😂", "⚡", "🙌").forEach { emoji ->
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = .54f),
+                            modifier = Modifier.clip(CircleShape).clickable {
                                 floatingReaction = emoji
                                 onReactStory(currentStory.id, emoji)
+                                showQuickReactions = false
                             }
-                    ) {
-                        Text(
-                            text = emoji,
-                            fontSize = 20.sp,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        ) {
+                            Text(emoji, fontSize = 19.sp, modifier = Modifier.padding(8.dp))
+                        }
                     }
                 }
             }
@@ -516,6 +572,14 @@ fun StoryViewerDialog(
                     }
                 }
 
+                IconButton(
+                    onClick = { showQuickReactions = !showQuickReactions },
+                    modifier = Modifier.size(40.dp)
+                        .clip(CircleShape).background(Color.Black.copy(alpha = .50f))
+                ) {
+                    Icon(Icons.Default.EmojiEmotions, "React to status",
+                        tint = Color.White, modifier = Modifier.size(21.dp))
+                }
                 // Heart Like Button
                 IconButton(
                     onClick = {

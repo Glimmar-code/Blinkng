@@ -6,6 +6,14 @@
 - **Tests:** New disposable PostgreSQL integration with fake accounts checks 10-vs-15 caps, expiration and preserved ad rewards. Android unit tests cover original cumulative milestone totals. Windows AdMob playback remains intentionally unavailable (Android-only SDK).
 - **Staging/release:** Do not deploy the migration or merge until full CI success. See screenshot references from this wallet conversation for strict final visual acceptance; passing code tests alone does not establish pixel-perfect UI parity.
 
+## 2026-10-26 — Premium Profile, Status and Reels (PR #581 integration)
+
+- **Android:** Owner-visible six profile themes, exact-reference-inspired profile cards/grid, three-dot Edit menu, story viewer rail and immersive Reels controls. A functional in-app Reel editor now offers trim, filmstrip, grayscale, rotation, text, emoji and audio using Media3 export; no mock-only trimming is shipped. Pixel-by-pixel reference equivalence still requires actual screenshot review.
+- **Windows:** Reads public owner theme and persists theme edits through the existing owner-only profile policy.
+- **Web:** Displays the public owner palette independently of visitor theme and offers an owner theme selector. Dedicated privacy-gated public-theme RPC exposes only a color ID for publicly viewable profiles.
+- **Database:** Production additive `profile_theme` schema and six allowed values applied on October 26, 2026. Public web theme RPC applied and grants/RLS constraints reviewed; no paid Supabase staging branch was created. App-level cross-platform tests and media export checks must pass before release.
+- **Preservation:** Integrate without losing market-only Feed protections, universal photo editor, coins/wallet, referral work or messaging improvements merged to main from concurrent PRs.
+
 ## 2026-10-26 — Market listings are not ordinary Feed posts (Testlab candidate)
 
 - **Shared rule:** Android and Windows use `BlinkPostGrowthTips.marketOnlyReason` for prohibited Market categories and obvious text/alt-description product advertisements. Legitimate student discussions remain publishable.

@@ -136,6 +136,7 @@ fun ProfileScreen(
     onDirectMessage: (String) -> Unit,
     onEndorseSkill: (String) -> Unit,
     onLikePost: (String) -> Unit,
+    onOpenPost: (String) -> Unit = {},
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
     onSharePost: (String) -> Unit,
@@ -227,7 +228,7 @@ fun ProfileScreen(
 
     val tabs = remember(isMe) {
         if (isMe) {
-            listOf("Posts", "Reels", "Market", "Skills", "About", "You")
+            listOf("Posts", "Reels", "Market", "Skills", "About", "You", "Liked", "Saved")
         } else {
             listOf("Posts", "Reels", "Market", "Skills", "About")
         }
@@ -237,11 +238,13 @@ fun ProfileScreen(
         if (selectedTab !in tabs.indices) selectedTab = 0
     }
 
-    val bgColor = if (isDark) DarkBackground else LightBackground
-    val cardBg = if (isDark) DarkSurface else LightSurface
-    val textPrimary = if (isDark) Color.White else LightTextPrimary
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val borderColor = if (isDark) DarkBorder else LightBorder
+    // The profile owner's saved palette is public and independent of viewer theme.
+    val savedProfileTheme = com.blinkng.shared.BlinkProfileThemes.resolve(profile.profileTheme)
+    val bgColor = Color(savedProfileTheme.bottomArgb)
+    val cardBg = Color(savedProfileTheme.cardArgb)
+    val textPrimary = Color.White
+    val textSecondary = Color.White.copy(alpha = .72f)
+    val borderColor = Color.White.copy(alpha = .13f)
 
     if (showReferGrow && isMe) {
         BlinkReferGrowDialog(username = profile.username, onDismiss = { showReferGrow = false })
@@ -403,11 +406,18 @@ fun ProfileScreen(
             shape = RoundedCornerShape(0.dp),
             color = bgColor
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(savedProfileTheme.topArgb), Color(savedProfileTheme.bottomArgb))
+                        )
+                    )
+            ) {
 
             LazyColumn(
                 state = scrollState,
-                contentPadding = PaddingValues(bottom = 130.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.fillMaxSize().statusBarsPadding()
             ) {
 
@@ -415,7 +425,7 @@ fun ProfileScreen(
                 // COVER HEADER — parallax + gradient wash
                 // ============================================================
                 item(key = "reference_dashboard") {
-                    BlinkReferenceProfileDashboard(
+                    BlinkPremiumProfileDashboard(
                         profile = profile,
                         isMe = isMe,
                         blinkCoinBalance = blinkCoinBalance,
@@ -423,6 +433,8 @@ fun ProfileScreen(
                         isFollowing = isFollowing,
                         followBusy = followBusy,
                         postCount = userPosts.count { !it.isReel },
+                        totalLoadedViews = userPosts.sumOf { it.viewsCount.coerceAtLeast(0).toLong() },
+                        totalLoadedLikes = userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
                         profileCompletion = profileCompletion,
                         onAvatarClick = { showAvatarViewer = true },
                         onBack = onBack,
@@ -513,28 +525,6 @@ fun ProfileScreen(
                 }
 
 
-                if (isMe) {
-                    // The old expanded profile carried this entry point. Keep it
-                    // available without bringing back the duplicate cover/identity.
-                    item(key = "refer_grow_entry") {
-                        OutlinedButton(
-                            onClick = { showReferGrow = true },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Refer & Grow · My Referrals")
-                        }
-                    }
-                    item(key = "progress_hub_entry") {
-                        ProgressHubEntryCard(
-                            profile = profile,
-                            onClick = { showProgressHub = true },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
-                        )
-                    }
-                }
-
                 // ============================================================
                 // TABS — real sliding pill indicator
                 // ============================================================
@@ -553,72 +543,39 @@ fun ProfileScreen(
                 }
 
                 item(key = "tabs") {
-                    AnimatedTabRow(
+                    PremiumProfileTabs(
                         tabs = tabs,
                         selectedTab = selectedTab,
                         onTabSelected = { selectedTab = it },
-                        cardBg = cardBg,
-                        borderColor = borderColor,
-                        textPrimary = textPrimary
+                        isMe = isMe,
+                        selectedThemeCard = cardBg
                     )
                 }
 
                 // Keep post cards as real LazyColumn items and keep private activity owner-only.
                 when (tabs.getOrNull(selectedTab)) {
-                    "Posts" -> profilePostItems(
-                        keyPrefix = "posts",
-                        posts = matchingContent(reelsOnly = false),
-                        isLoading = isPostsLoading,
-                        loadFailed = hasPostsLoadError,
-                        onRetry = onRefreshProfile,
-                        profile = profile,
-                        canDelete = isMe,
-                        onDelete = onDeletePost,
-                        isDark = isDark,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        onLike = onLikePost,
-                        onComment = onCommentPost,
-                        onBookmark = onBookmarkPost,
-                        onShare = onSharePost,
-                        onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick,
-                        onPin = if (isMe) { post ->
-                            overlayScope.launch {
-                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
-                                if (changed) onRefreshProfile()
-                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
-                            }
-                        } else null
+                    "Posts" -> premiumProfileGridItems(
+                        items = matchingContent(reelsOnly = false),
+                        emptyMessage = if (isPostsLoading) "Loading posts..." else "No posts yet",
+                        onOpen = onOpenPost
                     )
 
-                    "Reels" -> profilePostItems(
-                        keyPrefix = "reels",
-                        posts = matchingContent(reelsOnly = true),
-                        isLoading = isPostsLoading,
-                        loadFailed = hasPostsLoadError,
-                        onRetry = onRefreshProfile,
-                        profile = profile,
-                        canDelete = isMe,
-                        onDelete = onDeletePost,
-                        isDark = isDark,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        emptyTitle = "No reels yet",
-                        emptySubtitle = if (isMe) "Your reels will appear here." else "@${profile.username} has not posted a reel yet.",
-                        onLike = onLikePost,
-                        onComment = onCommentPost,
-                        onBookmark = onBookmarkPost,
-                        onShare = onSharePost,
-                        onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick,
-                        onPin = if (isMe) { post ->
-                            overlayScope.launch {
-                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
-                                if (changed) onRefreshProfile()
-                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
-                            }
-                        } else null
+                    "Reels" -> premiumProfileGridItems(
+                        items = matchingContent(reelsOnly = true),
+                        emptyMessage = if (isPostsLoading) "Loading reels..." else "No reels yet",
+                        onOpen = onOpenPost
+                    )
+
+                    "Liked" -> if (isMe) premiumProfileGridItems(
+                        items = likedPosts,
+                        emptyMessage = "Nothing liked yet",
+                        onOpen = onOpenPost
+                    )
+
+                    "Saved" -> if (isMe) premiumProfileGridItems(
+                        items = savedPosts,
+                        emptyMessage = "Nothing saved yet",
+                        onOpen = onOpenPost
                     )
 
                     "Market" -> profileMarketItems(
@@ -740,7 +697,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(end = 18.dp, bottom = 82.dp),
+                    .padding(end = 18.dp, bottom = 18.dp),
                 enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
                 exit = scaleOut() + fadeOut()
             ) {
@@ -756,13 +713,6 @@ fun ProfileScreen(
                         modifier = Modifier.graphicsLayer { rotationZ = refreshRotation }
                     )
                 }
-            }
-            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-                BlinkReferenceProfileBottomNav(
-                    isDark = isDark,
-                    selectedRoute = selectedMainTabRoute,
-                    onNavigate = onNavigateMainTab
-                )
             }
         }
     }
@@ -968,6 +918,17 @@ fun ProfileScreen(
             isMuted = profileMuted,
             notificationMode = profileNotificationMode,
             onDismiss = { showMoreSheet = false },
+            onEdit = {
+                showMoreSheet = false
+                onEditProfileClick()
+            },
+            onCopyUsername = {
+                showMoreSheet = false
+                clipboard.setText(AnnotatedString("@" + profile.username))
+                Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+            },
+            onReferGrow = { showMoreSheet = false; showReferGrow = true },
+            onProgressHub = { showMoreSheet = false; showProgressHub = true },
             onSearch = {
                 showMoreSheet = false
                 profileSearchActive = true
@@ -1126,6 +1087,129 @@ fun ProfileScreen(
                 ) { Text("Cancel") }
             }
         )
+    }
+}
+
+
+/** Four-icon primary chrome matching the compact reference. Existing sections remain in More. */
+@Composable
+private fun PremiumProfileTabs(
+    tabs: List<String>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    isMe: Boolean,
+    selectedThemeCard: Color
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    val primary = if (isMe) listOf("Posts", "Reels", "Liked", "Saved")
+                  else listOf("Posts", "Reels", "Market", "About")
+    val icons = listOf(
+        Icons.Default.GridView, Icons.Default.Videocam,
+        if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
+        if (isMe) Icons.Default.BookmarkBorder else Icons.Default.Info
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 17.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        primary.forEachIndexed { i, name ->
+            val selected = tabs.getOrNull(selectedTab) == name
+            IconButton(
+                onClick = { onTabSelected(tabs.indexOf(name)) },
+                modifier = Modifier.size(54.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) selectedThemeCard else Color.Transparent)
+                    .testTag("premium_profile_tab_${name.lowercase()}")
+            ) {
+                Icon(
+                    icons[i], contentDescription = name,
+                    tint = if (selected) Color.White else Color.White.copy(alpha = .62f),
+                    modifier = Modifier.size(25.dp)
+                )
+            }
+        }
+        Box {
+            IconButton(
+                onClick = { moreOpen = true },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.MoreHoriz, "Other profile sections", tint = Color.White)
+            }
+            DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                tabs.filterNot { it in primary }.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = { moreOpen = false; onTabSelected(tabs.indexOf(name)) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.premiumProfileGridItems(
+    items: List<FeedPost>,
+    emptyMessage: String,
+    onOpen: (String) -> Unit
+) {
+    if (items.isEmpty()) {
+        item(key = "premium_grid_empty_${emptyMessage}") {
+            Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                Text(emptyMessage, color = Color.White.copy(alpha = .72f), fontSize = 12.sp)
+            }
+        }
+    } else {
+        items.chunked(2).forEachIndexed { index, pair ->
+            item(key = "premium_grid_row_${index}_${pair.first().id}") {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    pair.forEach { post ->
+                        Box(
+                            modifier = Modifier.weight(1f)
+                                .aspectRatio(.86f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF1B1525))
+                                .clickable { onOpen(post.id) }
+                                .testTag("premium_profile_post_${post.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val image = post.images.firstOrNull()
+                            if (!image.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = image, contentDescription = "Open post",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else if (post.videoUrl != null) {
+                                Icon(Icons.Default.PlayCircleFilled, "Open reel",
+                                    tint = Color.White, modifier = Modifier.size(35.dp))
+                            } else {
+                                Text(
+                                    post.text, color = Color.White,
+                                    maxLines = 6, overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp, lineHeight = 16.sp,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                            if (post.isReel) {
+                                Icon(
+                                    Icons.Default.PlayArrow, null,
+                                    tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
 
@@ -2300,6 +2384,10 @@ private fun ProfileMoreSheet(
     isMuted: Boolean,
     notificationMode: ProfileNotificationMode,
     onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onCopyUsername: () -> Unit,
+    onReferGrow: () -> Unit,
+    onProgressHub: () -> Unit,
     onSearch: () -> Unit,
     onShare: () -> Unit,
     onNotifications: () -> Unit,
@@ -2311,6 +2399,16 @@ private fun ProfileMoreSheet(
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(10.dp))
+            if (isMe) {
+                ProfileOption(Icons.Default.Edit, "Edit profile",
+                    "Personal details, pictures and profile theme", onEdit)
+                ProfileOption(Icons.Default.GroupAdd, "Refer & Grow",
+                    "My referrals and profile discovery", onReferGrow)
+                ProfileOption(Icons.Default.EmojiEvents, "Progress & achievements",
+                    "Campus rank, XP and milestones", onProgressHub)
+            }
+            ProfileOption(Icons.Default.ContentCopy, "Copy profile username",
+                "@${profile.username}", onCopyUsername)
 
             ProfileOption(
                 Icons.Default.Search,

@@ -67,6 +67,7 @@ fun ProfileFollowInteractButton(
     onViewProfile: () -> Unit,
     onOpenConnectHub: () -> Unit,
     darkSurface: Boolean = false,
+    followingLabel: String = "Interact",
     giftingEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -93,7 +94,7 @@ fun ProfileFollowInteractButton(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isFollowing) "Interact" else "Follow",
+                    text = if (isFollowing) followingLabel else "Follow",
                     color = labelColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
