@@ -1,0 +1,30 @@
+name: Cloudflare Pages BLINK shared-link preview smoke
+
+on:
+  push:
+    branches:
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - '.github/workflows/cloudflare-pages-shared-link-preview.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/cloudflare-pages-shared-link-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-deep-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe the deployed Cloudflare Pages branch URL in a real HTTP client
+        env:
+          BLINK_PREVIEW_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: node scripts/test_cloudflare_preview_deep_links.mjs
