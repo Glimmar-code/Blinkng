@@ -104,4 +104,41 @@ begin
 end;
 $$;
 reset role;
+
+-- A non-admin member cannot set a group image even when the image belongs to
+-- that account; even an owner cannot claim another account's storage object.
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000102',false);
+do $
+begin
+  begin
+    perform public.blink_set_group_avatar(
+      '30000000-0000-0000-0000-000000000101',
+      'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
+    );
+    raise exception 'Non-admin member changed the group picture';
+  exception when sqlstate '42501' then null;
+  end;
+end;
+$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000101',false);
+do $
+begin
+  if public.blink_set_group_avatar(
+    '30000000-0000-0000-0000-000000000101',
+    'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
+  ) then raise exception 'Group owner used a foreign image'; end if;
+  if not public.blink_set_group_avatar(
+    '30000000-0000-0000-0000-000000000101',
+    'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000101/avatar/test-image.png'
+  ) then raise exception 'Authorized owner could not update group picture'; end if;
+  if public.blink_set_group_avatar(
+    '30000000-0000-0000-0000-000000000101',
+    'https://outside.test/bad.png'
+  ) then raise exception 'Group owner used an untrusted external picture'; end if;
+end;
+$;
+reset role;
 select 'unified UX disposable PostgreSQL tests passed' as outcome;
