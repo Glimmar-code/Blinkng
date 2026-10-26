@@ -108,6 +108,16 @@ private data class DesktopSelectedPhoto(val file: File, val caption: String = ""
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
     val myUserId = state.session?.userId.orEmpty()
+    // Fail closed for network previews until the real account preference loads.
+    var linkPreviewsAllowed by remember(myUserId) { mutableStateOf(false) }
+    var linkPreviewSaving by remember(myUserId) { mutableStateOf(false) }
+    LaunchedEffect(myUserId) {
+        if (myUserId.isNotBlank()) {
+            linkPreviewsAllowed = runCatching { state.client.fetchChatLinkPreviewsEnabled() }
+                .getOrDefault(false)
+        }
+    }
+
     var conversations by remember(myUserId) { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var selected by remember(myUserId) { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember(myUserId) { mutableStateOf<List<DesktopMessage>>(emptyList()) }
@@ -383,6 +393,11 @@ fun MessagesScreen(state: DesktopAppState) {
         return@AnimatedContent
     }
 
+    LaunchedEffect(active.id, myUserId) {
+        linkPreviewsAllowed = runCatching { state.client.fetchChatLinkPreviewsEnabled() }
+            .getOrDefault(false)
+    }
+
     val draft = draftsByConversation[active.id].orEmpty()
     val replyLookup = remember(messages) { messages.associateBy { it.id } }
     val visibleMessages = remember(messages, chatQuery) {
@@ -470,6 +485,28 @@ fun MessagesScreen(state: DesktopAppState) {
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    TextButton(
+                        enabled = !linkPreviewSaving,
+                        onClick = {
+                            linkPreviewSaving = true
+                            val account = myUserId
+                            scope.launch {
+                                val desired = !linkPreviewsAllowed
+                                runCatching { state.client.setChatLinkPreviewsEnabled(desired) }
+                                    .onSuccess { success ->
+                                        if (state.session?.userId == account) {
+                                            if (success) linkPreviewsAllowed = desired
+                                            else error = "Could not save link preview settings."
+                                        }
+                                    }.onFailure { if (state.session?.userId == account) error = it.message }
+                                linkPreviewSaving = false
+                            }
+                        }
+                    ) {
+                        Text(if (linkPreviewsAllowed) "Link previews on" else "Link previews off",
+                            fontSize = 11.sp)
+                    }
+
                     Box(modifier = Modifier.clickable {
                         if (active.isGroup) showGroupMembers = true else showContactCard = true
                     }) {
@@ -626,7 +663,9 @@ fun MessagesScreen(state: DesktopAppState) {
                                             !(message.messageType == "image" &&
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
-                                            DesktopRichLinkPreview(message.content, compact = true)
+                                            if (linkPreviewsAllowed) {
+                                                DesktopRichLinkPreview(message.content, compact = true)
+                                            }
                                         }
                                     }
                                     if (message.reactionCounts.isNotEmpty()) {
