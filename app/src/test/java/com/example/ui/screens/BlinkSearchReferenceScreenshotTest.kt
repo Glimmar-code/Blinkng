@@ -107,8 +107,7 @@ class BlinkSearchReferenceScreenshotTest {
         render(false, 1.0f)
         rule.onNodeWithText("Market").assertDoesNotExist()
         rule.onNodeWithText("Communities").assertDoesNotExist()
-        rule.onNodeWithText("People").assertExists()
-        rule.onNodeWithText("Posts").assertExists()
+        rule.onNodeWithText("All").assertExists()
     }
 
     @Test fun searchReferenceLight() {
