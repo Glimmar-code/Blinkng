@@ -3004,6 +3004,17 @@ fun MainAppContent(
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { startReelComposer = false; viewModel.openCreatePost(false) },
+                onOpenMarket = {
+                    startReelComposer = false
+                    viewModel.openCreatePost(false)
+                    viewModel.setTab(MainTab.MARKET)
+                    // Preserve the verified-seller market composer added to main.
+                    if (uiState.myProfile.isSellerActive &&
+                        uiState.myProfile.hasActiveMarketVerification()
+                    ) {
+                        viewModel.openPostItem(true)
+                    }
+                },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
                     // closes it only after success, so a failed publish keeps the user's draft.
