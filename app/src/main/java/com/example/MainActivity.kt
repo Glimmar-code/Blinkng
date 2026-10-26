@@ -1401,6 +1401,8 @@ fun MainAppContent(
         )
     }
 
+    var startReelComposer by rememberSaveable { mutableStateOf(false) }
+
     fun sharePostOrReel(postId: String) {
         val post = (
             uiState.posts +
@@ -1615,7 +1617,8 @@ fun MainAppContent(
                         onProfileClick = { viewModel.openProfile(it) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onStoryClick = { story -> viewModel.openStory(story) },
-                        onOpenCreatePost = { viewModel.openCreatePost(true) },
+                        onOpenCreatePost = { startReelComposer = false; viewModel.openCreatePost(true) },
+                        onOpenCreateReel = { startReelComposer = true; viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         onOpenMenu = { viewModel.openMenu(true) },
                         onToggleTheme = { viewModel.toggleDarkMode() },
@@ -2983,7 +2986,7 @@ fun MainAppContent(
                 profile = uiState.myProfile,
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
-                onDismiss = { viewModel.openCreatePost(false) },
+                onDismiss = { startReelComposer = false; viewModel.openCreatePost(false) },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
                     // closes it only after success, so a failed publish keeps the user's draft.
@@ -3026,6 +3029,7 @@ fun MainAppContent(
                     viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
+                startInReelMode = startReelComposer,
                 isSubmitting = uiState.isCreatingPost,
                 searchMentions = { query, limit, afterUsername, afterId ->
                     viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
