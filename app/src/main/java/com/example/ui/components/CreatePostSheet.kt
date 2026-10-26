@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -87,6 +88,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -96,6 +99,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -136,6 +140,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 @OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
@@ -697,9 +702,24 @@ fun CreatePostSheet(
         onDismissRequest = ::requestDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val outerScheme = MaterialTheme.colorScheme
+        MaterialTheme(
+            colorScheme = if (selectedVideo != null || mode == "reel") {
+                darkColorScheme(
+                    primary = Color.White,
+                    onPrimary = Color.Black,
+                    background = Color.Black,
+                    onBackground = Color.White,
+                    surface = Color(0xFF141414),
+                    onSurface = Color.White,
+                    surfaceVariant = Color(0xFF232323),
+                    onSurfaceVariant = Color.White.copy(alpha = .77f),
+                )
+            } else outerScheme
+        ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = if (selectedVideo != null || mode == "reel") Color.Black else outerScheme.background
         ) {
         Column(
             modifier = Modifier
@@ -1439,6 +1459,7 @@ fun CreatePostSheet(
                     }
                 }
             }
+        }
         }
         }
     }
@@ -2200,50 +2221,115 @@ private fun VideoComposerPreview(
             repeatMode = Player.REPEAT_MODE_ONE
         }
     }
-
-    DisposableEffect(player) {
-        onDispose {
-            player.release()
+    var durationMs by remember(uri) { mutableLongStateOf(0L) }
+    var positionMs by remember(uri) { mutableLongStateOf(0L) }
+    var isPlaying by remember(uri) { mutableStateOf(true) }
+    var isMuted by remember(uri) { mutableStateOf(false) }
+    LaunchedEffect(player) {
+        while (true) {
+            durationMs = player.duration.coerceAtLeast(0L)
+            positionMs = player.currentPosition.coerceAtLeast(0L)
+            isPlaying = player.isPlaying
+            delay(150)
         }
     }
+    DisposableEffect(player) { onDispose { player.release() } }
+    fun formatElapsed(ms: Long): String {
+        val seconds = ms.coerceAtLeast(0L) / 1000
+        return "%02d:%02d".format(seconds / 60, seconds % 60)
+    }
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(260.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.Black)
+    Column(
+        modifier = Modifier.fillMaxWidth().background(Color.Black)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    this.player = player
-                }
-            },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .aspectRatio(9f / 16f)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFF141414))
         ) {
-            Surface(
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = .62f)
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        this.player = player
+                    }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxSize()
+            )
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.TopEnd).padding(9.dp)
+                    .clip(CircleShape).background(Color.Black.copy(alpha = .55f))
             ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Remove video",
-                    tint = Color.White,
-                    modifier = Modifier.padding(7.dp)
+                Icon(Icons.Default.Close, "Remove reel video", tint = Color.White)
+            }
+        }
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF1E1E1E),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        player.seekTo((player.currentPosition - 5_000L).coerceAtLeast(0L))
+                    }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Replay5, "Back five seconds", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        player.seekTo(
+                            (player.currentPosition + 5_000L).coerceAtMost(
+                                durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+                            )
+                        )
+                    }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Forward5, "Forward five seconds", tint = Color.White)
+                    }
+                    Text(
+                        "${formatElapsed(positionMs)} / ${formatElapsed(durationMs)}",
+                        color = Color.White, fontSize = 11.sp,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
+                    )
+                    IconButton(onClick = {
+                        isMuted = !isMuted
+                        player.volume = if (isMuted) 0f else 1f
+                    }, modifier = Modifier.size(40.dp)) {
+                        Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            "Mute or unmute preview", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        if (player.isPlaying) player.pause() else player.play()
+                    }, modifier = Modifier.size(40.dp)) {
+                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            "Play or pause reel", tint = Color.White)
+                    }
+                }
+                // This actually scrubs the selected media, unlike a decorative timeline.
+                Slider(
+                    value = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
+                    onValueChange = { fraction ->
+                        if (durationMs > 0) player.seekTo((durationMs * fraction).toLong())
+                    },
+                    modifier = Modifier.fillMaxWidth().height(28.dp)
                 )
             }
         }
+        Text(
+            "Preview and seek · Add captions and audio below · Save draft before leaving",
+            color = Color.White.copy(alpha = .78f),
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 22.dp)
+        )
     }
 }
