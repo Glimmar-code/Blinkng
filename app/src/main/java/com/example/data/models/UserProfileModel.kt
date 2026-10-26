@@ -47,7 +47,6 @@ data class UserProfile(
     var username: String = "",
     var avatarUrl: String = "",
     var coverPhotoUrl: String = "",
-    var profileTheme: String = "black",
     var verificationBadge: VerificationBadge = VerificationBadge.NONE,
     var isBlinkVip: Boolean = false,
     var blinkVipUntil: String = "",
@@ -99,7 +98,8 @@ data class UserProfile(
     var points: Int = 0,
     var totalXp: Long = 0L,
     var xpLevel: Int = 1,
-    var badges: List<AchievementBadge> = listOf()
+    var badges: List<AchievementBadge> = listOf(),
+    var profileTheme: String = "black"
 ) {
     fun hasActiveMarketVerification(nowMillis: Long = System.currentTimeMillis()): Boolean =
         verificationBadge != VerificationBadge.NONE &&
