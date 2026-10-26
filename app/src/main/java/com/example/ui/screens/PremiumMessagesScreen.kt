@@ -1564,6 +1564,7 @@ private fun PremiumChatDetail(
         mutableStateOf<List<ChatPhotoReviewItem>>(emptyList())
     }
     var photoEditBusy by remember(conversation.id) { mutableStateOf(false) }
+    var gallerySelectedPhotoId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var photoAdjustmentItem by remember(conversation.id) { mutableStateOf<ChatPhotoReviewItem?>(null) }
 
     // Only delete files produced by BLINK's non-destructive editor. Never touch
@@ -2436,7 +2437,68 @@ private fun PremiumChatDetail(
                 Text("Review ${pendingPhotoReview.size} photo(s)", color = palette.textPrimary)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    // A private, app-designed post-selection gallery; the Android
+                    // Photo Picker retains its own privacy-safe system appearance.
+                    val focused = pendingPhotoReview.firstOrNull {
+                        it.id == gallerySelectedPhotoId
+                    } ?: pendingPhotoReview.first()
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF0D0D16),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.fillMaxWidth().height(228.dp),
+                            contentAlignment = Alignment.Center) {
+                            AsyncImage(
+                                model = focused.uri,
+                                contentDescription = "Large preview of selected image",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Surface(
+                                modifier=Modifier.align(Alignment.TopStart).padding(7.dp),
+                                color=Color.Black.copy(alpha=.68f),
+                                shape=RoundedCornerShape(12.dp)
+                            ) {
+                                Text("${pendingPhotoReview.indexOfFirst { it.id == focused.id } + 1} / ${pendingPhotoReview.size}",
+                                    fontSize=11.sp,color=Color.White,
+                                    modifier=Modifier.padding(horizontal=9.dp,vertical=6.dp))
+                            }
+                            androidx.compose.material3.TextButton(
+                                enabled=!photoEditBusy,
+                                onClick = { photoAdjustmentItem = focused },
+                                modifier=Modifier.align(Alignment.BottomEnd).padding(5.dp)
+                            ) {
+                                Text("✎ Edit photo",fontSize=11.sp,color=Color.White)
+                            }
+                        }
+                    }
+                    LazyRow(
+                        contentPadding=PaddingValues(vertical=3.dp),
+                        horizontalArrangement=Arrangement.spacedBy(5.dp)
+                    ) {
+                        itemsIndexed(pendingPhotoReview, key = { _, item -> "thumb:${item.id}" }) { index,item ->
+                            Surface(
+                                shape=RoundedCornerShape(8.dp),
+                                color=Color(0xFF171724),
+                                border=BorderStroke(if(item.id==focused.id) 2.dp else 1.dp,
+                                    if(item.id==focused.id) palette.accent else palette.border),
+                                modifier=Modifier.size(54.dp)
+                                    .clickable { gallerySelectedPhotoId = item.id }
+                            ) {
+                                Box(contentAlignment=Alignment.BottomEnd) {
+                                    AsyncImage(model=item.uri,
+                                        contentDescription="View selected photo ${index+1}",
+                                        contentScale=ContentScale.Crop,
+                                        modifier=Modifier.fillMaxSize())
+                                    Text("${index+1}",fontSize=10.sp,color=Color.White,
+                                        modifier=Modifier.background(Color.Black.copy(alpha=.63f))
+                                            .padding(horizontal=4.dp))
+                                }
+                            }
+                        }
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -2463,7 +2525,7 @@ private fun PremiumChatDetail(
                         }
                     }
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         itemsIndexed(pendingPhotoReview, key = { _, item -> item.id }) { index, item ->
