@@ -2103,6 +2103,7 @@ private fun PremiumChatDetail(
                 onValueChange = { text = it },
                 palette = palette,
                 onAttachment = { showAttachmentSheet = true },
+                onCamera = { requestChatCamera() },
                 onDictation = startDictation,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
@@ -3779,6 +3780,7 @@ private fun MessageComposer(
     onValueChange: (String) -> Unit,
     palette: MessagePalette,
     onAttachment: () -> Unit,
+    onCamera: () -> Unit,
     onDictation: () -> Unit,
     onEmoji: () -> Unit,
     onSubmit: () -> Unit,
@@ -3819,11 +3821,11 @@ private fun MessageComposer(
                     )
                 } else {
                     GlassIconButton(
-                        icon = Icons.Default.Add,
-                        contentDescription = "Add attachment",
+                        icon = Icons.Default.EmojiEmotions,
+                        contentDescription = "Choose emoji",
                         palette = palette,
                         size = 40.dp,
-                        onClick = onAttachment
+                        onClick = onEmoji
                     )
                 }
                 Spacer(Modifier.width(5.dp))
@@ -3861,16 +3863,6 @@ private fun MessageComposer(
                         value = value,
                         onValueChange = onValueChange,
                         placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
-                        trailingIcon = {
-                            IconButton(onClick = onEmoji) {
-                                Icon(
-                                    Icons.Default.EmojiEmotions,
-                                    contentDescription = "Choose emoji",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
@@ -3890,6 +3882,22 @@ private fun MessageComposer(
                     )
                 }
 
+                if (!isRecording) {
+                    GlassIconButton(
+                        icon = Icons.Default.AttachFile,
+                        contentDescription = "Attach picture, file or location",
+                        palette = palette,
+                        size = 36.dp,
+                        onClick = onAttachment
+                    )
+                    GlassIconButton(
+                        icon = Icons.Default.CameraAlt,
+                        contentDescription = "Open camera",
+                        palette = palette,
+                        size = 36.dp,
+                        onClick = onCamera
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 when {
                     isRecording -> {
