@@ -114,7 +114,7 @@ begin
   begin
     perform public.blink_set_group_avatar(
       '30000000-0000-0000-0000-000000000101',
-      'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
+      'https://jhwgifrlxwspoedxjaly.supabase.co/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
     );
     raise exception 'Non-admin member changed the group picture';
   exception when sqlstate '42501' then null;
@@ -128,11 +128,11 @@ do $$
 begin
   if public.blink_set_group_avatar(
     '30000000-0000-0000-0000-000000000101',
-    'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
+    'https://jhwgifrlxwspoedxjaly.supabase.co/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000102/avatar/test-image.png'
   ) then raise exception 'Group owner used a foreign image'; end if;
   if not public.blink_set_group_avatar(
     '30000000-0000-0000-0000-000000000101',
-    'https://blink.test/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000101/avatar/test-image.png'
+    'https://jhwgifrlxwspoedxjaly.supabase.co/storage/v1/object/public/profile-media/users/00000000-0000-0000-0000-000000000101/avatar/test-image.png'
   ) then raise exception 'Authorized owner could not update group picture'; end if;
   if public.blink_set_group_avatar(
     '30000000-0000-0000-0000-000000000101',
