@@ -1420,15 +1420,17 @@ fun MainAppContent(
     var storySharePrefill by rememberSaveable { mutableStateOf("") }
     var storyShareCardLabel by rememberSaveable { mutableStateOf("") }
 
+    // Sharing must work from Profile, Liked and Saved as well as the main Feed.
+    // Resolve from authenticated in-memory posts, not from unverified IDs or placeholders.
+    fun findShareablePost(postId: String): com.example.data.models.FeedPost? =
+        (uiState.posts + uiState.followingPosts + uiState.reels +
+            uiState.discoverPosts + uiState.profilePostsByUserId.values.flatten() +
+            uiState.myLikedPosts + uiState.mySavedPosts +
+            listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost))
+            .firstOrNull { it.id == postId }
+
     fun sharePostOrReel(postId: String) {
-        val post = (
-            uiState.posts +
-                uiState.followingPosts +
-                uiState.reels +
-                uiState.discoverPosts +
-                listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost)
-            ).firstOrNull { it.id == postId }
-        if (post == null) {
+        if (findShareablePost(postId) == null) {
             viewModel.showToast("This content is unavailable.")
             return
         }
@@ -2669,9 +2671,7 @@ fun MainAppContent(
         }
 
         sharingPostId?.let { requestedId ->
-            val sharedPost = (uiState.posts + uiState.followingPosts + uiState.reels +
-                uiState.discoverPosts + listOfNotNull(uiState.deepLinkedPost))
-                .firstOrNull { it.id == requestedId }
+            val sharedPost = findShareablePost(requestedId)
             if (sharedPost == null) {
                 LaunchedEffect(requestedId) { sharingPostId = null }
             } else {
