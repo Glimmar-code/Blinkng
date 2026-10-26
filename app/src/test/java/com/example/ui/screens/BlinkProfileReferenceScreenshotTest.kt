@@ -147,11 +147,24 @@ class BlinkProfileReferenceScreenshotTest {
         rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-purple-visitor.png")
     }
 
-    @Test fun alternateThemesRender() {
-        listOf("sapphire", "emerald", "rose", "amber").forEach { theme ->
-            render(dark = false, fontScale = 1.0f, themeId = theme, visitor = true)
-            rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-${theme}.png")
-        }
+    @Test fun sapphireVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "sapphire", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-sapphire.png")
+    }
+
+    @Test fun emeraldVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "emerald", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-emerald.png")
+    }
+
+    @Test fun roseVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "rose", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-rose.png")
+    }
+
+    @Test fun amberVisitorThemeRenders() {
+        render(dark = false, fontScale = 1.0f, themeId = "amber", visitor = true)
+        rule.onRoot().captureRoboImage(filePath = "src/test/screenshots/profile-reference-amber.png")
     }
 
 }
