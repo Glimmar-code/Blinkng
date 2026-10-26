@@ -21,7 +21,9 @@ for(const category of ['Marketplace','Market',' Buy & Sell ','FOR SALE','Selling
 for(const copy of [
   'Selling this device for NGN 150000',
   'For sale ₦30000; DM to buy',
-  'Buy now! NGN 2500'
+  'Buy now! NGN 2500',
+  'Selling my book for NGN 1500',
+  'Available for sale ₦2000'
 ]){
   assert.ok(marketOnlyFeedWarning('Campus Life',copy),`Sales copy accepted: ${copy}`);
 }
