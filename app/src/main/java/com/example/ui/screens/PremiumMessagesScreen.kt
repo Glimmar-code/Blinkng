@@ -1518,6 +1518,34 @@ private fun PremiumChatDetail(
     )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    var chatExtraMode by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var selectedContact by remember(conversation.id) { mutableStateOf<Pair<String,String>?>(null) }
+    val contactPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (uri != null) {
+            runCatching {
+                val provider = android.provider.ContactsContract.CommonDataKinds.Phone
+                context.contentResolver.query(uri,
+                    arrayOf(provider.DISPLAY_NAME, provider.NUMBER), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val name = cursor.getString(0).orEmpty().take(100)
+                        val number = cursor.getString(1).orEmpty().take(60)
+                        if (name.isNotBlank() && number.isNotBlank()) name to number else null
+                    } else null
+                }
+            }.onSuccess { info ->
+                if (info != null) {
+                    selectedContact = info
+                    chatExtraMode = "contact"
+                } else Toast.makeText(context, "No phone number selected.", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Contact unavailable.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     var showStickers by remember(conversation.id) { mutableStateOf(false) }
     var aiPhotoUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -2821,10 +2849,44 @@ private fun PremiumChatDetail(
                 showAttachmentSheet = false
                 imagePicker.launch("image/*")
             },
+            onShareLocation = {
+                showAttachmentSheet = false
+                chatExtraMode = "location"
+            },
+            onPickContact = {
+                showAttachmentSheet = false
+                contactPicker.launch(
+                    Intent(Intent.ACTION_PICK,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                )
+            },
+            onShareArticle = {
+                showAttachmentSheet = false
+                chatExtraMode = "article"
+            },
+            onCreatePoll = {
+                showAttachmentSheet = false
+                chatExtraMode = "poll"
+            },
             onDismiss = { showAttachmentSheet = false }
         )
     }
 
+    chatExtraMode?.let { mode ->
+        BlinkChatExtrasDialog(
+            mode = mode,
+            contact = selectedContact,
+            onSend = { content ->
+                chatExtraMode = null
+                selectedContact = null
+                onSend(content, null)
+            },
+            onDismiss = {
+                chatExtraMode = null
+                selectedContact = null
+            }
+        )
+    }
     if (showContactProfile) {
         ChatContactProfileOverlay(
             conversation = conversation,
