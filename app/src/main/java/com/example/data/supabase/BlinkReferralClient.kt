@@ -69,6 +69,30 @@ object BlinkReferralClient {
             }
         }
 
+    /**
+     * Attach a Google-authenticated new user's one lifetime referral during onboarding.
+     * The RPC enforces actor identity, Google provider, new-account age and immutability.
+     */
+    suspend fun claimGoogleOnboardingReferrer(referrerId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val id = runCatching { java.util.UUID.fromString(referrerId) }.getOrNull()
+                ?: return@withContext false
+            val token = SupabaseService.accessToken()?.takeIf(String::isNotBlank)
+                ?: return@withContext false
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/blink_set_onboarding_referrer")
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer $token")
+                .header("Content-Type", "application/json")
+                .post(JSONObject().put("p_referrer_id", id.toString()).toString()
+                    .toRequestBody(mediaType))
+                .build()
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful &&
+                    response.body?.string()?.trim()?.equals("true", true) == true
+            }
+        }
+
     suspend fun dashboard(): BlinkReferralStats = withContext(Dispatchers.IO) {
         val row = invoke("blink_referral_dashboard", JSONObject(), authenticated = true)
             .optJSONObject(0) ?: return@withContext BlinkReferralStats()
