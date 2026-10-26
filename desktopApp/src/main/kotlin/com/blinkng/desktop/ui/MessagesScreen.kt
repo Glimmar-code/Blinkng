@@ -76,6 +76,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -601,7 +602,9 @@ fun MessagesScreen(state: DesktopAppState) {
                                     detectTapGestures(onLongPress = { actionMessageId = message.id })
                                 },
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (mine) MaterialTheme.colorScheme.primaryContainer
+                                color = if (MaterialTheme.colorScheme.background.luminance() < .4f) {
+                                    if (mine) Color(0xFF005C4B) else Color(0xFF202C33)
+                                } else if (mine) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
