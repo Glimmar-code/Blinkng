@@ -28,6 +28,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import com.example.media.BlinkChatAudioTrim
 
 private data class PreviewDocument(val title: String, val size: Long, val mime: String)
 
@@ -96,6 +98,13 @@ internal fun BlinkChatAttachmentReviewDialog(
     var duration by remember(uri) { mutableLongStateOf(0L) }
     var position by remember(uri) { mutableLongStateOf(0L) }
     var playing by remember(uri) { mutableStateOf(false) }
+    var trimStart by remember(uri) { mutableLongStateOf(0L) }
+    var trimEnd by remember(uri) { mutableLongStateOf(0L) }
+    var exportingAudio by remember(uri) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(duration) {
+        if (trimEnd <= 0L && duration > 0L) trimEnd = duration
+    }
     LaunchedEffect(audioPlayer) {
         if (audioPlayer != null) while (true) {
             duration = audioPlayer.duration.coerceAtLeast(0L)
@@ -117,7 +126,26 @@ internal fun BlinkChatAttachmentReviewDialog(
                 }
                 Text(if (isAudio) "AUDIO PREVIEW" else "DOCUMENT PREVIEW",
                     color = Color.White, modifier = Modifier.weight(1f))
-                Button(onClick = { onSend(uri) }) { Text("Send") }
+                Button(
+                    enabled = !exportingAudio,
+                    onClick = {
+                        if (isAudio && duration > 500L &&
+                            (trimStart > 0L || trimEnd < duration - 100L)) {
+                            exportingAudio = true
+                            audioPlayer?.pause()
+                            scope.launch {
+                                runCatching {
+                                    BlinkChatAudioTrim.export(
+                                        context, uri, trimStart, trimEnd
+                                    )
+                                }.onSuccess(onSend).onFailure {
+                                    error = it.message ?: "Could not trim this audio."
+                                }
+                                exportingAudio = false
+                            }
+                        } else onSend(uri)
+                    }
+                ) { Text(if (exportingAudio) "Exporting" else "Send") }
             }
             Column(Modifier.fillMaxWidth().weight(1f)
                 .verticalScroll(rememberScrollState()).padding(18.dp),
@@ -152,6 +180,31 @@ internal fun BlinkChatAttachmentReviewDialog(
                                 if (duration > 0) audioPlayer.seekTo((duration * it).toLong())
                             }, modifier = Modifier.weight(1f)
                         )
+                    }
+                    if (duration > 500L) {
+                        Text("Trim recording", color = Color.White)
+                        Text("Start ${trimStart / 1000}s", color = Color.LightGray)
+                        Slider(
+                            value = trimStart.toFloat() / duration,
+                            onValueChange = {
+                                trimStart = (it * duration).toLong()
+                                    .coerceAtMost((trimEnd - 500L).coerceAtLeast(0))
+                                audioPlayer.seekTo(trimStart)
+                            },
+                            enabled = !exportingAudio
+                        )
+                        Text("End ${trimEnd / 1000}s", color = Color.LightGray)
+                        Slider(
+                            value = trimEnd.toFloat() / duration,
+                            onValueChange = {
+                                trimEnd = (it * duration).toLong()
+                                    .coerceIn(trimStart + 500L, duration)
+                                audioPlayer.seekTo((trimEnd - 200L).coerceAtLeast(0L))
+                            },
+                            enabled = !exportingAudio
+                        )
+                        Text("AAC/M4A clips can be trimmed without recompression. Other audio formats may be sent unedited.",
+                            color = Color.LightGray)
                     }
                 }
                 pdfPage?.let { bitmap ->
