@@ -624,6 +624,18 @@ class DesktopSupabaseClient(
         return fetchProfile(userId)
     }
 
+    /** Owner-only profile appearance edit, using the same authenticated RLS as Android. */
+    suspend fun saveProfileTheme(theme: String): DesktopProfile = withContext(Dispatchers.IO) {
+        val userId = requireSession().userId
+        val chosen = com.blinkng.shared.BlinkProfileThemes.normalize(theme)
+        patch(
+            "/rest/v1/profiles?id=eq.${encode(userId)}",
+            JSONObject().put("profile_theme", chosen)
+        )
+        profileCache.remove(userId)
+        fetchProfile(userId)
+    }
+
     suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
         val clean = BlinkOnboardingPolicy.normalizeUsername(username)
         BlinkOnboardingPolicy.usernameValidationMessage(clean)?.let {
