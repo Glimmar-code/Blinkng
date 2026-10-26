@@ -96,6 +96,8 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkTextSecondary
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.BlinkPhonePolicy
+import com.example.auth.BlinkPhoneVerificationClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -125,6 +127,7 @@ fun AccountOnboardingScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profileRepository = remember { ProfileRepository() }
+    val phoneClient = remember { BlinkPhoneVerificationClient() }
 
     val startingStep = profile.onboardingStep.coerceIn(0, 3)
     var step by rememberSaveable(profile.id) { mutableIntStateOf(startingStep) }
@@ -150,6 +153,11 @@ fun AccountOnboardingScreen(
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
+    var phoneNumber by rememberSaveable(profile.id) { mutableStateOf("") }
+    var phoneCode by rememberSaveable(profile.id) { mutableStateOf("") }
+    var phoneCodeSent by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var phoneVerified by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var phoneBusy by remember { mutableStateOf(false) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
 
@@ -526,6 +534,50 @@ fun AccountOnboardingScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Spacer(Modifier.height(14.dp))
+                        OutlinedTextField(value = phoneNumber, onValueChange = {
+                            phoneNumber = it.take(24); phoneCodeSent = false; phoneVerified = false; phoneCode = ""
+                        }, label = { Text("Phone / WhatsApp number") },
+                            placeholder = { Text("+2348012345678") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            enabled = !phoneBusy && !phoneVerified, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"))
+                        Text("Verify ownership by SMS. Contact access is always optional.",
+                            color = DarkTextSecondary, fontSize = 11.sp)
+                        if (!phoneVerified) {
+                            Button(onClick = {
+                                scope.launch {
+                                    phoneBusy = true
+                                    runCatching { phoneClient.requestCode(phoneNumber) }
+                                        .onSuccess { phoneCodeSent = true; error = null }
+                                        .onFailure { error = it.message ?: "Could not send SMS code." }
+                                    phoneBusy = false
+                                }
+                            }, enabled = !phoneBusy && !phoneCodeSent && BlinkPhonePolicy.normalize(phoneNumber) != null) {
+                                Text("Send SMS code")
+                            }
+                            if (phoneCodeSent) {
+                                OutlinedTextField(value = phoneCode,
+                                    onValueChange = { phoneCode = it.filter(Char::isDigit).take(6) },
+                                    label = { Text("Six-digit SMS code") }, singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth())
+                                Button(onClick = {
+                                    scope.launch {
+                                        phoneBusy = true
+                                        runCatching { phoneClient.verify(phoneNumber, phoneCode) }
+                                            .onSuccess { confirmed ->
+                                                if (confirmed) { phoneVerified = true; error = null }
+                                                else error = "Phone is not confirmed. Try again."
+                                            }
+                                            .onFailure { error = it.message ?: "Verification failed." }
+                                        phoneBusy = false
+                                    }
+                                }, enabled = !phoneBusy && BlinkPhonePolicy.otpIsValid(phoneCode)) {
+                                    Text("Verify phone")
+                                }
+                            }
+                        } else Text("Phone verified", color = Color(0xFF51D88A))
                         Spacer(Modifier.height(8.dp))
                         BlinkReferrerPicker(
                             selected = selectedReferrer,
@@ -541,6 +593,7 @@ fun AccountOnboardingScreen(
                             text = if (saving) "Saving..." else "Continue",
                             enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
                                 gender.isNotBlank() &&
+                                phoneVerified &&
                                 birthdayValid &&
                                 !saving
                         ) {
