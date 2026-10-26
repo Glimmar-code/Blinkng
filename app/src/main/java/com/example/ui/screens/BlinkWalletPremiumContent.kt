@@ -58,7 +58,17 @@ private fun WalletLogo() {
 
 @Composable
 private fun CoinArtwork(modifier: Modifier = Modifier) {
-    Box(modifier.size(112.dp), contentAlignment = Alignment.Center) {
+    val reduceMotion = com.example.performance.rememberBlinkReduceMotion()
+    val floatTransition = rememberInfiniteTransition(label = "wallet_coin_float")
+    val floatOffset by floatTransition.animateFloat(
+        initialValue = -2f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 2400), RepeatMode.Reverse),
+        label = "coin_hover"
+    )
+    Box(modifier.size(112.dp).graphicsLayer {
+        translationY = if (reduceMotion) 0f else floatOffset
+    }, contentAlignment = Alignment.Center) {
         Box(Modifier.size(88.dp).background(
             Brush.radialGradient(listOf(violet.copy(alpha = .48f), Color.Transparent)), CircleShape))
         Box(Modifier.size(76.dp).background(
@@ -131,10 +141,18 @@ private fun GradientButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val reduceMotion = com.example.performance.rememberBlinkReduceMotion()
+    val glow = rememberInfiniteTransition(label = "wallet_button_glow")
+    val glowAlpha by glow.animateFloat(
+        initialValue = .5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 2100), RepeatMode.Reverse),
+        label = "cta_glow"
+    )
     Row(Modifier.fillMaxWidth().heightIn(min = 65.dp)
         .clip(RoundedCornerShape(20.dp))
         .background(if (enabled) neon else Brush.horizontalGradient(listOf(Color(0xFF262038), Color(0xFF39304B))))
-        .border(1.dp, if (enabled) Color(0xFF9D8BFF) else Color(0xFF484060), RoundedCornerShape(20.dp))
+        .border(1.dp, if (enabled) Color(0xFFBD96FF).copy(alpha = if (reduceMotion) .8f else glowAlpha) else Color(0xFF484060), RoundedCornerShape(20.dp))
         .clickable(enabled = enabled, onClick = onClick)
         .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
