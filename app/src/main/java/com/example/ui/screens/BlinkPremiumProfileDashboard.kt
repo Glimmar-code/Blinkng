@@ -83,15 +83,14 @@ internal fun BlinkPremiumProfileDashboard(
         modifier = Modifier.fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color(theme.topArgb), Color(theme.bottomArgb))))
             .testTag("blink_premium_profile_dashboard")
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 34.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size(42.dp)) {
                 Icon(Icons.Default.ArrowBack, "Back", tint = ink)
             }
-            Text("Profile", modifier = Modifier.weight(1f),
-                color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.weight(1f))
             IconButton(
                 onClick = { onTopAction("menu") },
                 modifier = Modifier.size(42.dp).testTag("profile_three_dot_menu")
@@ -107,8 +106,8 @@ internal fun BlinkPremiumProfileDashboard(
                 error = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "View profile picture",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(88.dp)
-                    .clip(RoundedCornerShape(23.dp)).clickable(onClick = onAvatarClick)
+                modifier = Modifier.size(80.dp)
+                    .clip(RoundedCornerShape(19.dp)).clickable(onClick = onAvatarClick)
             )
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -138,7 +137,8 @@ internal fun BlinkPremiumProfileDashboard(
                             onGameChallenge = onGameChallenge, onMentorRequest = onMentorRequest,
                             onFriendRequest = onFriendRequest, onRoommateRequest = onRoommateRequest,
                             onStudyMateRequest = onStudyMateRequest, onViewProfile = onViewProfile,
-                            onOpenConnectHub = onOpenConnectHub, darkSurface = true
+                            onOpenConnectHub = onOpenConnectHub, darkSurface = true,
+                            followingLabel = "Following"
                         )
                         Surface(
                             color = Color.White.copy(alpha = .12f),
@@ -162,7 +162,7 @@ internal fun BlinkPremiumProfileDashboard(
             border = BorderStroke(1.dp, Color.White.copy(alpha = .08f))
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 17.dp, horizontal = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 PremiumProfileStat("Posts", postCount.toLong(), Modifier.weight(1f))
@@ -177,7 +177,7 @@ internal fun BlinkPremiumProfileDashboard(
             modifier = Modifier.fillMaxWidth(),
             border = BorderStroke(1.dp, Color.White.copy(alpha = .07f))
         ) {
-            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (profile.professionalHeadline.isNotBlank())
                     Text(profile.professionalHeadline, color = ink, fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold)
@@ -267,7 +267,7 @@ private fun PremiumProfileShortcut(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.heightIn(min = 40.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 34.dp).clickable(onClick = onClick),
         color = Color.White.copy(alpha = .10f),
         shape = RoundedCornerShape(13.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = .18f))
