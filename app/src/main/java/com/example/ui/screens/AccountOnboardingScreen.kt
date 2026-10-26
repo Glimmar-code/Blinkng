@@ -545,7 +545,6 @@ fun AccountOnboardingScreen(
                                     birthDate,
                                     finalAvatar
                                 ) { ok, message ->
-                                    saving = false
                                     if (ok) {
                                         val referralId = selectedReferrer?.id.orEmpty()
                                         onSaveReferrer(referralId) { accepted, referralError ->
