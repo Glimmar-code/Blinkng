@@ -92,3 +92,17 @@ values
     'reel',6,to_timestamp(floor(extract(epoch from now()) / 43200.0)*43200.0)-interval '6 hours'),
   ('00000000-0000-0000-0000-000000000102','10000000-0000-0000-0000-000000000102',
     'reel',3,to_timestamp(floor(extract(epoch from now()) / 43200.0)*43200.0)-interval '6 hours');
+
+-- Additional group-avatar fixture objects: disposable database ONLY.
+alter table public.conversations
+  add column avatar_url text,
+  add column updated_at timestamptz not null default now();
+create schema storage;
+create table storage.objects(
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text not null,
+  name text not null unique
+);
+insert into storage.objects(bucket_id,name) values
+  ('profile-media','users/00000000-0000-0000-0000-000000000101/avatar/test-image.png'),
+  ('profile-media','users/00000000-0000-0000-0000-000000000102/avatar/test-image.png');
