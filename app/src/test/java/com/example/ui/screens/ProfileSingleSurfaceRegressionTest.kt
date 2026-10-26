@@ -53,7 +53,7 @@ class ProfileSingleSurfaceRegressionTest {
 
     @Test fun ownerSeesOneReferenceDashboardWithoutLegacyProfile() {
         renderProfile(isMe = true)
-        rule.onAllNodesWithTag("blink_reference_profile_dashboard", useUnmergedTree = true)
+        rule.onAllNodesWithTag("blink_premium_profile_dashboard", useUnmergedTree = true)
             .assertCountEquals(1)
         rule.onAllNodesWithText("Test Profile", useUnmergedTree = true)
             .assertCountEquals(1)
@@ -63,7 +63,7 @@ class ProfileSingleSurfaceRegressionTest {
 
     @Test fun visitorSeesOneReferenceDashboardWithoutLegacyProfile() {
         renderProfile(isMe = false)
-        rule.onAllNodesWithTag("blink_reference_profile_dashboard", useUnmergedTree = true)
+        rule.onAllNodesWithTag("blink_premium_profile_dashboard", useUnmergedTree = true)
             .assertCountEquals(1)
         rule.onAllNodesWithText("Test Profile", useUnmergedTree = true)
             .assertCountEquals(1)
