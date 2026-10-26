@@ -58,6 +58,8 @@ class BlinkCommunityRepository {
         if (represent) builder.header("Prefer", "return=representation")
         if (method == "POST") {
             builder.post((payload ?: JSONObject()).toString().toRequestBody(mediaType))
+        } else if (method == "PATCH") {
+            builder.patch((payload ?: JSONObject()).toString().toRequestBody(mediaType))
         }
         client.newCall(builder.build()).execute().use { response ->
             val raw = response.body?.string().orEmpty()
@@ -126,6 +128,28 @@ class BlinkCommunityRepository {
         val row = JSONArray(raw).optJSONObject(0)
             ?: error("Channel was not confirmed by Supabase.")
         return parse(row)
+    }
+
+    /** Channel owner updates only public metadata. Supabase RLS enforces owner_id
+     * for both USING and WITH CHECK; follower/member identities are untouched.
+     */
+    suspend fun updateChannelInfo(
+        id: String, name: String, description: String, coverUrl: String?
+    ): BlinkCommunity {
+        val uuid = UUID.fromString(id).toString()
+        val cover = coverUrl?.trim().orEmpty()
+        require(cover.isEmpty() || (cover.length <= 500 &&
+            cover.startsWith("https://", ignoreCase = true))) {
+            "Channel picture must use a secure HTTPS address."
+        }
+        val body = JSONObject()
+            .put("name", BlinkCommunityPolicy.validatedName(name))
+            .put("description", BlinkCommunityPolicy.validatedDescription(description))
+            .put("cover_url", cover.ifBlank { JSONObject.NULL })
+        val rows = request("blink_communities?id=eq.$uuid&select=*", "PATCH",
+            body, represent = true)
+        return JSONArray(rows.ifBlank { "[]" }).optJSONObject(0)?.let(::parse)
+            ?: error("Only the Channel owner can edit its information.")
     }
 
     private suspend fun rpc(function: String, body: JSONObject): String =
