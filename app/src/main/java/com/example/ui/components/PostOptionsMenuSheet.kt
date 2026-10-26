@@ -1653,7 +1653,6 @@ fun ReportPostDialog(
 
             listOf(
                 "Spam or misleading campus ad",
-                "Product for sale outside BLINK Market",
                 "Harassment, bullying or hate speech",
                 "Academic dishonesty or exam malpractice",
                 "Inappropriate or explicit content",
