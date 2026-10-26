@@ -45,6 +45,7 @@ class BlinkProfileReferenceScreenshotTest {
         id = "screenshot-only",
         fullName = "Aisha Khan",
         username = "aisha",
+        profileTheme = "royal_purple",
         university = "University of Lagos",
         bio = "Good people make great days.",
         verificationBadge = VerificationBadge.BLUE,
@@ -73,7 +74,7 @@ class BlinkProfileReferenceScreenshotTest {
                     ) {
                         LazyColumn(Modifier.fillMaxSize()) {
                             item {
-                                BlinkReferenceProfileDashboard(
+                                BlinkPremiumProfileDashboard(
                                     profile = profile,
                                     isMe = true,
                                     blinkCoinBalance = 1250L,
@@ -81,6 +82,8 @@ class BlinkProfileReferenceScreenshotTest {
                                     isFollowing = false,
                                     followBusy = false,
                                     postCount = 24,
+                                    totalLoadedViews = 1234L,
+                                    totalLoadedLikes = 219L,
                                     profileCompletion = 82,
                                     onAvatarClick = {}, onBack = {}, onEdit = {},
                                     onMessage = {}, onFollow = {}, onVerify = {},
@@ -88,9 +91,6 @@ class BlinkProfileReferenceScreenshotTest {
                                     onCopyUsername = {}, onVisitors = {}, onTopAction = {}
                                 )
                             }
-                        }
-                        Box(Modifier.align(Alignment.BottomCenter)) {
-                            BlinkReferenceProfileBottomNav(dark, "home") {}
                         }
                     }
                 }
