@@ -1341,6 +1341,38 @@ fun MessagesScreen(state: DesktopAppState) {
                 deleteMessage = photo
                 viewedChatPhoto = null
             },
+            authorizedDownload = { destination ->
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val owner = myUserId
+                    check(state.session?.userId == owner) { "Sign in again to download." }
+                    check(!destination.exists()) { "Choose an unused filename." }
+                    val part = File.createTempFile(".blink-picture-", ".partial", destination.parentFile)
+                    try {
+                        val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                        part.outputStream().use { destinationStream ->
+                            val guarded = object : java.io.FilterOutputStream(destinationStream) {
+                                override fun write(b: ByteArray, off: Int, len: Int) {
+                                    job?.ensureActive()
+                                    out.write(b, off, len)
+                                }
+                                override fun write(b: Int) {
+                                    job?.ensureActive()
+                                    out.write(b)
+                                }
+                            }
+                            state.client.copyChatImageTo(
+                                photo.id, photo.conversationId, guarded
+                            )
+                        }
+                        check(state.session?.userId == owner) { "Account changed during download." }
+                        java.nio.file.Files.move(part.toPath(), destination.toPath())
+                        destination
+                    } catch (failure: Throwable) {
+                        part.delete()
+                        throw failure
+                    }
+                }
+            },
             groupPhotoEnabled = selected?.isGroup == true,
             onSaveSticker = { file ->
                 scope.launch {
