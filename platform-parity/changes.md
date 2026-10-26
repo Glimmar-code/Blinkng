@@ -1,3 +1,10 @@
+## 2026-10-26 — Android referral input contrast and IME safety (unverified branch)
+
+- **Android:** `BlinkReferrerPicker` can explicitly render high-contrast text and suggestions on the white reference-signup surface instead of inheriting a dark-theme color. The form now reserves IME space, and the first matched referral is brought into the visible scroll viewport when results arrive.
+- **Shared/backend:** No changes to referrer identity, signup attribution, referral rewards, or database API. This is a visual/layout repair only.
+- **Windows:** Existing desktop referrer picker and desktop onboarding are unaffected because Windows does not open Android's soft keyboard; no data/permission semantics change.
+- **Verification required before production:** Android Gradle compilation, Robolectric narrow-screen screenshots and on-device keyboard tests at 100–200% font scaling. Status: code changed; tests have not been run from this session. Do not merge without checks.
+
 ## 2026-10-25 — Android touch Reels preview/fullscreen transition (Testlab only)
 
 - **PARITY-EXCEPTION: android-reels-touch-preview-expand-20261025** — Android's requested compact Reels preview enlarges into an immersive vertical, edge-to-edge video player on a tap or gesture. This is a phone-specific interaction built around Android Compose gesture input, the bottom navigation rail and Media3 playback; it does not change the shared reel data, server response or engagement permissions.
