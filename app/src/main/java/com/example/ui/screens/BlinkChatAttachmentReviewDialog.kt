@@ -42,6 +42,7 @@ internal fun BlinkChatAttachmentReviewDialog(
     uri: Uri,
     isAudio: Boolean,
     onSend: (Uri) -> Unit,
+    onOpenBlinkAi: (Uri) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -164,6 +165,11 @@ internal fun BlinkChatAttachmentReviewDialog(
                     color = Color.LightGray
                 )
                 error?.let { Text(it, color = Color(0xFFFF8A80)) }
+                if (isAudio && !exportingAudio) {
+                    OutlinedButton(onClick = { onOpenBlinkAi(uri) }) {
+                        Text("Ask BLINK AI about audio")
+                    }
+                }
                 if (isAudio && audioPlayer != null) {
                     Spacer(Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
