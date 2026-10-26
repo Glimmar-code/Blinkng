@@ -1517,6 +1517,7 @@ private fun PremiumChatDetail(
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var historicalViewerPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -2114,8 +2115,8 @@ private fun PremiumChatDetail(
 
     viewedImageMessage?.let { requestedImage ->
         val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
-        val normalPictures = remember(conversation.messages) {
-            conversation.messages.filter {
+        val normalPictures = remember(conversation.messages,historicalViewerPhotos) {
+            (historicalViewerPhotos.ifEmpty { conversation.messages }).filter {
                 !it.imageViewOnce && !it.deletedForEveryone &&
                     !it.attachedImageUrl.isNullOrBlank()
             }
@@ -2125,7 +2126,7 @@ private fun PremiumChatDetail(
             BlinkChatPictureViewer(
                 message = message,
                 senderName = if (message.isFromMe) "You" else conversation.partnerName,
-                onDismiss = { viewedImageMessage = null },
+                onDismiss = { viewedImageMessage = null; historicalViewerPhotos = emptyList() },
                 onShowInChat = {
                     viewedImageMessage = null
                     searchQuery = ""
@@ -2380,6 +2381,11 @@ private fun PremiumChatDetail(
             conversation = conversation,
             palette = palette,
             onDismiss = { showSharedContent = false },
+            onOpenPhoto = { photo, history ->
+                historicalViewerPhotos = history
+                viewedImageMessage = photo
+                showSharedContent = false
+            },
             onJumpToMessage = { messageId ->
                 showSharedContent = false
                 searchQuery = ""
@@ -3890,7 +3896,8 @@ private fun SharedChatContentSheet(
     conversation: ChatConversation,
     palette: MessagePalette,
     onDismiss: () -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onOpenPhoto: (ChatMessage, List<ChatMessage>) -> Unit
 ) {
     val context = LocalContext.current
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
@@ -3919,7 +3926,6 @@ private fun SharedChatContentSheet(
     var photoHasMore by remember(conversation.id) { mutableStateOf(true) }
     var photoLoading by remember(conversation.id) { mutableStateOf(false) }
     var photoError by remember(conversation.id) { mutableStateOf<String?>(null) }
-    var photoViewerId by remember(conversation.id) { mutableStateOf<String?>(null) }
     val photoScope = rememberCoroutineScope()
 
     suspend fun loadNextPhotoPage() {
@@ -4008,7 +4014,7 @@ private fun SharedChatContentSheet(
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, palette.border),
                             modifier = Modifier.fillMaxWidth()
-                                .clickable { photoViewerId = picture.id }
+                                .clickable { onOpenPhoto(picture, galleryPictures) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(8.dp),
@@ -4134,59 +4140,7 @@ private fun SharedChatContentSheet(
         Spacer(Modifier.height(16.dp).navigationBarsPadding())
     }
 
-    val currentPhoto = galleryPictures.indexOfFirst { it.id == photoViewerId }
-    if (currentPhoto >= 0) {
-        val photo = galleryPictures[currentPhoto]
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { photoViewerId = null },
-            title = {
-                Text("Photo ${currentPhoto + 1} of ${galleryPictures.size}",
-                    color = palette.textPrimary)
-            },
-            text = {
-                var horizontalDrag by remember(photo.id) { mutableStateOf(0f) }
-                AsyncImage(
-                    model = photo.attachedImageUrl,
-                    contentDescription = "Full-size photo. Swipe for the next or previous image.",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
-                        .pointerInput(currentPhoto, galleryPictures.size) {
-                            detectHorizontalDragGestures(
-                                onDragEnd = {
-                                    if (horizontalDrag < -65f &&
-                                        currentPhoto < galleryPictures.lastIndex) {
-                                        photoViewerId = galleryPictures[currentPhoto + 1].id
-                                    } else if (horizontalDrag > 65f && currentPhoto > 0) {
-                                        photoViewerId = galleryPictures[currentPhoto - 1].id
-                                    }
-                                    horizontalDrag = 0f
-                                }
-                            ) { change, amount ->
-                                horizontalDrag += amount
-                                change.consume()
-                            }
-                        }
-                )
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = { photoViewerId = null }
-                ) { Text("Close") }
-            },
-            dismissButton = {
-                Row {
-                    androidx.compose.material3.TextButton(
-                        enabled = currentPhoto > 0,
-                        onClick = { photoViewerId = galleryPictures[currentPhoto - 1].id }
-                    ) { Text("Previous") }
-                    androidx.compose.material3.TextButton(
-                        enabled = currentPhoto < galleryPictures.lastIndex,
-                        onClick = { photoViewerId = galleryPictures[currentPhoto + 1].id }
-                    ) { Text("Next") }
-                }
-            }
-        )
-    }
+
 }
 
 @Composable
