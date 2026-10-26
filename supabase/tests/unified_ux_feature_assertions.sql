@@ -1,4 +1,13 @@
 -- Guardrails: run only against disposable synthetic database.
+-- Provision memberships as the synthetic backend, not as a regular client.
+insert into public.conversations(id,created_by,is_group)
+values ('30000000-0000-0000-0000-000000000101',
+  '00000000-0000-0000-0000-000000000101',true);
+insert into public.conversation_participants(conversation_id,user_id)
+values ('30000000-0000-0000-0000-000000000101',
+  '00000000-0000-0000-0000-000000000101'),
+('30000000-0000-0000-0000-000000000101',
+  '00000000-0000-0000-0000-000000000102');
 set role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000102',false);
 do $$
@@ -54,15 +63,6 @@ begin
   exception when sqlstate '22023' then null;
   end;
 
-  insert into public.conversations(id,created_by,is_group)
-    values ('30000000-0000-0000-0000-000000000101',
-      '00000000-0000-0000-0000-000000000101',true);
-  insert into public.conversation_participants(conversation_id,user_id)
-    values
-    ('30000000-0000-0000-0000-000000000101',
-      '00000000-0000-0000-0000-000000000101'),
-    ('30000000-0000-0000-0000-000000000101',
-      '00000000-0000-0000-0000-000000000102');
   select message_id into group_message
     from public.blink_send_group_text_idempotent(
       '30000000-0000-0000-0000-000000000101','Hello group',
