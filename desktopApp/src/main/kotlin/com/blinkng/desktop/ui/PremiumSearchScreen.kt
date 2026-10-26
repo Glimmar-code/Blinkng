@@ -70,7 +70,6 @@ import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
-import com.blinkng.desktop.data.DesktopMarketItem
 import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopSearchResults
 import kotlinx.coroutines.delay
@@ -85,7 +84,7 @@ private enum class DesktopSearchCollection(val label: String, val icon: ImageVec
 }
 
 private enum class DesktopSearchCategory(val label: String) {
-    ALL("All"), PEOPLE("People"), POSTS("Posts"), MARKET("Market"), COMMUNITIES("Communities"), REELS("Reels"), HASHTAGS("Hashtags")
+    ALL("All"), PEOPLE("People"), POSTS("Posts"), REELS("Reels"), HASHTAGS("Hashtags")
 }
 
 private enum class DesktopSearchSort(val label: String) {
@@ -94,10 +93,9 @@ private enum class DesktopSearchSort(val label: String) {
 
 private data class DesktopPlaceResult(
     val label: String,
-    val marketItems: List<DesktopMarketItem>,
     val connectListings: List<DesktopConnectListing>,
 ) {
-    val mentions: Int get() = marketItems.size + connectListings.size
+    val mentions: Int get() = connectListings.size
 }
 
 private const val DESKTOP_SEARCH_RECENTS = "premium_search_recents"
@@ -114,7 +112,6 @@ fun PremiumSearchScreen(state: DesktopAppState) {
         }
     }
     var discoveryPosts by remember { mutableStateOf(emptyList<DesktopFeedPost>()) }
-    var marketItems by remember { mutableStateOf(emptyList<DesktopMarketItem>()) }
     var connectListings by remember { mutableStateOf(emptyList<DesktopConnectListing>()) }
     var discoveryLoading by remember { mutableStateOf(true) }
     var discoveryError by remember { mutableStateOf<String?>(null) }
@@ -126,12 +123,10 @@ fun PremiumSearchScreen(state: DesktopAppState) {
         // Do not turn network failures into false "no results" states. Preserve
         // previously fetched content and offer a real retry.
         val feedResult = runCatching { state.client.fetchFeed() }
-        val marketResult = runCatching { state.client.fetchMarketplace() }
         val connectResult = runCatching { state.client.fetchConnectListings() }
         feedResult.onSuccess { discoveryPosts = it }
-        marketResult.onSuccess { marketItems = it }
         connectResult.onSuccess { connectListings = it }
-        if (listOf(feedResult, marketResult, connectResult).any { it.isFailure }) {
+        if (listOf(feedResult, connectResult).any { it.isFailure }) {
             discoveryError = "Some results could not load. Check your connection and retry."
         }
         discoveryLoading = false
@@ -225,14 +220,13 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             modifier = Modifier.weight(1f),
         ) { selected ->
             when (selected) {
-                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts, marketItems = marketItems)
+                DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts)
                 DesktopSearchCollection.TRENDING -> DesktopTrendingCollection(
                     state = state,
                     posts = discoveryPosts,
                     loading = discoveryLoading,
                 )
                 DesktopSearchCollection.PLACES -> DesktopPlacesCollection(
-                    marketItems = marketItems,
                     connectListings = connectListings,
                     loading = discoveryLoading,
                 )
@@ -245,7 +239,6 @@ fun PremiumSearchScreen(state: DesktopAppState) {
 private fun DesktopSearchCore(
     state: DesktopAppState,
     discoveryPosts: List<DesktopFeedPost>,
-    marketItems: List<DesktopMarketItem>,
 ) {
     val prefs = remember { Preferences.userRoot().node("blinkng/search") }
     var query by remember { mutableStateOf(state.globalSearch) }
@@ -350,12 +343,6 @@ private fun DesktopSearchCore(
             }
         )
     }
-    val visibleMarket = remember(marketItems, clean) {
-        marketItems.filter { !it.isSold && (clean.isBlank() ||
-            it.title.contains(clean, true) || it.category.contains(clean, true) ||
-            it.university.contains(clean, true) || it.location.contains(clean, true))
-        }.take(30)
-    }
     val posts = content.filterNot { it.isReel }
     val reels = content.filter { it.isReel }
     val hashtags = remember(results.posts, clean) {
@@ -397,7 +384,7 @@ private fun DesktopSearchCore(
                         IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear") }
                     }
                 },
-                placeholder = { Text("Search people, posts, market, communities...") },
+                placeholder = { Text("Search people, posts, reels and hashtags...") },
                 shape = RoundedCornerShape(18.dp),
             )
             IconButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Rounded.FilterList, "Filters") }
@@ -410,8 +397,6 @@ private fun DesktopSearchCore(
                     DesktopSearchCategory.ALL -> null
                     DesktopSearchCategory.PEOPLE -> people.size + promotedPeople.size
                     DesktopSearchCategory.POSTS -> posts.size
-                    DesktopSearchCategory.MARKET -> visibleMarket.size
-                    DesktopSearchCategory.COMMUNITIES -> null
                     DesktopSearchCategory.REELS -> reels.size
                     DesktopSearchCategory.HASHTAGS -> hashtags.size
                 }
@@ -620,22 +605,6 @@ private fun DesktopSearchCore(
                             }
                         }
                     }
-                    if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.MARKET) && visibleMarket.isNotEmpty()) {
-                        item { DesktopSearchSection("Market", "${visibleMarket.size} available marketplace listings") }
-                        items(visibleMarket, key = { "market-${it.id}" }) { product ->
-                            Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                                Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                                    Text(product.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text(product.category + " · " + product.university, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                                    Text(product.currency + " " + String.format(Locale.US, "%,d", product.price), fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                    if (category == DesktopSearchCategory.COMMUNITIES) {
-                        item { DesktopSearchSection("Communities", "Community lookup unavailable in Windows search") }
-                        item { Text("Community discovery requires the shared BLINK directory.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
-                    }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.PEOPLE) &&
                         (promotedPeople.isNotEmpty() || people.isNotEmpty())) {
                         item { DesktopSearchSection("People", "${people.size + promotedPeople.size} relevant results") }
@@ -699,7 +668,7 @@ private fun DesktopSearchCore(
                         item { DesktopSearchSection("Posts", "${posts.size} matches") }
                         items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
                     }
-                    if (!loading && people.isEmpty() && promotedPeople.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty() && visibleMarket.isEmpty() && category != DesktopSearchCategory.COMMUNITIES) {
+                    if (!loading && people.isEmpty() && promotedPeople.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty()) {
                         item {
                             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)) {
                                 Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -780,20 +749,16 @@ private fun DesktopTrendingCollection(
 
 @Composable
 private fun DesktopPlacesCollection(
-    marketItems: List<DesktopMarketItem>,
     connectListings: List<DesktopConnectListing>,
     loading: Boolean,
 ) {
-    val places = remember(marketItems, connectListings) {
-        val labels = (
-            marketItems.map { it.location.trim() } +
-                connectListings.mapNotNull { it.location?.trim() }
-            ).filter { it.isNotBlank() }.distinctBy { it.lowercase() }
+    val places = remember(connectListings) {
+        val labels = connectListings.mapNotNull { it.location?.trim() }
+            .filter { it.isNotBlank() }.distinctBy { it.lowercase() }
 
         labels.map { label ->
             DesktopPlaceResult(
                 label = label,
-                marketItems = marketItems.filter { it.location.equals(label, true) },
                 connectListings = connectListings.filter { it.location?.equals(label, true) == true },
             )
         }.sortedWith(compareByDescending<DesktopPlaceResult> { it.mentions }.thenBy { it.label.lowercase() })
@@ -809,7 +774,7 @@ private fun DesktopPlacesCollection(
             item { DesktopSearchSection("Popular places", "${places.size} locations discovered from live Blink listings") }
             items(places.take(50), key = { it.label.lowercase() }) { place -> DesktopPlaceCard(place) }
         } else if (!loading) {
-            item { DesktopCollectionEmpty("No places yet", "Places appear here when active Marketplace or Connect listings include a location.") }
+            item { DesktopCollectionEmpty("No places yet", "Places appear here when active Connect listings include a location.") }
         }
     }
 }
@@ -842,18 +807,10 @@ private fun DesktopPlaceCard(place: DesktopPlaceResult) {
                     )
                 }
             }
-            val marketPreview = place.marketItems.take(3)
             val connectPreview = place.connectListings.take(3)
-            if (marketPreview.isNotEmpty() || connectPreview.isNotEmpty()) {
+            if (connectPreview.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(marketPreview, key = { "market-${it.id}" }) { item ->
-                        DesktopPlacePreview(
-                            icon = Icons.Rounded.Storefront,
-                            eyebrow = item.category.ifBlank { "Marketplace" },
-                            title = item.title,
-                        )
-                    }
                     items(connectPreview, key = { "connect-${it.id}" }) { listing ->
                         DesktopPlacePreview(
                             icon = Icons.Rounded.Person,
