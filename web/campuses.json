@@ -1,5 +1,5 @@
 {
-  "source": "app/src/main/java/com/example/data/models/NigerianUniversities.kt",
+  "source": "shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt",
   "note": "Searchable BLINK app catalog; school listings do not imply active campus accounts.",
   "universities": [
     "Abia State University, Uturu",

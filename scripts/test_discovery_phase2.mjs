@@ -1,14 +1,11 @@
 #!/usr/bin/env node
-// Phase 2 website regression tests. University catalogue must mirror the Android source.
+// Phase 2 website regression tests. University catalogue must mirror the shared cross-platform source.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=p=>readFileSync(p,'utf8');
-// The Android alias delegates to the shared cross-platform canonical catalogue.
-// Read the real lists instead of assuming that the compatibility alias owns them.
 const kotlin=read('shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt');
-const androidAlias=read('app/src/main/java/com/example/data/models/NigerianUniversities.kt');
-assert.ok(androidAlias.includes('BlinkNigerianUniversities.all'), 'Android must use the shared university catalogue');
 const exported=JSON.parse(read('web/campuses.json'));
+assert.equal(exported.source,'shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt','Campus export must identify its shared Kotlin source');
 const extract=kind=>{
  const m=kotlin.match(new RegExp('private val '+kind+' = listOf\\(([\\s\\S]*?)\\n    \\)'));
  assert.ok(m,'Missing Android university list: '+kind);

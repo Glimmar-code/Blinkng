@@ -224,6 +224,13 @@ begin
   );
   if not v_admin then raise exception 'COMMUNITY_ADMIN_REQUIRED'; end if;
   if p_target=v_owner or p_target=v_actor then raise exception 'CANNOT_MODERATE_OWNER_OR_SELF'; end if;
+  -- Moderators cannot remove, ban or modify another active moderator.
+  -- Only the community owner can change a moderator's privileges.
+  if v_actor<>v_owner and exists (
+    select 1 from public.blink_community_members cm
+    where cm.community_id=p_community_id and cm.user_id=p_target
+      and cm.role='moderator' and cm.status='active'
+  ) then raise exception 'COMMUNITY_OWNER_REQUIRED_FOR_MODERATOR'; end if;
   if p_action not in ('approve','ban','remove','promote','demote') then
     raise exception 'INVALID_MODERATION_ACTION'; end if;
   if p_action in ('promote','demote') and v_actor<>v_owner then
@@ -325,7 +332,7 @@ commit;
 --    cannot rejoin or view private content.
 -- b. Private communities require a vetted membership-aware read policy BEFORE
 --    enabling member views; the above owner/public SELECT is intentionally limited.
--- c. Fix moderator permission escalation and self-banning/role takeover tests.
+-- c. Enforce moderator privilege tiers and prevent self-banning/role takeover; add real Supabase role tests before hosted activation.
 -- d. Test SQL RLS with two different authenticated IDs and no JWT.
 -- e. Test group message send/read/retry, online/offline and 3–50 members;
 --    group summary must show ONE row per group, not a fake 1:1 conversation.

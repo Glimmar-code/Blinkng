@@ -129,6 +129,10 @@ begin
        );
   end if;
   return new;
+exception when others then
+  -- Optional referral failures must not block account/profile registration.
+  raise warning 'BLINK_REFERRAL_HOOK_FAILURE SQLSTATE=%', SQLSTATE;
+  return new;
 end;
 $$;
 revoke all on function public.blink_capture_signup_referral() from public, anon, authenticated;
@@ -156,6 +160,10 @@ begin
         where n.user_id = r.referrer_user_id and n.actor_id = new.id
           and n.metadata->>'kind' = 'blink_referral_confirmed'
      );
+  return new;
+exception when others then
+  -- Optional referral failures must not block account/profile registration.
+  raise warning 'BLINK_REFERRAL_HOOK_FAILURE SQLSTATE=%', SQLSTATE;
   return new;
 end;
 $$;
