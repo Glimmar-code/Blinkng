@@ -1368,3 +1368,11 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 **PARITY-EXCEPTION: profile-single-surface** — Android removes an accidental second, obsolete profile header after the current reference dashboard. Windows already renders exactly one profile header in `DesktopUserProfileDialog`, so duplicating this Android-specific removal in Windows would be meaningless. Equivalent Windows behavior is the existing single header and unchanged profile actions.
 
 - **Main reconciliation:** On the conflict-resolution branch, retained the newer main profile features (including the owner Refer & Grow entry, initial tab/deep link behavior and current profile handlers) while removing only the redundant second cover/identity/trust surface. This is still a draft PR; no production merge or deployment.
+
+
+## 2026-10-26 — Refer & Grow push reliability (Testlab only)
+- **Shared backend:** tightened the server-only referral push worker acknowledgement contract. Retries now correctly preserve transient delivery skips and report a stale/non-persisted outbox lease as an error. Hardened the scheduled outbox drain's response validation.
+- **Android:** no Android-specific UI, API shape or behavior change. Receives the same Supabase-delivered referral notification results when activated.
+- **Windows:** no Windows-specific UI, API shape or behavior change. Shares identical referral attribution and backend notification semantics.
+- **Web:** no web-specific UI, API shape or behavior change. Existing referral landing and dashboard functionality stays intact.
+- **Backend gate:** no production schema/Edge Function deployment or Coin reward activation in this change. Production-compatible staging, RLS, multi-account signup and cross-platform acceptance tests remain mandatory before main promotion.

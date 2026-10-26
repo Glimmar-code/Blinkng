@@ -1,0 +1,32 @@
+name: BLINK Referral Push Worker Contract
+
+on:
+  pull_request:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/blink-referral-push-worker/**'
+      - 'supabase/tests/referral-push-worker-contract.test.mjs'
+      - '.github/workflows/referral-push-drain.yml'
+      - '.github/workflows/referral-push-worker-contract.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'supabase/functions/blink-referral-push-worker/**'
+      - 'supabase/tests/referral-push-worker-contract.test.mjs'
+      - '.github/workflows/referral-push-drain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify referral push retry, opt-out and acknowledgement behavior
+        run: node --test supabase/tests/referral-push-worker-contract.test.mjs

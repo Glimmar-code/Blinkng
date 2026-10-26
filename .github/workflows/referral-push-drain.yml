@@ -31,6 +31,16 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-blink-referral-worker: $WORKER_SECRET" \
             "https://${PROJECT_REF}.supabase.co/functions/v1/blink-referral-push-worker")"
-          echo "$payload"
-          [[ "$payload" != *'"stateUpdateErrors":'* ]] || \
-            echo 'Review delivery state synchronization in logs.'
+          # Validate the worker response rather than matching a field name that
+          # always appears even when stateUpdateErrors is zero.
+          printf '%s' "$payload" | python3 -c '
+          import json
+          import sys
+          response = json.load(sys.stdin)
+          fields = ("claimed", "delivered", "retryable", "stateUpdateErrors")
+          if any(type(response.get(name)) is not int or response[name] < 0 for name in fields):
+              sys.exit("Invalid referral worker response")
+          print("Referral push summary:", {name: response[name] for name in fields})
+          if response["stateUpdateErrors"] > 0:
+              sys.exit("Referral push acknowledgements failed; inspect outbox logs")
+          '
