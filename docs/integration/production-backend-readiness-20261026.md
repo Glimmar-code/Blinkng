@@ -1,6 +1,6 @@
 # BLINK — Live Supabase referral and community activation, 26 October 2026
 
-The connected BLINK production project `jhwgifrlxwspoedxjaly` received **seven** controlled, versioned migrations. All returned success, and the active schema, trigger and grants were checked with read-only follow-up SQL.
+The connected BLINK production project `jhwgifrlxwspoedxjaly` received **eight** controlled, versioned migrations. All returned success, and the active schema, trigger and grants were checked with read-only follow-up SQL.
 
 | Actual hosted version | Change | Live state |
 | --- | --- | --- |
@@ -11,6 +11,7 @@ The connected BLINK production project `jhwgifrlxwspoedxjaly` received **seven**
 | `20261026054503` | Referral milestone Coin engine + discovery-open analytics | Trigger and policy installed; **Coin payouts disabled** |
 | `20261026054537` | Community creation, join/request, invite, leave and owner/moderator RPCs | Functions exposed to authenticated roles with RLS; anonymous mutations denied |
 | `20261026054750` | Private referral-velocity fraud review | Private review table + detection trigger enabled |
+| `20261026055226` | Private referral risk-review referrer index | Covers abuse-review owner foreign-key lookups |
 
 Every hosted version is recorded as a matching versioned SQL file in `supabase/migrations/`. **No paid Supabase branch or project was created.** Existing referrals/community rows were empty before activation; no user accounts or app media were deleted, and the existing Auth profile-creation trigger was preserved.
 
