@@ -9,6 +9,7 @@ import javax.swing.JFileChooser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,6 +63,9 @@ fun DesktopChannelDetail(
     var draft by remember(channel.id) { mutableStateOf("") }
 
     var muted by remember(channel.id) { mutableStateOf(false) }
+    var showScheduled by remember(channel.id) { mutableStateOf(false) }
+    var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var unread by remember(channel.id) { mutableStateOf(0) }
     var showStats by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
@@ -76,6 +80,8 @@ fun DesktopChannelDetail(
             followers = state.client.channelFollowerCount(channel.id)
             muted = state.client.isChannelMuted(channel.id)
             updates = state.client.channelUpdates(channel.id)
+            unread = runCatching { state.client.channelUnreadCount(channel.id) }.getOrDefault(0)
+            runCatching { state.client.markChannelSeen(channel.id) }
             error = null
         } catch (e: Exception) {
             error = e.message ?: "Unable to load channel."
@@ -104,7 +110,8 @@ fun DesktopChannelDetail(
             TextButton(onClick = onBack) { Text("‹ Channels") }
             Column(Modifier.weight(1f)) {
                 Text(channel.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("$followers followers", style = MaterialTheme.typography.labelMedium)
+                Text("$followers followers" + if (unread > 0) " · $unread new" else "",
+                    style = MaterialTheme.typography.labelMedium)
             }
             TextButton(onClick = {
                 scope.launch {
@@ -120,6 +127,14 @@ fun DesktopChannelDetail(
                     catch (e: Exception) { error = e.message }
                 }
             }) { Text("Analytics") }
+            if (admin) TextButton(onClick = {
+                scope.launch {
+                    try {
+                        scheduled = state.client.scheduledChannelUpdates(channel.id)
+                        showScheduled = true
+                    } catch (e: Exception) { error = e.message }
+                }
+            }) { Text("Scheduled") }
             TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
                 Text("Refresh")
             }
@@ -154,7 +169,7 @@ fun DesktopChannelDetail(
                         runCatching { state.client.signedChannelMedia(it) }.getOrNull()
                     }
                 }
-                Card(Modifier.fillMaxWidth()) {
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(channel.name, fontWeight = FontWeight.Bold)
                         if (update.pinned) Text("📌 Pinned announcement",
@@ -352,6 +367,31 @@ fun DesktopChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        if (showScheduled) {
+            AlertDialog(
+                onDismissRequest = { showScheduled = false },
+                title = { Text("Scheduled updates") },
+                text = {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (scheduled.isEmpty()) item { Text("No scheduled announcements.") }
+                        items(scheduled, key = { it.first }) { entry ->
+                            Column {
+                                Text(entry.second)
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        try {
+                                            state.client.cancelScheduledChannelUpdate(entry.first)
+                                            scheduled = state.client.scheduledChannelUpdates(channel.id)
+                                        } catch (e: Exception) { error = e.message }
+                                    }
+                                }) { Text("Cancel scheduled update") }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showScheduled = false }) { Text("Close") } }
+            )
         }
         if (showStats) {
             AlertDialog(
