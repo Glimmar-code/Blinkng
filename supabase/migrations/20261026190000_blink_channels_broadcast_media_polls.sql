@@ -1,3 +1,15 @@
+-- destructive-change-reviewed
+-- Reviewed operations are limited to dropping blink_channel_updates_page during
+-- initial creation in THIS SAME migration, replacing it with a privacy-filtered
+-- return shape; and dropping the temporary, same-migration body CHECK before
+-- adding the expanded media/poll CHECK. No existing community/membership rows
+-- or existing production functions are dropped.
+-- rollback-plan: First disable new channel routes and revoke EXECUTE on the
+-- blink_channel_* RPCs; stop channel-media uploads. Existing communities
+-- remain unchanged. Preserve any new channel updates/polls/media for export
+-- before considering a later reviewed down migration; do NOT drop or empty
+-- tables/buckets automatically because that would destroy users' posts.
+
 -- BLINK Channels: additive production contract, isolated CI verified.
 -- Reuses existing community and membership records without migrating or deleting them.
 -- Private media, per-user notification settings, polls, analytics and moderation.
