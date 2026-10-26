@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.example.data.repository.BlinkChannelMediaService
+import com.example.data.repository.BlinkChannelStatusShare
+import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.delay
 
 import androidx.activity.compose.BackHandler
@@ -91,6 +93,12 @@ fun BlinkChannelDetail(
     var reports by remember(channel.id) { mutableStateOf<List<BlinkChannelReport>>(emptyList()) }
     var reportingUpdate by remember(channel.id) { mutableStateOf<String?>(null) }
     var reportReason by remember(channel.id) { mutableStateOf("Spam or misleading information") }
+    var shareUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var sendChatUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var sendChannelUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var postStatusUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var channelsToForward by remember(channel.id) { mutableStateOf<List<BlinkCommunity>>(emptyList()) }
+    var info by remember(channel.id) { mutableStateOf<String?>(null) }
     var showStats by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
@@ -220,6 +228,9 @@ fun BlinkChannelDetail(
                 }
             }
             if (loading) item { CircularProgressIndicator(Modifier.padding(20.dp)) }
+            if (!info.isNullOrBlank()) item {
+                Text(info.orEmpty(), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary)
+            }
             if (!error.isNullOrBlank()) item {
                 Text(error.orEmpty(), Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.error)
@@ -307,12 +318,7 @@ fun BlinkChannelDetail(
                         }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             item { TextButton(onClick = {
-                                val message = "${channel.name} — BLINK Channel\n${update.body}"
-                                context.startActivity(Intent.createChooser(
-                                    Intent(Intent.ACTION_SEND).setType("text/plain")
-                                        .putExtra(Intent.EXTRA_TEXT, message),
-                                    "Forward channel update"
-                                ))
+                                shareUpdate = update
                             }) { Text("Forward ↗") } }
                             item {
                                 TextButton(onClick = { reportingUpdate = update.id }) { Text("Report") }
@@ -451,6 +457,133 @@ fun BlinkChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        shareUpdate?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { shareUpdate = null },
+                title = { Text("Share Channel update") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            sendChatUpdate = selected
+                        }) { Text("Send to a BLINK chat") }
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            scope.launch {
+                                try {
+                                    channelsToForward = backend.discover().filter { target ->
+                                        val role = backend.myChannelRole(target.id)
+                                        role == "owner" || role == "moderator"
+                                    }
+                                    sendChannelUpdate = selected
+                                } catch (e: Exception) { error = e.message }
+                            }
+                        }) { Text("Forward to another Channel") }
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            postStatusUpdate = selected
+                        }) { Text("Share to my BLINK Status") }
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            val message = "${channel.name} — BLINK Channel\\n" +
+                                BlinkChannelStatusShare.publicUrl(channel.id, selected.id)
+                            runCatching {
+                                context.startActivity(Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND).setType("text/plain")
+                                        .putExtra(Intent.EXTRA_TEXT, message),
+                                    "Share channel update"
+                                ))
+                            }.onFailure { error = "Couldn't open the Android share sheet." }
+                        }) { Text("Share to another app") }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { shareUpdate = null }) { Text("Close") } }
+            )
+        }
+        sendChatUpdate?.let { selected ->
+            val currentService = remember { SupabaseService() }
+            BlinkUserPickerSheet(
+                title = "Forward to a BLINK chat",
+                onDismiss = { sendChatUpdate = null },
+                searchProfiles = { q, limit, afterUsername, afterId ->
+                    currentService.searchProfilesPage(q, limit, afterUsername, afterId)
+                },
+                onSelectUser = { account ->
+                    sendChatUpdate = null
+                    scope.launch {
+                        saving = true
+                        try {
+                            val preview = selected.body.take(240).ifBlank { "Channel update" }
+                            val link = BlinkChannelStatusShare.publicUrl(channel.id, selected.id)
+                            currentService.sendMessage(
+                                account.username,
+                                "Forwarded from ${channel.name}: $preview\\n$link"
+                            ).getOrThrow()
+                            info = "Sent to @${account.username}"
+                            error = null
+                        } catch (e: Exception) { error = e.message }
+                        finally { saving = false }
+                    }
+                }
+            )
+        }
+        sendChannelUpdate?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { sendChannelUpdate = null },
+                title = { Text("Forward to a Channel") },
+                text = {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (channelsToForward.isEmpty()) item {
+                            Text("You must be an administrator of a Channel to forward updates.")
+                        }
+                        items(channelsToForward, key = { it.id }) { target ->
+                            TextButton(onClick = {
+                                sendChannelUpdate = null
+                                scope.launch {
+                                    saving = true
+                                    try {
+                                        val sharedText = "Forwarded from ${channel.name}\\n" +
+                                            selected.body.take(4500) + "\\n" +
+                                            BlinkChannelStatusShare.publicUrl(channel.id, selected.id)
+                                        backend.publishRichUpdate(
+                                            channelId = target.id,
+                                            body = sharedText,
+                                            forwardedFrom = selected.id
+                                        )
+                                        info = "Forwarded to ${target.name}"
+                                        error = null
+                                    } catch (e: Exception) { error = e.message }
+                                    finally { saving = false }
+                                }
+                            }) { Text(target.name) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { sendChannelUpdate = null }) { Text("Close") } }
+            )
+        }
+        postStatusUpdate?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { postStatusUpdate = null },
+                title = { Text("Share this update to BLINK Status?") },
+                text = { Text("A preview card with the original Channel attribution will appear on your Status.") },
+                dismissButton = { TextButton(onClick = { postStatusUpdate = null }) { Text("Cancel") } },
+                confirmButton = {
+                    TextButton(enabled = !saving, onClick = {
+                        postStatusUpdate = null
+                        scope.launch {
+                            saving = true
+                            try {
+                                BlinkChannelStatusShare.publish(channel.id, channel.name, selected)
+                                info = "Shared to your BLINK Status"
+                                error = null
+                            } catch (e: Exception) { error = e.message }
+                            finally { saving = false }
+                        }
+                    }) { Text("Post to Status") }
+                }
+            )
         }
         if (reportingUpdate != null) {
             AlertDialog(
