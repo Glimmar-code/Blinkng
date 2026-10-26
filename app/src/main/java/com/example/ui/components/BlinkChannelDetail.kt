@@ -72,7 +72,8 @@ fun BlinkChannelDetail(
     channel: BlinkCommunity,
     backend: BlinkCommunityRepository,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialUpdateId: String? = null
 ) {
     val scope = rememberCoroutineScope()
     var updates by remember(channel.id) { mutableStateOf<List<BlinkChannelUpdate>>(emptyList()) }
@@ -141,10 +142,23 @@ fun BlinkChannelDetail(
     val admin = role == "owner" || role == "moderator"
     val following = admin || role == "follower"
     val updatesListState = rememberLazyListState()
-    // Like a broadcast conversation, opening a channel reveals its newest update.
-    LaunchedEffect(channel.id, loading, updates.lastOrNull()?.id) {
+    // Open exactly the shared announcement, if it is still in recent history.
+    // Don't yank a reader away from older updates when new messages arrive.
+    LaunchedEffect(channel.id, loading, initialUpdateId) {
         if (!loading && updates.isNotEmpty()) {
-            updatesListState.scrollToItem(updates.size)
+            val targetIndex = initialUpdateId?.let { target ->
+                updates.indexOfFirst { it.id == target }
+            } ?: -1
+            if (targetIndex >= 0) {
+                val leadingItems = 1 +
+                    (if (info.isNullOrBlank()) 0 else 1) +
+                    (if (error.isNullOrBlank()) 0 else 1)
+                updatesListState.scrollToItem(leadingItems + targetIndex)
+            } else if (initialUpdateId == null) {
+                updatesListState.scrollToItem(updates.size)
+            } else {
+                info = "The linked announcement is not available in recent Channel history."
+            }
         }
     }
 
