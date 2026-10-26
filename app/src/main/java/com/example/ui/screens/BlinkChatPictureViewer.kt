@@ -10,6 +10,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -98,13 +101,16 @@ internal fun BlinkChatPictureViewer(
     var verticalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var viewerHeightPx by remember { mutableFloatStateOf(1200f) }
     var draggingPicture by remember(message.id) { mutableStateOf(false) }
+    val elasticActivation = with(LocalDensity.current) { 110.dp.toPx() }
+    val quickFlickMin = with(LocalDensity.current) { 28.dp.toPx() }
+    val quickFlickVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
     val animatedVerticalDrag by animateFloatAsState(
-        targetValue = verticalDrag,
+        targetValue = BlinkElasticGesturePhysics.visualDistance(verticalDrag, elasticActivation),
         animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
         label = "chat_photo_vertical_drag"
     )
     val animatedHorizontalDrag by animateFloatAsState(
-        targetValue = horizontalDrag,
+        targetValue = BlinkElasticGesturePhysics.visualDistance(horizontalDrag, elasticActivation),
         animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
         label = "chat_photo_horizontal_drag"
     )
@@ -218,6 +224,7 @@ internal fun BlinkChatPictureViewer(
                             awaitFirstDown(requireUnconsumed = false)
                             var travelX = 0f
                             var travelY = 0f
+                            val velocityTracker = VelocityTracker()
                             var multiTouch = false
                             var previousPinchDistance = 0f
                             var previousCentroid: Offset? = null
@@ -243,6 +250,7 @@ internal fun BlinkChatPictureViewer(
                                 } else if (active.size == 1) {
                                     val change = active.first()
                                     val delta = change.position - change.previousPosition
+                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
                                     if (delta.getDistance() > 0f) draggingPicture = true
                                     if (zoom > BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
                                         pan += delta
@@ -264,15 +272,37 @@ internal fun BlinkChatPictureViewer(
                                 }
                             } while (event.changes.any { it.pressed })
                             if (!multiTouch) {
-                                when (BlinkChatMediaGesturePolicy.action(
+                                val direction = BlinkChatMediaGesturePolicy.action(
                                     travelX, travelY,
                                     BlinkChatMediaGesturePolicy.SWIPE_THRESHOLD_DP.dp.toPx(),
                                     zoom, hasPrevious, hasNext
-                                )) {
-                                    BlinkChatMediaSwipe.DISMISS -> onDismiss()
-                                    BlinkChatMediaSwipe.NEXT -> onNext()
-                                    BlinkChatMediaSwipe.PREVIOUS -> onPrevious()
-                                    BlinkChatMediaSwipe.NONE -> Unit
+                                )
+                                val speed = velocityTracker.calculateVelocity()
+                                val horizontalIntent = kotlin.math.abs(travelX) >
+                                    kotlin.math.abs(travelY) * 1.25f
+                                val verticalIntent = kotlin.math.abs(travelY) >
+                                    kotlin.math.abs(travelX) * 1.25f
+                                val nextByFlick = zoom <= 1.05f && horizontalIntent &&
+                                    travelX < 0f && hasNext &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        travelX, speed.x, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
+                                    )
+                                val previousByFlick = zoom <= 1.05f && horizontalIntent &&
+                                    travelX > 0f && hasPrevious &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        travelX, speed.x, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
+                                    )
+                                val dismissByFlick = zoom <= 1.05f && verticalIntent &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        travelY, speed.y, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
+                                    )
+                                when {
+                                    direction == BlinkChatMediaSwipe.DISMISS || dismissByFlick -> onDismiss()
+                                    direction == BlinkChatMediaSwipe.NEXT || nextByFlick -> onNext()
+                                    direction == BlinkChatMediaSwipe.PREVIOUS || previousByFlick -> onPrevious()
                                 }
                             }
                             draggingPicture = false
