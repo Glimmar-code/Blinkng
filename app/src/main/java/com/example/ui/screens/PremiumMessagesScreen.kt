@@ -478,19 +478,22 @@ private fun Modifier.observeLeftSwipeToClose(
         val tracker = VelocityTracker()
         tracker.addPosition(down.uptimeMillis, down.position)
         var committed = false
+        var childHandled = false
         while (true) {
-            // Passive observer: do not consume taps, message replies, lists or text selection.
-            val event = awaitPointerEvent(PointerEventPass.Initial)
+            // Final pass lets a photo carousel or child swipe claim its own gesture.
+            // This observer never consumes pointer changes from the conversation.
+            val event = awaitPointerEvent(PointerEventPass.Final)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (change.pressed && change.isConsumed) childHandled = true
             tracker.addPosition(change.uptimeMillis, change.position)
             val horizontal = change.position.x - down.position.x
             val vertical = change.position.y - down.position.y
             val leftIntent = horizontal < 0f && -horizontal > abs(vertical) * 1.35f
             if (change.pressed) {
-                if (leftIntent) onDragProgress(horizontal)
+                if (!childHandled && leftIntent) onDragProgress(horizontal)
                 else onDragProgress(0f)
             } else {
-                committed = leftIntent && BlinkElasticGesturePhysics.shouldCommit(
+                committed = !childHandled && leftIntent && BlinkElasticGesturePhysics.shouldCommit(
                     horizontal, tracker.calculateVelocity().x, thresholdPx,
                     thresholdPx * 0.36f, thresholdPx * 14.5f
                 )
