@@ -154,7 +154,7 @@ exception when others then
   raise warning 'BLINK_REFERRAL_HOOK_FAILURE SQLSTATE=%', SQLSTATE;
   return new;
 end;
-$;
+$$;
 revoke all on function public.blink_capture_signup_referral() from public, anon, authenticated;
 drop trigger if exists zz_blink_signup_referral on auth.users;
 create trigger zz_blink_signup_referral
@@ -186,7 +186,7 @@ exception when others then
   raise warning 'BLINK_REFERRAL_HOOK_FAILURE SQLSTATE=%', SQLSTATE;
   return new;
 end;
-$;
+$$;
 revoke all on function public.blink_notify_confirmed_referral_profile() from public, anon, authenticated;
 drop trigger if exists zz_blink_notify_referral_on_profile on public.profiles;
 create trigger zz_blink_notify_referral_on_profile
