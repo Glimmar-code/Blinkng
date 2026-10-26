@@ -418,7 +418,9 @@ fun FeedReferenceStatsRow(
             }
         }
         Surface(
-            modifier = Modifier.weight(1f).height(64.dp).testTag("feed_coins_card"),
+            modifier = Modifier.weight(1f).height(64.dp)
+                .clickable(role = Role.Button, onClick = onCoinsClick)
+                .testTag("feed_coins_card"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
@@ -440,7 +442,7 @@ fun FeedReferenceStatsRow(
                     modifier = Modifier.size(32.dp)
                         .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(8.dp))
                         .clickable(role = Role.Button, onClick = onCoinsClick)
-                        .semantics { contentDescription = "Get BLINK Coins" }
+                        .semantics { contentDescription = "Open Coins & Wallet" }
                         .testTag("feed_add_coins"),
                     contentAlignment = Alignment.Center
                 ) {
