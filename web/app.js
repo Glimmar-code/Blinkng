@@ -987,15 +987,37 @@
     return response;
   }
 
+  function marketOnlyFeedWarning(category,text){
+    const categoryKey=String(category||'').trim().toLowerCase();
+    if(['marketplace','market','buy & sell','for sale','selling'].includes(categoryKey))
+      return 'Product listings must be created in BLINK Market.';
+    const copy=String(text||'').trim();
+    const salePhrase=/(^|[^a-z])(for sale|selling (?:this|my|a|an)|available for (?:purchase|sale)|dm to (?:buy|order)|buy now|order now|price is)([^a-z]|$)/i;
+    const nairaPrice=/(₦|NGN\s*)\s*[0-9]/i;
+    return salePhrase.test(copy)&&nairaPrice.test(copy)
+      ? 'This appears to be a product advertisement. Please list it in BLINK Market instead.'
+      : '';
+  }
+
   function openPostComposer(){
     const draft=storageGet(draftKey(),'');
-    modal('Create post',`<form id="post-form" class="form-stack"><textarea class="field" name="text" maxlength="8000" placeholder="What's happening on campus?">${esc(draft)}</textarea><div class="form-grid"><select class="field" name="audience"><option>Everyone</option><option>Followers</option></select><select class="field" name="category"><option>Campus Life</option><option>Education</option><option>Entertainment</option><option>Marketplace</option><option>Sports</option><option>Technology</option></select></div><input class="field" name="tags" maxlength="500" placeholder="Tags, comma separated"><input class="field" name="location" maxlength="160" placeholder="Location (optional)"><label class="checkbox"><input type="checkbox" name="reel"> Publish as Reel</label><label class="btn" style="text-align:center">Attach image/video<input class="hidden" id="post-media-file" type="file" accept="image/*,video/*"></label><div id="media-name" class="muted small"></div><button type="submit" class="btn primary">Publish</button><div id="post-msg"></div></form>`);
+    modal('Create post',`<form id="post-form" class="form-stack"><textarea class="field" name="text" maxlength="8000" placeholder="What's happening on campus?">${esc(draft)}</textarea><div class="form-grid"><select class="field" name="audience"><option>Everyone</option><option>Followers</option></select><select class="field" name="category"><option>Campus Life</option><option>Education</option><option>Entertainment</option><option>Sports</option><option>Technology</option></select></div><div class="side-card"><strong>Product sales belong in BLINK Market</strong><p class="muted small">Regular Feed posts are for campus updates, not selling products.</p><button type="button" class="btn small-btn" id="post-open-market">Create a Market listing</button></div><div id="post-market-warning" class="error" role="alert" hidden></div><input class="field" name="tags" maxlength="500" placeholder="Tags, comma separated"><input class="field" name="location" maxlength="160" placeholder="Location (optional)"><label class="checkbox"><input type="checkbox" name="reel"> Publish as Reel</label><label class="btn" style="text-align:center">Attach image/video<input class="hidden" id="post-media-file" type="file" accept="image/*,video/*"></label><div id="media-name" class="muted small"></div><button type="submit" class="btn primary">Publish</button><div id="post-msg"></div></form>`);
     const form=document.getElementById('post-form');
     const file=document.getElementById('post-media-file');
     const mediaName=document.getElementById('media-name');
     const submit=form.querySelector('button[type="submit"]');
     let editedMedia=null;
-    form.elements.text.oninput=e=>storageSet(draftKey(),e.target.value);
+    const marketWarning=document.getElementById('post-market-warning');
+    document.getElementById('post-open-market').onclick=()=>{closeModal();navigate('/market');};
+    function updateMarketWarning(){
+      const warning=marketOnlyFeedWarning(form.elements.category.value,form.elements.text.value);
+      marketWarning.textContent=warning;
+      marketWarning.hidden=!warning;
+      return warning;
+    }
+    form.elements.text.oninput=e=>{storageSet(draftKey(),e.target.value);updateMarketWarning();};
+    form.elements.category.onchange=updateMarketWarning;
+    updateMarketWarning();
     file.onchange=async()=>{
       try{
         editedMedia=null;
@@ -1018,13 +1040,16 @@
       submit.disabled=true;
       msg.innerHTML='<span class="muted">Publishing…</span>';
       try{
+        const text=String(f.get('text')||'').trim();
+        const restricted=marketOnlyFeedWarning(f.get('category'),text);
+        if(restricted)throw new Error(restricted);
+        // Reject disallowed Market advertisements before uploading media.
         let mediaUrl='',videoUrl='',images=[];
         if(media){
           const kind=validateMediaFile(media);
           mediaUrl=await uploadPublicFile('post-media',media,'posts');
           if(kind.isVideo)videoUrl=mediaUrl;else images=[mediaUrl];
         }
-        const text=String(f.get('text')||'').trim();
         if(!text&&!media)throw new Error('Add text or media.');
         const body={
           user_id:uid(),text,caption:text,type:videoUrl?'video':images.length?'image':'text',
