@@ -56,6 +56,32 @@ async function publicPreview(url: URL): Promise<Preview> {
   const host = url.hostname.toLowerCase();
   const fallback: Preview = { url: url.href, provider: host, title: host, description: url.href.slice(0, 220), image: "" };
   if (!allowedHosts.has(host)) return fallback;
+  // BLINK URLs use the existing visibility-filtered public content lookup.
+  // Do not scrape private, removed or followers-only posts from the database.
+  if (host === "blink.com.ng" || host === "www.blink.com.ng") {
+    const post = url.pathname.match(/^\\/(post|reel)\\/([0-9a-f-]{36})\\/?$/i);
+    const profile = url.pathname.match(/^\\/@([a-z0-9._-]{2,30})\\/?$/i);
+    const type = post?.[1]?.toLowerCase() || (profile ? "profile" : "");
+    const id = post?.[2] || profile?.[1] || "";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    if (type && id && supabaseUrl) {
+      try {
+        const api = new URL("/functions/v1/share-preview", supabaseUrl);
+        api.searchParams.set("format", "json");
+        api.searchParams.set("type", type);
+        api.searchParams.set("id", id);
+        const result = await fetch(api, { redirect: "manual", signal: AbortSignal.timeout(3000) });
+        if (result.ok) {
+          const preview = await result.json() as Record<string, unknown>;
+          return {
+            ...fallback, title: clean(String(preview.title || host), 160),
+            description: clean(String(preview.description || ""), 240),
+            image: allowedUrl(String(preview.image || ""))?.href || ""
+          };
+        }
+      } catch { /* Safe fallback below. */ }
+    }
+  }
   try {
     const response = await fetch(url, {
       method: "GET", redirect: "manual", signal: AbortSignal.timeout(3500),
