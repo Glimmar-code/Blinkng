@@ -59,7 +59,7 @@ class BlinkElasticSwipeInstrumentedTest {
         }
         rule.onNodeWithTag("surface").performTouchInput {
             down(center)
-            moveBy(Offset(240f, 0f), delayMillis = 120L)
+            moveBy(Offset(size.width * .42f, 0f), delayMillis = 120L)
             up()
         }
         rule.onNodeWithTag("count").assertTextEquals("1")
@@ -80,7 +80,7 @@ class BlinkElasticSwipeInstrumentedTest {
         }
         rule.onNodeWithTag("child").performTouchInput {
             down(center)
-            moveBy(Offset(240f, 0f), delayMillis = 120L)
+            moveBy(Offset(size.width * .42f, 0f), delayMillis = 120L)
             up()
         }
         rule.onNodeWithTag("count").assertTextEquals("0")
