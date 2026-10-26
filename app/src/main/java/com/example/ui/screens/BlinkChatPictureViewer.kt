@@ -29,6 +29,7 @@ import androidx.compose.ui.input.pointer.awaitPointerEvent
 import com.blinkng.shared.BlinkChatMediaGesturePolicy
 import com.blinkng.shared.BlinkChatMediaSwipe
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,6 +93,7 @@ internal fun BlinkChatPictureViewer(
     var pan by remember(message.id) { mutableStateOf(Offset.Zero) }
     var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
     var verticalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var viewerHeightPx by remember { mutableFloatStateOf(1200f) }
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
@@ -176,8 +178,10 @@ internal fun BlinkChatPictureViewer(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false
     )) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha =
-            BlinkChatMediaGesturePolicy.backdropAlpha(verticalDrag, 1200f)))) {
+        Box(Modifier.fillMaxSize()
+            .onSizeChanged { viewerHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+            .background(Color.Black.copy(alpha =
+                BlinkChatMediaGesturePolicy.backdropAlpha(verticalDrag, viewerHeightPx)))) {
             AsyncImage(
                 model = message.attachedImageUrl,
                 contentDescription = "Full-size shared photo",
@@ -185,7 +189,8 @@ internal fun BlinkChatPictureViewer(
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer {
                         rotationZ = rotateDegrees.toFloat()
-                        val dismissFraction = (kotlin.math.abs(verticalDrag) / 1600f).coerceIn(0f, .18f)
+                        val dismissFraction = (kotlin.math.abs(verticalDrag) /
+                            viewerHeightPx).coerceIn(0f, .18f)
                         scaleX = zoom * (1f - dismissFraction)
                         scaleY = zoom * (1f - dismissFraction)
                         translationX = pan.x + horizontalDrag
