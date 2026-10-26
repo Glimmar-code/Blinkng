@@ -31,6 +31,7 @@ create table public.notifications (
  target_id uuid,
  text text, sub_text text,
  is_read boolean not null default false,
+ created_at timestamptz not null default now(),
  metadata jsonb not null default '{}'::jsonb
 );
 create table public.blink_communities (
