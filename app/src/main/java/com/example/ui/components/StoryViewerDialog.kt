@@ -410,6 +410,7 @@ fun StoryViewerDialog(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.Black.copy(alpha = 0.65f)
                 ) {
+                    Column {
                     Text(
                         text = currentStory.caption,
                         color = Color.White,
@@ -417,6 +418,12 @@ fun StoryViewerDialog(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
+                    BlinkRichLinkPreview(
+                        text = currentStory.caption,
+                        compact = true,
+                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+                    )
+                    }
                 }
             }
         }

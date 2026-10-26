@@ -812,6 +812,7 @@ internal fun DesktopCommentsPanel(state: DesktopAppState, postId: String) {
                                 }
                             }
                             Text(comment.content, fontSize = 13.sp)
+                            DesktopRichLinkPreview(comment.content, compact = true)
                         }
                     }
                 }
@@ -882,7 +883,10 @@ fun ReelsScreen(state: DesktopAppState) {
             Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     VerifiedName(reel.authorName, reel.authorVerified)
-                    reel.caption?.takeIf(String::isNotBlank)?.let { Text(it) }
+                    reel.caption?.takeIf(String::isNotBlank)?.let {
+                        Text(it)
+                        DesktopRichLinkPreview(it, compact = true)
+                    }
                     Surface(
                         modifier = Modifier.fillMaxWidth().height(320.dp),
                         shape = RoundedCornerShape(16.dp),
@@ -3546,7 +3550,10 @@ fun ProfileScreen(state: DesktopAppState) {
                                 }
                             }
                         }
-                        profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }
+                        profile.bio?.takeIf(String::isNotBlank)?.let {
+                            Text(it)
+                            DesktopRichLinkPreview(it, compact = true)
+                        }
                         HorizontalDivider()
                         Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
                             Stat("Posts", profile.postsCount.toString())
@@ -4117,6 +4124,11 @@ internal fun DesktopFeedPostCard(
                     )
                 }
             }
+
+            DesktopRichLinkPreview(
+                text = body,
+                modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp)
+            )
 
             if (mediaUrls.isNotEmpty()) {
                 Row(

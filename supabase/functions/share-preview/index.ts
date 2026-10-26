@@ -1,5 +1,5 @@
-const SHARE_ORIGIN = "https://my-app.com";
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.aistudio.blink.appvtwo";
+const SHARE_ORIGIN = "https://blink.com.ng";
+const PLAY_STORE_URL = "https://blink.com.ng/download/";
 const ALLOWED_TYPES = new Set(["profile", "post", "reel"]);
 
 function firstKeyFromJsonEnv(name: string): string {
@@ -54,6 +54,10 @@ function findTypeAndId(url: URL): { type: string; id: string } | null {
   const qId = (url.searchParams.get("id") || "").trim();
   if (ALLOWED_TYPES.has(qType) && qId) return { type: qType, id: qId };
 
+  // Public profile share links use /@username, not /profile/username.
+  if (/^\/@[^/]+\/?$/.test(url.pathname)) {
+    return { type: "profile", id: decodeURIComponent(url.pathname.slice(2).replace(/\/$/, "")) };
+  }
   const segments = url.pathname.split("/").filter(Boolean).map((v) => decodeURIComponent(v));
   for (let i = 0; i < segments.length - 1; i++) {
     const type = segments[i].toLowerCase();
@@ -75,7 +79,9 @@ type Preview = {
 
 async function buildPreview(type: string, id: string): Promise<Preview | null> {
   if (id.length > 128) return null;
-  const canonicalUrl = `${SHARE_ORIGIN}/${type}/${encodeURIComponent(id)}`;
+  const canonicalUrl = type === "profile"
+    ? `${SHARE_ORIGIN}/@${encodeURIComponent(id.replace(/^@+/, ""))}`
+    : `${SHARE_ORIGIN}/${type}/${encodeURIComponent(id)}`;
 
   if (type === "profile") {
     const selector = isUuid(id)

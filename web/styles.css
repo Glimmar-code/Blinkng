@@ -77,3 +77,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @keyframes blink-feed-pulse{50%{opacity:.4}}
 .feed .post-actions button:focus-visible,.feed .post-head button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.feed-skeleton-line,.feed-skeleton-media{animation:none}}
+
+
+/* BLINK universal rich link card: safe HTML-first fallback, lazy metadata upgrade. */
+.rich-link-card{display:flex;flex-direction:column;gap:4px;margin:9px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--border,rgba(127,127,127,.35));background:var(--card,rgba(127,127,127,.08));color:inherit;text-decoration:none;overflow:hidden;max-width:100%;min-width:0}
+.rich-link-card:hover,.rich-link-card:focus-visible{border-color:var(--primary,#7475ff);outline-offset:2px}
+.rich-link-host{color:var(--primary,#7475ff);font-size:12px;font-weight:600;word-break:break-word}
+.rich-link-title{font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.rich-link-description{font-size:12px;line-height:1.4;opacity:.72;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rich-link-card img{display:block;max-height:165px;width:100%;object-fit:cover;border-radius:8px}
+.bubble .rich-link-card{max-width:min(100%,330px);background:rgba(127,127,127,.12)}
+.reel-overlay .rich-link-card{max-width:320px;background:rgba(0,0,0,.72);border-color:rgba(255,255,255,.3);color:#fff}

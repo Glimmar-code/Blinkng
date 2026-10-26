@@ -1,3 +1,13 @@
+## 2026-10-26 — Staged universal link previews (NOT production verified)
+
+- **Shared contract:** `BlinkRichLinks` recognizes safe HTTP(S) URLs and distinguishes actual BLINK domains from impostor names. Android and Windows reuse this policy.
+- **Android:** The same async, cached rich-link card appears in chat (honouring the existing chat toggle), Feed, comments, Reel captions, Story captions, Market item details, Connect bios and public profile website cards. No remote scripts or embedded autoplay.
+- **Windows:** Equivalent rich cards are provided in chat, Feed, comments, Reels and profile biographies. There is no desktop chat-preview preference UI or synced Android toggle yet; this MUST be reconciled before shipping full preference parity.
+- **Web:** HTML-escaped initial URL cards across Feed, comments, Reels, Stories and messages. Cards are upgraded lazily from read-only metadata via `textContent`, never injected remote HTML.
+- **Backend staging only:** New HTTPS-only allowlisted `link-metadata` Edge Function, 3.5-second timeout, 128 KiB page cap, no redirect/cookie/authorization forwarding, bounded in-memory cache, safe host-only fallback on unsupported domains. Public BLINK share metadata reuses existing privacy-filtered `share-preview` endpoint; fixes placeholder canonical domain and profile link routing.
+- **Limitations:** Only the first HTTP(S) link in each text surface receives a card. Arbitrary/untrusted host metadata and in-app iframe/video playback are intentionally disabled; host cards remain clickable. End-to-end deployed rich metadata, visibility filtering, large-font layout, network tests, private chat settings parity, Android builds and Windows packaging remain UNVERIFIED. No actual deployment, merge to main or release has occurred.
+- **Release hold:** A safe free staging environment must verify both Edge Functions before production, and current-head Android/Windows/web checks and visual device tests must pass.
+
 ## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
 
 - **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.

@@ -626,6 +626,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                             !(message.messageType == "image" &&
                                                 message.content in setOf("Image", "Photo"))) {
                                             Text(message.content)
+                                            DesktopRichLinkPreview(message.content, compact = true)
                                         }
                                     }
                                     if (message.reactionCounts.isNotEmpty()) {
