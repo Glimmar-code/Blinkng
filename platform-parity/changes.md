@@ -1369,6 +1369,13 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 
 - **Main reconciliation:** On the conflict-resolution branch, retained the newer main profile features (including the owner Refer & Grow entry, initial tab/deep link behavior and current profile handlers) while removing only the redundant second cover/identity/trust surface. This is still a draft PR; no production merge or deployment.
 
+## 2026-10-25 — Inbox compose entry uses existing conversation chooser
+
+- **Android:** The Messages compose action now opens the already-implemented `New conversation` dialog instead of silently navigating directly to Search. Its existing actions lead to student lookup and groups/invitations, without altering server contracts, identity, media or permissions.
+- **Windows:** The desktop app retains its platform-specific messaging and invitation navigation rather than reproducing an Android-only alert. Verify Windows new-chat and invite actions in current-head desktop tests before release.
+- **Parity:** User outcome is to start a direct conversation or manage group invitations; this is a platform-specific navigation repair, not a new backend feature. No Windows-side code or shared API change is introduced. This note is not runtime verification.
+
+**PARITY-EXCEPTION: android-inbox-compose-existing-dialog-20261025** — Android's Messages screen now opens its already-existing native Material `New conversation` chooser via `showMessageComposeOptions`. Windows does not render this Android-only dialog; its existing desktop new-chat and group-invitation routes provide the equivalent user actions. No shared API, data model, authorization or feature semantics change. Verify those routes in desktop runtime tests.
 
 ## 2026-10-26 — Refer & Grow push reliability (Testlab only)
 - **Shared backend:** tightened the server-only referral push worker acknowledgement contract. Retries now correctly preserve transient delivery skips and report a stale/non-persisted outbox lease as an error. Hardened the scheduled outbox drain's response validation.
