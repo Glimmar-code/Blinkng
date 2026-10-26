@@ -2118,11 +2118,17 @@ private fun PremiumChatDetail(
 
     viewedImageMessage?.let { requestedImage ->
         val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
-        val normalPictures = remember(conversation.messages,historicalViewerPhotos) {
-            (historicalViewerPhotos.ifEmpty { conversation.messages }).filter {
-                !it.imageViewOnce && !it.deletedForEveryone &&
-                    !it.attachedImageUrl.isNullOrBlank()
-            }
+        val normalPictures = remember(conversation.messages, historicalViewerPhotos) {
+            // Include both paginated history and current messages, without duplicate rows.
+            // Sorted ascending for an intuitive left-to-right conversation gallery.
+            (conversation.messages + historicalViewerPhotos)
+                .distinctBy { it.id }
+                .filter {
+                    !it.imageViewOnce && !it.deletedForEveryone &&
+                        !it.attachedImageUrl.isNullOrBlank()
+                }
+                .sortedWith(compareBy<ChatMessage> { it.rawTimestamp }
+                    .thenBy { it.imageAlbumPosition })
         }
         val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
         if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
@@ -2177,6 +2183,8 @@ private fun PremiumChatDetail(
                 },
                 hasPrevious = pictureIndex > 0,
                 hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                photoIndex = pictureIndex + 1,
+                totalPhotos = normalPictures.size,
                 onPrevious = {
                     if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
                 },
