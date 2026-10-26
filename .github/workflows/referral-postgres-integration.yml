@@ -6,6 +6,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/tests/referral_postgres_*'
+      - 'supabase/tests/referral_fraud_boost_assertions.pgfixture'
       - 'supabase/functions/blink-referral-push-worker/**'
       - 'supabase/tests/referral-push-worker-contract.test.mjs'
       - '.github/workflows/referral-postgres-integration.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/tests/referral_postgres_*'
+      - 'supabase/tests/referral_fraud_boost_assertions.pgfixture'
       - 'supabase/functions/blink-referral-push-worker/**'
       - 'supabase/tests/referral-push-worker-contract.test.mjs'
   workflow_dispatch:
@@ -65,8 +67,12 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025190000_blink_group_invitation_requests.sql
       - name: Apply source-attributed viewability impression migration
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261025201000_referral_viewability_impressions.sql
+      - name: Pause temporary discovery during unresolved referral fraud review
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026110000_referral_review_pauses_discovery_boost.sql
       - name: Verify one-referrer credit, RLS, privacy, duplicate prevention and recommendations
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_postgres_assertions.pgfixture
+      - name: Verify risk flags, suspended discovery and restoration after cleared review
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/referral_fraud_boost_assertions.pgfixture
       - name: Verify push retry and idempotent acknowledgements
         run: node --test supabase/tests/referral-push-worker-contract.test.mjs
       - name: Confirm live Supabase is unchanged
