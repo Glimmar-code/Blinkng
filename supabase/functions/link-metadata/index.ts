@@ -59,7 +59,7 @@ async function publicPreview(url: URL): Promise<Preview> {
   // BLINK URLs use the existing visibility-filtered public content lookup.
   // Do not scrape private, removed or followers-only posts from the database.
   if (host === "blink.com.ng" || host === "www.blink.com.ng") {
-    const post = url.pathname.match(/^\/(post|reel)\/([0-9a-f-]{36})\/?$/i);
+    const post = url.pathname.match(/^\/(post|reel|market)\/([0-9a-f-]{36})\/?$/i);
     const profile = url.pathname.match(/^\/@([a-z0-9._-]{2,30})\/?$/i);
     const type = post?.[1]?.toLowerCase() || (profile ? "profile" : "");
     const id = post?.[2] || profile?.[1] || "";
@@ -79,7 +79,9 @@ async function publicPreview(url: URL): Promise<Preview> {
             image: allowedUrl(String(preview.image || ""))?.href || ""
           };
         }
-      } catch { /* Safe fallback below. */ }
+        // A private or removed BLINK entity never falls through to public page scraping.
+        return fallback;
+      } catch { return fallback; }
     }
   }
   try {
