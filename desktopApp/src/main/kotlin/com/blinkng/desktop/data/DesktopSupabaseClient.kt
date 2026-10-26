@@ -2240,6 +2240,26 @@ class DesktopSupabaseClient(
             id
         }
 
+    /**
+     * Resolve a direct-chat target through the same server ACL used by Messages.
+     * Never guess conversation IDs from usernames or create local fake conversations.
+     */
+    suspend fun getOrCreateDirectConversationForShare(username: String): String =
+        withContext(Dispatchers.IO) {
+            val clean = username.trim().removePrefix("@")
+            require(clean.isNotBlank()) { "Choose a recipient." }
+            requireSession()
+            val response = postObject(
+                "/rest/v1/rpc/get_or_create_direct_conversation",
+                JSONObject().put("p_receiver_username", clean)
+            ) as? JSONObject ?: throw IllegalStateException("Unable to create direct conversation.")
+            val id = response.optString("value").trim().removeSurrounding("\"")
+            require(runCatching { UUID.fromString(id) }.isSuccess) {
+                "Recipient conversation was not verified."
+            }
+            id
+        }
+
     suspend fun sendMessage(
         conversationId: String,
         content: String,

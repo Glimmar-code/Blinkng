@@ -855,6 +855,7 @@ fun ReelsScreen(state: DesktopAppState) {
     var featuredIndex by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var reelToShare by remember { mutableStateOf<DesktopFeedPost?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun reloadReels() {
@@ -979,15 +980,21 @@ fun ReelsScreen(state: DesktopAppState) {
                     }
                     Text("${reel.viewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
-                        onClick = {
-                            DesktopShareLinkManager.copyToClipboard(reel.id, isReel = true)
-                        },
+                        onClick = { reelToShare = reel },
                     ) {
-                        Text("Copy link")
+                        Text("Share Reel")
                     }
                 }
             }
         }
+    }
+    reelToShare?.let { reel ->
+        DesktopBlinkShareDialog(
+            state = state,
+            postId = reel.id,
+            isReel = true,
+            onDismiss = { reelToShare = null }
+        )
     }
 }
 

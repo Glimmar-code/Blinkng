@@ -94,6 +94,7 @@ fun DesktopUserProfileDialog(
     var loading by remember(initialProfile.id) { mutableStateOf(true) }
     var busy by remember(initialProfile.id) { mutableStateOf(false) }
     var selectedTab by remember(initialProfile.id) { mutableStateOf("Posts") }
+    var shareReelId by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var searchActive by remember(initialProfile.id) { mutableStateOf(false) }
     var searchQuery by remember(initialProfile.id) { mutableStateOf("") }
     var showNotifications by remember(initialProfile.id) { mutableStateOf(false) }
@@ -447,8 +448,17 @@ fun DesktopUserProfileDialog(
                                                 ).padding(8.dp),
                                                 verticalArrangement = Arrangement.SpaceBetween
                                                 ) {
-                                                Text("▶", fontSize = 24.sp,
-                                                    color = MaterialTheme.colorScheme.primary)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("▶", fontSize = 24.sp,
+                                                        color = Color.White)
+                                                    Text("↗", modifier = Modifier.clickable {
+                                                        shareReelId = reel.id
+                                                    }, color = Color.White, fontSize = 20.sp)
+                                                }
                                                 Text(
                                                     reel.caption?.takeIf(String::isNotBlank)
                                                         ?: reel.text.orEmpty().ifBlank { "Reel" },
@@ -508,6 +518,13 @@ fun DesktopUserProfileDialog(
             }
         }
     }
+    }
+
+    shareReelId?.let { id ->
+        DesktopBlinkShareDialog(
+            state = state, postId = id, isReel = true,
+            onDismiss = { shareReelId = null }
+        )
     }
 
     if (showThemePicker && isMe) {
