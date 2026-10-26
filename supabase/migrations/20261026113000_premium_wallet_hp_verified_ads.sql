@@ -190,6 +190,7 @@ declare
   v_limit integer;
   v_cash integer;
   v_verify_coins integer;
+  v_valid_days integer;
   v_cash_enabled boolean;
   v_milestones jsonb;
   v_packs jsonb;
@@ -216,6 +217,8 @@ begin
     from private.blink_economy_config where key='blue_verification_cash_ngn';
   select coalesce(int_value,3000)::integer into v_verify_coins
     from private.blink_economy_config where key='blue_verification_coin_cost';
+  select coalesce(int_value,30)::integer into v_valid_days
+    from private.blink_economy_config where key='blue_verification_valid_days';
   select coalesce(bool_value,false) into v_cash_enabled
     from private.blink_economy_config where key='cash_checkout_enabled';
   select coalesce(json_value,'[]'::jsonb) into v_milestones
@@ -238,6 +241,7 @@ begin
     'rewarded_milestones',coalesce(v_milestones,'[]'::jsonb),
     'blue_verification_cash_ngn',coalesce(v_cash,800),
     'blue_verification_coin_cost',coalesce(v_verify_coins,3000),
+    'blue_verification_valid_days',coalesce(v_valid_days,30),
     'coin_packs',coalesce(v_packs,'[]'::jsonb),
     'cash_checkout_enabled',coalesce(v_cash_enabled,false),
     'ads_today',coalesce(v_ads_today,0),
