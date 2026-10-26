@@ -13,9 +13,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -324,8 +322,7 @@ internal fun BlinkChatPictureViewer(
                     }
                 }
             }
-        }
-        if (hasPrevious || hasNext) {
+            if (hasPrevious || hasNext) {
             Row(Modifier.align(Alignment.Center).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 IconButton(onClick=onPrevious,enabled=hasPrevious) {
@@ -337,6 +334,7 @@ internal fun BlinkChatPictureViewer(
                         tint=if(hasNext) Color.White else Color.Transparent)
                 }
             }
+            }
         }
     }
     editingPhoto?.let { saved ->
@@ -344,9 +342,11 @@ internal fun BlinkChatPictureViewer(
             originalUri=saved,
             onEdited={ result ->
                 editingPhoto=null
-                confirmation="edit_saved"
-                // The edited image is a new private copy; the original chat message stays intact.
-                // The user can save the new image using the system photo action after confirmation.
+                scope.launch {
+                    runCatching { saveLocalChatPhotoToGallery(context,result) }
+                        .onSuccess { savedUri=it; downloadError=null; confirmation="edit_saved" }
+                        .onFailure { downloadError="Edited picture could not be saved to gallery." }
+                }
             },
             onDismiss={editingPhoto=null}
         )
@@ -379,6 +379,38 @@ internal fun BlinkChatPictureViewer(
         )
     }
 }
+
+/** Save a newly edited private copy without changing the original chat picture. */
+private suspend fun saveLocalChatPhotoToGallery(context: Context, localUri: Uri): Uri =
+    withContext(Dispatchers.IO) {
+        require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+        require(localUri.scheme == "file")
+        val file = java.io.File(localUri.path.orEmpty()).canonicalFile
+        require(file.isFile && file.length() in 1..(30*1024*1024))
+        require(file.parentFile == context.cacheDir.canonicalFile &&
+            file.name.startsWith("blink-edited-"))
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME,
+                "BLINK_edited_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/BLINK")
+            put(MediaStore.Images.Media.IS_PENDING,1)
+        }
+        val resolver = context.contentResolver
+        val saved = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values)
+            ?: throw IOException("Gallery unavailable")
+        try {
+            resolver.openOutputStream(saved)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            } ?: throw IOException("Could not open gallery destination")
+            values.clear(); values.put(MediaStore.Images.Media.IS_PENDING,0)
+            resolver.update(saved,values,null,null)
+            saved
+        } catch (error: Throwable) {
+            resolver.delete(saved,null,null)
+            throw error
+        }
+    }
 
 /** User-triggered MediaStore write; never changes the remote or original image. */
 private suspend fun saveChatPhotoToGallery(
