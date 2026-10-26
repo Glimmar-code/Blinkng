@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -23,6 +24,7 @@ import com.example.data.supabase.BlinkReferralClient
 import kotlinx.coroutines.delay
 
 /** Optional public profile picker for the one immutable signup referrer. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun BlinkReferrerPicker(
     selected: BlinkReferralSuggestion?,
