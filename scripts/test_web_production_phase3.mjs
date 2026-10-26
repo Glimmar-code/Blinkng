@@ -27,9 +27,9 @@ const cache={
   match:async key=>stored.get(typeof key==='string'?key:key.url),
   put:async(key,value)=>{putCalls.push(typeof key==='string'?key:key.url);stored.set(typeof key==='string'?key:key.url,value);}
 };
-const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell','blink-web-v27-approved-blink-logo'];
+const cacheNames=['blink-web-v23-homepage-phase1','blink-web-v25-production-safe-cache','other-website-assets','blink-web-v26-mobile-lean-shell','blink-web-v28-link-previews'];
 const caches={
-  open:async name=>{assert.ok(name==='blink-web-v27-approved-blink-logo');return cache;},
+  open:async name=>{assert.ok(name==='blink-web-v28-link-previews');return cache;},
   keys:async()=>cacheNames,
   delete:async name=>{deleted.push(name);return true;}
 };
