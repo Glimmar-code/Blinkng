@@ -1592,6 +1592,26 @@ private fun PremiumChatDetail(
         onPresenceChange("online")
     }
 
+    var galleryPermissionVersion by remember { mutableIntStateOf(0) }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        galleryPermissionVersion++
+    }
+    fun askForGalleryPermission() {
+        galleryPermissionLauncher.launch(
+            when {
+                android.os.Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                )
+                android.os.Build.VERSION.SDK_INT >= 33 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES
+                )
+                else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        )
+    }
     val photoAlbumPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
@@ -2700,52 +2720,47 @@ private fun PremiumChatDetail(
         )
     }
     if (showAttachmentSheet) {
-        AttachmentSheet(
+        BlinkChatMediaGallerySheet(
             palette = palette,
-            onImage = {
+            permissionVersion = galleryPermissionVersion,
+            onRequestPermission = { askForGalleryPermission() },
+            onSystemPhotoPicker = {
                 selectedPhotoQuality = BlinkChatImageQuality.STANDARD
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
                 photoAlbumPicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
+            },
+            onPhotosSelected = { uris ->
+                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                pendingPhotoReview = uris.take(10).map { ChatPhotoReviewItem(uri = it) }
+                gallerySelectedPhotoId = pendingPhotoReview.firstOrNull()?.id
+                showAttachmentSheet = false
             },
             onCamera = {
                 showAttachmentSheet = false
                 requestChatCamera()
             },
+            onDocument = {
+                showAttachmentSheet = false
+                documentPicker.launch(arrayOf("*/*"))
+            },
+            onAudio = {
+                showAttachmentSheet = false
+                audioPicker.launch("audio/*")
+            },
+            onVideo = {
+                showAttachmentSheet = false
+                videoPicker.launch("video/*")
+            },
             onSticker = {
                 showAttachmentSheet = false
                 showStickers = true
             },
-            onOriginalPhotos = {
-                selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
-                showAttachmentSheet = false
-                onPresenceChange("uploading")
-                photoAlbumPicker.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                )
-            },
             onViewOnce = {
                 viewOncePictureChoice = true
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
                 imagePicker.launch("image/*")
-            },
-            onVideo = {
-                showAttachmentSheet = false
-                onPresenceChange("uploading")
-                videoPicker.launch("video/*")
-            },
-            onAudio = {
-                showAttachmentSheet = false
-                onPresenceChange("uploading")
-                audioPicker.launch("audio/*")
-            },
-            onDocument = {
-                showAttachmentSheet = false
-                onPresenceChange("uploading")
-                documentPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showAttachmentSheet = false }
         )
