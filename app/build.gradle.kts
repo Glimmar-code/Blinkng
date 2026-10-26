@@ -282,6 +282,8 @@ dependencies {
   implementation(libs.retrofit)
   implementation(libs.media3.exoplayer)
   implementation(libs.media3.ui)
+  implementation(libs.media3.transformer)
+  implementation(libs.media3.effect)
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.messaging)
   implementation(libs.firebase.analytics)
