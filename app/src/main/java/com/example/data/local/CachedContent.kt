@@ -92,7 +92,8 @@ data class MessageOutboxEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "attempt_count") val attemptCount: Int = 0,
     @ColumnInfo(name = "next_retry_at") val nextRetryAt: Long = 0L,
-    @ColumnInfo(name = "last_error") val lastError: String = ""
+    @ColumnInfo(name = "last_error") val lastError: String = "",
+    @ColumnInfo(name = "reply_to_message_id") val replyToMessageId: String? = null
 )
 
 @Dao
@@ -112,10 +113,10 @@ interface CachedContentDao {
     @Query("SELECT * FROM cached_messages WHERE owner_username = :ownerUsername ORDER BY conversation_id ASC, display_order ASC")
     fun observeMessages(ownerUsername: String): Flow<List<CachedMessageEntity>>
 
-    @Query("SELECT COUNT(*) FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 5")
+    @Query("SELECT COUNT(*) FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 1000")
     fun observePendingOutboxCount(ownerUsername: String): Flow<Int>
 
-    @Query("SELECT * FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 5 AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
+    @Query("SELECT * FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 1000 AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
     suspend fun pendingOutbox(ownerUsername: String, now: Long, limit: Int): List<MessageOutboxEntity>
 
     @Query("UPDATE cached_conversations SET owner_username = :ownerUsername WHERE owner_username = ''")
@@ -242,7 +243,7 @@ interface CachedContentDao {
         CachedMessageEntity::class,
         MessageOutboxEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class BlinkDatabase : RoomDatabase() {
@@ -316,6 +317,12 @@ abstract class BlinkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE message_outbox ADD COLUMN reply_to_message_id TEXT DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): BlinkDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -323,7 +330,7 @@ abstract class BlinkDatabase : RoomDatabase() {
                     BlinkDatabase::class.java,
                     "blink_offline_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .build()
                     .also { instance = it }
