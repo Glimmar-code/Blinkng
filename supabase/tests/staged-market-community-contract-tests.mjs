@@ -81,6 +81,10 @@ export async function stagedMarketCommunityContractTests() {
       values ('Campus Life','Selling this laptop for NGN 150000')`),
       'BLINK_MARKET_LISTING_ONLY');
     await rejects(() => db.exec(`
+      insert into public.feed_posts(category,text)
+      values ('Campus Life','Selling my backpack for NGN 5000')`),
+      'BLINK_MARKET_LISTING_ONLY');
+    await rejects(() => db.exec(`
       insert into public.feed_posts(category,text,caption)
       values ('Campus Life','Campus photos','For sale NGN 4500')`),
       'BLINK_MARKET_LISTING_ONLY');
