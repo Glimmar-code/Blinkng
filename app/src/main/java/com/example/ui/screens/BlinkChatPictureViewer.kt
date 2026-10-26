@@ -110,6 +110,7 @@ internal fun BlinkChatPictureViewer(
     )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var stickerEditingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
     var savingSticker by remember(message.id) { mutableStateOf(false) }
     var settingGroupIcon by remember(message.id) { mutableStateOf(false) }
@@ -460,6 +461,28 @@ internal fun BlinkChatPictureViewer(
             }
         }
     }
+    stickerEditingPhoto?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { editedUri ->
+                stickerEditingPhoto = null
+                savingSticker = true
+                scope.launch {
+                    val outcome = runCatching {
+                        val id = SupabaseService().getCurrentUserId()
+                            ?: error("Sign in to save stickers.")
+                        BlinkStickerLibrary.create(context, id, editedUri)
+                    }
+                    downloadError = outcome.fold(
+                        onSuccess = { "Sticker saved in your private library." },
+                        onFailure = { it.message ?: "Couldn't save sticker." }
+                    )
+                    savingSticker = false
+                }
+            },
+            onDismiss = { stickerEditingPhoto = null }
+        )
+    }
     editingPhoto?.let { saved ->
         BlinkUniversalPhotoEditor(
             originalUri=saved,
@@ -499,7 +522,7 @@ internal fun BlinkChatPictureViewer(
                 "group" ->
                     "Only group owners and admins can change this picture. It will be visible to group members."
                 "sticker" ->
-                    "Save a reusable copy in this device's private sticker library. Do not save someone else's private photo without permission."
+                    "Open the editor to crop, draw and add text before saving this private sticker. Do not reuse someone's private photo without permission."
                 "ai" ->
                     "BLINK AI may process the selected picture. It will be attached to a draft; nothing is sent until you press Send."
                 else -> "Your original picture in BLINK has not been changed."
@@ -508,21 +531,9 @@ internal fun BlinkChatPictureViewer(
                 if (confirmation=="download_required") {
                     downloadToGallery()
                 } else if (confirmation=="sticker") {
-                    val image = savedUri
-                    if (image != null) {
-                        savingSticker=true
-                        scope.launch {
-                            val outcome=runCatching {
-                                val id=SupabaseService().getCurrentUserId()
-                                    ?: error("Sign in to save stickers.")
-                                BlinkStickerLibrary.create(context,id,image)
-                            }
-                            downloadError=outcome.fold(
-                                onSuccess={ "Sticker saved. Open Attachments → Stickers to reuse." },
-                                onFailure={ it.message ?: "Couldn't save sticker." })
-                            savingSticker=false
-                        }
-                    }
+                    // Editing a private copy never alters the original received message.
+                    // The user explicitly completes the editor before the sticker is saved.
+                    stickerEditingPhoto = savedUri
                 } else if (confirmation=="ai") {
                     savedUri?.let(onAskBlinkAi)
                 } else if (confirmation=="group") {
