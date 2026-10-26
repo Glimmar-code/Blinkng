@@ -737,7 +737,7 @@
       return 'Product listings must be created in BLINK Market.';
     }
     const copy=String(text||'').trim();
-    const salePhrase=/(^|[^a-z])(for sale|selling this|available for purchase|dm to buy|buy now|order now|price is)([^a-z]|$)/i;
+    const salePhrase=/(^|[^a-z])(for sale|selling (?:this|my|a|an)|available for (?:purchase|sale)|dm to (?:buy|order)|buy now|order now|price is)([^a-z]|$)/i;
     const nairaPrice=/(₦|NGN\s*)\s*[0-9]/i;
     return salePhrase.test(copy)&&nairaPrice.test(copy)
       ? 'This appears to be a product advertisement. Please list it in BLINK Market instead.'
