@@ -267,7 +267,10 @@ class OfflineContentStore(context: Context) {
         )
     }
 
-    suspend fun enqueueMessage(localId: String, receiverUsername: String, content: String) {
+    suspend fun enqueueMessage(
+        localId: String, receiverUsername: String, content: String,
+        replyToMessageId: String? = null
+    ) {
         val owner = cachedOwnerUsername()
         if (owner.isBlank()) return
         dao.upsertOutbox(
@@ -276,7 +279,8 @@ class OfflineContentStore(context: Context) {
                 ownerUsername = owner,
                 receiverUsername = receiverUsername.trim(),
                 content = content,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                replyToMessageId = replyToMessageId?.takeIf(String::isNotBlank)
             )
         )
     }
