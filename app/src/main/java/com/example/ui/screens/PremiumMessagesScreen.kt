@@ -1564,8 +1564,12 @@ private fun PremiumChatDetail(
     fun cleanupReviewEdit(uri: Uri) {
         if (uri.scheme != "file") return
         val file = java.io.File(uri.path.orEmpty())
-        if (file.parentFile?.canonicalFile == context.cacheDir.canonicalFile &&
-            file.name.startsWith("blink-edited-")) {
+        val isEditorCopy = file.parentFile?.canonicalFile ==
+            context.cacheDir.canonicalFile && file.name.startsWith("blink-edited-")
+        val isCameraCapture = file.parentFile?.name == "blink-camera" &&
+            file.parentFile?.parentFile?.canonicalFile == context.cacheDir.canonicalFile &&
+            file.name.startsWith("blink-camera-")
+        if (isEditorCopy || isCameraCapture) {
             runCatching { file.delete() }
         }
     }
@@ -1587,6 +1591,57 @@ private fun PremiumChatDetail(
         }
         onPresenceChange("online")
     }
+    var cameraOutputFile by remember(conversation.id) {
+        mutableStateOf<java.io.File?>(null)
+    }
+    val captureChatPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val file = cameraOutputFile
+        if (success && file != null && file.isFile && file.length() > 0L) {
+            pendingPhotoReview = listOf(ChatPhotoReviewItem(uri = Uri.fromFile(file)))
+        } else {
+            file?.delete()
+        }
+        cameraOutputFile = null
+        onPresenceChange("online")
+    }
+    fun launchChatCamera() {
+        runCatching {
+            val directory = java.io.File(context.cacheDir, "blink-camera").apply {
+                mkdirs()
+            }
+            val file = java.io.File.createTempFile(
+                "blink-camera-", ".jpg", directory
+            )
+            cameraOutputFile = file
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.chatfiles", file
+            )
+            captureChatPhoto.launch(uri)
+        }.onFailure { failure ->
+            cameraOutputFile?.delete()
+            cameraOutputFile = null
+            Toast.makeText(
+                context, failure.message ?: "Camera is unavailable.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) launchChatCamera()
+        else Toast.makeText(context, "Camera permission is required.", Toast.LENGTH_SHORT).show()
+    }
+    fun requestChatCamera() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) launchChatCamera()
+        else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
     var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -2432,6 +2487,10 @@ private fun PremiumChatDetail(
                 photoAlbumPicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
+            },
+            onCamera = {
+                showAttachmentSheet = false
+                requestChatCamera()
             },
             onOriginalPhotos = {
                 selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
@@ -4132,6 +4191,7 @@ private fun ChatNotificationSettingsSheet(
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
+    onCamera: () -> Unit,
     onViewOnce: () -> Unit,
     onOriginalPhotos: () -> Unit,
     onVideo: () -> Unit,
@@ -4175,6 +4235,13 @@ private fun AttachmentSheet(
                 icon = Icons.Default.Image,
                 palette = palette,
                 onClick = onImage
+            )
+            AttachmentOption(
+                label = "Camera",
+                description = "Take a picture and review before sending",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onCamera
             )
             AttachmentOption(
                 label = "Original photos",
