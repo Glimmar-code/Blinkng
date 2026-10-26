@@ -207,6 +207,7 @@ fun CreatePostSheet(
     LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
+    var reelExporting by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
@@ -578,6 +579,10 @@ fun CreatePostSheet(
     }
 
     fun submit() {
+        if (reelExporting) {
+            Toast.makeText(context, "Complete or cancel Reel rendering first.", Toast.LENGTH_SHORT).show()
+            return
+        }
         // Older saved drafts may still contain the removed Marketplace category.
         if (BlinkPostGrowthTips.disallowedFeedCategory(category)) {
             Toast.makeText(context, BlinkPostGrowthTips.marketHint, Toast.LENGTH_LONG).show()
@@ -649,6 +654,10 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
+        if (reelExporting) {
+            Toast.makeText(context, "Complete Reel rendering before saving.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
             return
@@ -1006,11 +1015,17 @@ fun CreatePostSheet(
                     VideoComposerPreview(
                         uri = it,
                         onRemove = {
-                            if (!isSubmitting) {
+                            if (!isSubmitting && !reelExporting) {
                                 selectedVideo = null
                                 mode = "post"
                             }
-                        }
+                        },
+                        onEdited = { renderedUri ->
+                            // The publisher and draft store always use the actual rendered MP4.
+                            selectedVideo = renderedUri
+                            mode = "reel"
+                        },
+                        onExporting = { reelExporting = it }
                     )
                 }
 
@@ -2224,126 +2239,14 @@ private fun DraftCard(
 @Composable
 private fun VideoComposerPreview(
     uri: String,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onEdited: (String) -> Unit,
+    onExporting: (Boolean) -> Unit
 ) {
-    val context = LocalContext.current
-    val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
-            repeatMode = Player.REPEAT_MODE_ONE
-        }
-    }
-    var durationMs by remember(uri) { mutableLongStateOf(0L) }
-    var positionMs by remember(uri) { mutableLongStateOf(0L) }
-    var isPlaying by remember(uri) { mutableStateOf(true) }
-    var isMuted by remember(uri) { mutableStateOf(false) }
-    LaunchedEffect(player) {
-        while (true) {
-            durationMs = player.duration.coerceAtLeast(0L)
-            positionMs = player.currentPosition.coerceAtLeast(0L)
-            isPlaying = player.isPlaying
-            delay(150)
-        }
-    }
-    DisposableEffect(player) { onDispose { player.release() } }
-    fun formatElapsed(ms: Long): String {
-        val seconds = ms.coerceAtLeast(0L) / 1000
-        return "%02d:%02d".format(seconds / 60, seconds % 60)
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth().background(Color.Black)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .aspectRatio(9f / 16f)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xFF141414))
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        this.player = player
-                    }
-                },
-                update = { it.player = player },
-                modifier = Modifier.fillMaxSize()
-            )
-            IconButton(
-                onClick = onRemove,
-                modifier = Modifier.align(Alignment.TopEnd).padding(9.dp)
-                    .clip(CircleShape).background(Color.Black.copy(alpha = .55f))
-            ) {
-                Icon(Icons.Default.Close, "Remove reel video", tint = Color.White)
-            }
-        }
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF1E1E1E),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        player.seekTo((player.currentPosition - 5_000L).coerceAtLeast(0L))
-                    }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.Replay5, "Back five seconds", tint = Color.White)
-                    }
-                    IconButton(onClick = {
-                        player.seekTo(
-                            (player.currentPosition + 5_000L).coerceAtMost(
-                                durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
-                            )
-                        )
-                    }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.Forward5, "Forward five seconds", tint = Color.White)
-                    }
-                    Text(
-                        "${formatElapsed(positionMs)} / ${formatElapsed(durationMs)}",
-                        color = Color.White, fontSize = 11.sp,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1
-                    )
-                    IconButton(onClick = {
-                        isMuted = !isMuted
-                        player.volume = if (isMuted) 0f else 1f
-                    }, modifier = Modifier.size(40.dp)) {
-                        Icon(if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                            "Mute or unmute preview", tint = Color.White)
-                    }
-                    IconButton(onClick = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    }, modifier = Modifier.size(40.dp)) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            "Play or pause reel", tint = Color.White)
-                    }
-                }
-                // This actually scrubs the selected media, unlike a decorative timeline.
-                Slider(
-                    value = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
-                    onValueChange = { fraction ->
-                        if (durationMs > 0) player.seekTo((durationMs * fraction).toLong())
-                    },
-                    modifier = Modifier.fillMaxWidth().height(28.dp)
-                )
-            }
-        }
-        Text(
-            "Preview and seek · Add captions and audio below · Save draft before leaving",
-            color = Color.White.copy(alpha = .78f),
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 22.dp)
-        )
-    }
+    PremiumReelEditor(
+        uri = uri,
+        onRemove = onRemove,
+        onEdited = onEdited,
+        onExporting = onExporting
+    )
 }
