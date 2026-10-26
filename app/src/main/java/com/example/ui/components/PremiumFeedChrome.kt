@@ -446,6 +446,8 @@ fun FeedReferenceStatsRow(
                 Box(
                     modifier = Modifier.size(32.dp)
                         .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onCoinsClick)
+                        .semantics { contentDescription = "Add BLINK Coins, open Coins & Wallet" }
                         .testTag("feed_add_coins"),
                     contentAlignment = Alignment.Center
                 ) {
