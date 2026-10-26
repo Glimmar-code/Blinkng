@@ -155,7 +155,7 @@ fun DesktopChannelDetail(
                 ) { Text("Post") }
             }
         } else if (!following) {
-            Button(enabled = role != "pending" && !saving,
+            Button(enabled = role != "pending" && role != "banned" && !saving,
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 onClick = {
                     scope.launch {
@@ -167,7 +167,23 @@ fun DesktopChannelDetail(
                         finally { saving = false }
                     }
                 }
-            ) { Text(if (role == "pending") "Follow requested" else "Follow channel") }
+            ) { Text(when (role) { "pending" -> "Follow requested"; "banned" -> "Channel restricted"; else -> "Follow channel" }) }
+
+        } else if (role == "follower") {
+            TextButton(
+                enabled = !saving,
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                onClick = {
+                    scope.launch {
+                        saving = true
+                        try {
+                            state.client.leaveCommunity(channel.id)
+                            onBack()
+                        } catch (e: Exception) { error = e.message }
+                        finally { saving = false }
+                    }
+                }
+            ) { Text("Unfollow channel") }
         }
     }
 }
