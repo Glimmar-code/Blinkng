@@ -20,11 +20,27 @@ internal object BlinkReelPoster {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, localUri)
+            // Scale to the original source ratio instead of requesting a square frame.
+            // A video's EXIF/track rotation may reverse its display dimensions.
+            val sourceWidth = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
+            )?.toIntOrNull()?.coerceAtLeast(1) ?: MAX_EDGE
+            val sourceHeight = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
+            )?.toIntOrNull()?.coerceAtLeast(1) ?: MAX_EDGE
+            val rotation = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
+            )?.toIntOrNull() ?: 0
+            val width = if (rotation % 180 != 0) sourceHeight else sourceWidth
+            val height = if (rotation % 180 != 0) sourceWidth else sourceHeight
+            val ratio = (MAX_EDGE.toFloat() / maxOf(width, height)).coerceAtMost(1f)
+            val targetWidth = (width * ratio).toInt().coerceAtLeast(1)
+            val targetHeight = (height * ratio).toInt().coerceAtLeast(1)
             val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 retriever.getScaledFrameAtTime(
                     1_000_000L,
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    MAX_EDGE, MAX_EDGE
+                    targetWidth, targetHeight
                 )
             } else {
                 retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
