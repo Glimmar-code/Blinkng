@@ -1688,6 +1688,27 @@ private fun PremiumChatDetail(
         onPresenceChange("online")
     }
     var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
+    var scanningDocument by remember(conversation.id) { mutableStateOf(false) }
+    val documentScanPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { pages ->
+        if (pages.isNotEmpty() && !scanningDocument) {
+            scanningDocument = true
+            scrollScope.launch {
+                runCatching {
+                    com.example.media.BlinkChatDocumentScanner.fromPhotos(
+                        context, pages.take(10)
+                    )
+                }.onSuccess { pdf ->
+                    pendingFileReview = pdf to false
+                }.onFailure {
+                    Toast.makeText(context,
+                        it.message ?: "Cannot scan these pages.", Toast.LENGTH_LONG).show()
+                }
+                scanningDocument = false
+            }
+        }
+    }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingFileReview = uri to true
         onPresenceChange("online")
@@ -2776,6 +2797,12 @@ private fun PremiumChatDetail(
             onDocument = {
                 showAttachmentSheet = false
                 documentPicker.launch(arrayOf("*/*"))
+            },
+            onDocumentScan = {
+                showAttachmentSheet = false
+                if (!scanningDocument) documentScanPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             },
             onAudio = {
                 showAttachmentSheet = false
