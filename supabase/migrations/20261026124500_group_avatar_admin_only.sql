@@ -40,7 +40,7 @@ begin
   v_prefix := 'users/'||v_actor::text||'/avatar/';
   -- Match only HTTPS objects under the authenticated account's existing
   -- profile-media upload path. URL prefix and storage object are both checked.
-  if p_avatar_url !~ '^https://[^/]+/storage/v1/object/public/profile-media/' then
+  if p_avatar_url !~ '^https://jhwgifrlxwspoedxjaly[.]supabase[.]co/storage/v1/object/public/profile-media/' then
     return false;
   end if;
   v_object_path := split_part(p_avatar_url,'/storage/v1/object/public/profile-media/',2);
