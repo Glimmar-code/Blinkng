@@ -136,6 +136,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var reportReason by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
+    var viewedChatPhoto by remember(myUserId) { mutableStateOf<DesktopMessage?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var photoReviewItems by remember(myUserId) {
         mutableStateOf<List<DesktopSelectedPhoto>>(emptyList())
@@ -621,6 +622,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                                 contentScale = ContentScale.Fit,
                                                 modifier = Modifier.widthIn(max = 330.dp)
                                                     .heightIn(max = 270.dp)
+                                                    .clickable { viewedChatPhoto = message }
                                             )
                                         }
                                         if (message.content.isNotBlank() &&
@@ -1215,6 +1217,47 @@ fun MessagesScreen(state: DesktopAppState) {
                     onClick = { photoReviewItems = emptyList() }
                 ) { Text("Cancel") }
             }
+        )
+    }
+
+    viewedChatPhoto?.let { requested ->
+        val photo = messages.firstOrNull { it.id == requested.id } ?: requested
+        val normalPhotos = remember(messages) {
+            messages.filter { it.messageType == "image" && !it.imageViewOnce &&
+                !it.mediaUrl.isNullOrBlank() }
+        }
+        val index = normalPhotos.indexOfFirst { it.id == photo.id }
+        DesktopChatPictureViewer(
+            message = photo,
+            senderLabel = if (photo.senderId == myUserId) "You" else (selected?.title ?: "Student"),
+            hasPrevious = index > 0,
+            hasNext = index >= 0 && index < normalPhotos.lastIndex,
+            onPrevious = { if (index > 0) viewedChatPhoto = normalPhotos[index - 1] },
+            onNext = {
+                if (index in 0 until normalPhotos.lastIndex)
+                    viewedChatPhoto = normalPhotos[index + 1]
+            },
+            onReply = {
+                replyingTo = photo
+                viewedChatPhoto = null
+            },
+            onForward = {
+                forwardMessageId = photo.id
+                forwardUsername = ""
+                viewedChatPhoto = null
+            },
+            onStar = {
+                viewedChatPhoto = null
+                changeMessageControl(photo.conversationId) {
+                    state.client.setChatMessageStarred(photo.id, !photo.isStarred)
+                }
+            },
+            onDeleteForMe = {
+                deleteForEveryone = false
+                deleteMessage = photo
+                viewedChatPhoto = null
+            },
+            onClose = { viewedChatPhoto = null }
         )
     }
 
