@@ -1122,8 +1122,52 @@ private fun PremiumProfileTabs(
         if (isMe) Icons.Default.FavoriteBorder else Icons.Default.Storefront,
         if (isMe) Icons.Default.BookmarkBorder else Icons.Default.Info
     )
+    val density = LocalDensity.current
+    val tabActivation = with(density) { 76.dp.toPx() }
+    var rawTabDrag by remember(selectedTab) { mutableFloatStateOf(0f) }
+    var tabDragging by remember(selectedTab) { mutableStateOf(false) }
+    val tabVisual by animateFloatAsState(
+        targetValue = BlinkElasticGesturePhysics.visualDistance(rawTabDrag, tabActivation) * .32f,
+        animationSpec = if (tabDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ), label = "profileTabElastic"
+    )
     Row(
         modifier = Modifier.fillMaxWidth()
+            .graphicsLayer { translationX = tabVisual }
+            .pointerInput(selectedTab, tabs) {
+                var velocity = VelocityTracker()
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        velocity = VelocityTracker()
+                        tabDragging = true
+                        rawTabDrag = 0f
+                    },
+                    onHorizontalDrag = { change, delta ->
+                        rawTabDrag += delta
+                        velocity.addPosition(change.uptimeMillis, change.position)
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        val commit = BlinkElasticGesturePhysics.shouldCommit(
+                            rawTabDrag, velocity.calculateVelocity().x, tabActivation,
+                            28.dp.toPx(), 1100.dp.toPx()
+                        )
+                        if (commit) {
+                            val target = (selectedTab + if (rawTabDrag < 0f) 1 else -1)
+                                .coerceIn(0, tabs.lastIndex)
+                            if (target != selectedTab) onTabSelected(target)
+                        }
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    },
+                    onDragCancel = {
+                        rawTabDrag = 0f
+                        tabDragging = false
+                    }
+                )
+            }
             .padding(horizontal = 17.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
