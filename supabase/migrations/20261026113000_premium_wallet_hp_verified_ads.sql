@@ -11,6 +11,11 @@ revoke execute on function public.gift_blink_coins(uuid,bigint)
   from public, anon, authenticated;
 revoke execute on function public.gift_blink_coins_once(uuid,bigint,uuid)
   from public, anon, authenticated, service_role;
+-- Do not allow a direct RPC to create newly paid peer-to-peer Coin gifts.
+-- Existing paid orders are retained for lawful settlement/refund handling.
+revoke execute on function public.create_blink_paystack_gift_order(text,text,text)
+  from public, anon, authenticated;
+
 
 -- Gift HP = recipient XP level progress. Never spend or transfer Coin balances.
 insert into public.xp_rules(event_type,xp_amount,repeatable,daily_event_limit,enabled,description)
@@ -46,6 +51,8 @@ as $$
 declare
     v_sender uuid := auth.uid();
     v_existing public.blink_hp_gifts%rowtype;
+    v_first_lock bigint;
+    v_second_lock bigint;
     v_sent integer;
     v_received integer;
     v_awarded integer;
@@ -55,8 +62,16 @@ begin
     if p_receiver_id is null or p_receiver_id=v_sender or p_request_id is null
        or p_amount not in (20,50,100) then raise exception 'INVALID_HP_GIFT'; end if;
 
-    -- The sender lock serializes duplicate/concurrent limit checks and receipts.
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(v_sender::text)::bigint);
+    -- Lock both participants in deterministic order to avoid reciprocal-gift deadlocks
+    -- and concurrent daily-cap bypasses from multiple senders.
+    v_first_lock := least(pg_catalog.hashtext(v_sender::text)::bigint,
+                          pg_catalog.hashtext(p_receiver_id::text)::bigint);
+    v_second_lock := greatest(pg_catalog.hashtext(v_sender::text)::bigint,
+                              pg_catalog.hashtext(p_receiver_id::text)::bigint);
+    perform pg_catalog.pg_advisory_xact_lock(v_first_lock);
+    if v_second_lock <> v_first_lock then
+        perform pg_catalog.pg_advisory_xact_lock(v_second_lock);
+    end if;
     select * into v_existing from public.blink_hp_gifts where id=p_request_id;
     if found then
         if v_existing.sender_id is distinct from v_sender
@@ -76,8 +91,7 @@ begin
       and created_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC';
     if v_sent + p_amount > 100 then raise exception 'DAILY_HP_GIFT_LIMIT'; end if;
 
-    -- Serialize incoming HP too: concurrent senders cannot circumvent recipient limits.
-    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(p_receiver_id::text)::bigint);
+    -- Both sender/recipient were locked above; caps remain atomic.
     select coalesce(sum(amount),0)::integer into v_received
     from public.blink_hp_gifts
     where receiver_id=p_receiver_id
