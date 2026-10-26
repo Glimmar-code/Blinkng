@@ -942,7 +942,7 @@ class DesktopSupabaseClient(
         limit: Int = 60,
     ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
-            append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
+            append("/rest/v1/feed_posts?select=id,user_id,text,caption,link_url,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
@@ -2983,6 +2983,7 @@ class DesktopSupabaseClient(
         authorOnline = profile?.isOnline == true,
         text = row.optNullableString("text"),
         caption = row.optNullableString("caption"),
+        linkUrl = row.optNullableString("link_url"),
         imageUrl = row.optNullableString("image_url"),
         videoUrl = row.optNullableString("video_url"),
         images = row.optStringList("images"),
