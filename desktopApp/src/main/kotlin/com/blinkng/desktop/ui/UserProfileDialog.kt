@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -53,6 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.blinkng.shared.BlinkProfileThemes
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +100,8 @@ fun DesktopUserProfileDialog(
     var connectionKind by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var connectionProfiles by remember(initialProfile.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
+    var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
+    var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
 
     suspend fun reload() {
         loading = true
@@ -136,13 +143,31 @@ fun DesktopUserProfileDialog(
             .toList()
     }
 
+    val theme = BlinkProfileThemes.resolve(profile.profileTheme)
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(theme.accentArgb),
+            onPrimary = Color.Black,
+            background = Color(theme.bottomArgb),
+            onBackground = Color.White,
+            surface = Color(theme.cardArgb),
+            onSurface = Color.White,
+            surfaceVariant = Color(theme.cardArgb),
+            onSurfaceVariant = Color.White.copy(alpha = .78f),
+        )
+    ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(.88f).fillMaxHeight(.9f),
             shape = RoundedCornerShape(26.dp),
+            color = Color(theme.bottomArgb),
             tonalElevation = 8.dp,
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color(theme.topArgb), Color(theme.bottomArgb)))
+                )
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -174,8 +199,14 @@ fun DesktopUserProfileDialog(
                             Text(campus, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    if (isMe) {
+                        TextButton(onClick = {
+                            chosenTheme = BlinkProfileThemes.normalize(profile.profileTheme)
+                            showThemePicker = true
+                        }) { Text("Edit theme", color = Color.White) }
+                    }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Close")
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
@@ -190,7 +221,12 @@ fun DesktopUserProfileDialog(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         profile.bio?.takeIf(String::isNotBlank)?.let { bio ->
-                            item { Text(bio) }
+                            item {
+                                Surface(shape = RoundedCornerShape(18.dp),
+                                    color = Color(theme.cardArgb)) {
+                                    Text(bio, color = Color.White, modifier = Modifier.padding(14.dp))
+                                }
+                            }
                         }
 
                         item {
@@ -403,6 +439,49 @@ fun DesktopUserProfileDialog(
                 }
             }
         }
+    }
+    }
+
+    if (showThemePicker && isMe) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) showThemePicker = false },
+            title = { Text("Profile theme") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Other people will see your chosen colors.", fontSize = 12.sp)
+                    BlinkProfileThemes.all.forEach { item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .background(Color(item.cardArgb))
+                                .clickable { chosenTheme = item.id }
+                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.size(27.dp).clip(CircleShape).background(Color(item.topArgb))
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text(item.label, color = Color.White, modifier = Modifier.weight(1f))
+                            if (chosenTheme == item.id) {
+                                Text("✓", color = Color(item.accentArgb), fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true
+                        runCatching { state.client.saveProfileTheme(chosenTheme) }
+                            .onSuccess { profile = it; statusMessage = "Profile theme saved."; showThemePicker = false }
+                            .onFailure { statusMessage = it.message ?: "Unable to save theme." }
+                        busy = false
+                    }
+                }) { Text(if (busy) "Saving…" else "Save theme") }
+            },
+            dismissButton = { TextButton(onClick = { showThemePicker = false }) { Text("Cancel") } }
+        )
     }
 
     if (showNotifications) {
