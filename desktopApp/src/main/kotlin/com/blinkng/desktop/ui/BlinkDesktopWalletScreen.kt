@@ -257,7 +257,7 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                         fontWeight = FontWeight.Black)
                     Text("10 Coins per Ad", color = gold, fontSize = 30.sp,
                         fontWeight = FontWeight.Black)
-                    val max = policy.effectiveAdDailyLimit(verified)
+                    val max = policy.rewardedAdDailyLimit
                     Text("Ads watched today: " + adsToday + " / " + max, color = pale)
                     LinearProgressIndicator(
                         progress = { (adsToday.toFloat()/max.coerceAtLeast(1)).coerceIn(0f,1f) },
@@ -274,11 +274,9 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                     policy.rewardedMilestones.forEach { milestone ->
                         DesktopWalletAction(milestone.ads.toString() + " Ads",
                             milestone.totalCoins.toString() + " Coins Total" +
-                                if (!verified && milestone.ads == 15) " • Verified only"
-                                else if (adsToday >= milestone.ads) " • Already credited" else "",
-                            if (!verified && milestone.ads == 15) Icons.Rounded.Lock
-                            else Icons.Rounded.EmojiEvents
-                        ) { tab = if (milestone.ads == 15 && !verified) 3 else 2 }
+                                if (adsToday >= milestone.ads) " • Already credited" else "",
+                            Icons.Rounded.EmojiEvents
+                        ) { tab = 2 }
                     }
                 }
             }
@@ -288,7 +286,7 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                 DesktopWalletCard(card, edge) {
                     Text("Reward Center",fontSize = 26.sp,
                         fontWeight = FontWeight.Black,color = Color.White)
-                    Text("Watch ads, complete tasks and earn BLINK Coins.",color = pale)
+                    Text("Daily tasks earn BLINK Coins and level XP (HP).",color = pale)
                     Text("Ads completed today: " + adsToday, color = gold)
                     Text("Ad milestone Coins are credited automatically after server confirmation.",
                         color = pale)
@@ -300,10 +298,9 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                         fontWeight = FontWeight.Black,color = Color.White)
                     policy.rewardedMilestones.forEach { m ->
                         DesktopWalletAction("Watch " + m.ads + " Ads",
-                            if (!verified && m.ads == 15) "Locked • Verified users only"
-                            else if (adsToday >= m.ads) "Already credited • " + m.totalCoins + " total Coins"
+                            if (adsToday >= m.ads) "Already credited • " + m.totalCoins + " total Coins"
                             else adsToday.toString() + "/" + m.ads + " • " + m.totalCoins + " total Coins",
-                            Icons.Rounded.CardGiftcard) { tab = if (!verified && m.ads == 15) 3 else 1 }
+                            Icons.Rounded.CardGiftcard) { tab = 1 }
                     }
                 }
             }
@@ -316,7 +313,7 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                     else missions.forEach { mission ->
                         Text(mission.title, color = Color.White, fontWeight = FontWeight.SemiBold)
                         Text(mission.progress.toString() + "/" + mission.target + " • +" +
-                            mission.coinReward + " Coins • +" + mission.xpReward + " XP", color = pale)
+                            mission.coinReward + " Coins • +" + mission.xpReward + " level XP (HP)", color = pale)
                         LinearProgressIndicator(
                             progress = { mission.progressFraction },
                             modifier = Modifier.fillMaxWidth(), color = indigo)
