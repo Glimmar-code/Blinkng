@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -372,32 +374,44 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
-                .pointerInput(profile.id) {
+                .pointerInput(profile.id, overlayThresholdPx) {
+                    var rawDrag = 0f
+                    var tracker = VelocityTracker()
                     detectHorizontalDragGestures(
+                        onDragStart = {
+                            rawDrag = 0f
+                            tracker = VelocityTracker()
+                        },
                         onHorizontalDrag = { change, dragAmount ->
+                            // Keep the original left-to-close direction; resist overshooting.
+                            rawDrag = (rawDrag + dragAmount).coerceAtMost(0f)
+                            tracker.addPosition(change.uptimeMillis, change.position)
                             change.consume()
                             overlayScope.launch {
-                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtMost(0f))
+                                overlayOffset.snapTo(
+                                    BlinkElasticGesturePhysics.visualDistance(rawDrag, overlayThresholdPx)
+                                )
                             }
                         },
                         onDragEnd = {
+                            val commit = rawDrag < 0f && BlinkElasticGesturePhysics.shouldCommit(
+                                rawDrag, tracker.calculateVelocity().x, overlayThresholdPx,
+                                28.dp.toPx(), 1100.dp.toPx()
+                            )
                             overlayScope.launch {
-                                if (overlayOffset.value <= -overlayThresholdPx) {
-                                    onBack()
-                                } else {
-                                    overlayOffset.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
+                                if (commit) onBack()
+                                else overlayOffset.animateTo(0f, spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ))
                             }
                         },
                         onDragCancel = {
                             overlayScope.launch {
-                                overlayOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+                                overlayOffset.animateTo(0f, spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ))
                             }
                         }
                     )
