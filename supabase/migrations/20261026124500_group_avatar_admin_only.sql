@@ -13,7 +13,6 @@ declare
   v_actor uuid := auth.uid();
   v_prefix text;
   v_object_path text;
-  v_base text := rtrim(coalesce(current_setting('app.settings.supabase_url',true),''),'/');
 begin
   if v_actor is null then
     raise exception 'AUTH_REQUIRED' using errcode='42501';
