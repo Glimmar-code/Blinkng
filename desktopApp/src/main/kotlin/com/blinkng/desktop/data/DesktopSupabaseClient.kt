@@ -2055,6 +2055,12 @@ class DesktopSupabaseClient(
         }
     }
 
+    suspend fun setChatMessageStarred(messageId: String, starred: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_message_starred", JSONObject()
+                .put("p_message_id", messageId).put("p_starred", starred)))
+        }
+
     suspend fun setChatMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean =
         withContext(Dispatchers.IO) {
             rpcBoolean(postObject("/rest/v1/rpc/set_message_reaction", JSONObject()
