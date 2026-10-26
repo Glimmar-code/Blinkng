@@ -115,6 +115,7 @@ fun FeedScreen(
             stories = stories,
             userAvatar = userAvatar,
             onAddStoryClick = onAddStoryClick,
+            onCreateReelClick = onOpenCreatePost,
             onStoryClick = onStoryClick,
             onSearchClick = onSearchClick,
             onNotificationsClick = onOpenActivity,
