@@ -194,6 +194,7 @@ import com.example.ui.theme.BlinkMessageTheme
 import com.example.ui.theme.MessagePalette
 import com.example.ui.theme.MessageThemeMode
 import com.example.ui.theme.messagePalette
+import com.example.ui.theme.referenceChatPalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -384,7 +385,7 @@ fun PremiumMessagesScreen(
                             PremiumMessagesMasterDetail(
                                 conversations = conversations,
                                 activeConversation = displayedConversation,
-                                palette = palette,
+                                palette = referenceChatPalette(palette),
                                 isFullScreen = isConversationFullScreen,
                                 onFullScreenChange = onConversationFullScreenChange,
                                 onOpenConversation = onOpenConversation,
