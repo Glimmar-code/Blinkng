@@ -368,6 +368,69 @@ revoke all on function public.blink_channel_mute(uuid,boolean),
 grant execute on function public.blink_channel_mute(uuid,boolean),
  public.blink_channel_is_muted(uuid) to authenticated;
 
+
+-- A public channel can be previewed without following; notification/read
+-- cursors remain private to the signed-in viewer.
+create or replace function public.blink_channel_unread_count(p_channel_id uuid)
+returns integer language sql stable security definer set search_path=''
+as $
+ select case when public.blink_channel_can_read(p_channel_id) then
+  least(99, (select count(*)::integer from public.blink_channel_updates u
+   where u.channel_id=p_channel_id and u.removed_at is null
+     and (u.scheduled_at is null or u.scheduled_at<=now())
+     and u.created_at > coalesce((
+       select n.last_seen_at from public.blink_channel_notifications n
+       where n.channel_id=p_channel_id and n.user_id=auth.uid()),'-infinity'::timestamptz)
+  )) else 0 end;
+$;
+create or replace function public.blink_channel_mark_seen(p_channel_id uuid)
+returns boolean language plpgsql security definer set search_path=''
+as $
+begin
+ if not public.blink_channel_can_read(p_channel_id) then
+   raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
+ insert into public.blink_channel_notifications(channel_id,user_id,last_seen_at)
+   values(p_channel_id,auth.uid(),now())
+   on conflict(channel_id,user_id) do update set last_seen_at=excluded.last_seen_at;
+ return true;
+end
+$;
+create or replace function public.blink_channel_scheduled_page(p_channel_id uuid)
+returns table(id uuid,body text,scheduled_at timestamptz)
+language plpgsql stable security definer set search_path=''
+as $
+begin
+ if not public.blink_channel_is_admin(p_channel_id) then
+  raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
+ return query
+ select u.id,u.body,u.scheduled_at from public.blink_channel_updates u
+ where u.channel_id=p_channel_id and u.scheduled_at>now() and u.removed_at is null
+ order by u.scheduled_at asc limit 100;
+end
+$;
+create or replace function public.blink_channel_cancel_scheduled(p_update_id uuid)
+returns boolean language plpgsql security definer set search_path=''
+as $
+declare v_channel uuid;
+begin
+ select u.channel_id into v_channel from public.blink_channel_updates u
+ where u.id=p_update_id and u.scheduled_at>now() and u.removed_at is null;
+ if v_channel is null or not public.blink_channel_is_admin(v_channel) then
+  raise exception 'CHANNEL_ADMIN_REQUIRED' using errcode='42501'; end if;
+ update public.blink_channel_updates set removed_at=now()
+ where id=p_update_id;
+ return found;
+end
+$;
+revoke all on function public.blink_channel_unread_count(uuid),
+ public.blink_channel_mark_seen(uuid),
+ public.blink_channel_scheduled_page(uuid),
+ public.blink_channel_cancel_scheduled(uuid) from public,anon;
+grant execute on function public.blink_channel_unread_count(uuid),
+ public.blink_channel_mark_seen(uuid),
+ public.blink_channel_scheduled_page(uuid),
+ public.blink_channel_cancel_scheduled(uuid) to authenticated;
+
 revoke all on function public.blink_channel_updates_page(uuid,integer),
  public.blink_channel_publish_rich(uuid,text,text,text,text,jsonb,timestamptz,uuid),
  public.blink_channel_poll_vote(uuid,integer),
