@@ -46,6 +46,7 @@ data class DesktopProfile(
     val coverPhotoUrl: String? = null,
     val professionalHeadline: String? = null,
     val dailyStreak: Int = 0,
+    val profileTheme: String = "black",
 )
 
 data class DesktopProfileFollowerPoint(
