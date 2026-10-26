@@ -794,7 +794,7 @@ fun ProfileScreen(
     // EARN BLINK COIN — server-controlled rewarded economy
     // ================================================================
     if (showEarnCoinDialog && isMe) {
-        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday)
+        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday, profile.verificationBadge != VerificationBadge.NONE)
         val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
         val nextReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
 
