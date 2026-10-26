@@ -45,9 +45,12 @@ internal object BlinkChatAudioTrim {
                 "The selected audio range exceeds the recording."
             }
             extractor.seekTo(startMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-            muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-            val muxedTrack = muxer.addTrack(format)
-            muxer.start()
+            val writer = MediaMuxer(
+                output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            )
+            muxer = writer
+            val muxedTrack = writer.addTrack(format)
+            writer.start()
             val maxSize = if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
                 format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE).coerceIn(8192, 4 * 1024 * 1024)
             } else 1024 * 1024
@@ -67,15 +70,15 @@ internal object BlinkChatAudioTrim {
                     info.size = bytes
                     info.presentationTimeUs = sampleUs - originUs
                     info.flags = extractor.sampleFlags
-                    muxer.writeSampleData(muxedTrack, buffer, info)
+                    writer.writeSampleData(muxedTrack, buffer, info)
                     wrote = true
                 }
                 if (!extractor.advance()) break
             }
             require(wrote) { "No supported audio samples in the selected range." }
             // MP4/M4A metadata is finalized by stop(); validate only afterwards.
-            muxer.stop()
-            muxer.release()
+            writer.stop()
+            writer.release()
             muxer = null
             com.blinkng.shared.BlinkChatAttachmentKind.VOICE.verify(
                 "audio/mp4", output.length()
