@@ -19,6 +19,13 @@ data class BlinkChannelUpdate(
     val viewCount: Long = 0
 )
 
+data class BlinkChannelReport(
+    val id: String,
+    val updateId: String,
+    val reason: String,
+    val reviewed: Boolean,
+)
+
 object BlinkChannelPolicy {
     const val MAX_UPDATE_LENGTH = 5000
     const val MAX_POLL_QUESTION = 300
