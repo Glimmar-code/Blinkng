@@ -9,7 +9,6 @@
 -- migration generation, two-identity RLS tests, migration dry-run and mobile/
 -- Windows smoke tests. Anonymous clients never receive follower identities.
 
-begin;
 
 create table if not exists public.blink_channel_updates (
   id uuid primary key default gen_random_uuid(),
@@ -200,7 +199,6 @@ grant execute on function public.blink_channel_my_role(uuid),
 -- Apply after blink-channels-broadcast-staging.sql, ONLY in disposable local
 -- staging. Do NOT execute against production until RLS, storage, trigger and
 -- large-follower-count tests pass. DO NOT fabricate notifications or analytics.
-begin;
 
 alter table public.blink_channel_updates
   add column if not exists media_kind text not null default 'text',
