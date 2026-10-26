@@ -77,8 +77,9 @@ test('browser previews render three distinct links, safely, with no inline HTML'
 
 test('chat preview preference on Web is a server-authoritative per-account setting', () => {
   const js = read('web/app.js');
-  assert.match(js, /user_chat_privacy/);
-  assert.match(js, /p_allow_link_previews: !!enabled/);
-  assert.match(js, /if\(!privacy.available\) throw/);
+  const plugin = read('web/link-previews.js');
+  assert.match(plugin, /user_chat_privacy/);
+  assert.match(plugin, /p_allow_link_previews: !!enabled/);
+  assert.match(plugin, /if\(!privacy.available\) throw/);
   assert.match(js, /!m.deleted_for_everyone&&!viewOnce&&chatPreviewPrivacy.allowed/);
 });
