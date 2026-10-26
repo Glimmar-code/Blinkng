@@ -44,6 +44,8 @@ class BlinkAuthNarrowScreenTest {
         rule.onNodeWithTag("create_account_university").assertExists()
         rule.onNodeWithTag("create_account_password").assertExists()
         rule.onNodeWithTag("create_account_birthday").assertExists()
+        rule.onNodeWithText("Referred by (optional)").assertExists()
+        rule.onNodeWithText("Search name or @username").assertExists()
         rule.onNodeWithTag("create_account_submit").assertExists()
         rule.onNodeWithTag("create_account_google").assertExists()
         rule.onNodeWithTag("create_account_email_focus").assertExists()
