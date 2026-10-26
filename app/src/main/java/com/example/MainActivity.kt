@@ -2986,6 +2986,13 @@ fun MainAppContent(
                 onOpenMarket = {
                     viewModel.openCreatePost(false)
                     viewModel.setTab(MainTab.MARKET)
+                    // Active, verified sellers may jump directly to the listing
+                    // composer; everyone else sees Market's normal seller gates.
+                    if (uiState.myProfile.isSellerActive &&
+                        uiState.myProfile.hasActiveMarketVerification()
+                    ) {
+                        viewModel.openPostItem(true)
+                    }
                 },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
