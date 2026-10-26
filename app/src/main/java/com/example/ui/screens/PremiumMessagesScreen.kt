@@ -1681,12 +1681,26 @@ private fun PremiumChatDetail(
     }
 
     // Avoid repeatedly filtering and linearly scanning the entire history for every row.
-    val visibleMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
+    val matchedMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
         conversation.messages.filter { message ->
             val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
             val matchesPinned = !pinnedOnly || message.isPinned
             val matchesStarred = !starredOnly || message.isStarred
             matchesSearch && matchesPinned && matchesStarred
+        }
+    }
+    val albumGroups = remember(matchedMessages) {
+        matchedMessages.filter {
+            !it.imageViewOnce && !it.imageAlbumId.isNullOrBlank() &&
+                it.imageAlbumSize > 1 && !it.attachedImageUrl.isNullOrBlank()
+        }.groupBy { it.imageAlbumId.orEmpty() }
+    }
+    val visibleMessages = remember(matchedMessages, albumGroups) {
+        val displayedAlbumIds = hashSetOf<String>()
+        matchedMessages.filter { item ->
+            val id = item.imageAlbumId
+            if (id.isNullOrBlank() || albumGroups[id].orEmpty().size < 2) true
+            else displayedAlbumIds.add(id)
         }
     }
     val messagesById = remember(conversation.messages) {
@@ -1955,7 +1969,16 @@ private fun PremiumChatDetail(
                                     }
                                 }
                             }
-                            MessageBubble(
+                            if (!message.imageAlbumId.isNullOrBlank() &&
+                                albumGroups[message.imageAlbumId].orEmpty().size > 1) {
+                                BlinkChatPhotoAlbumBubble(
+                                    messages = albumGroups[message.imageAlbumId].orEmpty(),
+                                    palette = palette,
+                                    onOpen = { viewedImageMessage = it },
+                                    onReply = { replyingTo = message; editingMessage = null },
+                                    onActions = { selectedMessage = message }
+                                )
+                            } else MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
@@ -2100,7 +2123,11 @@ private fun PremiumChatDetail(
                     searchQuery = ""
                     pinnedOnly = false
                     starredOnly = false
-                    val position = conversation.messages.indexOfFirst { it.id == message.id }
+                    val position = visibleMessages.indexOfFirst {
+                        it.id == message.id ||
+                            (!message.imageAlbumId.isNullOrBlank() &&
+                                it.imageAlbumId == message.imageAlbumId)
+                    }
                     if (position >= 0) scrollScope.launch {
                         delay(100)
                         listState.animateScrollToItem(position + if (isLoadingOlder) 1 else 0)
@@ -2341,7 +2368,12 @@ private fun PremiumChatDetail(
                 searchQuery = ""
                 pinnedOnly = false
                 starredOnly = false
-                val targetIndex = conversation.messages.indexOfFirst { it.id == messageId }
+                val targetMessage = conversation.messages.firstOrNull { it.id == messageId }
+                val targetIndex = visibleMessages.indexOfFirst {
+                    it.id == messageId ||
+                        (!targetMessage?.imageAlbumId.isNullOrBlank() &&
+                            it.imageAlbumId == targetMessage?.imageAlbumId)
+                }
                 if (targetIndex >= 0) {
                     scrollScope.launch {
                         delay(120)
