@@ -1376,3 +1376,10 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Parity:** User outcome is to start a direct conversation or manage group invitations; this is a platform-specific navigation repair, not a new backend feature. No Windows-side code or shared API change is introduced. This note is not runtime verification.
 
 **PARITY-EXCEPTION: android-inbox-compose-existing-dialog-20261025** — Android's Messages screen now opens its already-existing native Material `New conversation` chooser via `showMessageComposeOptions`. Windows does not render this Android-only dialog; its existing desktop new-chat and group-invitation routes provide the equivalent user actions. No shared API, data model, authorization or feature semantics change. Verify those routes in desktop runtime tests.
+
+## 2026-10-26 — Refer & Grow push reliability (Testlab only)
+- **Shared backend:** tightened the server-only referral push worker acknowledgement contract. Retries now correctly preserve transient delivery skips and report a stale/non-persisted outbox lease as an error. Hardened the scheduled outbox drain's response validation.
+- **Android:** no Android-specific UI, API shape or behavior change. Receives the same Supabase-delivered referral notification results when activated.
+- **Windows:** no Windows-specific UI, API shape or behavior change. Shares identical referral attribution and backend notification semantics.
+- **Web:** no web-specific UI, API shape or behavior change. Existing referral landing and dashboard functionality stays intact.
+- **Backend gate:** no production schema/Edge Function deployment or Coin reward activation in this change. Production-compatible staging, RLS, multi-account signup and cross-platform acceptance tests remain mandatory before main promotion.
