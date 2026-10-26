@@ -135,7 +135,7 @@ fun BlinkChannelDetail(
     // Reconcile updates when the viewer returns to an already open channel.
     LaunchedEffect(channel.id) {
         while (true) {
-            delay(45_000)
+            delay(15_000)
             if (!saving) runCatching { updates = backend.channelUpdates(channel.id) }
         }
     }
@@ -579,9 +579,17 @@ fun BlinkChannelDetail(
                                         val sharedText = "Forwarded from ${channel.name}\\n" +
                                             selected.body.take(4500) + "\\n" +
                                             BlinkChannelStatusShare.publicUrl(channel.id, selected.id)
+                                        val media = selected.mediaPath?.let { path ->
+                                            BlinkChannelMediaService.forwardCopy(context, path, target.id)
+                                        }
+                                        val kind = media?.kind ?: if (selected.mediaKind == "poll") "poll" else "text"
                                         backend.publishRichUpdate(
                                             channelId = target.id,
                                             body = sharedText,
+                                            kind = kind,
+                                            mediaPath = media?.objectPath,
+                                            pollQuestion = if (kind == "poll") selected.pollQuestion else null,
+                                            options = if (kind == "poll") selected.pollOptions else emptyList(),
                                             forwardedFrom = selected.id
                                         )
                                         info = "Forwarded to ${target.name}"
