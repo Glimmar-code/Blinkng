@@ -2977,8 +2977,14 @@ private suspend fun restoreSupabaseSession() {
 
     fun saveOnboardingUsername(
         username: String,
-        onResult: (Boolean, String?) -> Unit
+        onResult: (Boolean, String?) -> Unit,
+        displayName: String? = null
     ) {
+        val cleanDisplayName = displayName?.trim()
+        if (cleanDisplayName != null && cleanDisplayName.length !in 2..80) {
+            onResult(false, "Enter your name (2–80 characters).")
+            return
+        }
         checkOnboardingUsername(username) { available, message ->
             if (!available) {
                 onResult(false, message)
@@ -2990,6 +2996,7 @@ private suspend fun restoreSupabaseSession() {
                 val current = _uiState.value.myProfile
                 val updated = current.copy(
                     username = clean,
+                    fullName = cleanDisplayName ?: current.fullName,
                     onboardingCompleted = false,
                     onboardingStep = maxOf(current.onboardingStep, 1)
                 )
@@ -3003,6 +3010,21 @@ private suspend fun restoreSupabaseSession() {
                     onResult(false, "Unable to save your username. Check your connection and try again.")
                 }
             }
+        }
+    }
+
+    fun saveGoogleOnboardingReferrer(referrerId: String, onResult: (Boolean, String?) -> Unit) {
+        if (referrerId.isBlank()) {
+            onResult(true, null)
+            return
+        }
+        viewModelScope.launch {
+            val valid = runCatching {
+                com.example.data.supabase.BlinkReferralClient
+                    .claimGoogleOnboardingReferrer(referrerId)
+            }.getOrDefault(false)
+            onResult(valid, if (valid) null else
+                "Could not apply this referral. Choose another name or skip it.")
         }
     }
 
