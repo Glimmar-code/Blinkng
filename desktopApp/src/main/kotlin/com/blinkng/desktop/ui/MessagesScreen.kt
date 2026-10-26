@@ -90,6 +90,7 @@ import com.blinkng.shared.BlinkChatImageQuality
 import com.blinkng.shared.BlinkChatPhotoAlbum
 import javax.swing.JFileChooser
 import java.util.UUID
+import java.io.File
 import org.jetbrains.skia.Image as SkiaImage
 import com.blinkng.shared.BlinkChatInboxPolicy
 import com.blinkng.shared.BlinkConversationSearchPolicy
@@ -101,6 +102,8 @@ import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.time.Instant
+
+private data class DesktopSelectedPhoto(val file: File, val caption: String = "")
 
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
@@ -134,6 +137,13 @@ fun MessagesScreen(state: DesktopAppState) {
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
+    var photoReviewItems by remember(myUserId) {
+        mutableStateOf<List<DesktopSelectedPhoto>>(emptyList())
+    }
+    var photoReviewQuality by remember(myUserId) {
+        mutableStateOf(BlinkChatImageQuality.STANDARD)
+    }
+    var photoReviewDestination by remember(myUserId) { mutableStateOf<String?>(null) }
     var outboxPending by remember { mutableStateOf(0) }
     var outboxPercent by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
@@ -213,7 +223,7 @@ fun MessagesScreen(state: DesktopAppState) {
         val chooser = JFileChooser().apply {
             dialogTitle = if (viewOnce) "Choose a view-once picture" else "Choose a chat picture"
             fileSelectionMode = JFileChooser.FILES_ONLY
-            isMultiSelectionEnabled = false
+            isMultiSelectionEnabled = !viewOnce
         }
         if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
         val picture = chooser.selectedFile?.takeIf { it.isFile } ?: return
@@ -233,35 +243,15 @@ fun MessagesScreen(state: DesktopAppState) {
                 photoBusy = false
             }
         } else {
-            runCatching {
-                DesktopChatImageOutbox.enqueue(
-                    account, target.id, UUID.randomUUID().toString(), picture,
-                    "", BlinkChatImageQuality.STANDARD, BlinkChatPhotoAlbum.single()
-                )
-            }.onSuccess { staged ->
-                outboxPending = DesktopChatImageOutbox.pending(account).size
-                if (!DesktopChatPhotoWorker.start(account)) {
-                    // Development/non-Windows fallback: durable staged payload remains
-                    // available after interruption, with a fixed client message ID.
-                    scope.launch {
-                        runCatching {
-                            state.client.sendChatImage(
-                                staged.conversationId, staged.file, staged.caption, staged.quality,
-                                clientMessageId = staged.messageId, album = staged.album,
-                                onProgress = { outboxPercent = it }
-                            )
-                        }.onSuccess { sent ->
-                            DesktopChatImageOutbox.complete(staged)
-                            if (state.session?.userId == account && selected?.id == target.id) {
-                                messages = messages.filterNot { it.id == sent.id } + sent
-                            }
-                        }.onFailure { failure ->
-                            if (state.session?.userId == account) error = failure.message
-                        }
-                        outboxPending = DesktopChatImageOutbox.pending(account).size
-                    }
-                }
-            }.onFailure { error = it.message }
+            val pictures = chooser.selectedFiles.toList()
+                .ifEmpty { listOfNotNull(chooser.selectedFile) }.filter { it.isFile }
+            if (pictures.isEmpty() || pictures.size > 10) {
+                error = "Choose between 1 and 10 pictures."
+                return
+            }
+            photoReviewDestination = target.id
+            photoReviewQuality = BlinkChatImageQuality.STANDARD
+            photoReviewItems = pictures.map { DesktopSelectedPhoto(it) }
         }
     }
 
@@ -1033,6 +1023,184 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+
+    if (photoReviewItems.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { if (!photoBusy) photoReviewItems = emptyList() },
+            title = { Text("Review ${photoReviewItems.size} pictures") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            enabled = !photoBusy,
+                            onClick = { photoReviewQuality = BlinkChatImageQuality.STANDARD }
+                        ) {
+                            Text(if (photoReviewQuality == BlinkChatImageQuality.STANDARD)
+                                "✓ Standard" else "Standard")
+                        }
+                        TextButton(
+                            enabled = !photoBusy,
+                            onClick = { photoReviewQuality = BlinkChatImageQuality.ORIGINAL }
+                        ) {
+                            Text(if (photoReviewQuality == BlinkChatImageQuality.ORIGINAL)
+                                "✓ Original / HD" else "Original / HD")
+                        }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(photoReviewItems.size) { index ->
+                            val item = photoReviewItems[index]
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = item.file,
+                                        contentDescription = "Picture ${index + 1} preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(70.dp)
+                                    )
+                                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                        Text(
+                                            item.file.name, maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row {
+                                            TextButton(
+                                                enabled = !photoBusy && index > 0,
+                                                onClick = {
+                                                    photoReviewItems = photoReviewItems.toMutableList()
+                                                        .apply { add(index - 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↑") }
+                                            TextButton(
+                                                enabled = !photoBusy &&
+                                                    index < photoReviewItems.lastIndex,
+                                                onClick = {
+                                                    photoReviewItems = photoReviewItems.toMutableList()
+                                                        .apply { add(index + 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↓") }
+                                            TextButton(
+                                                enabled = !photoBusy,
+                                                onClick = {
+                                                    photoReviewItems =
+                                                        photoReviewItems.filterIndexed { i, _ ->
+                                                            i != index
+                                                        }
+                                                }
+                                            ) { Text("Remove") }
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = item.caption,
+                                    onValueChange = { value ->
+                                        photoReviewItems = photoReviewItems.toMutableList().apply {
+                                            this[index] = item.copy(caption = value.take(1024))
+                                        }
+                                    },
+                                    label = { Text("Caption for picture ${index + 1}") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    maxLines = 3,
+                                    enabled = !photoBusy
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !photoBusy && photoReviewItems.isNotEmpty() &&
+                        photoReviewDestination == selected?.id &&
+                        state.session?.userId == myUserId,
+                    onClick = {
+                        val owner = myUserId
+                        val targetId = photoReviewDestination ?: return@Button
+                        val chosen = photoReviewItems.toList()
+                        val quality = photoReviewQuality
+                        photoReviewItems = emptyList()
+                        photoBusy = true
+                        scope.launch {
+                            // Disk staging must not block the Compose UI. The queue
+                            // remains per-account and private if a network send fails.
+                            val staged = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val records = mutableListOf<DesktopChatImageOutbox.Record>()
+                                runCatching {
+                                    val albumId = if (chosen.size > 1)
+                                        UUID.randomUUID().toString() else null
+                                    chosen.forEachIndexed { index, item ->
+                                        records += DesktopChatImageOutbox.enqueue(
+                                            owner, targetId, UUID.randomUUID().toString(),
+                                            item.file, item.caption, quality,
+                                            if (albumId == null) BlinkChatPhotoAlbum.single()
+                                            else BlinkChatPhotoAlbum.of(
+                                                albumId, index, chosen.size
+                                            )
+                                        )
+                                    }
+                                    records.toList()
+                                }.onFailure {
+                                    records.forEach(DesktopChatImageOutbox::complete)
+                                }
+                            }
+                            staged.onSuccess { records ->
+                                if (state.session?.userId != owner) {
+                                    records.forEach(DesktopChatImageOutbox::complete)
+                                    return@onSuccess
+                                }
+                                outboxPending = DesktopChatImageOutbox.pending(owner).size
+                                if (!DesktopChatPhotoWorker.start(owner)) {
+                                    // On a developer machine, foreground fallback preserves
+                                    // the durable outbox if an upload fails.
+                                    for (record in records) {
+                                        if (state.session?.userId != owner) break
+                                        runCatching {
+                                            state.client.sendChatImage(
+                                                record.conversationId, record.file,
+                                                record.caption, record.quality,
+                                                clientMessageId = record.messageId,
+                                                album = record.album,
+                                                onProgress = { outboxPercent = it }
+                                            )
+                                        }.onSuccess { sent ->
+                                            DesktopChatImageOutbox.complete(record)
+                                            if (selected?.id == targetId &&
+                                                state.session?.userId == owner) {
+                                                messages = messages.filterNot {
+                                                    it.id == sent.id
+                                                } + sent
+                                            }
+                                        }.onFailure { failure ->
+                                            if (state.session?.userId == owner) {
+                                                error = failure.message
+                                            }
+                                        }
+                                    }
+                                }
+                            }.onFailure { failure ->
+                                if (state.session?.userId == owner) {
+                                    error = failure.message
+                                }
+                            }
+                            if (state.session?.userId == owner) {
+                                outboxPending = DesktopChatImageOutbox.pending(owner).size
+                            }
+                            photoBusy = false
+                        }
+                    }
+                ) { Text("Send ${photoReviewItems.size}") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !photoBusy,
+                    onClick = { photoReviewItems = emptyList() }
+                ) { Text("Cancel") }
+            }
+        )
+    }
+
     privatePicture?.let { picture ->
         DisposableEffect(picture) {
             onDispose { picture.close() }
