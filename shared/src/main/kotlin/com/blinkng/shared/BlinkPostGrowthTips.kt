@@ -8,7 +8,26 @@ object BlinkPostGrowthTips {
     val feedCategories = listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment")
 
     fun disallowedFeedCategory(category: String): Boolean =
-        category.equals("Marketplace", ignoreCase = true)
+        category.trim().lowercase() in setOf("marketplace", "market", "buy & sell")
+
+    /**
+     * All Feed composers must apply one rule, including saved and scheduled posts.
+     * This is a conservative text/metadata guard, not an image-recognition system.
+     * Server-side enforcement remains authoritative.
+     */
+    fun marketOnlyReason(
+        category: String,
+        text: String,
+        caption: String? = null,
+        altText: String? = null
+    ): String? {
+        val description = listOfNotNull(text, caption, altText)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+        return if (disallowedFeedCategory(category) ||
+            MarketIntentPolicy.likelyProductAdvertisement(description)
+        ) marketHint else null
+    }
 
     fun suggestion(hasImages: Boolean, hasVideo: Boolean, hasPoll: Boolean): String = when {
         hasVideo -> "Capture attention in the opening seconds, and add a clear caption."
