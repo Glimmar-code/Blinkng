@@ -1,3 +1,13 @@
+-- destructive-change-reviewed: This applies DROP POLICY / CREATE POLICY
+-- atomically, replacing the restrictive foundation policies only with
+-- role-aware membership and owner-authenticated policies. It does NOT drop
+-- tables, destroy memberships, or remove application content. The trusted
+-- community invitation/moderation RPCs were exercised in isolated SQL tests.
+-- rollback-plan: In a new audited, transactional follow-up migration, revoke
+-- direct authenticated INSERT/UPDATE/DELETE on blink_communities, restore
+-- the original public/owner-only blink_communities_select and self-only
+-- blink_community_members_read RLS policies, and revoke EXECUTE from the
+-- newly activated community mutation RPCs. Preserve tables and row data.
 -- Recorded BLINK hosted Supabase migration 20261026054537.
 -- Contains the isolated-CI-tested community invitations and moderation contract.
 --
