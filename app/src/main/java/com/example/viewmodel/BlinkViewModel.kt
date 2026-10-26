@@ -3936,6 +3936,17 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun publishScheduledPostNow(id: String) {
+        val scheduled = _uiState.value.scheduledPosts.firstOrNull { it.id == id }
+        if (scheduled != null &&
+            com.blinkng.shared.BlinkPostGrowthTips.marketOnlyReason(
+                category = scheduled.post.category,
+                text = scheduled.post.text,
+                altText = scheduled.post.altText
+            ) != null
+        ) {
+            showToast(com.blinkng.shared.BlinkPostGrowthTips.marketHint)
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 scheduledPostRepository.publishNow(id)
