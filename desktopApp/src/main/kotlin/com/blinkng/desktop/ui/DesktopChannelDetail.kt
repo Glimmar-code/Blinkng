@@ -380,6 +380,113 @@ fun DesktopChannelDetail(
                 }
             ) { Text("Unfollow channel") }
         }
+        shareUpdate?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { shareUpdate = null },
+                title = { Text("Share Channel update") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            shareQuery = ""
+                            shareChat = selected
+                        }) { Text("Forward to a BLINK chat") }
+                        TextButton(onClick = {
+                            shareUpdate = null
+                            scope.launch {
+                                try {
+                                    shareChannels = state.client.fetchCommunities().filter { target ->
+                                        val role = state.client.channelRole(target.id)
+                                        role == "owner" || role == "moderator"
+                                    }
+                                    shareChannel = selected
+                                } catch (e: Exception) { error = e.message }
+                            }
+                        }) { Text("Forward to another Channel") }
+                        TextButton(onClick = {
+                            val link = "https://blink.com.ng/channel/${channel.id}/update/${selected.id}"
+                            Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                                StringSelection("${channel.name} — $link"), null)
+                            shareUpdate = null
+                            info = "Channel link copied."
+                        }) { Text("Copy update link") }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { shareUpdate = null }) { Text("Close") } }
+            )
+        }
+        LaunchedEffect(shareChat?.id, shareQuery) {
+            if (shareChat == null || shareQuery.trim().length < 2) sharePeople = emptyList()
+            else {
+                delay(220)
+                try { sharePeople = state.client.searchMentionProfiles(shareQuery, 20) }
+                catch (e: Exception) { error = e.message }
+            }
+        }
+        shareChat?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { shareChat = null },
+                title = { Text("Forward to BLINK chat") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = shareQuery,
+                            onValueChange = { shareQuery = it.take(45) },
+                            label = { Text("Search BLINK account") }, singleLine = true)
+                        LazyColumn {
+                            items(sharePeople, key = { it.id }) { recipient ->
+                                TextButton(onClick = {
+                                    shareChat = null
+                                    scope.launch {
+                                        saving = true
+                                        try {
+                                            check(state.client.forwardChannelUpdateToChat(
+                                                recipient.username, channel.name, channel.id,
+                                                selected.id, selected.body
+                                            )) { "Forwarding was not confirmed." }
+                                            info = "Forwarded to @${recipient.username}"
+                                            error = null
+                                        } catch (e: Exception) { error = e.message }
+                                        finally { saving = false }
+                                    }
+                                }) { Text("@${recipient.username}") }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { shareChat = null }) { Text("Close") } }
+            )
+        }
+        shareChannel?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { shareChannel = null },
+                title = { Text("Forward to Channel") },
+                text = {
+                    LazyColumn {
+                        if (shareChannels.isEmpty()) item { Text("You do not administer any Channels.") }
+                        items(shareChannels, key = { it.id }) { target ->
+                            TextButton(onClick = {
+                                shareChannel = null
+                                scope.launch {
+                                    saving = true
+                                    try {
+                                        val link = "https://blink.com.ng/channel/${channel.id}/update/${selected.id}"
+                                        state.client.publishRichChannelUpdate(
+                                            id = target.id,
+                                            body = "Forwarded from ${channel.name}\\n${selected.body.take(4500)}\\n$link",
+                                            forwardedFrom = selected.id
+                                        )
+                                        info = "Forwarded to ${target.name}"
+                                        error = null
+                                    } catch (e: Exception) { error = e.message }
+                                    finally { saving = false }
+                                }
+                            }) { Text(target.name) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { shareChannel = null }) { Text("Close") } }
+            )
+        }
         if (reportingUpdate != null) {
             AlertDialog(
                 onDismissRequest = { reportingUpdate = null },
