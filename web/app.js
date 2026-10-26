@@ -737,7 +737,7 @@
    * Video and animated images are intentionally returned unchanged.
    */
   async function blinkEditSelectedPhoto(file){
-    if(!file||!/^image\/(jpeg|png|webp)$/i.test(file.type))return file;
+    if(!file||!/^image\/(jpeg|png)$/i.test(file.type))return file;
     const bitmap=await createImageBitmap(file);
     const ratio=Math.min(1,2048/Math.max(bitmap.width,bitmap.height));
     let surface=document.createElement('canvas');
@@ -906,6 +906,7 @@
     file.onchange=async()=>{
       try{
         editedMedia=null;
+        submit.disabled=true;
         const media=file.files[0];
         const info=media?validateMediaFile(media):null;
         mediaName.textContent=media?.name||'';
@@ -916,7 +917,7 @@
       }catch(err){
         file.value='';editedMedia=null;
         mediaName.textContent=err.message;
-      }
+      }finally{submit.disabled=false;}
     };
     form.onsubmit=async e=>{
       e.preventDefault();
@@ -962,6 +963,7 @@
     file.onchange=async()=>{
       try{
         editedStoryFile=null;
+        submit.disabled=true;
         const media=file.files[0];
         const kind=media?validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80}):null;
         label.textContent=media?.name||'';
@@ -971,6 +973,7 @@
         }
       }
       catch(err){file.value='';editedStoryFile=null;label.textContent=err.message;}
+      finally{submit.disabled=false;}
     };
     form.onsubmit=async e=>{
       e.preventDefault();
