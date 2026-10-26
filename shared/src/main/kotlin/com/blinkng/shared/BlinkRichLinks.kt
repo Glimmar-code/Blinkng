@@ -10,8 +10,17 @@ object BlinkRichLinks {
     private val trailing = charArrayOf('.', ',', '!', '?', ';', ':', ')', ']', '}')
     private val blinkHosts = setOf("blink.com.ng", "www.blink.com.ng")
 
-    fun first(text: String): BlinkRichLink? =
-        urlPattern.findAll(text).mapNotNull { match -> parse(match.value) }.firstOrNull()
+    /** Returns distinct links, bounded to avoid spam, excess requests and long cards. */
+    fun all(text: String, maxLinks: Int = 3): List<BlinkRichLink> {
+        if (text.length > 100_000) return emptyList()
+        return urlPattern.findAll(text)
+            .mapNotNull { match -> parse(match.value) }
+            .distinctBy { it.url }
+            .take(maxLinks.coerceIn(0, 3))
+            .toList()
+    }
+
+    fun first(text: String): BlinkRichLink? = all(text, 1).firstOrNull()
 
     fun parse(raw: String): BlinkRichLink? {
         val value = raw.trim().trimEnd(*trailing)
