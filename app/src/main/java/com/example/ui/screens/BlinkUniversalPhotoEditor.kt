@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.net.Uri
@@ -240,8 +243,15 @@ fun BlinkUniversalPhotoEditor(
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false
         )
     ) {
-        Column(Modifier.fillMaxSize().background(Color.Black)
-            .statusBarsPadding().navigationBarsPadding()) {
+        Column(
+            Modifier.fillMaxSize()
+                .blinkElasticSwipeAction(
+                    direction = BlinkElasticSwipeDirection.DOWN,
+                    onAction = { if (!busy) close() },
+                    enabled = !busy
+                )
+                .background(Color.Black).statusBarsPadding().navigationBarsPadding()
+        ) {
             Row(
                 Modifier.fillMaxWidth().height(52.dp).padding(horizontal=8.dp),
                 verticalAlignment = Alignment.CenterVertically
