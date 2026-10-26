@@ -6,7 +6,8 @@ create table if not exists private.blink_text_message_requests (
   client_message_id uuid not null,
   target_key text not null,
   payload_hash text not null,
-  message_id uuid not null references public.messages(id) on delete cascade,
+  -- Keep the idempotency tombstone if a user deletes the original message.
+  message_id uuid not null,
   created_at timestamptz not null default now(),
   primary key (sender_id,client_message_id)
 );
