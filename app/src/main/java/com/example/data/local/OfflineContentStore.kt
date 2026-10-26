@@ -343,6 +343,11 @@ class OfflineContentStore(context: Context) {
         }.onFailure { Log.w(TAG, "Unable to save cached app snapshot", it) }
     }
 
+    suspend fun markOutboxPermanent(localId: String, error: String) {
+        val owner = cachedOwnerUsername()
+        if (owner.isNotBlank()) dao.markOutboxPermanent(owner, localId, error.take(400))
+    }
+
     suspend fun resetOutbox(localId: String) {
         val owner = cachedOwnerUsername()
         if (owner.isNotBlank()) dao.resetOutbox(owner, localId)
