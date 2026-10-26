@@ -145,6 +145,67 @@ object BlinkChannelMediaService {
         } finally { tmp.delete() }
     }
 
+    /** Forward a readable attachment as a real encrypted-transport BLINK chat
+     * attachment (private message-media Storage), not just an external link.
+     * Chat creation and writing are checked by the existing message ACL.
+     */
+    suspend fun forwardToChat(
+        context: Context,
+        sourcePath: String,
+        recipientUsername: String,
+        channelId: String,
+        channelName: String,
+        updateId: String,
+        previewText: String
+    ) = withContext(Dispatchers.IO) {
+        val ext = sourcePath.substringAfterLast('.').lowercase()
+        val mime = allowed.entries.firstOrNull { it.value.second == ext }?.key
+            ?: error("Unsupported Channel media type.")
+        val kind = when (allowed.getValue(mime).first) {
+            "image" -> com.blinkng.shared.BlinkChatAttachmentKind.IMAGE
+            "video" -> com.blinkng.shared.BlinkChatAttachmentKind.VIDEO
+            "audio" -> com.blinkng.shared.BlinkChatAttachmentKind.VOICE
+            "document" -> com.blinkng.shared.BlinkChatAttachmentKind.DOCUMENT
+            else -> error("Unsupported Chat attachment.")
+        }
+        val url = signedUrl(sourcePath) ?: error("Original Channel media is not accessible.")
+        val host = SupabaseConfig.url.trimEnd('/')
+        require(url.startsWith("$host/storage/v1/")) { "Invalid signed Channel URL." }
+        val file = File.createTempFile("blink_channel_chat_", ".$ext", context.cacheDir)
+        try {
+            http.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                check(response.isSuccessful) { "Could not read original Channel media." }
+                val input = response.body?.byteStream() ?: error("Missing Channel attachment.")
+                input.use { source ->
+                    file.outputStream().use { target ->
+                        val buffer = ByteArray(8192)
+                        var size = 0L
+                        while (true) {
+                            val n = source.read(buffer)
+                            if (n < 0) break
+                            size += n
+                            require(size <= minOf(MAX_BYTES, kind.maxBytes)) {
+                                "Attachment is too large for private Chat."
+                            }
+                            target.write(buffer, 0, n)
+                        }
+                        require(size > 0) { "The Channel attachment is empty." }
+                    }
+                }
+            }
+            val link = "https://blink.com.ng/channel/$channelId/update/$updateId"
+            val attribution = "Forwarded from $channelName: ${previewText.take(160)}\n$link"
+            com.example.data.supabase.MessageMediaService.sendAttachment(
+                context, recipientUsername, Uri.fromFile(file), kind,
+                caption = if (kind == com.blinkng.shared.BlinkChatAttachmentKind.IMAGE)
+                    attribution.take(1024) else ""
+            ).getOrThrow()
+            if (kind != com.blinkng.shared.BlinkChatAttachmentKind.IMAGE) {
+                SupabaseService().sendMessage(recipientUsername, attribution).getOrThrow()
+            }
+        } finally { file.delete() }
+    }
+
     suspend fun signedUrl(objectPath: String): String? = withContext(Dispatchers.IO) {
         if (objectPath.isBlank()) return@withContext null
         val request = authenticated("/storage/v1/object/sign/$BUCKET/${encoded(objectPath)}")
