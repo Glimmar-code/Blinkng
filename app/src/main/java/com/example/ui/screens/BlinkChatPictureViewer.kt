@@ -259,6 +259,10 @@ private suspend fun saveChatPhotoToGallery(
     context: Context, remoteUrl: String, onProgress: (Int) -> Unit
 ): Uri = withContext(Dispatchers.IO) {
     require(remoteUrl.startsWith("https://")) { "An HTTPS photo URL is required." }
+    // Never create an orphan MediaStore item on legacy Android versions.
+    require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        "Saving to gallery needs Android 10 or newer."
+    }
     val resolver = context.contentResolver
     val values = ContentValues().apply {
         put(MediaStore.Images.Media.DISPLAY_NAME, "BLINK_${System.currentTimeMillis()}.jpg")
@@ -267,10 +271,6 @@ private suspend fun saveChatPhotoToGallery(
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/BLINK")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
-    }
-    // On Android <29, prefer the system picker/share flow rather than broad storage writes.
-    require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        "Saving to gallery needs Android 10 or newer."
     }
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         ?: throw IOException("Cannot create gallery image.")
