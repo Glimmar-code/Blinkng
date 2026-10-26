@@ -138,6 +138,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     var privatePicture by remember(myUserId) { mutableStateOf<SkiaImage?>(null) }
     var viewedChatPhoto by remember(myUserId) { mutableStateOf<DesktopMessage?>(null) }
+    var aiImageFile by remember(myUserId) { mutableStateOf<File?>(null) }
     var photoBusy by remember { mutableStateOf(false) }
     var showStickerTray by remember(myUserId) { mutableStateOf(false) }
     var stickerRevision by remember(myUserId) { mutableIntStateOf(0) }
@@ -1340,10 +1341,49 @@ fun MessagesScreen(state: DesktopAppState) {
                 deleteMessage = photo
                 viewedChatPhoto = null
             },
+            groupPhotoEnabled = selected?.isGroup == true,
+            onSaveSticker = { file ->
+                scope.launch {
+                    runCatching {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            DesktopStickerLibrary.create(myUserId,file)
+                        }
+                    }.onSuccess { stickerRevision++; error = "Sticker saved on this computer." }
+                        .onFailure {error = it.message}
+                }
+            },
+            onAskBlinkAi = { file ->
+                aiImageFile = file
+                viewedChatPhoto = null
+            },
+            onSetGroupPicture = { file ->
+                val groupId = selected?.id
+                val accountId = myUserId
+                if (selected?.isGroup != true || groupId.isNullOrBlank()) {
+                    error = "Only group conversations support group pictures."
+                } else scope.launch {
+                    runCatching {
+                        check(state.session?.userId == accountId) { "Sign in again." }
+                        check(state.client.setGroupAvatarFromPicture(groupId,file)) {
+                            "Only group admins may change this picture."
+                        }
+                    }.onSuccess {
+                        error = "Group picture updated."
+                        loadConversations()
+                    }.onFailure {error = it.message}
+                }
+            },
             onClose = { viewedChatPhoto = null }
         )
     }
 
+    aiImageFile?.let { file ->
+        DesktopAiPhotoQuestionDialog(
+            file=file,
+            client=state.client,
+            onDismiss={aiImageFile=null}
+        )
+    }
     privatePicture?.let { picture ->
         DisposableEffect(picture) {
             onDispose { picture.close() }
