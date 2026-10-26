@@ -1218,7 +1218,7 @@ class DesktopSupabaseClient(
         val body = JSONObject()
             .put("name", com.blinkng.shared.BlinkCommunityPolicy.validatedName(name))
             .put("description", com.blinkng.shared.BlinkCommunityPolicy.validatedDescription(description))
-            .put("cover_url", cover.ifBlank { JSONObject.NULL })
+            .put("cover_url", if (cover.isEmpty()) JSONObject.NULL else cover)
         val raw = execute(authenticatedRequest("/rest/v1/blink_communities?id=eq.$uuid&select=*")
             .header("Prefer", "return=representation")
             .patch(body.toString().toRequestBody(jsonMedia)).build())
