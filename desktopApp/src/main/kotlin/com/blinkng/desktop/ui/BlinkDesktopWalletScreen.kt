@@ -1,6 +1,10 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +22,8 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.shared.BlinkDailyMission
+import com.blinkng.shared.BlinkEconomyDefaults
+import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkEarningHubPolicy
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -77,6 +83,9 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
     var history by remember(accountId) { mutableStateOf<List<DesktopWalletTransaction>>(emptyList()) }
     var missions by remember(accountId) { mutableStateOf<List<BlinkDailyMission>>(emptyList()) }
     var tab by remember(accountId) { mutableIntStateOf(0) }
+    var adsToday by remember(accountId) { mutableIntStateOf(0) }
+    var policy by remember(accountId) { mutableStateOf(BlinkEconomyDefaults.policy) }
+    var actionBusy by remember(accountId) { mutableStateOf(false) }
     var filter by remember(accountId) { mutableIntStateOf(0) }
     var loading by remember(accountId) { mutableStateOf(true) }
     var error by remember(accountId) { mutableStateOf<String?>(null) }
@@ -104,6 +113,12 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
             history = emptyList()
             error = "Couldn't load your secure wallet. Check your connection and retry."
         }
+        runCatching { actions.getEconomyStatus() }.onSuccess { status ->
+            adsToday = status.optInt("ads_today", 0).coerceAtLeast(0)
+            policy = BlinkEconomyDefaults.policy.copy(
+                rewardedAdDailyLimit = status.optInt("rewarded_ad_daily_limit", 15).coerceIn(1,15),
+                cashCheckoutEnabled = status.optBoolean("cash_checkout_enabled", false))
+        }
         runCatching { actions.getDailyMissions() }.onSuccess {
             missions = walletMissions(it)
         }.onFailure {
@@ -114,158 +129,295 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
     }
     LaunchedEffect(accountId) { reload() }
 
+    val verified = state.profile?.isVerified == true &&
+        state.profile?.verificationTier?.uppercase() != "FREE"
+    val bg = Color(0xFF05020E)
+    val indigo = Color(0xFF931AFF)
+    val pale = Color(0xFFAAA6D4)
+    val gold = Color(0xFFFFD54B)
+    val card = Color(0xFF120E26)
+    val edge = Color(0xFF483079)
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().background(bg),
+        contentPadding = PaddingValues(28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Column(Modifier.widthIn(max = 900.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { onNavigate("menu") }) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to Menu")
-                    }
-                    Text("Wallet & Coins", fontSize = 30.sp,
-                        fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = null)
-                        Spacer(Modifier.width(5.dp))
-                        Text("Refresh")
-                    }
+            Row(Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { if (tab == 0) onNavigate("menu") else tab = 0 }) {
+                    Icon(Icons.Rounded.ArrowBack, "Back", tint = Color.White)
                 }
-                Text("Your BLINK Coins, daily missions, and real transaction history.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            Surface(
-                modifier = Modifier.widthIn(max = 900.dp).fillMaxWidth(),
-                color = Color(0xFF141619), shape = RoundedCornerShape(24.dp)
-            ) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("AVAILABLE BLINK COINS", color = Color(0xFFBDD1DD),
-                        fontWeight = FontWeight.SemiBold)
-                    Text(balance?.let { NumberFormat.getIntegerInstance().format(it) } ?: "—",
-                        fontSize = 46.sp, color = Color.White, fontWeight = FontWeight.Black)
-                    Text(
-                        if (balance != null) "Server-confirmed balance"
-                        else if (loading) "Verifying wallet balance…" else "Balance unavailable",
-                        color = Color(0xFFBDC6D1)
-                    )
-                    HorizontalDivider(color = Color.White.copy(alpha = .18f))
-                    Text("BLINK Coins are in-app only. They are not cash and cannot be withdrawn.",
-                        color = Color(0xFFBDC6D1))
+                Text(listOf("Coins & Wallet","Earn Coins","Rewards","Get Verified","History")[tab],
+                    fontSize = 27.sp, color = Color.White,
+                    fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                TextButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, null, tint = pale)
+                    Text("Refresh", color = pale)
                 }
             }
         }
-        item {
-            Row(Modifier.widthIn(max = 900.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { onNavigate("store") }) {
-                    Icon(Icons.Rounded.Storefront, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Use Coins in BLINK Store")
-                }
-                OutlinedButton(onClick = { tab = 1 }) { Text("Earn Rewards") }
-            }
-        }
-        if (error != null) {
-            item {
-                Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+        if (error != null) item {
+            DesktopWalletCard(card, edge) {
+                Text(error.orEmpty(), color = Color(0xFFFF93B0))
                 TextButton(onClick = { scope.launch { reload() } }) { Text("Retry") }
             }
         }
-        item {
-            TabRow(
-                selectedTabIndex = tab,
-                modifier = Modifier.widthIn(max = 900.dp)
-            ) {
-                listOf("Overview", "Rewards", "History").forEachIndexed { index, label ->
-                    Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
+        if (loading) item {
+            LinearProgressIndicator(Modifier.widthIn(max = 1000.dp).fillMaxWidth(), color = indigo)
+        }
+        if (tab == 0) {
+            item {
+                Box(
+                    Modifier.widthIn(max = 1000.dp).fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(Color(0xFF0343B4),
+                            Color(0xFF150C36),Color(0xFF5105B6))),RoundedCornerShape(24.dp))
+                        .border(1.dp,indigo,RoundedCornerShape(24.dp))
+                ) {
+                    Column(Modifier.padding(26.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.MonetizationOn, null, tint = gold,
+                                modifier = Modifier.size(68.dp))
+                            Spacer(Modifier.width(20.dp))
+                            Column {
+                                Text("Your BLINK Coins", color = pale, fontSize = 15.sp)
+                                Text(balance?.let { NumberFormat.getIntegerInstance().format(it) } ?: "—",
+                                    fontWeight = FontWeight.Black, color = Color.White, fontSize = 46.sp)
+                            }
+                        }
+                        HorizontalDivider(color = Color.White.copy(alpha = .2f))
+                        Text("Wallet Balance • In-app Coins only. No cash withdrawals or coin transfers.",
+                            color = Color.White)
+                    }
+                }
+            }
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Overview", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+                    DesktopWalletAction("Earn a lot of coins watching ads",
+                        "10 Coins for each completed ad • Android ad support", Icons.Rounded.PlayArrow) {
+                        tab = 1
+                    }
+                }
+            }
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Buy Coins", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+                    policy.coinPacks.forEach { pack ->
+                        DesktopWalletAction(
+                            "₦" + NumberFormat.getIntegerInstance().format(pack.priceNgn),
+                            NumberFormat.getIntegerInstance().format(pack.coins) + " Coins" +
+                                if (policy.cashCheckoutEnabled) "" else " • Checkout unavailable",
+                            Icons.Rounded.MonetizationOn,
+                            enabled = policy.cashCheckoutEnabled && !actionBusy
+                        ) {
+                            // A provider URL must be verified; client callbacks never grant coins.
+                            scope.launch {
+                                actionBusy = true
+                                runCatching {
+                                    val response = actions.initializePaystackCoinCheckout(pack.id)
+                                    val url = response.optString("checkout_url")
+                                        .ifBlank { response.optString("checkoutUrl") }
+                                    require(com.blinkng.shared.BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url)) {
+                                        "A trusted payment page was not returned."
+                                    }
+                                    if (java.awt.Desktop.isDesktopSupported()) {
+                                        java.awt.Desktop.getDesktop().browse(java.net.URI(url))
+                                    } else error("Open payments on a supported browser.")
+                                }.onFailure { error = it.message ?: "Secure checkout unavailable." }
+                                actionBusy = false
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                DesktopWalletAction("Get Verified with Coins",
+                    "3,000 Coins for Blue Verification", Icons.Rounded.Verified) { tab = 3 }
+            }
+            item {
+                Row(Modifier.widthIn(max = 1000.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f)) {
+                        DesktopWalletAction("Rewards", "Daily milestones and missions",
+                            Icons.Rounded.CardGiftcard) { tab = 2 }
+                    }
+                    Box(Modifier.weight(1f)) {
+                        DesktopWalletAction("History", "Your real transactions",
+                            Icons.Rounded.History) { tab = 4 }
+                    }
                 }
             }
         }
-        when (tab) {
-            0 -> {
-                item { Text("Your wallet", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
-                item {
-                    DesktopWalletCard(color, border) {
-                        Text("Daily missions: ${missions.count { BlinkEarningHubPolicy.action(it) == BlinkEarningHubPolicy.MissionAction.CLAIM }} ready to claim")
-                        Text("Available transactions: ${history.size}")
-                        Text("Only server-returned activity is shown. Figures may be incomplete.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (tab == 1) {
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Watch Rewarded Ads", color = Color.White, fontSize = 25.sp,
+                        fontWeight = FontWeight.Black)
+                    Text("10 Coins per Ad", color = gold, fontSize = 30.sp,
+                        fontWeight = FontWeight.Black)
+                    val max = policy.effectiveAdDailyLimit(verified)
+                    Text("Ads watched today: " + adsToday + " / " + max, color = pale)
+                    LinearProgressIndicator(
+                        progress = { (adsToday.toFloat()/max.coerceAtLeast(1)).coerceIn(0f,1f) },
+                        color = indigo, modifier = Modifier.fillMaxWidth())
+                    Text("Optional rewarded videos currently play on supported Android devices; " +
+                        "Windows shares the same authenticated balance and reward history.",
+                        color = pale)
+                }
+            }
+            item {
+                DesktopWalletCard(card,edge) {
+                    Text("Daily Milestones",fontSize = 23.sp,
+                        fontWeight = FontWeight.Black,color = Color.White)
+                    policy.rewardedMilestones.forEach { milestone ->
+                        DesktopWalletAction(milestone.ads.toString() + " Ads",
+                            milestone.totalCoins.toString() + " Coins Total" +
+                                if (!verified && milestone.ads == 15) " • Verified only"
+                                else if (adsToday >= milestone.ads) " • Already credited" else "",
+                            if (!verified && milestone.ads == 15) Icons.Rounded.Lock
+                            else Icons.Rounded.EmojiEvents
+                        ) { tab = if (milestone.ads == 15 && !verified) 3 else 2 }
                     }
                 }
-                item { Text("Recent activity", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
-                if (loading) item { LinearProgressIndicator(Modifier.widthIn(max = 900.dp).fillMaxWidth()) }
-                else if (history.isEmpty()) item { Text("No recorded transactions available yet.") }
-                else items(history.take(3), key = { "recent_${it.id}" }) { tx -> DesktopWalletRow(tx, color, border) }
-                item { OutlinedButton(onClick = { tab = 2 }) { Text("View available history") } }
             }
-            1 -> {
-                item { Text("Daily missions", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
-                if (missionError != null) item { Text(missionError.orEmpty(), color = MaterialTheme.colorScheme.error) }
-                if (loading) item { LinearProgressIndicator(Modifier.widthIn(max = 900.dp).fillMaxWidth()) }
-                else if (missions.isEmpty()) item { Text("No daily missions available right now.") }
-                else items(missions, key = { "reward_${it.key}" }) { mission ->
-                    DesktopWalletCard(color, border) {
-                        Text(mission.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(mission.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${mission.progress.coerceAtMost(mission.target)}/${mission.target} • +${mission.coinReward} coins • +${mission.xpReward} XP")
-                        LinearProgressIndicator(progress = { mission.progressFraction },
-                            modifier = Modifier.fillMaxWidth())
-                        when (BlinkEarningHubPolicy.action(mission)) {
-                            BlinkEarningHubPolicy.MissionAction.CLAIM ->
-                                Button(
-                                    enabled = busyMission == null,
-                                    onClick = {
-                                        busyMission = mission.key
-                                        scope.launch {
-                                            runCatching { actions.claimDailyMission(mission.key) }
-                                                .onSuccess { result ->
-                                                    if (result.optBoolean("success", true)) {
-                                                        busyMission = null
-                                                        reload()
-                                                    } else {
-                                                        missionError = result.optString("message")
-                                                            .ifBlank { "The server did not confirm this reward." }
-                                                        busyMission = null
-                                                    }
-                                                }
-                                                .onFailure {
-                                                    missionError = it.message ?: "Unable to claim reward."
-                                                    busyMission = null
-                                                }
+        }
+        if (tab == 2) {
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Reward Center",fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,color = Color.White)
+                    Text("Watch ads, complete tasks and earn BLINK Coins.",color = pale)
+                    Text("Ads completed today: " + adsToday, color = gold)
+                    Text("Ad milestone Coins are credited automatically after server confirmation.",
+                        color = pale)
+                }
+            }
+            item {
+                DesktopWalletCard(card,edge) {
+                    Text("Claim Rewards",fontSize = 23.sp,
+                        fontWeight = FontWeight.Black,color = Color.White)
+                    policy.rewardedMilestones.forEach { m ->
+                        DesktopWalletAction("Watch " + m.ads + " Ads",
+                            if (!verified && m.ads == 15) "Locked • Verified users only"
+                            else if (adsToday >= m.ads) "Already credited • " + m.totalCoins + " total Coins"
+                            else adsToday.toString() + "/" + m.ads + " • " + m.totalCoins + " total Coins",
+                            Icons.Rounded.CardGiftcard) { tab = if (!verified && m.ads == 15) 3 else 1 }
+                    }
+                }
+            }
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Other Rewards • Daily missions", fontWeight = FontWeight.Bold,
+                        color = Color.White, fontSize = 20.sp)
+                    if (missionError != null) Text(missionError.orEmpty(), color = Color(0xFFFF91AF))
+                    if (missions.isEmpty()) Text("No missions available right now.", color = pale)
+                    else missions.forEach { mission ->
+                        Text(mission.title, color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text(mission.progress.toString() + "/" + mission.target + " • +" +
+                            mission.coinReward + " Coins • +" + mission.xpReward + " XP", color = pale)
+                        LinearProgressIndicator(
+                            progress = { mission.progressFraction },
+                            modifier = Modifier.fillMaxWidth(), color = indigo)
+                        if (BlinkEarningHubPolicy.action(mission) == BlinkEarningHubPolicy.MissionAction.CLAIM) {
+                            Button(onClick = {
+                                busyMission = mission.key
+                                scope.launch {
+                                    runCatching { actions.claimDailyMission(mission.key) }
+                                        .onSuccess { result ->
+                                            if (result.optBoolean("success", true)) reload()
+                                            else missionError = result.optString("message")
                                         }
-                                    }
-                                ) { Text(if (busyMission == mission.key) "Claiming…" else "Claim reward") }
-                            BlinkEarningHubPolicy.MissionAction.COMPLETED ->
-                                Text("✓ Reward claimed", color = Color(0xFF13B889))
-                            BlinkEarningHubPolicy.MissionAction.IN_PROGRESS -> Text("In progress")
-                        }
+                                        .onFailure { missionError = it.message }
+                                    busyMission = null
+                                }
+                            },enabled = busyMission == null) { Text("Claim reward") }
+                        } else if (mission.claimed) Text("Claimed", color = Color(0xFF27DDA3))
                     }
                 }
-                item { Text("Optional rewarded ads are available only on supported Android devices.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            else -> {
-                item { Text("Coin transaction history", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("All", "Earned", "Used").forEachIndexed { index, label ->
-                            FilterChip(selected = filter == index, onClick = { filter = index },
-                                label = { Text(label) })
-                        }
+        }
+        if (tab == 3) {
+            item {
+                DesktopWalletCard(card, edge) {
+                    Icon(Icons.Rounded.Verified, null, tint = Color(0xFF4CA8FF),
+                        modifier = Modifier.size(80.dp))
+                    Text("Blue Verification", color = Color.White,
+                        fontSize = 28.sp, fontWeight = FontWeight.Black)
+                    Text("3,000 Coins", color = gold,
+                        fontSize = 26.sp, fontWeight = FontWeight.Black)
+                    Text("Your confirmed balance: " + (balance?.toString() ?: "—"), color = pale)
+                    LinearProgressIndicator(
+                        progress = { policy.verificationProgress(balance ?: 0L) },
+                        modifier = Modifier.fillMaxWidth(), color = indigo)
+                }
+            }
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("What You Get", color = Color.White, fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold)
+                    listOf("Verified Badge", "More Profile Trust",
+                        "Better Visibility", "Stand Out on BLINK").forEach {
+                        Text("✓ " + it, color = Color.White)
                     }
                 }
-                val selected = when (filter) {
-                    1 -> history.filter { it.amount > 0 }
-                    2 -> history.filter { it.amount < 0 }
-                    else -> history
-                }
-                if (loading) item { LinearProgressIndicator(Modifier.widthIn(max = 900.dp).fillMaxWidth()) }
-                else if (selected.isEmpty()) item { Text("No matching transactions available.") }
-                else items(selected, key = { "tx_${it.id}" }) { tx -> DesktopWalletRow(tx, color, border) }
             }
+            item {
+                Button(
+                    modifier = Modifier.widthIn(max = 1000.dp).fillMaxWidth().height(60.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6510E8)),
+                    enabled = !verified && !actionBusy && balance != null &&
+                        balance!! >= policy.blueVerificationCoinCost,
+                    onClick = {
+                        actionBusy = true
+                        scope.launch {
+                            runCatching { actions.purchaseBlueVerificationWithCoins() }
+                                .onSuccess { result ->
+                                    if (result.optBoolean("success")) {
+                                        state.refreshProfile()
+                                        reload()
+                                    } else error = "Verification was not confirmed."
+                                }
+                                .onFailure { error = it.message ?: "Verification unavailable." }
+                            actionBusy = false
+                        }
+                    }
+                ) { Text(if (verified) "Already Verified" else "Use 3,000 Coins") }
+            }
+            item {
+                DesktopWalletAction("Need more Coins?", "Browse packs or earn with Android ads",
+                    Icons.Rounded.MonetizationOn) { tab = 0 }
+            }
+        }
+        if (tab == 4) {
+            item {
+                DesktopWalletCard(card, edge) {
+                    Text("Coin History", color = Color.White,
+                        fontSize = 25.sp, fontWeight = FontWeight.Black)
+                    Text("Your complete available Coin activity, confirmed by BLINK.",
+                        color = pale)
+                    Text("Earned +" + history.filter { it.amount > 0 }.sumOf { it.amount } +
+                        "   Spent " + history.filter { it.amount < 0 }.sumOf { it.amount },
+                        fontSize = 20.sp, color = gold)
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    listOf("All", "Earned", "Spent").forEachIndexed { index, label ->
+                        FilterChip(selected = filter == index, onClick = { filter = index },
+                            label = { Text(label) })
+                    }
+                }
+            }
+            val selected = when (filter) {
+                1 -> history.filter { it.amount > 0 }
+                2 -> history.filter { it.amount < 0 }
+                else -> history
+            }
+            if (selected.isEmpty() && !loading) item {
+                Text("No matching Coin transactions available.", color = pale)
+            }
+            else items(selected, key = { it.id }) { tx -> DesktopWalletRow(tx, card, edge) }
         }
     }
 }
@@ -298,5 +450,32 @@ private fun DesktopWalletRow(row: DesktopWalletTransaction, color: Color, border
             }
             Text(BlinkEarningHubPolicy.coinChangeLabel(row.amount), fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+
+@Composable
+private fun DesktopWalletAction(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(Modifier.widthIn(max = 1000.dp).fillMaxWidth()
+        .background(Brush.horizontalGradient(listOf(Color(0xFF211445),Color(0xFF100C26))),shape)
+        .border(1.dp,Color(0xFF473184),shape)
+        .clickable(enabled = enabled,onClick = onClick)
+        .padding(17.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+        Icon(icon,null,tint = if (enabled) Color(0xFFAA81FF) else Color.Gray,
+            modifier = Modifier.size(35.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White,fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(subtitle,color = Color(0xFFB5ADCE),fontSize = 12.sp)
+        }
+        if (enabled) Icon(Icons.Rounded.ChevronRight,null,tint = Color(0xFFD3B5FF))
     }
 }
