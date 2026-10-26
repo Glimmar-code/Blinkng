@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +78,7 @@ fun BlinkChannelMediaViewer(
     LaunchedEffect(entry.id, entry.mediaPath) {
         loading = true
         try {
-            url = entry.mediaPath?.let(BlinkChannelMediaService::signedUrl)
+            url = entry.mediaPath?.let { path -> BlinkChannelMediaService.signedUrl(path) }
             if (url.isNullOrBlank()) error = "This attachment is not available."
         } catch (e: Exception) {
             error = "Could not open this attachment."

@@ -11,6 +11,13 @@ class BlinkHorizontalPageSwipeTest {
     }
 
     @Test
+    fun quickFlickCommitsBeforeFullDistanceAndWrongDirectionDoesNot() {
+        assertEquals(-1, horizontalPageSwipeDirection(-46f, 2f, 120f, false, -1900f))
+        assertEquals(0, horizontalPageSwipeDirection(-46f, 2f, 120f, false, -100f))
+        assertEquals(0, horizontalPageSwipeDirection(-46f, 2f, 120f, false, 1900f))
+    }
+
+    @Test
     fun scrollingAndChildCarouselsKeepPriority() {
         assertEquals(0, horizontalPageSwipeDirection(95f, 5f, 120f, false))
         assertEquals(0, horizontalPageSwipeDirection(-180f, 260f, 120f, false))

@@ -27,6 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +101,16 @@ fun StoryViewerDialog(
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
     var storyDismissDrag by remember(currentStory.id) { mutableFloatStateOf(0f) }
+    var storyDismissActive by remember(currentStory.id) { mutableStateOf(false) }
+    val storyDismissThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val storyDismissVisual by animateFloatAsState(
+        targetValue = BlinkElasticGesturePhysics.visualDistance(storyDismissDrag, storyDismissThresholdPx),
+        animationSpec = if (storyDismissActive) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "storyElasticDismiss"
+    )
 
     // Floating reaction animation effect
     LaunchedEffect(floatingReaction) {
@@ -135,20 +149,35 @@ fun StoryViewerDialog(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(currentStory.id) {
+            .graphicsLayer { translationY = storyDismissVisual }
+            .pointerInput(currentStory.id, storyDismissThresholdPx) {
+                var velocity = VelocityTracker()
                 detectVerticalDragGestures(
-                    onDragStart = { storyDismissDrag = 0f },
+                    onDragStart = {
+                        velocity = VelocityTracker()
+                        storyDismissDrag = 0f
+                        storyDismissActive = true
+                    },
                     onVerticalDrag = { change, delta ->
-                        if (delta > 0f) {
-                            storyDismissDrag += delta
+                        if (storyDismissDrag > 0f || delta > 0f) {
+                            storyDismissDrag = (storyDismissDrag + delta).coerceAtLeast(0f)
+                            velocity.addPosition(change.uptimeMillis, change.position)
                             change.consume()
                         }
                     },
                     onDragEnd = {
-                        if (storyDismissDrag > 110.dp.toPx()) onDismiss()
+                        val commit = BlinkElasticGesturePhysics.shouldCommit(
+                            storyDismissDrag, velocity.calculateVelocity().y,
+                            storyDismissThresholdPx, 28.dp.toPx(), 1100.dp.toPx()
+                        )
+                        storyDismissActive = false
                         storyDismissDrag = 0f
+                        if (commit) onDismiss()
                     },
-                    onDragCancel = { storyDismissDrag = 0f }
+                    onDragCancel = {
+                        storyDismissActive = false
+                        storyDismissDrag = 0f
+                    }
                 )
             }
             .testTag("story_viewer_dialog")

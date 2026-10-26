@@ -23,6 +23,14 @@
 - **Known omissions:** This is an initial **text-broadcast slice**, not WhatsApp's complete channel feature set. Media upload, polls/quizzes, history pagination, scheduled updates, push notification preferences, sharing/invitation deep-links, full owner analytics, abuse reporting, moderation operations for updates and exact screenshot/UI comparison remain unimplemented.
 - **Release hold:** No staging branch is available and the new backend RPCs do not exist in production. DO NOT merge to `main`, deploy production SQL, or claim channels live until versioned migration, RLS/privacy checks, current-head Android/Windows builds, 320dp and 200%-font screenshots, and real follow→open→post→react flows succeed.
 
+## 2026-10-26 — Rubber swipe engine (Testlab candidate; release not verified)
+
+- **Shared contract:** Added `BlinkElasticGesturePhysics`, a platform-independent, bounded visual resistance and release policy that allows long deliberate drags or short velocity-confirmed flicks; incomplete slow gestures spring back and wrong-direction velocity never triggers actions. Existing navigation routes, data, Coin/XP and server contracts remain unchanged.
+- **Android:** Velocity-aware horizontal fallback navigation, chat reply and close, story dismissal, chat photo paging/dismiss, Feed image gallery down-to-dismiss, Market listing-image paging, profile return and Reels preview expand / first-page collapse. Existing five-tab `HorizontalPager` continues to own its native interactive swipes, and child media retains priority. Backend transactions are not attached to these gestures.
+- **Windows:** Desktop chat photo viewer accepts mouse/trackpad drag with the same spring, page and dismissal rules; clickable Previous/Next/Close controls remain as accessible alternatives. The five-section desktop shell retains its native navigation instead of requiring touch swipes; that is the appropriate desktop-equivalent platform exception.
+- **Web:** No new gesture routing added because its existing pointer interactions are distinct and there is no equivalent native chat photo viewer; preserve browser scroll, back and accessibility controls.
+- **Quality gates:** Run shared physics tests, Android JVM/instrumented gesture tests, full affected Android build, Windows UI compilation and manual nested-scroll/media/zoom, reduced-motion, accessibility and low-end-device acceptance. Changes remain isolated in a Testlab-named branch until these gates pass; no production deploy or APK publication is implied.
+
 ## 2026-10-26 — Wallet final reward eligibility and reference interactions
 
 - **Android:** The five-page neon Wallet retains the BLINK Coin balance and working [+] shortcut, now scrolling to the Buy Coins packs. Earn Coins/Rewards shows ad #15 as verified-only; expired or unverified users see a locked milestone and a Get Verified route. Other screen affordances and existing 10-Coin base payouts remain unchanged.

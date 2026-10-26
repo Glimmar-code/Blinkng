@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
@@ -200,7 +203,14 @@ internal fun BlinkWalletPremiumContent(
     val scope = rememberCoroutineScope()
     BackHandler { if (page == 0) onBack() else page = 0 }
     val allTitles = listOf("Coins & Wallet", "Earn Coins", "Rewards", "Get Verified", "History")
-    Column(Modifier.fillMaxSize().background(night).testTag("blink_wallet_premium")) {
+    Column(
+        Modifier.fillMaxSize()
+            .blinkElasticSwipeAction(
+                direction = BlinkElasticSwipeDirection.RIGHT,
+                onAction = { if (page == 0) onBack() else page = 0 }
+            )
+            .background(night).testTag("blink_wallet_premium")
+    ) {
         Row(Modifier.fillMaxWidth().heightIn(min = 70.dp).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (page == 0) onBack() else page = 0 }) {

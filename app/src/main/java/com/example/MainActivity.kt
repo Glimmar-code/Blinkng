@@ -284,7 +284,7 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, ProfessionalCenterActivity::class.java)
                 .putExtra("section", "communities")
                 .putExtra("channel_id", incomingChannelId))
-            intent.data = null
+            intent?.setData(null)
             return
         }
         val invitedUsername = DeepLinkRouter.invitedBy(intent?.data)

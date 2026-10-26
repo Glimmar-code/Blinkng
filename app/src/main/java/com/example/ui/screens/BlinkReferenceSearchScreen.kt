@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -212,7 +215,15 @@ internal fun BlinkReferenceSearchScreen(
         BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
     }
 
-    Column(Modifier.fillMaxSize().background(bg).statusBarsPadding()) {
+    Column(
+        Modifier.fillMaxSize()
+            .blinkElasticSwipeAction(
+                direction = BlinkElasticSwipeDirection.RIGHT,
+                onAction = onBackToHome,
+                enabled = !showFilters && !showReferralDashboard
+            )
+            .background(bg).statusBarsPadding()
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

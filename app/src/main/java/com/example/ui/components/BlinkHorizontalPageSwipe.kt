@@ -11,6 +11,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import com.blinkng.shared.BlinkElasticGesturePhysics
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 
 /**
  * Observe completed horizontal gestures without consuming child touch events.
@@ -23,9 +25,14 @@ internal fun horizontalPageSwipeDirection(
     deltaY: Float,
     thresholdPx: Float,
     handledByChild: Boolean,
+    velocityXPxPerSecond: Float = 0f,
 ): Int {
     if (handledByChild || !deltaX.isFinite() || !deltaY.isFinite() || thresholdPx <= 0f) return 0
-    if (abs(deltaX) < thresholdPx || abs(deltaX) < abs(deltaY) * 1.35f) return 0
+    if (abs(deltaX) < abs(deltaY) * 1.35f ||
+        !BlinkElasticGesturePhysics.shouldCommit(
+            deltaX, velocityXPxPerSecond, thresholdPx,
+            thresholdPx * 0.36f, thresholdPx * 14.5f
+        )) return 0
     return if (deltaX < 0f) -1 else 1
 }
 
@@ -44,6 +51,8 @@ fun Modifier.blinkHorizontalPageSwipe(
             var finalX = down.position.x
             var finalY = down.position.y
             var handledByChild = false
+            val velocity = VelocityTracker()
+            velocity.addPosition(down.uptimeMillis, down.position)
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Final)
                 // Never turn pinch-to-zoom / multi-touch into page navigation.
@@ -51,6 +60,7 @@ fun Modifier.blinkHorizontalPageSwipe(
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 finalX = change.position.x
                 finalY = change.position.y
+                velocity.addPosition(change.uptimeMillis, change.position)
                 if (change.pressed && change.isConsumed) handledByChild = true
                 if (!change.pressed) {
                     when (horizontalPageSwipeDirection(
@@ -58,6 +68,7 @@ fun Modifier.blinkHorizontalPageSwipe(
                         deltaY = finalY - down.position.y,
                         thresholdPx = thresholdPx,
                         handledByChild = handledByChild,
+                        velocityXPxPerSecond = velocity.calculateVelocity().x,
                     )) {
                         -1 -> latestLeft()
                          1 -> latestRight()
