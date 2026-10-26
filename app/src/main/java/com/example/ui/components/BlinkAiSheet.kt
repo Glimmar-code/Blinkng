@@ -1062,6 +1062,35 @@ fun BlinkAiSheet(
                             }
                         }
 
+                        if (initialImageUri != null && imageUris.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Image tools — press Send to share this picture with BLINK AI",
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    "Explain" to "Describe this picture carefully.",
+                                    "Extract text" to "Extract all readable text from this picture, retaining line breaks.",
+                                    "Translate" to "Translate the text in this picture into English.",
+                                    "Explain code" to "Explain any code shown in this picture and possible errors.",
+                                    "Caption" to "Suggest three short captions for this picture."
+                                ).forEach { (title, prompt) ->
+                                    FilterChip(
+                                        selected = input == prompt,
+                                        onClick = { input = prompt },
+                                        enabled = !isSending && pendingAction == null,
+                                        label = { Text(title) }
+                                    )
+                                }
+                            }
+                        }
+
                         if (audioUri != null) {
                             Spacer(Modifier.height(6.dp))
                             Surface(
