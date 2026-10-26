@@ -7,15 +7,25 @@
 
 -- Reject any new peer-to-peer BLINK Coin transfers. Existing purchases/ledger
 -- history and already paid orders are kept intact.
-revoke execute on function public.gift_blink_coins(uuid,bigint)
-  from public, anon, authenticated;
-revoke execute on function public.gift_blink_coins_once(uuid,bigint,uuid)
-  from public, anon, authenticated, service_role;
--- Do not allow a direct RPC to create newly paid peer-to-peer Coin gifts.
--- Existing paid orders are retained for lawful settlement/refund handling.
-revoke execute on function public.create_blink_paystack_gift_order(text,text,text)
-  from public, anon, authenticated;
-
+-- Some installations have not deployed newer gift endpoints.
+-- Conditional revocations keep the migration compatible and prevent new gifts.
+do $coin_gifts$
+begin
+  if to_regprocedure('public.gift_blink_coins(uuid,bigint)') is not null then
+    revoke execute on function public.gift_blink_coins(uuid,bigint)
+      from public, anon, authenticated;
+  end if;
+  if to_regprocedure('public.gift_blink_coins_once(uuid,bigint,uuid)') is not null then
+    revoke execute on function public.gift_blink_coins_once(uuid,bigint,uuid)
+      from public, anon, authenticated, service_role;
+  end if;
+  -- Existing paid orders remain eligible for lawful fulfilment/refunds.
+  if to_regprocedure('public.create_blink_paystack_gift_order(text,text,text)') is not null then
+    revoke execute on function public.create_blink_paystack_gift_order(text,text,text)
+      from public, anon, authenticated;
+  end if;
+end
+$coin_gifts$;
 
 -- Gift HP = recipient XP level progress. Never spend or transfer Coin balances.
 insert into public.xp_rules(event_type,xp_amount,repeatable,daily_event_limit,enabled,description)
