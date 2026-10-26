@@ -172,6 +172,7 @@
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/invite/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/channel/" />
                 <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
             </intent-filter>
 
@@ -211,6 +212,7 @@
                 <data android:scheme="blink" android:host="profile" />
                 <data android:scheme="blink" android:host="post" />
                 <data android:scheme="blink" android:host="reel" />
+                <data android:scheme="blink" android:host="channel" />
             </intent-filter>
         </activity>
     </application>
