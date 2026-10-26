@@ -405,7 +405,14 @@ fun ProfileScreen(
             shape = RoundedCornerShape(0.dp),
             color = bgColor
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(savedProfileTheme.topArgb), Color(savedProfileTheme.bottomArgb))
+                        )
+                    )
+            ) {
 
             LazyColumn(
                 state = scrollState,
