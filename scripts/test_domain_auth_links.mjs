@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import cloudflareWorker, {isBlinkAppRoute} from '../web/_worker.js';
 
 const web = readFileSync('web/app.js', 'utf8');
 const config = readFileSync('web/config.js', 'utf8');
@@ -71,3 +72,46 @@ assert.ok(readFileSync('web/404.html','utf8').includes('location.replace(base'),
 
 console.log('PASS: canonical Google OAuth/password recovery and token-safe route fallback');
 console.log('PASS: Cloudflare Pages shared post, reel and profile URLs serve the SPA shell');
+
+const index = readFileSync('web/index.html','utf8');
+assert.match(index, /<base href="\/" \/>/, 'Nested SPA routes must fetch JS/CSS from the root');
+assert.ok(index.includes("location.hostname.endsWith('github.io')"),
+  'Legacy GitHub Pages previews must keep their own base path');
+
+// Exercise the real Cloudflare Pages advanced worker with a mocked ASSETS binding.
+const fetched = [];
+const env = {ASSETS: {fetch: async request => {
+  const path = new URL(request.url).pathname;
+  fetched.push(path);
+  return path === '/'
+    ? new Response('<!doctype html><html><head><base href="/"></head></html>', {
+        headers:{'Content-Type':'text/html', 'Cache-Control':'public, max-age=0'}
+      })
+    : new Response('Not found',{status:404});
+}}};
+for(const path of [
+  '/post/a0a72f53-417f-4b88-997b-06faef40049e',
+  '/reel/00000000-0000-4000-8000-000000000001',
+  '/@blinkuser',
+  '/profile/blinkuser',
+  '/settings/password'
+]){
+  assert.ok(isBlinkAppRoute(path), 'Recognize known SPA route '+path);
+  const original = 'https://blink.com.ng'+path+'?share=1';
+  const result = await cloudflareWorker.fetch(new Request(original),env);
+  assert.equal(result.status,200,'Serve application HTML on '+path);
+  assert.match(await result.text(),/<base href="\/"/);
+  assert.equal(result.headers.get('x-robots-tag'),'noindex, nofollow',
+    'Private/link routes must never be indexed');
+  assert.equal(result.headers.get('cache-control'),'no-store','Shared routes must not cache user content');
+  assert.equal(fetched.at(-1),'/', 'Serve root shell rather than redirect to /index.html');
+}
+for(const path of ['/','/about/','/robots.txt','/some-missing-url','/app.js','/.well-known/assetlinks.json']){
+  assert.equal(isBlinkAppRoute(path),false,'Never rewrite static content '+path);
+  const response = await cloudflareWorker.fetch(new Request('https://blink.com.ng'+path),env);
+  assert.equal(fetched.at(-1),path,'Pass through original asset path '+path);
+  assert.equal(response.status,path==='/'?200:404,'Preserve static origin response '+path);
+}
+const postResponse = await cloudflareWorker.fetch(new Request('https://blink.com.ng/post/a0a72f53-417f-4b88-997b-06faef40049e',{method:'POST'}),env);
+assert.equal(postResponse.status,404,'Never rewrite POST requests');
+console.log('PASS: Cloudflare Pages asset worker serves real shared routes without breaking SEO or assets');
