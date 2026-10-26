@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -78,6 +79,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.blinkng.shared.discovery.BlinkReferralSuggestion
 import com.example.data.models.BlinkOnboardingCatalog
 import com.example.data.models.NigerianUniversities
 import com.example.data.models.NigerianUniversitySearch
@@ -103,7 +105,8 @@ fun AccountOnboardingScreen(
     profile: UserProfile,
     candidates: List<UserProfile>,
     onCheckUsername: (String, (Boolean, String?) -> Unit) -> Unit,
-    onSaveUsername: (String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveUsername: (String, String, (Boolean, String?) -> Unit) -> Unit,
+    onSaveReferrer: (String, (Boolean, String?) -> Unit) -> Unit,
     onSaveBasics: (
         university: String,
         department: String,
@@ -130,6 +133,8 @@ fun AccountOnboardingScreen(
         .takeUnless { it.startsWith("blink_", ignoreCase = true) }
         .orEmpty()
     var username by rememberSaveable(profile.id) { mutableStateOf(initialUsername) }
+    var displayName by rememberSaveable(profile.id) { mutableStateOf(profile.fullName) }
+    var selectedReferrer by remember { mutableStateOf<BlinkReferralSuggestion?>(null) }
     var usernameChecking by remember { mutableStateOf(false) }
     var usernameAvailable by remember { mutableStateOf<Boolean?>(null) }
     var usernameMessage by remember { mutableStateOf<String?>(null) }
@@ -233,6 +238,7 @@ fun AccountOnboardingScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp),
             contentPadding = PaddingValues(top = 14.dp, bottom = 36.dp),
@@ -286,6 +292,16 @@ fun AccountOnboardingScreen(
 
                         Spacer(Modifier.height(8.dp))
 
+                        // Google OAuth already verified the email. New accounts still
+                        // choose the public name and username just like email signups.
+                        OutlinedTextField(
+                            value = displayName,
+                            onValueChange = { displayName = it.take(80); error = null },
+                            label = { Text("Your name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_display_name")
+                        )
+                        Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = username,
                             onValueChange = {
@@ -351,10 +367,11 @@ fun AccountOnboardingScreen(
 
                         PrimaryOnboardingButton(
                             text = "Continue",
-                            enabled = usernameAvailable == true && !saving
+                            enabled = usernameAvailable == true &&
+                                displayName.trim().length in 2..80 && !saving
                         ) {
                             saving = true
-                            onSaveUsername(username) { ok, message ->
+                            onSaveUsername(username, displayName.trim()) { ok, message ->
                                 saving = false
                                 if (ok) {
                                     step = 1
@@ -483,6 +500,12 @@ fun AccountOnboardingScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Spacer(Modifier.height(8.dp))
+                        BlinkReferrerPicker(
+                            selected = selectedReferrer,
+                            onSelected = { selectedReferrer = it },
+                            lightSurface = false,
+                        )
                         Spacer(Modifier.height(18.dp))
 
                         val birthdayValid = birthDate.isBlank() ||
@@ -524,11 +547,20 @@ fun AccountOnboardingScreen(
                                 ) { ok, message ->
                                     saving = false
                                     if (ok) {
-                                        SignupCampusPreference.clear(context)
-                                        avatarUrl = finalAvatar
-                                        pendingAvatarUri = null
-                                        step = 2
+                                        val referralId = selectedReferrer?.id.orEmpty()
+                                        onSaveReferrer(referralId) { accepted, referralError ->
+                                            saving = false
+                                            if (accepted) {
+                                                SignupCampusPreference.clear(context)
+                                                avatarUrl = finalAvatar
+                                                pendingAvatarUri = null
+                                                step = 2
+                                            } else {
+                                                error = referralError ?: "Could not confirm your optional referral."
+                                            }
+                                        }
                                     } else {
+                                        saving = false
                                         error = message ?: "Unable to save profile."
                                     }
                                 }
