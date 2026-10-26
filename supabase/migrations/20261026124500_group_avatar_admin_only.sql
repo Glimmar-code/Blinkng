@@ -51,6 +51,7 @@ begin
   if not exists (
     select 1 from storage.objects o
     where o.bucket_id='profile-media' and o.name=v_object_path
+      and (o.owner_id=v_actor::text or o.owner=v_actor)
   ) then return false; end if;
   update public.conversations c
     set avatar_url=p_avatar_url,updated_at=now()
