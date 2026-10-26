@@ -85,7 +85,13 @@ fun DesktopCommunitiesScreen(state: DesktopAppState) {
     }
 
     selectedChannel?.let { channel ->
-        DesktopChannelDetail(state, channel, onBack = { selectedChannel = null })
+        DesktopChannelDetail(
+            state, channel, onBack = { selectedChannel = null },
+            onChannelEdited = { updated ->
+                selectedChannel = updated
+                communities = communities.map { if (it.id == updated.id) updated else it }
+            }
+        )
         return
     }
 
