@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -93,6 +94,7 @@ fun BlinkChannelDetail(
     var reports by remember(channel.id) { mutableStateOf<List<BlinkChannelReport>>(emptyList()) }
     var reportingUpdate by remember(channel.id) { mutableStateOf<String?>(null) }
     var reportReason by remember(channel.id) { mutableStateOf("Spam or misleading information") }
+    var mediaUpdateId by remember(channel.id) { mutableStateOf<String?>(null) }
     var shareUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
     var sendChatUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
     var sendChannelUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
@@ -257,20 +259,30 @@ fun BlinkChannelDetail(
                         if (update.pinned) Text("📌 Pinned update", color = MaterialTheme.colorScheme.primary)
                         if (update.body.isNotEmpty()) Text(update.body, style = MaterialTheme.typography.bodyLarge)
                         if (update.mediaKind == "image" && signedMedia != null) {
-                            AsyncImage(
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { mediaUpdateId = update.id }
+                            ) { AsyncImage(
                                 model = signedMedia,
                                 contentDescription = "Channel image",
                                 modifier = Modifier.fillMaxWidth().height(230.dp)
-                            )
+                            ) }
                         } else if (update.mediaPath != null) {
                             TextButton(onClick = {
-                                signedMedia?.let { url ->
-                                    runCatching {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addCategory(Intent.CATEGORY_BROWSABLE))
-                                    }.onFailure { error = "No app can open this attachment." }
+                                if (update.mediaKind in setOf("image", "audio", "video")) {
+                                    mediaUpdateId = update.id
+                                } else {
+                                    signedMedia?.let { url ->
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                .addCategory(Intent.CATEGORY_BROWSABLE))
+                                        }.onFailure { error = "No PDF viewer is available." }
+                                    }
                                 }
-                            }) { Text(if (signedMedia == null) "Loading attachment…" else "Open ${update.mediaKind} attachment") }
+                            }) {
+                                Text(if (signedMedia == null) "Loading attachment…" else
+                                    "Open ${update.mediaKind} attachment")
+                            }
                         }
                         if (update.mediaKind == "poll") {
                             Text(update.pollQuestion.orEmpty(), fontWeight = FontWeight.SemiBold)
@@ -457,6 +469,13 @@ fun BlinkChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        mediaUpdateId?.let { id ->
+            BlinkChannelMediaViewer(
+                updates = updates,
+                initialUpdateId = id,
+                onDismiss = { mediaUpdateId = null }
+            )
         }
         shareUpdate?.let { selected ->
             AlertDialog(
