@@ -2114,6 +2114,13 @@ private fun PremiumChatDetail(
 
     viewedImageMessage?.let { requestedImage ->
         val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
+        val normalPictures = remember(conversation.messages) {
+            conversation.messages.filter {
+                !it.imageViewOnce && !it.deletedForEveryone &&
+                    !it.attachedImageUrl.isNullOrBlank()
+            }
+        }
+        val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
         if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
             BlinkChatPictureViewer(
                 message = message,
@@ -2158,6 +2165,15 @@ private fun PremiumChatDetail(
                 onReact = { emoji ->
                     interactionActions.onReact(conversation.partnerUsername, message, emoji)
                     viewedImageMessage = null
+                },
+                hasPrevious = pictureIndex > 0,
+                hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                onPrevious = {
+                    if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
+                },
+                onNext = {
+                    if (pictureIndex in 0 until normalPictures.lastIndex)
+                        viewedImageMessage = normalPictures[pictureIndex + 1]
                 }
             )
         }
