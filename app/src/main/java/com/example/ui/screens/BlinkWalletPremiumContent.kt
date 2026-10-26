@@ -206,7 +206,9 @@ internal fun BlinkWalletPremiumContent(
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text(allTitles[page], fontSize = 23.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
-            WalletLogo()
+            IconButton(onClick = onRetry, enabled = !loading && accountId.isNotBlank()) {
+                Icon(Icons.Rounded.Refresh, "Refresh Coins and rewards", tint = Color(0xFFC67EFF))
+            }
         }
         Crossfade(targetState = page, animationSpec = tween(230), label = "wallet_pages") { current ->
             LazyColumn(Modifier.fillMaxSize(),
