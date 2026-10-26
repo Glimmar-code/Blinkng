@@ -58,7 +58,7 @@ fun ProfileFollowInteractButton(
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
     onMessage: () -> Unit,
-    onGiftHP: (Int) -> Unit,
+    onGiftCoins: (Int) -> Unit,
     onGameChallenge: () -> Unit,
     onMentorRequest: () -> Unit,
     onFriendRequest: () -> Unit,
@@ -118,7 +118,7 @@ fun ProfileFollowInteractButton(
                 onMessage()
             }
             if (giftingEnabled) {
-                InteractionMenuItem(Icons.Default.CardGiftcard, "Gift Level HP") {
+                InteractionMenuItem(Icons.Default.CardGiftcard, "Send BLINK Coins") {
                     menuExpanded = false
                     giftDialogOpen = true
                 }
@@ -155,13 +155,13 @@ fun ProfileFollowInteractButton(
         if (giftDialogOpen) {
             AlertDialog(
                 onDismissRequest = { giftDialogOpen = false },
-                title = { Text("Gift Level HP") },
+                title = { Text("Send BLINK Coins") },
                 text = {
                     Column {
-                        Text("Select a gift amount. The recipient gains level progress after the server confirms the gift. No coins move.")
+                        Text("Select a gift amount. Your wallet is debited only when the server confirms the transfer.")
                         listOf(20, 50, 100).forEach { amount ->
                             TextButton(onClick = { selectedGiftAmount = amount }) {
-                                Text(if (selectedGiftAmount == amount) "✓ $amount HP" else "$amount HP")
+                                Text(if (selectedGiftAmount == amount) "✓ $amount Coins" else "$amount Coins")
                             }
                         }
                     }
@@ -169,8 +169,8 @@ fun ProfileFollowInteractButton(
                 confirmButton = {
                     TextButton(onClick = {
                         giftDialogOpen = false
-                        onGiftHP(selectedGiftAmount)
-                    }) { Text("Send $selectedGiftAmount HP") }
+                        onGiftCoins(selectedGiftAmount)
+                    }) { Text("Send $selectedGiftAmount Coins") }
                 },
                 dismissButton = {
                     TextButton(onClick = { giftDialogOpen = false }) { Text("Cancel") }
