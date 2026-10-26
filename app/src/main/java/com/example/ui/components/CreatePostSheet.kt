@@ -580,7 +580,7 @@ fun CreatePostSheet(
     }
 
     fun submit() {
-        if (reelExporting || reelHasPendingEdits) {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before publishing.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -655,7 +655,7 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
-        if (reelExporting || reelHasPendingEdits) {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
             Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1018,6 +1018,7 @@ fun CreatePostSheet(
                         onRemove = {
                             if (!isSubmitting && !reelExporting) {
                                 selectedVideo = null
+                                reelHasPendingEdits = false
                                 mode = "post"
                             }
                         },
