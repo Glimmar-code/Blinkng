@@ -1665,7 +1665,7 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
-                put("account_type", profile.accountType.ifBlank { "STUDENT" })
+                profile.accountType.takeIf { it.isNotBlank() }?.let { put("account_type", it) }
                 put("faculty", profile.faculty)
                 put("department", profile.department)
                 put("course_of_study", profile.courseOfStudy)
