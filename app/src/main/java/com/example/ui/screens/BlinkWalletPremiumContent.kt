@@ -259,6 +259,9 @@ internal fun BlinkWalletPremiumContent(
                                 NeonRow(Icons.Rounded.PlayCircle, "Earn a lot of coins watching ads",
                                     "Watch rewarded ads and earn 10 coins per completed ad.",
                                     action = { page = 1 })
+                                NeonRow(Icons.Rounded.TaskAlt, "Complete daily tasks",
+                                    "Earn BLINK Coins and level XP (HP) from verified daily missions.",
+                                    action = { page = 2 })
                             }
                         }
                         item {
