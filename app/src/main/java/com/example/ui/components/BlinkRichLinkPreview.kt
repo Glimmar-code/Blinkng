@@ -28,7 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.blinkng.shared.BlinkRichLink
 import com.blinkng.shared.BlinkRichLinks
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.spacedBy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -92,16 +95,24 @@ fun BlinkRichLinkPreview(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val link = remember(text) { BlinkRichLinks.first(text) } ?: return
+    val links = remember(text) { BlinkRichLinks.all(text) }
+    if (links.isEmpty()) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        links.forEach { link ->
+            key(link.url) { BlinkRichLinkCard(link = link, compact = compact) }
+        }
+    }
+}
+
+@Composable
+private fun BlinkRichLinkCard(link: BlinkRichLink, compact: Boolean) {
     val context = LocalContext.current
     var metadata by remember(link.url) { mutableStateOf<LinkCardMetadata?>(null) }
     LaunchedEffect(link.url) { metadata = LinkCardMetadataCache.get(link.url) }
     val title = metadata?.title?.takeIf { it.isNotBlank() } ?: link.host
     val description = metadata?.description?.takeIf { it.isNotBlank() } ?: link.url
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable {
+        modifier = Modifier.fillMaxWidth().clickable {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link.url))
                 runCatching { context.startActivity(intent) }
             },
