@@ -731,6 +731,262 @@
     return {isImage,isVideo};
   }
 
+  /**
+   * The Web counterpart of BLINK's native photo editor. Uses a user-scoped File,
+   * a local canvas and an explicit Done gesture; nothing uploads during editing.
+   * Video and animated images are intentionally returned unchanged.
+   */
+  // Owner-scoped reusable sticker library. Blobs remain in the browser's local
+  // IndexedDB; nothing is uploaded. Different accounts cannot browse each
+  // other's stickers in the interface. Clear site data to remove all copies.
+  async function blinkStickerDb(){
+    if(!window.indexedDB)throw new Error('This browser does not support saved stickers.');
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open('blink-private-stickers-v1',1);
+      req.onupgradeneeded=()=>{
+        if(!req.result.objectStoreNames.contains('stickers'))
+          req.result.createObjectStore('stickers',{keyPath:'key'});
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||new Error('Sticker storage unavailable.'));
+    });
+  }
+  async function blinkStickerOperation(mode,record=null){
+    const owner=uid();
+    if(!owner)throw new Error('Sign in to save and reuse stickers.');
+    const db=await blinkStickerDb();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('stickers',mode==='list'?'readonly':'readwrite');
+      const store=tx.objectStore('stickers');
+      if(mode==='list'){
+        const req=store.getAll();
+        req.onsuccess=()=>resolve((req.result||[]).filter(x=>x.owner===owner)
+          .sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,30));
+        req.onerror=()=>reject(req.error);
+      }else{
+        const req=mode==='remove'?store.delete(record.key):store.put(record);
+        req.onsuccess=()=>resolve(true);
+        req.onerror=()=>reject(req.error);
+      }
+      tx.oncomplete=()=>db.close();
+      tx.onerror=()=>{db.close();reject(tx.error);};
+    });
+  }
+  async function blinkSaveCanvasSticker(canvas){
+    const existing=await blinkStickerOperation('list');
+    if(existing.length>=30)throw new Error('You can keep up to 30 stickers. Remove one first.');
+    const cropped=document.createElement('canvas');
+    cropped.width=512;cropped.height=512;
+    const cg=cropped.getContext('2d');
+    const ratio=Math.min(512/canvas.width,512/canvas.height);
+    const width=Math.round(canvas.width*ratio);
+    const height=Math.round(canvas.height*ratio);
+    cg.drawImage(canvas,(512-width)/2,(512-height)/2,width,height);
+    const blob=await new Promise((resolve,reject)=>cropped.toBlob(
+      x=>x?resolve(x):reject(new Error('Could not save sticker.')),'image/png'));
+    if(blob.size>2*1024*1024)throw new Error('Sticker image is too large.');
+    return blinkStickerOperation('save',{
+      key:uid()+':'+crypto.randomUUID(),owner:uid(),
+      created:Date.now(),blob
+    });
+  }
+
+  async function blinkEditSelectedPhoto(file){
+    if(!file||!/^image\/(jpeg|png)$/i.test(file.type))return file;
+    const bitmap=await createImageBitmap(file);
+    const ratio=Math.min(1,2048/Math.max(bitmap.width,bitmap.height));
+    let surface=document.createElement('canvas');
+    surface.width=Math.max(1,Math.round(bitmap.width*ratio));
+    surface.height=Math.max(1,Math.round(bitmap.height*ratio));
+    let g=surface.getContext('2d',{willReadFrequently:true});
+    g.drawImage(bitmap,0,0,surface.width,surface.height);
+    bitmap.close();
+    const shade=document.createElement('div');
+    shade.setAttribute('role','dialog');
+    shade.setAttribute('aria-modal','true');
+    shade.setAttribute('aria-label','BLINK Photo Editor');
+    shade.style.cssText='position:fixed;inset:0;z-index:100000;background:#060608;color:#fff;display:flex;flex-direction:column;gap:12px;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);box-sizing:border-box;';
+    const bar=document.createElement('div');
+    bar.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:10px 0;';
+    const controls=document.createElement('div');
+    controls.style.cssText='display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
+    const view=document.createElement('div');
+    view.style.cssText='flex:1;min-height:150px;display:grid;place-items:center;overflow:auto;background:#000;';
+    surface.style.cssText='max-width:100%;max-height:100%;object-fit:contain;touch-action:none;box-shadow:0 0 2px #222;';
+    const lower=document.createElement('div');
+    lower.style.cssText='display:flex;flex-direction:column;gap:8px;min-height:115px;padding:8px 10px 16px;background:#101014;border-radius:14px;';
+    const status=document.createElement('div');
+    status.style.cssText='font-size:12px;color:#bdbdcc;text-align:center;';
+    const mkBtn=(label,action)=>{
+      const button=document.createElement('button');button.type='button';button.textContent=label;
+      button.style.cssText='border:1px solid #555;background:#24242c;color:white;border-radius:12px;padding:9px 12px;font:inherit;font-size:12px;cursor:pointer;';
+      button.addEventListener('click',action);return button;
+    };
+    let doneResolve;
+    const response=new Promise(resolve=>{doneResolve=resolve;});
+    let finished=false,drawEnabled=false,pointerDown=false;
+    let ink='#fff';
+    let edits={exposure:0,contrast:100,saturation:100};
+    function close(result){
+      if(finished)return;
+      finished=true;shade.remove();
+      document.removeEventListener('keydown',escape);
+      doneResolve(result);
+    }
+    function escape(e){if(e.key==='Escape')close(file);}
+    document.addEventListener('keydown',escape);
+    bar.append(mkBtn('✕ CANCEL',()=>close(file)));
+    const title=document.createElement('strong');title.textContent='BLINK PHOTO';
+    bar.append(title);
+    bar.append(mkBtn('✓ DONE',()=>{
+      try{
+        const adjusted=document.createElement('canvas');
+        adjusted.width=surface.width;adjusted.height=surface.height;
+        const cg=adjusted.getContext('2d');
+        cg.filter=`brightness(${100+edits.exposure}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;
+        cg.drawImage(surface,0,0);cg.filter='none';
+        adjusted.toBlob(blob=>{
+          if(!blob){status.textContent='Could not export picture.';return;}
+          close(new File([blob],`BLINK_${Date.now()}.jpg`,{type:'image/jpeg'}));
+        },'image/jpeg',.9);
+      }catch(e){status.textContent='Could not save edits. Choose Cancel to use the original.';}
+    }));
+    let active='Adjust';
+    function renderTools(){
+      lower.replaceChildren();
+      status.textContent=drawEnabled?'Draw on the picture with your finger or mouse.':'Edits are local until you publish.';
+      const tools=document.createElement('div');
+      tools.style.cssText='display:flex;gap:6px;justify-content:center;flex-wrap:wrap;';
+      ['Adjust','Crop','Draw','Sticker','Text'].forEach(name=>tools.append(
+        mkBtn(name,()=>{active=name;drawEnabled=name==='Draw';renderTools();})
+      ));
+      lower.append(tools);
+      const options=document.createElement('div');
+      options.style.cssText='display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;';
+      const changeCanvas=newCanvas=>{
+        const old=surface;
+        surface=newCanvas;
+        surface.style.cssText=old.style.cssText;
+        old.replaceWith(surface);
+        g=surface.getContext('2d',{willReadFrequently:true});
+        attachDraw();
+      };
+      if(active==='Adjust'){
+        [['Exposure','exposure',-80,80],['Contrast','contrast',50,150],['Saturation','saturation',0,200]]
+        .forEach(([label,key,min,max])=>{
+          const row=document.createElement('label');row.style.cssText='display:flex;gap:4px;align-items:center;font-size:11px;';
+          row.textContent=label;
+          const input=document.createElement('input');input.type='range';input.min=min;input.max=max;
+          input.value=edits[key];input.setAttribute('aria-label',label);
+          input.oninput=()=>{edits[key]=Number(input.value);
+            surface.style.filter=`brightness(${100+edits.exposure}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;};
+          row.append(input);options.append(row);
+        });
+      }else if(active==='Crop'){
+        const crop=(aspect)=>{
+          const ratio=surface.width/surface.height;
+          const w=ratio>aspect?Math.round(surface.height*aspect):surface.width;
+          const h=ratio>aspect?surface.height:Math.round(surface.width/aspect);
+          const next=document.createElement('canvas');next.width=w;next.height=h;
+          next.getContext('2d').drawImage(surface,(surface.width-w)/2,(surface.height-h)/2,w,h,0,0,w,h);
+          changeCanvas(next);
+        };
+        [['Square',1],['16:9',16/9],['9:16',9/16]].forEach(([label,ratio])=>
+          options.append(mkBtn(label,()=>crop(ratio))));
+        options.append(mkBtn('Rotate 90°',()=>{
+          const next=document.createElement('canvas');next.width=surface.height;next.height=surface.width;
+          const ctx=next.getContext('2d');ctx.translate(next.width,0);ctx.rotate(Math.PI/2);
+          ctx.drawImage(surface,0,0);changeCanvas(next);
+        }));
+      }else if(active==='Draw'){
+        ['#fff','#ffeb3b','#ec375c','#3bb9ff','#000'].forEach(color=>{
+          const swatch=mkBtn('●',()=>ink=color);
+          swatch.style.color=color;options.append(swatch);
+        });
+      }else if(active==='Sticker'){
+        ['❤️','✨','🔥','😂','⭐','💜'].forEach(emoji=>
+          options.append(mkBtn(emoji,()=>{
+            g.font=`bold ${Math.round(surface.width*.12)}px sans-serif`;
+            g.textAlign='center';g.fillText(emoji,surface.width/2,surface.height/2);
+          })));
+        options.append(mkBtn('＋ Save photo as sticker',async()=>{
+          status.textContent='Saving your local sticker…';
+          try{
+            await blinkSaveCanvasSticker(surface);
+            status.textContent='Sticker saved for reuse on this browser.';
+            if(active==='Sticker')renderTools();
+          }catch(err){status.textContent=err.message;}
+        }));
+        // Saved images are private to the authenticated account and this browser.
+        blinkStickerOperation('list').then(records=>{
+          if(active!=='Sticker'||finished)return;
+          const gallery=document.createElement('div');
+          gallery.style.cssText='display:flex;gap:7px;overflow-x:auto;align-items:center;width:100%;';
+          records.forEach(record=>{
+            const picture=document.createElement('img');
+            const previewUrl=URL.createObjectURL(record.blob);
+            picture.src=previewUrl;
+            picture.alt='Add saved sticker to photo';
+            picture.style.cssText='height:48px;width:48px;object-fit:contain;background:#282830;border-radius:10px;cursor:pointer;';
+            picture.onload=()=>URL.revokeObjectURL(previewUrl);
+            picture.onclick=async()=>{
+              const bitmap=await createImageBitmap(record.blob);
+              const side=Math.max(32,Math.min(surface.width,surface.height)*.28);
+              g.drawImage(bitmap,(surface.width-side)/2,(surface.height-side)/2,side,side);
+              bitmap.close();
+              status.textContent='Saved sticker added to your photo.';
+            };
+            gallery.append(picture);
+            const remove=mkBtn('✕',async()=>{
+              if(!window.confirm('Remove saved sticker from this browser?'))return;
+              await blinkStickerOperation('remove',record);
+              if(active==='Sticker')renderTools();
+            });
+            remove.setAttribute('aria-label','Remove saved sticker');
+            gallery.append(remove);
+          });
+          lower.append(gallery);
+        }).catch(err=>{status.textContent=err.message;});
+      }else if(active==='Text'){
+        const input=document.createElement('input');input.type='text';input.maxLength=80;
+        input.placeholder='Write on picture';input.style.cssText='background:#212127;color:#fff;border:1px solid #aaa;padding:8px;border-radius:8px;';
+        options.append(input,mkBtn('Add text',()=>{
+          const str=input.value.trim();if(!str)return;
+          g.font=`bold ${Math.round(surface.width*.065)}px sans-serif`;
+          g.fillStyle=ink;g.textAlign='center';
+          g.shadowColor='#000';g.shadowBlur=5;
+          g.fillText(str,surface.width/2,surface.height/2);
+          g.shadowBlur=0;input.value='';
+        }));
+      }
+      lower.append(options,status);
+    }
+    let previousPos=null;
+    function attachDraw(){
+      surface.addEventListener('pointerdown',e=>{
+        if(!drawEnabled)return;
+        pointerDown=true;surface.setPointerCapture(e.pointerId);
+        const b=surface.getBoundingClientRect();
+        previousPos=[(e.clientX-b.left)*surface.width/b.width,(e.clientY-b.top)*surface.height/b.height];
+      });
+      surface.addEventListener('pointermove',e=>{
+        if(!drawEnabled||!pointerDown||!previousPos)return;
+        const b=surface.getBoundingClientRect();
+        const pos=[(e.clientX-b.left)*surface.width/b.width,(e.clientY-b.top)*surface.height/b.height];
+        g.strokeStyle=ink;g.lineWidth=Math.max(3,surface.width*.007);
+        g.lineCap='round';g.beginPath();g.moveTo(...previousPos);g.lineTo(...pos);g.stroke();
+        previousPos=pos;
+      });
+      ['pointerup','pointercancel'].forEach(event=>surface.addEventListener(event,()=>{
+        pointerDown=false;previousPos=null;
+      }));
+    }
+    attachDraw();renderTools();
+    view.append(surface);shade.append(bar,view,lower);
+    document.body.appendChild(shade);
+    return response;
+  }
+
   function marketOnlyFeedWarning(category,text){
     const categoryKey=String(category||'').trim().toLowerCase();
     if(['marketplace','market','buy & sell','for sale','selling'].includes(categoryKey)){
@@ -751,6 +1007,7 @@
     const file=document.getElementById('post-media-file');
     const mediaName=document.getElementById('media-name');
     const submit=form.querySelector('button[type="submit"]');
+    let editedMedia=null;
     const marketWarning=document.getElementById('post-market-warning');
     document.getElementById('post-open-market').onclick=()=>{closeModal();navigate('/market');};
     function updateMarketWarning(){
@@ -762,27 +1019,32 @@
     form.elements.text.oninput=e=>{storageSet(draftKey(),e.target.value);updateMarketWarning();};
     form.elements.category.onchange=updateMarketWarning;
     updateMarketWarning();
-    file.onchange=()=>{
+    file.onchange=async()=>{
       try{
+        editedMedia=null;
+        submit.disabled=true;
         const media=file.files[0];
-        if(media)validateMediaFile(media);
+        const info=media?validateMediaFile(media):null;
         mediaName.textContent=media?.name||'';
+        if(info?.isImage){
+          editedMedia=await blinkEditSelectedPhoto(media);
+          mediaName.textContent=`${editedMedia.name} · ready to publish`;
+        }
       }catch(err){
-        file.value='';
+        file.value='';editedMedia=null;
         mediaName.textContent=err.message;
-      }
+      }finally{submit.disabled=false;}
     };
     form.onsubmit=async e=>{
       e.preventDefault();
-      const f=new FormData(form),msg=document.getElementById('post-msg'),media=file.files[0];
+      const f=new FormData(form),msg=document.getElementById('post-msg'),media=editedMedia||file.files[0];
       submit.disabled=true;
       msg.innerHTML='<span class="muted">Publishing…</span>';
       try{
         const text=String(f.get('text')||'').trim();
         const restricted=marketOnlyFeedWarning(f.get('category'),text);
         if(restricted)throw new Error(restricted);
-        // Reject commercial copy before any upload, so blocked ads do not leave
-        // unused files in public storage.
+        // Validate before upload, avoiding orphan media for rejected listings.
         let mediaUrl='',videoUrl='',images=[];
         if(media){
           const kind=validateMediaFile(media);
@@ -816,13 +1078,25 @@
     const form=document.getElementById('story-form');
     const label=document.getElementById('story-file-name');
     const submit=form.querySelector('button[type="submit"]');
-    file.onchange=()=>{
-      try{const media=file.files[0];if(media)validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80});label.textContent=media?.name||'';}
-      catch(err){file.value='';label.textContent=err.message;}
+    let editedStoryFile=null;
+    file.onchange=async()=>{
+      try{
+        editedStoryFile=null;
+        submit.disabled=true;
+        const media=file.files[0];
+        const kind=media?validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80}):null;
+        label.textContent=media?.name||'';
+        if(kind?.isImage){
+          editedStoryFile=await blinkEditSelectedPhoto(media);
+          label.textContent=`${editedStoryFile.name} · ready to share`;
+        }
+      }
+      catch(err){file.value='';editedStoryFile=null;label.textContent=err.message;}
+      finally{submit.disabled=false;}
     };
     form.onsubmit=async e=>{
       e.preventDefault();
-      const media=file.files[0],msg=document.getElementById('story-msg');
+      const media=editedStoryFile||file.files[0],msg=document.getElementById('story-msg');
       if(!media){msg.innerHTML='<div class="error">Choose an image or video.</div>';return;}
       submit.disabled=true;
       msg.innerHTML='<span class="muted">Uploading…</span>';
@@ -1575,13 +1849,15 @@
       }finally{submit.disabled=false;}
     };
     document.getElementById('avatar-file').onchange=async e=>{
-      const file=e.target.files[0];if(!file)return;
-      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:8});const url=await uploadPublicFile('avatars',file,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}
+      let file=e.target.files[0];if(!file)return;
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:8});
+        file=await blinkEditSelectedPhoto(file);
+        const url=await uploadPublicFile('avatars',file,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}
       catch(err){e.target.value='';toast(err.message);}
     };
     document.getElementById('cover-file').onchange=async e=>{
-      const file=e.target.files[0];if(!file)return;
-      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
+      let file=e.target.files[0];if(!file)return;
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});file=await blinkEditSelectedPhoto(file);const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
       catch(err){e.target.value='';toast(err.message);}
     };
   }

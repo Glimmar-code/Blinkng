@@ -2055,6 +2055,44 @@ class DesktopSupabaseClient(
         }
     }
 
+    /**
+     * Upload only to this authenticated student's own profile-media avatar
+     * prefix. The RPC independently enforces current group admin/owner status
+     * and verifies that the uploaded object exists under the caller's prefix.
+     */
+    suspend fun setGroupAvatarFromPicture(conversationId: String, image: File): Boolean =
+        withContext(Dispatchers.IO) {
+            val group = UUID.fromString(conversationId).toString()
+            val id = requireSession().userId
+            val ext = image.extension.lowercase()
+            val mime = when (ext) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                else -> throw IllegalArgumentException("Choose a JPEG, PNG or WebP group picture.")
+            }
+            require(image.isFile && image.length() in 1..8L * 1024 * 1024) {
+                "Group picture must be under 8 MB."
+            }
+            val key = "users/$id/avatar/${UUID.randomUUID()}.$ext"
+            val upload = authenticatedRequest("/storage/v1/object/profile-media/$key")
+                .header("Content-Type", mime)
+                .header("x-upsert", "false")
+                .post(image.readBytes().toRequestBody(mime.toMediaType())).build()
+            execute(upload)
+            rpcBoolean(postObject(
+                "/rest/v1/rpc/blink_set_group_avatar",
+                JSONObject().put("p_conversation_id", group)
+                    .put("p_avatar_url", "$baseUrl/storage/v1/object/public/profile-media/$key")
+            ))
+        }
+
+    suspend fun setChatMessageStarred(messageId: String, starred: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_message_starred", JSONObject()
+                .put("p_message_id", messageId).put("p_starred", starred)))
+        }
+
     suspend fun setChatMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean =
         withContext(Dispatchers.IO) {
             rpcBoolean(postObject("/rest/v1/rpc/set_message_reaction", JSONObject()

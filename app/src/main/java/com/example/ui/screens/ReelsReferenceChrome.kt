@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -24,12 +30,16 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,12 +55,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.models.Story
+import com.example.data.supabase.BlinkFeaturedReel
 import androidx.compose.ui.res.painterResource
 
 /**
  * The reference-style chrome is composed ABOVE the same pager that plays the fullscreen reels.
  * No second preview player is created, so expanding does not replay the video.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ReelsReferenceChrome(
     stories: List<Story>,
@@ -67,13 +79,24 @@ internal fun ReelsReferenceChrome(
     onGame: () -> Unit,
     onNotifications: () -> Unit,
     onMenu: () -> Unit,
+    featuredReels: List<BlinkFeaturedReel> = emptyList(),
+    onFeaturedReelClick: (String) -> Unit = {},
+    autoSlideEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val foreground = if (isDark) Color.White else Color(0xFF101014)
     val background = if (isDark) Color(0xFF121214) else Color.White
-    val visibleStories = remember(stories) {
-        stories.filterNot { it.id == "story_me" && it.storyImage.isBlank() }
-            .distinctBy { it.id }
+    val featured = remember(featuredReels) { featuredReels.take(5) }
+    val featuredPager = rememberPagerState(pageCount = { featured.size })
+    LaunchedEffect(featured.map { it.reel.id }, autoSlideEnabled) {
+        if (autoSlideEnabled && featured.size > 1) {
+            while (true) {
+                delay(5_000L)
+                if (!featuredPager.isScrollInProgress) {
+                    featuredPager.animateScrollToPage((featuredPager.currentPage + 1) % featured.size)
+                }
+            }
+        }
     }
     Column(modifier.fillMaxWidth().background(background)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -123,69 +146,133 @@ internal fun ReelsReferenceChrome(
         }
         }
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().height(108.dp)
+        // Replace only the Reels preview's story row. Stories elsewhere stay untouched.
+        Box(
+            Modifier.fillMaxWidth().height(184.dp).padding(horizontal = 12.dp, vertical = 8.dp)
+                .semantics { contentDescription = "Top Reels: five featured videos refresh every twelve hours" }
         ) {
-            item(key = "add_story") {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (featured.isNotEmpty()) {
+                HorizontalPager(
+                    state = featuredPager,
+                    pageSpacing = 8.dp,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    val item = featured[page]
+                    val caption = item.caption.ifBlank { "Featured Reel" }.replace("\\n", " ").take(84)
                     Box(
-                        modifier = Modifier.size(66.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, foreground.copy(alpha = .14f), CircleShape)
-                            .clickable(onClick = onAddStory),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Add to your story",
-                            tint = foreground,
-                            modifier = Modifier.size(31.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text("Your Story", color = foreground, fontSize = 11.sp, maxLines = 1)
-                }
-            }
-            items(visibleStories, key = { it.id }) { story ->
-                Column(
-                    modifier = Modifier.width(68.dp).clickable { onStoryClick(story) },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        Modifier.size(66.dp)
-                            .border(
-                                BorderStroke(
-                                    2.dp,
-                                    if (story.hasUnseen) Brush.sweepGradient(
-                                        listOf(Color(0xFFFFC44A), Color(0xFFFF477D),
-                                            Color(0xFFB51EF8), Color(0xFF5A6EFB),
-                                            Color(0xFFFFC44A))
-                                    ) else Brush.linearGradient(listOf(Color.Gray, Color.Gray))
-                                ),
-                                CircleShape
-                            ).padding(4.dp).clip(CircleShape),
-                        contentAlignment = Alignment.Center
+                        Modifier.fillMaxSize()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
+                            .border(1.dp, Color(0xFF8048E7),
+                                androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF48072A), Color(0xFF271A57), Color(0xFF00477E))
+                                )
+                            )
+                            .clickable { onFeaturedReelClick(item.reel.id) }
                     ) {
                         AsyncImage(
-                            model = story.avatar,
-                            fallback = painterResource(R.drawable.ic_default_profile),
-                            error = painterResource(R.drawable.ic_default_profile),
-                            contentDescription = "View ${story.displayLabel}'s story",
+                            model = item.coverUrl.ifBlank { item.avatarUrl },
+                            contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(58.dp).clip(CircleShape)
+                            modifier = Modifier.fillMaxHeight().fillMaxWidth(.58f).align(Alignment.CenterEnd)
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF100818).copy(alpha = .97f),
+                                        Color(0xFF1B0C32).copy(alpha = .88f),
+                                        Color.Transparent)
+                                )
+                            )
+                        )
+                        Column(
+                            Modifier.fillMaxWidth(.72f).padding(start = 14.dp, top = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(
+                                    model = item.avatarUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(30.dp).clip(CircleShape)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        item.displayName,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "@${item.username}",
+                                        color = Color.White.copy(alpha = .76f),
+                                        fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Text(
+                                "🔥 Top Reel · 12h",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFD92051)).padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                            Text(
+                                caption,
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Visibility, contentDescription = null,
+                                    tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("${item.windowViews} views", color = Color.White, fontSize = 11.sp)
+                            }
+                        }
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 9.dp)
+                                .size(32.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = .57f))
+                                .border(1.dp, Color.White.copy(alpha = .75f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play this featured reel",
+                                tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                }
+                Row(
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(featured.size) { index ->
+                        Box(
+                            Modifier.size(if (featuredPager.currentPage == index) 7.dp else 5.dp)
+                                .clip(CircleShape)
+                                .background(if (featuredPager.currentPage == index) Color(0xFFAA72FF)
+                                    else Color.White.copy(alpha = .65f))
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        story.displayLabel,
-                        fontSize = 11.sp,
-                        color = foreground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                }
+            } else {
+                Box(
+                    Modifier.fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF250F33),Color(0xFF101225)))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Top Reels · New highlights every 12 hours",
+                        color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
                 }
             }
         }

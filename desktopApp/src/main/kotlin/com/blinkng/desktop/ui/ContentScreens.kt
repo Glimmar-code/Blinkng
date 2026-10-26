@@ -92,6 +92,8 @@ import com.blinkng.desktop.data.DesktopConnectApplication
 import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
+import com.blinkng.desktop.data.DesktopFeaturedReel
+import com.blinkng.desktop.data.featuredReels12h
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -848,6 +850,8 @@ internal fun DesktopCommentsPanel(state: DesktopAppState, postId: String) {
 @Composable
 fun ReelsScreen(state: DesktopAppState) {
     var reels by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var featured by remember { mutableStateOf<List<DesktopFeaturedReel>>(emptyList()) }
+    var featuredIndex by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -865,7 +869,21 @@ fun ReelsScreen(state: DesktopAppState) {
         }
     }
 
-    LaunchedEffect(Unit) { reloadReels() }
+    LaunchedEffect(Unit) {
+        reloadReels()
+        // The ranked cohort is server controlled and shared with Android.
+        while (true) {
+            featured = state.client.featuredReels12h()
+            if (featuredIndex >= featured.size) featuredIndex = 0
+            delay(60_000L)
+        }
+    }
+    LaunchedEffect(featured.size) {
+        while (featured.size > 1) {
+            delay(5_000L)
+            featuredIndex = (featuredIndex + 1) % featured.size
+        }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
@@ -879,6 +897,56 @@ fun ReelsScreen(state: DesktopAppState) {
                     Icon(Icons.Rounded.Refresh, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text(if (loading) "Refreshing" else "Refresh")
+                }
+            }
+        }
+        if (featured.isNotEmpty()) item(key = "top_reels_carousel") {
+            val top = featured[featuredIndex.coerceIn(0, featured.lastIndex)]
+            Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF2C113E)) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(190.dp).clickable {
+                        runCatching {
+                            Desktop.getDesktop().browse(URI(DesktopShareLinkManager.generate(top.id, true)))
+                        }
+                    }
+                ) {
+                    AsyncImage(
+                        model = top.coverUrl.ifBlank { top.avatarUrl },
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth(.54f).align(Alignment.CenterEnd)
+                    )
+                    Box(Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            listOf(Color(0xFF220C33), Color(0xCC34164A), Color.Transparent)
+                        )
+                    ))
+                    Column(
+                        Modifier.fillMaxWidth(.62f).padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(
+                                model = top.avatarUrl, contentDescription = null,
+                                modifier = Modifier.size(35.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(top.author, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Text("🔥 Top Reel · 12h", color = Color.White, fontSize = 12.sp)
+                        Text(top.caption.ifBlank { "Featured Reel" }.take(75),
+                            color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("${top.viewsInWindow} views", color = Color.White, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            featured.forEachIndexed { index, _ ->
+                                Box(Modifier.size(if (index == featuredIndex) 8.dp else 6.dp)
+                                    .clip(CircleShape).background(if (index == featuredIndex)
+                                        Color(0xFFAA72FF) else Color.LightGray))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1331,6 +1399,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var sellerSubmitting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var marketImagePath by remember { mutableStateOf("") }
+    var marketImageToEdit by remember { mutableStateOf<java.io.File?>(null) }
     var marketVideoPath by remember { mutableStateOf("") }
     var showListingPreview by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("") }
@@ -1348,6 +1417,16 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    marketImageToEdit?.let { source ->
+        DesktopUniversalPhotoEditor(
+            sourceFile = source,
+            onEdited = { result ->
+                marketImagePath = result.absolutePath
+                marketImageToEdit = null
+            },
+            onDismiss = { marketImageToEdit = null }
+        )
+    }
     LaunchedEffect(state.client) {
         marketCheckoutEnabled = runCatching {
             DesktopRpcActions(state.client).getEconomyStatus().optBoolean("cash_checkout_enabled", false)
@@ -1698,7 +1777,15 @@ fun MarketplaceScreen(state: DesktopAppState) {
                                 marketImagePath = chooser.selectedFile.absolutePath
                             }
                         }) { Text(if (marketImagePath.isBlank()) "Choose product photo" else "Replace product photo") }
-                        if (marketImagePath.isNotBlank()) Text(java.io.File(marketImagePath).name)
+                        if (marketImagePath.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(java.io.File(marketImagePath).name,
+                                    modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    marketImageToEdit = java.io.File(marketImagePath)
+                                }) { Text("Edit photo") }
+                            }
+                        }
                         OutlinedButton(onClick = {
                             val chooser = javax.swing.JFileChooser()
                             chooser.dialogTitle = "Choose an optional product video"

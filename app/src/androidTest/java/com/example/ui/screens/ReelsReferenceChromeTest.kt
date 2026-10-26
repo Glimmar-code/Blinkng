@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.data.models.Story
+import com.example.data.models.FeedPost
+import com.example.data.supabase.BlinkFeaturedReel
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -37,7 +39,20 @@ class ReelsReferenceChromeTest {
                     onSearch = { actions += "search" },
                     onGame = { actions += "games" },
                     onNotifications = { actions += "notifications" },
-                    onMenu = { actions += "menu" }
+                    onMenu = { actions += "menu" },
+                    featuredReels = listOf(BlinkFeaturedReel(
+                        reel = FeedPost(
+                            id = "reel-1", author = "Aisha", authorAvatar = "",
+                            timeAgo = "Now", text = "Campus Vibes",
+                            likes = 10, commentsCount = 3, sharesCount = 2,
+                            isReel = true, videoUrl = "https://example.com/video.mp4"
+                        ),
+                        username = "aisha", displayName = "Aisha",
+                        avatarUrl = "", coverUrl = "", caption = "Campus Vibes",
+                        windowViews = 100, nextRefresh = "2026-10-27T00:00:00Z"
+                    )),
+                    onFeaturedReelClick = { actions += "featured:$it" },
+                    autoSlideEnabled = false
                 )
             }
         }
@@ -46,11 +61,12 @@ class ReelsReferenceChromeTest {
         composeRule.onNodeWithText("Following").assertExists()
         composeRule.onNodeWithText("For You").assertExists()
         composeRule.onNodeWithText("Aisha").assertExists()
+        composeRule.onNodeWithText("Campus Vibes").performClick()
         composeRule.onNodeWithContentDescription("Search").performClick()
         composeRule.onNodeWithContentDescription("Menu").performClick()
         composeRule.onNodeWithText("Following").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("search", "menu", "tab:Following"), actions)
+            assertEquals(listOf("featured:reel-1", "search", "menu", "tab:Following"), actions)
         }
     }
 }
