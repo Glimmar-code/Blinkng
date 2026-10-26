@@ -953,7 +953,9 @@ fun ReelsScreen(state: DesktopAppState) {
                     VerifiedName(reel.authorName, reel.authorVerified)
                     reel.caption?.takeIf(String::isNotBlank)?.let {
                         Text(it)
-                        DesktopRichLinkPreview(it, compact = true)
+                        DesktopRichLinkPreview(
+                            listOfNotNull(it, reel.linkUrl).joinToString(" "), compact = true
+                        )
                     }
                     Surface(
                         modifier = Modifier.fillMaxWidth().height(320.dp),
