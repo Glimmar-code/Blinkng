@@ -43,7 +43,8 @@ fun BlinkCommunitiesPanel(
     searchProfiles: suspend (String, Int, String?, String?) -> List<UserProfile>,
     modifier: Modifier = Modifier,
     onChannelOpenChange: (Boolean) -> Unit = {},
-    initialChannelId: String? = null
+    initialChannelId: String? = null,
+    initialUpdateId: String? = null
 ) {
     val backend = remember { BlinkCommunityRepository() }
     val service = remember { SupabaseService() }
@@ -101,7 +102,8 @@ fun BlinkCommunitiesPanel(
     selectedChannel?.let { channel ->
         BlinkChannelDetail(
             channel = channel, backend = backend,
-            onBack = { selectedChannel = null }, modifier = modifier
+            onBack = { selectedChannel = null }, modifier = modifier,
+            initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId }
         )
         return
     }
