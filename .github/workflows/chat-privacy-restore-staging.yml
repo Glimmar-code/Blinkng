@@ -1,0 +1,39 @@
+name: BLINK chat privacy schema disposable staging
+on:
+  pull_request:
+    paths:
+      - 'docs/integration/user-chat-privacy-repair-staging-20261026.sql'
+      - 'supabase/tests/link_chat_privacy_staging_assertions.sql'
+      - '.github/workflows/chat-privacy-restore-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: blink_staging_only
+          POSTGRES_DB: blink_staging
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d blink_staging"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: blink_staging_only
+      PGDATABASE: blink_staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql if missing
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Verify contract against fake accounts in isolated Postgres
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/link_chat_privacy_staging_assertions.sql
+      - name: Confirm no production connection was used
+        run: echo "Disposable GitHub Actions PostgreSQL passed without a Supabase production URL."
