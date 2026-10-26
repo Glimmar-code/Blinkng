@@ -21,6 +21,9 @@ set search_path = public, pg_temp
 as $$
 declare
   v_category text := lower(btrim(coalesce(new.category, '')));
+  v_copy text := concat_ws(' ', coalesce(new.text,''), coalesce(new.caption,''), coalesce(new.alt_text,''));
+  v_sales_intent boolean;
+  v_has_price boolean;
   v_server_ad boolean :=
       current_user in ('postgres', 'service_role')
       and new.is_sponsored is true
@@ -33,7 +36,12 @@ begin
       using errcode = '42501',
             hint = 'Paid feed promotion must be created by BLINK payment-verified server logic.';
   end if;
-  if v_category in ('marketplace', 'market', 'for sale', 'selling') and not v_server_ad then
+  v_sales_intent := v_copy ~* '(^|[^[:alpha:]])(for sale|selling this|available for purchase|dm to buy|buy now|order now|price is)([^[:alpha:]]|$)';
+  v_has_price := v_copy ~* '(₦|NGN[[:space:]]*)[[:space:]]*[0-9]';
+  -- Restrict the combination of explicit sales language and a price.
+  -- A review or discussion ABOUT an item must remain publishable.
+  if (v_category in ('marketplace', 'market', 'buy & sell', 'for sale', 'selling')
+      or (v_sales_intent and v_has_price)) and not v_server_ad then
     raise exception 'BLINK_MARKET_LISTING_ONLY'
       using errcode = '23514',
             hint = 'Create a dedicated BLINK Market listing. Only approved server-side ads can promote listings in Feed.';
@@ -44,7 +52,7 @@ $$;
 
 drop trigger if exists blink_feed_market_category_guard on public.feed_posts;
 create trigger blink_feed_market_category_guard
-before insert or update of category, is_sponsored, ad_label
+before insert or update of category, text, caption, alt_text, is_sponsored, ad_label
 on public.feed_posts
 for each row
 execute function public.blink_validate_feed_market_category();
@@ -60,12 +68,17 @@ commit;
 --     must ALSO be rejected; never trust a client-supplied sponsored flag.
 -- 3b. authenticated UPDATE of is_sponsored=true or ad_label on an existing
 --     post must be rejected unless performed by the verified server role.
--- 4. authenticated ordinary social posts (including discussions of an item)
---    remain accepted; never classify text with unreliable banned keywords.
+-- 4. Authenticated ordinary social posts (including discussion of prices) stay accepted.
+-- 4a. Explicit sales intent + naira price in text/caption/alt_text is rejected.
+-- 4b. Updating caption or alt_text to add that combination is rejected.
+-- 4c. An image containing sales words without any accompanying text or alt
+--     description is NOT reliably detectable by this text trigger: image moderation
+--     and user reporting must remain separate until server media analysis exists.
 -- 5. Trusted approved service_role sponsored placement with clear label is
 --    accepted and is tied to separate server-authoritative paid-ad checks.
 -- 6. Existing tests for server-created ads/boosts, RLS, real Market listings,
 --    media posts and legacy release clients continue to pass.
--- 7. Rollback (staging): drop trigger if exists
+-- 7. SQL is also exercised by staged-market-community-contract-tests.mjs.
+-- 8. Rollback (staging): drop trigger if exists
 --    blink_feed_market_category_guard on public.feed_posts;
 --    drop function if exists public.blink_validate_feed_market_category();
