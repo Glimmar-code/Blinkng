@@ -1,4 +1,4 @@
--- Google-created accounts may select their one lifetime referrer during onboarding.
+-- Newly registered OAuth/email accounts can select their one lifetime referrer during onboarding.
 -- This endpoint is identity-scoped, never accepts a referred_user_id from a client,
 -- and never allows previously completed accounts to retroactively claim attribution.
 create or replace function public.blink_set_onboarding_referrer(p_referrer_id uuid)
@@ -23,10 +23,8 @@ begin
   if not found or v_registered < now() - interval '7 days' then
     return false;
   end if;
-  -- Only Google OAuth accounts in initial setup are eligible for this late picker.
+  -- Only newly registered accounts in initial setup are eligible for this late picker.
   if not exists (
-    select 1 from auth.identities i where i.user_id=v_user_id and i.provider='google'
-  ) or not exists (
     select 1 from public.profiles mine where mine.id=v_user_id
       and mine.onboarding_completed is false
   ) or not exists (
@@ -86,4 +84,4 @@ revoke all on function public.blink_set_onboarding_referrer(uuid)
   from public, anon, authenticated;
 grant execute on function public.blink_set_onboarding_referrer(uuid) to authenticated;
 comment on function public.blink_set_onboarding_referrer(uuid) is
- 'Bound to auth.uid(); Google-created, recently registered onboarding accounts only; immutable single referral; rewards at most once.';
+ 'Bound to auth.uid(); recently registered onboarding accounts only; immutable single referral; rewards at most once.';
