@@ -1361,6 +1361,54 @@ class DesktopSupabaseClient(
         communityRpc("blink_channel_is_muted", JSONObject()
             .put("p_channel_id", id)) == "true"
 
+
+    /** Uploads only allowlisted local files to the PRIVATE channel bucket. */
+    suspend fun uploadChannelMedia(channelId: String, file: File): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            require(file.isFile && file.length() in 1..(25L * 1024 * 1024)) {
+                "Channel files must be no larger than 25 MB."
+            }
+            val extension = file.extension.lowercase()
+            val (kind, mime) = when (extension) {
+                "jpg", "jpeg" -> "image" to "image/jpeg"
+                "png" -> "image" to "image/png"
+                "webp" -> "image" to "image/webp"
+                "mp4" -> "video" to "video/mp4"
+                "mp3" -> "audio" to "audio/mpeg"
+                "m4a" -> "audio" to "audio/mp4"
+                "pdf" -> "document" to "application/pdf"
+                else -> error("Please select JPG, PNG, WebP, MP4, MP3, M4A or PDF.")
+            }
+            val userId = requireSession().userId
+            val folder = "${UUID.fromString(channelId)}/$userId"
+            val path = "$folder/${UUID.randomUUID()}.$extension"
+            val escaped = path.split('/').joinToString("/") {
+                URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+            }
+            execute(authenticatedRequest("/storage/v1/object/blink-channel-media/$escaped")
+                .header("Content-Type", mime)
+                .header("x-upsert", "false")
+                .post(file.asRequestBody(mime.toMediaType())).build())
+            kind to path
+        }
+
+    suspend fun signedChannelMedia(path: String): String? = withContext(Dispatchers.IO) {
+        val escaped = path.split('/').joinToString("/") {
+            URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+        }
+        val payload = JSONObject().put("expiresIn", 1200)
+        val raw = execute(authenticatedRequest("/storage/v1/object/sign/blink-channel-media/$escaped")
+            .post(payload.toString().toRequestBody(jsonMedia)).build())
+        val obj = JSONObject(raw.ifBlank { "{}" })
+        val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
+        when {
+            signed.startsWith("$baseUrl/storage/v1/") -> signed
+            signed.startsWith("/storage/v1/") -> baseUrl + signed
+            signed.startsWith("/object/") -> "$baseUrl/storage/v1$signed"
+            else -> null
+        }
+    }
+
     suspend fun searchMentionProfiles(
         query: String,
         limit: Int = 60,
