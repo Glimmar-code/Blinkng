@@ -131,6 +131,8 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
 
     val verified = state.profile?.isVerified == true &&
         state.profile?.verificationTier?.uppercase() != "FREE"
+    // The server may report a lower limit for an expired badge; never display ad 15 as unlocked.
+    val extraAdsEligible = verified && policy.rewardedAdDailyLimit > 10
     val bg = Color(0xFF05020E)
     val indigo = Color(0xFF931AFF)
     val pale = Color(0xFFAAA6D4)
@@ -276,7 +278,7 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                     Text("Daily Milestones",fontSize = 23.sp,
                         fontWeight = FontWeight.Black,color = Color.White)
                     policy.rewardedMilestones.forEach { milestone ->
-                        val locked = milestone.ads > 10 && !verified
+                        val locked = milestone.ads > 10 && !extraAdsEligible
                         DesktopWalletAction(milestone.ads.toString() + " Ads",
                             milestone.totalCoins.toString() + " Coins Total" +
                                 if (locked) " • Verified accounts only"
@@ -303,7 +305,7 @@ fun BlinkDesktopWalletScreen(state: DesktopAppState, onNavigate: (String) -> Uni
                     Text("Claim Rewards",fontSize = 23.sp,
                         fontWeight = FontWeight.Black,color = Color.White)
                     policy.rewardedMilestones.forEach { m ->
-                        val locked = m.ads > 10 && !verified
+                        val locked = m.ads > 10 && !extraAdsEligible
                         DesktopWalletAction("Watch " + m.ads + " Ads",
                             if (locked) "Locked • Verified accounts only"
                             else if (adsToday >= m.ads) "Already credited • " + m.totalCoins + " total Coins"
