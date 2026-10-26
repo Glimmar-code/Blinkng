@@ -47,6 +47,7 @@ data class UserProfile(
     var username: String = "",
     var avatarUrl: String = "",
     var coverPhotoUrl: String = "",
+    var profileTheme: String = "black",
     var verificationBadge: VerificationBadge = VerificationBadge.NONE,
     var isBlinkVip: Boolean = false,
     var blinkVipUntil: String = "",
