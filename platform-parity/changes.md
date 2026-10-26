@@ -23,15 +23,15 @@
 - **Limitations:** Image pixels with no readable description cannot be classified reliably from client-side strings. This requires a separately reviewed server-side visual moderation workflow and user reports. Do not describe this restriction as fully enforced in production until hosted integration is verified.
 - **Release gates:** shared JVM tests, Android quality/runtime, Windows desktop build, PGlite SQL role tests, marketplace paid placements, and signed APK verification are mandatory before promotion.
 
-## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
+## 2026-10-26 — Staged universal link previews (NOT production verified)
 
-- **Android:** Tapping any part of the Home feed Coin card or owner profile Coin card opens the same Wallet. Its five dark-neon screens are Coins & Wallet, Earn Coins, Rewards, Get Verified, and History. Return navigation honors the origin.
-- **Windows:** Five wallet destinations with authenticated Coin pack offers, verified account balance, daily missions, verification and history. Desktop Coin display navigates into Wallet.
-- **Unchanged economy:** Preserve the existing 10 base Coins per rewarded ad, server-configured 15-ad daily limit, cumulative 5/10/15 milestones (60/130/210), Coin packs and 3,000-Coin Blue Verification. Do not alter SQL functions or ad entitlement algorithms in this UI PR. The server is authoritative for all rewards.
-- **Coin gifting stays:** Profile Interact retains the original authenticated, idempotent 20/50/100 Coin gifting using `gift_blink_coins_once`. Existing paid Coin gifts and provider rules also remain unchanged. Gift recipients get Coins; the giver's wallet is debited only when the server confirms the transfer.
-- **Daily missions award both Coins and progression XP:** The original `claim_daily_mission` RPC supplies the authoritative `coinReward` and `xpReward`. UI describes XP as level XP (HP), without adding a new balance, changing rates, or allowing users to transfer XP/HP. Claims are server-idempotent.
-- **PARITY-EXCEPTION: windows-rewarded-ad-playback-wallet-20261026** — AdMob playback remains Android-only; Windows shows server-backed progress/rewards and does not fabricate advertisement completion.
-- **Release gate:** Check Android/Windows builds, wallet navigation, Coin transfer regression, missions granting both Coin and XP, checkout webhook and status, accessibility, screenshot fidelity and full CI before merging. No production migration or account balance changes in this branch.
+- **Shared contract:** `BlinkRichLinks` recognizes safe HTTP(S) URLs and distinguishes actual BLINK domains from impostor names. Android and Windows reuse this policy.
+- **Android:** The same async, cached rich-link card appears in chat (honouring the existing chat toggle), Feed, comments, Reel captions, Story captions, Market item details, Connect bios and public profile website cards. No remote scripts or embedded autoplay.
+- **Windows:** Equivalent rich cards are provided in chat, Feed, comments, Reels and profile biographies. There is no desktop chat-preview preference UI or synced Android toggle yet; this MUST be reconciled before shipping full preference parity.
+- **Web:** HTML-escaped initial URL cards across Feed, comments, Reels, Stories and messages. Cards are upgraded lazily from read-only metadata via `textContent`, never injected remote HTML.
+- **Backend staging only:** New HTTPS-only allowlisted `link-metadata` Edge Function, 3.5-second timeout, 128 KiB page cap, no redirect/cookie/authorization forwarding, bounded in-memory cache, safe host-only fallback on unsupported domains. Public BLINK share metadata reuses existing privacy-filtered `share-preview` endpoint; fixes placeholder canonical domain and profile link routing.
+- **Limitations:** Up to three distinct HTTP(S) links in each text surface receive cards; dedicated Feed/Reel link_url fields are included. Android, Windows and web share the stored chat preview toggle, but its required production user_chat_privacy table/RPC are still absent and must be deployed safely. Arbitrary/untrusted host metadata and in-app iframe/video playback are intentionally disabled; host cards remain clickable. End-to-end deployed rich metadata, visibility filtering, large-font layout, network tests, private chat settings parity, Android builds and Windows packaging remain UNVERIFIED. No actual deployment, merge to main or release has occurred.
+- **Release hold:** A safe free staging environment must verify both Edge Functions before production, and current-head Android/Windows/web checks and visual device tests must pass.
 
 ## 2026-10-26 — Five-screen premium Coins & Wallet (original economy restored)
 

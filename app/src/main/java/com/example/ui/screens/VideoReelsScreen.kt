@@ -1490,7 +1490,10 @@ private fun ReelPage(
             }
             if (!isPreview && reel.text.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                ExpandableCaption(reel.text)
+                ExpandableCaption(listOfNotNull(
+                            reel.text.takeIf(String::isNotBlank),
+                            reel.linkUrl?.takeIf(String::isNotBlank)
+                        ).joinToString(" "))
             }
             reel.audioTitle?.takeIf { !isPreview && it.isNotBlank() }?.let { audio ->
                 Spacer(Modifier.height(8.dp))
@@ -1740,7 +1743,14 @@ private fun PlaybackHintOverlay(
 private fun ExpandableCaption(text: String) {
     val collapsedThreshold = 90
     if (text.length <= collapsedThreshold) {
-        Text(text, color = Color.White, fontSize = 13.sp)
+        Column {
+            Text(text, color = Color.White, fontSize = 13.sp)
+            com.example.ui.components.BlinkRichLinkPreview(
+                text = text,
+                modifier = Modifier.padding(top = 6.dp),
+                compact = true
+            )
+        }
         return
     }
 
@@ -1756,6 +1766,11 @@ private fun ExpandableCaption(text: String) {
             // seek rail, navigation and engagement actions reachable.
             modifier = if (expanded) Modifier.heightIn(max = 180.dp)
                 .verticalScroll(rememberScrollState()) else Modifier
+        )
+        com.example.ui.components.BlinkRichLinkPreview(
+            text = text,
+            modifier = Modifier.padding(top = 5.dp),
+            compact = true
         )
         Text(
             text = if (expanded) "Show less" else "more",

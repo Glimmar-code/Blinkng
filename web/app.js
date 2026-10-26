@@ -291,11 +291,17 @@
   }
   function requireAuth(){ if(isAuthed())return true; navigate('/login'); return false; }
 
+  const readChatPreviewPrivacy = () => window.BlinkLinkPreview.readPrivacy(table);
+  const saveChatPreviewPrivacy = (privacy, enabled) => window.BlinkLinkPreview.savePrivacy(privacy, enabled, rpc);
+  const richLinkCard = text => window.BlinkLinkPreview?.card(text) || '';
+  const hydrateLinkCards = () => window.BlinkLinkPreview?.hydrate();
+
   function bindCommon(){
     document.querySelectorAll('[data-nav]').forEach(el=>el.onclick=(e)=>{e.preventDefault();navigate(el.dataset.nav);});
     document.querySelectorAll('[data-action="logout"]').forEach(el=>el.onclick=logout);
     document.querySelectorAll('[data-action="open-app"]').forEach(el=>el.onclick=()=>openAndroid('profile',state.profile?.username||''));
     document.querySelectorAll('[data-action="create-post"]').forEach(el=>el.onclick=()=>requireAuth()&&openPostComposer());
+    hydrateLinkCards();
   }
 
   function openAndroid(type,id){
@@ -731,14 +737,7 @@
     return {isImage,isVideo};
   }
 
-  /**
-   * The Web counterpart of BLINK's native photo editor. Uses a user-scoped File,
-   * a local canvas and an explicit Done gesture; nothing uploads during editing.
-   * Video and animated images are intentionally returned unchanged.
-   */
-  // Owner-scoped reusable sticker library. Blobs remain in the browser's local
-  // IndexedDB; nothing is uploaded. Different accounts cannot browse each
-  // other's stickers in the interface. Clear site data to remove all copies.
+  
   async function blinkStickerDb(){
     if(!window.indexedDB)throw new Error('This browser does not support saved stickers.');
     return new Promise((resolve,reject)=>{
@@ -1124,7 +1123,7 @@
     if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;
     return '';
   }
-  function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
+  function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${richLinkCard([post.text||post.caption||'',post.link_url||''].join(' '))}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.view_count)} views</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.like_count)} likes</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
     document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
     document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth()||x.disabled)return;const on=x.classList.toggle('on');x.disabled=true;x.setAttribute('aria-pressed',String(on));try{await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');x.setAttribute('aria-pressed',String(!on));toast(e.message);}finally{x.disabled=false;}});
@@ -1223,7 +1222,7 @@
   async function loadStories(){ if(!isAuthed())return []; try{const rows=await table('stories','active=eq.true&select=id,user_id,media_url,media_type,caption,text,image_url,video_url,created_at,likes_count,views_count&order=created_at.desc&limit=40'); const profiles=await fetchProfiles(rows.map(x=>x.user_id)); return rows.map(s=>({...s,author:profiles.get(s.user_id)||{}}));}catch{return [];} }
   function storyStrip(stories){return `<div class="stories"><button class="story-ring" data-create-story><div class="avatar-sm avatar-fallback" style="width:58px;height:58px">＋</div><strong>Your story</strong></button>${stories.map(s=>`<button class="story-ring" data-story="${esc(s.id)}">${avatar(s.author.avatar_url,s.author.full_name,'avatar-sm')}<strong>${esc(s.author.username||'story')}</strong></button>`).join('')}</div>`;}
   function bindStories(stories){document.querySelector('[data-create-story]')?.addEventListener('click',()=>requireAuth()&&createStory());document.querySelectorAll('[data-story]').forEach(x=>x.onclick=()=>openStory(stories.find(s=>s.id===x.dataset.story)));}
-  function openStory(s){if(!s)return;const media=safeUrl(s.video_url||s.image_url||s.media_url);modal(`@${s.author?.username||'Blink'}`,`${s.media_type==='video'||s.video_url?`<video src="${esc(media)}" controls autoplay playsinline style="width:100%;max-height:70vh"></video>`:`<img src="${esc(media)}" alt="Story" style="width:100%;max-height:70vh;object-fit:contain">`}<p>${esc(s.caption||s.text||'')}</p><div class="muted small">${fmt(s.views_count)} views · ${fmt(s.likes_count)} likes</div>`);}
+  function openStory(s){if(!s)return;const media=safeUrl(s.video_url||s.image_url||s.media_url);modal(`@${s.author?.username||'Blink'}`,`${s.media_type==='video'||s.video_url?`<video src="${esc(media)}" controls autoplay playsinline style="width:100%;max-height:70vh"></video>`:`<img src="${esc(media)}" alt="Story" style="width:100%;max-height:70vh;object-fit:contain">`}<p>${esc(s.caption||s.text||'')}</p>${richLinkCard(s.caption||s.text||'')}<div class="muted small">${fmt(s.views_count)} views · ${fmt(s.likes_count)} likes</div>`);hydrateLinkCards();}
 
   async function renderFeed(path='/feed'){
     if(!requireAuth())return; state.loading=true; ROOT.innerHTML=shell('<div class="feed-skeleton" role="status" aria-label="Loading BLINK feed"><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div><div class="feed-skeleton-line"></div></div><div class="feed-skeleton-card"><div class="feed-skeleton-line short"></div><div class="feed-skeleton-line medium"></div><div class="feed-skeleton-media"></div></div><span class="sr-only">Loading your BLINK feed</span></div>','Home');bindCommon();
@@ -1253,7 +1252,7 @@
       const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
       const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
       const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
-      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
+      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video data-src="${esc(src)}" playsinline controls muted preload="none" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel" loading="lazy" decoding="async">`}<div class="reel-overlay"><div class="reel-creator"><button type="button" class="reel-creator-link" data-nav="/@${esc(a.username||r.user_id)}">${avatar(a.avatar_url,a.full_name||a.username,'avatar-sm')}<strong>@${esc(a.username||'user')}${verifyMark(a)}</strong></button><button type="button" class="reel-follow" data-reel-follow="${esc(r.user_id)}" aria-label="Follow creator">${state.following.has(r.user_id)?'Following':'Follow'}</button></div><p class="reel-caption">${esc(r.text||r.caption||'')}</p>${richLinkCard([r.text||r.caption||'',r.link_url||''].join(' '))}</div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}" aria-label="Like reel">♡<small>Like</small></button><button type="button" data-comments="${esc(r.id)}" aria-label="Comment on reel">◉<small>Comment</small></button><button type="button" data-bookmark="${esc(r.id)}" aria-label="Save reel">▢<small>Save</small></button><button type="button" data-share="/reel/${esc(r.id)}" aria-label="Share reel">↗<small>Share</small></button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
       ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
       document.querySelectorAll('[data-reel-follow]').forEach(button=>button.addEventListener('click',async()=>{
         if(button.disabled||!requireAuth())return;
@@ -1304,23 +1303,7 @@
 
   // Same stable IDs and six palettes as shared/BlinkProfileThemes.kt.
   // Never echo untrusted profile values into CSS: all values come from this allowlist.
-  const PROFILE_THEME_PALETTES = Object.freeze({
-    black: {title:'Pure Black',top:'#000000',bottom:'#000000',card:'#111111',accent:'#ffffff'},
-    royal_purple: {title:'Royal Purple',top:'#52146b',bottom:'#160b23',card:'#391744',accent:'#d16fff'},
-    sapphire: {title:'Sapphire Blue',top:'#123f88',bottom:'#081326',card:'#132c52',accent:'#75b7ff'},
-    emerald: {title:'Emerald',top:'#126252',bottom:'#081f1a',card:'#16443a',accent:'#7ae7be'},
-    rose: {title:'Rose',top:'#76254e',bottom:'#260e1d',card:'#51203c',accent:'#ff91c9'},
-    amber: {title:'Amber',top:'#77501a',bottom:'#261909',card:'#4d3415',accent:'#ffcd75'}
-  });
-  function themeId(value){return Object.hasOwn(PROFILE_THEME_PALETTES,String(value||'').trim())?value:'black';}
-  function ownerThemeCss(value){
-    const p=PROFILE_THEME_PALETTES[themeId(value)];
-    return `--profile-theme-top:${p.top};--profile-theme-bottom:${p.bottom};--profile-theme-card:${p.card};--profile-theme-accent:${p.accent};`;
-  }
-  function ownerThemePicker(value){
-    const selected=themeId(value);
-    return `<label class="form-label">Profile theme<select class="field" name="profile_theme">${Object.entries(PROFILE_THEME_PALETTES).map(([id,p])=>`<option value="${id}" ${id===selected?'selected':''}>${p.title}</option>`).join('')}</select></label>`;
-  }
+  const {themeId,ownerThemeCss,ownerThemePicker}=window.BlinkProfileTheme;
 
   async function renderPublicProfile(identifier){
     ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';
@@ -1350,7 +1333,7 @@
         const itemType=String(i.type||'').toLowerCase()==='reel'||i.isReel||!!i.videoUrl?'reel':'post';
         return `<button type="button" class="profile-tile" data-nav="/${itemType}/${esc(i.id)}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="none"></video>`:`<img src="${esc(media)}" alt="" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${itemType==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;
       }).join('');
-      const html=`<div class="profile-card card owner-profile-theme ${publicPremium?'premium-profile-surface':''}" style="${ownerThemeCss(publicTheme)}${publicPremium?cosmeticVars(publicPremium):''}"><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
+      const html=`<div class="profile-card card owner-profile-theme ${publicPremium?'premium-profile-surface':''}" style="${ownerThemeCss(publicTheme)}${publicPremium?cosmeticVars(publicPremium):''}"><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>${richLinkCard(p.bio)}`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
       ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button type="button" class="brand nav-btn" data-nav="/"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</button><div><a class="btn download-app" href="${APK_URL}">Download app</a><button type="button" class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;
       bindCommon();
       document.querySelector('[data-open-app-profile]')?.addEventListener('click',()=>openAndroid('profile',p.username));
@@ -1379,7 +1362,8 @@
     try{
       const rows=await rpc('get_post_comments',{p_post_id:postId});
       const body=document.getElementById('comments-body');if(!body)return;
-      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>{const cosmetic=premiumCosmetic(comment.premium_style_id);return `<div class="comment ${cosmetic?'premium-comment-surface':''}" ${cosmetic?`style="${cosmeticVars(cosmetic)}"`:''}><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}${cosmetic?`<span class="comment-premium-label">${esc(cosmetic.label)}</span>`:''}</div><div>${esc(comment.content)}</div><button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`;}).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>{const cosmetic=premiumCosmetic(comment.premium_style_id);return `<div class="comment ${cosmetic?'premium-comment-surface':''}" ${cosmetic?`style="${cosmeticVars(cosmetic)}"`:''}><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}${cosmetic?`<span class="comment-premium-label">${esc(cosmetic.label)}</span>`:''}</div><div>${esc(comment.content)}</div>${richLinkCard(comment.content)}<button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`;}).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+      hydrateLinkCards();
       let parent=null;
       document.querySelectorAll('[data-reply-comment]').forEach(x=>x.onclick=()=>{parent=x.dataset.replyComment;const input=document.querySelector('#comment-form input');input.placeholder='Write a reply…';input.focus();});
       document.getElementById('comment-form').onsubmit=async e=>{
@@ -1735,13 +1719,24 @@
       else if(isGroup){patch('conversation_participants',`conversation_id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{last_read_at:new Date().toISOString()}).catch(()=>{});}
       const rows=await rpc('get_conversation_messages_page',{p_conversation_id:id,p_limit:100,p_before:null,p_before_id:null});
       const profiles=await fetchProfiles((rows||[]).map(x=>x.sender_id));
+      const chatPreviewPrivacy = await readChatPreviewPrivacy();
       const title=isGroup?(conversationMeta?.title||'Group chat'):(partner?`@${partner}`:'Conversation');
       const messages=(rows||[]).slice().reverse().map(m=>{
-        const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},attachment=safeUrl(m.media_url);
-        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
+        const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},viewOnce=!!(m.image_view_once||m.view_once),attachment=viewOnce?'':safeUrl(m.media_url);
+        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':viewOnce?'View-once private media':m.content||'')}${!m.deleted_for_everyone&&!viewOnce&&chatPreviewPrivacy.allowed?richLinkCard(m.content):''}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
       }).join('');
-      const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
+      const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div><label class="small" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="chat-link-preview" ${chatPreviewPrivacy.allowed?'checked':''} ${!chatPreviewPrivacy.available?'disabled':''}>Link previews</label></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
       ROOT.innerHTML=shell(html,title);bindCommon();
+      document.getElementById('chat-link-preview')?.addEventListener('change',async event=>{
+        const input=event.currentTarget, desired=input.checked;
+        input.disabled=true;
+        try {
+          await saveChatPreviewPrivacy(chatPreviewPrivacy,desired);
+          renderConversation(id,target);
+        } catch(error) {
+          input.checked=!desired;toast(error.message);input.disabled=false;
+        }
+      });
       const scroll=document.getElementById('chat-messages');scroll.scrollTop=scroll.scrollHeight;
       document.getElementById('chat-form').onsubmit=async e=>{
         e.preventDefault();const form=e.currentTarget,text=String(new FormData(form).get('text')||'').trim();if(!text){return;}
@@ -1770,7 +1765,7 @@
         const image=safeUrl((i.image_urls||[])[0]||i.image_url);
         const seller=String(i.seller_username||'').trim().replace(/^@/,'');
         const action=seller?`<button type="button" class="btn primary" data-message-seller="${esc(seller)}">Message seller</button>`:'<button type="button" class="btn" disabled>Seller unavailable</button>';
-        return `<article class="card market-card">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p>${action}</article>`;
+        return `<article class="card market-card">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p>${richLinkCard(i.description||'')}${action}</article>`;
       }).join('');
       ROOT.innerHTML=shell(`<form id="market-search" style="display:flex;gap:8px;margin-bottom:12px"><input class="field" name="q" maxlength="100" value="${esc(q)}" placeholder="Search marketplace" autocomplete="off"><button class="btn">Search</button></form><div class="market-grid">${cards||'<div class="card empty"><h2>No items found</h2></div>'}</div>`,'Marketplace');
       bindCommon();
@@ -1794,7 +1789,7 @@
         const description=p.description||p.bio||'';
         const detail=[profile.university||p.university,profile.department||p.department,p.location||p.preferred_location].filter(Boolean).join(' · ');
         const action=receiverId?`<button type="button" class="btn small-btn" data-connect-receiver="${esc(receiverId)}">Connect</button>`:'<button type="button" class="btn small-btn" disabled>Unavailable</button>';
-        return `<article class="card connect-card"><span class="handle">${esc(r.kind||'Connect')}</span><h3>${esc(title)}</h3><p>${esc(String(description).slice(0,260))}</p><div class="muted small">${esc(detail)}</div>${action}</article>`;
+        return `<article class="card connect-card"><span class="handle">${esc(r.kind||'Connect')}</span><h3>${esc(title)}</h3><p>${esc(String(description).slice(0,260))}</p>${richLinkCard(description)}<div class="muted small">${esc(detail)}</div>${action}</article>`;
       }).join('');
       ROOT.innerHTML=shell(`<div class="tabs">${['all','roommate','mentor','reading_mate','housing'].map(m=>`<button type="button" class="tab ${mode===m?'active':''}" data-connect-mode="${m}">${m.replaceAll('_',' ')}</button>`).join('')}</div><div class="connect-grid">${cards||'<div class="card empty"><h2>No matches yet</h2></div>'}</div>`,'Connect');
       bindCommon();
@@ -1837,6 +1832,7 @@
       return;
     }
     await loadMyProfile();const p=state.profile||{};
+    const chatPreviewPrivacy = await readChatPreviewPrivacy();
     let missionPayload={missions:[]};
     try{missionPayload=await rpc('get_my_daily_missions',{})||missionPayload;}catch(err){console.warn('daily missions',err);}
     const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
@@ -1845,8 +1841,15 @@
       const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
       return `<div class="card" style="padding:12px;margin-top:9px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:flex-start"><div class="grow"><strong>${esc(m.title||'Daily mission')}</strong><div class="muted small">${esc(m.description||'')}</div></div><span class="small"><strong>${Math.min(progress,target)}/${target}</strong></span></div><div style="height:6px;border-radius:99px;overflow:hidden;background:var(--surface-2,#e5e7eb);margin:9px 0"><div style="height:100%;width:${pct}%;background:currentColor"></div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span class="muted small">+${fmt(m.coin_reward||0)} coins · +${fmt(m.xp_reward||0)} XP</span><button type="button" class="btn small-btn ${m.claimable?'primary':'ghost'}" data-claim-mission="${esc(m.key||'')}" ${m.claimable?'':'disabled'}>${status}</button></div></div>`;
     }).join('');
-    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea>${ownerThemePicker(p.profile_theme)}<input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
+    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea>${ownerThemePicker(p.profile_theme)}<input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Message link previews</h3><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" id="settings-link-preview" ${chatPreviewPrivacy.allowed?'checked':''} ${!chatPreviewPrivacy.available?'disabled':''}>Automatically show public link previews in private conversations</label><p class="muted small">This setting is synced with Android and Windows. Turning it off stops new preview requests.</p></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
     bindCommon();
+    document.getElementById('settings-link-preview')?.addEventListener('change',async event=>{
+      const input=event.currentTarget, desired=input.checked;
+      input.disabled=true;
+      try { await saveChatPreviewPrivacy(chatPreviewPrivacy,desired);toast('Link preview setting saved'); }
+      catch(error) { input.checked=!desired;toast(error.message); }
+      finally { input.disabled=false; }
+    });
     document.querySelectorAll('[data-claim-mission]').forEach(button=>button.onclick=async()=>{
       const key=button.dataset.claimMission;if(!key)return;button.disabled=true;button.textContent='Claiming…';
       try{const result=await rpc('claim_daily_mission',{p_mission_key:key});toast(`+${fmt(result?.coin_reward||0)} Blink Coins · +${fmt(result?.xp_reward||0)} XP`);await loadMyProfile();renderSettings('/settings/profile');}

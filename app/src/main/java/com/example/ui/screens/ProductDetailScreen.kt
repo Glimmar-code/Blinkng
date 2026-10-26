@@ -435,6 +435,10 @@ fun ProductDetailScreen(
                         lineHeight = 21.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    com.example.ui.components.BlinkRichLinkPreview(
+                        text = item.description,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
 
                     Spacer(modifier = Modifier.height(22.dp))
                     Card(

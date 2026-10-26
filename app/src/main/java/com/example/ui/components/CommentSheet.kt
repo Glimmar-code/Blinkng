@@ -563,6 +563,11 @@ internal fun CommentRow(
                 accentColor = BlinkPink,
                 textColor = MaterialTheme.colorScheme.onSurface
             )
+            BlinkRichLinkPreview(
+                text = text,
+                modifier = Modifier.padding(top = 6.dp),
+                compact = true
+            )
 
             Spacer(modifier = Modifier.height(7.dp))
 

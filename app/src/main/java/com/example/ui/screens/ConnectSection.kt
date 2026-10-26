@@ -1015,6 +1015,11 @@ private fun LiveProfileCard(
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
+                com.example.ui.components.BlinkRichLinkPreview(
+                    text = profile.bio,
+                    modifier = Modifier.padding(top = 7.dp),
+                    compact = true
+                )
             }
 
             Spacer(Modifier.height(12.dp))
