@@ -736,6 +736,61 @@
    * a local canvas and an explicit Done gesture; nothing uploads during editing.
    * Video and animated images are intentionally returned unchanged.
    */
+  // Owner-scoped reusable sticker library. Blobs remain in the browser's local
+  // IndexedDB; nothing is uploaded. Different accounts cannot browse each
+  // other's stickers in the interface. Clear site data to remove all copies.
+  async function blinkStickerDb(){
+    if(!window.indexedDB)throw new Error('This browser does not support saved stickers.');
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open('blink-private-stickers-v1',1);
+      req.onupgradeneeded=()=>{
+        if(!req.result.objectStoreNames.contains('stickers'))
+          req.result.createObjectStore('stickers',{keyPath:'key'});
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||new Error('Sticker storage unavailable.'));
+    });
+  }
+  async function blinkStickerOperation(mode,record=null){
+    const owner=uid();
+    if(!owner)throw new Error('Sign in to save and reuse stickers.');
+    const db=await blinkStickerDb();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('stickers',mode==='list'?'readonly':'readwrite');
+      const store=tx.objectStore('stickers');
+      if(mode==='list'){
+        const req=store.getAll();
+        req.onsuccess=()=>resolve((req.result||[]).filter(x=>x.owner===owner)
+          .sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,30));
+        req.onerror=()=>reject(req.error);
+      }else{
+        const req=mode==='remove'?store.delete(record.key):store.put(record);
+        req.onsuccess=()=>resolve(true);
+        req.onerror=()=>reject(req.error);
+      }
+      tx.oncomplete=()=>db.close();
+      tx.onerror=()=>{db.close();reject(tx.error);};
+    });
+  }
+  async function blinkSaveCanvasSticker(canvas){
+    const existing=await blinkStickerOperation('list');
+    if(existing.length>=30)throw new Error('You can keep up to 30 stickers. Remove one first.');
+    const cropped=document.createElement('canvas');
+    cropped.width=512;cropped.height=512;
+    const cg=cropped.getContext('2d');
+    const ratio=Math.min(512/canvas.width,512/canvas.height);
+    const width=Math.round(canvas.width*ratio);
+    const height=Math.round(canvas.height*ratio);
+    cg.drawImage(canvas,(512-width)/2,(512-height)/2,width,height);
+    const blob=await new Promise((resolve,reject)=>cropped.toBlob(
+      x=>x?resolve(x):reject(new Error('Could not save sticker.')),'image/png'));
+    if(blob.size>2*1024*1024)throw new Error('Sticker image is too large.');
+    return blinkStickerOperation('save',{
+      key:uid()+':'+crypto.randomUUID(),owner:uid(),
+      created:Date.now(),blob
+    });
+  }
+
   async function blinkEditSelectedPhoto(file){
     if(!file||!/^image\/(jpeg|png)$/i.test(file.type))return file;
     const bitmap=await createImageBitmap(file);
@@ -854,6 +909,44 @@
             g.font=`bold ${Math.round(surface.width*.12)}px sans-serif`;
             g.textAlign='center';g.fillText(emoji,surface.width/2,surface.height/2);
           })));
+        options.append(mkBtn('＋ Save photo as sticker',async()=>{
+          status.textContent='Saving your local sticker…';
+          try{
+            await blinkSaveCanvasSticker(surface);
+            status.textContent='Sticker saved for reuse on this browser.';
+            if(active==='Sticker')renderTools();
+          }catch(err){status.textContent=err.message;}
+        }));
+        // Saved images are private to the authenticated account and this browser.
+        blinkStickerOperation('list').then(records=>{
+          if(active!=='Sticker'||finished)return;
+          const gallery=document.createElement('div');
+          gallery.style.cssText='display:flex;gap:7px;overflow-x:auto;align-items:center;width:100%;';
+          records.forEach(record=>{
+            const picture=document.createElement('img');
+            const previewUrl=URL.createObjectURL(record.blob);
+            picture.src=previewUrl;
+            picture.alt='Add saved sticker to photo';
+            picture.style.cssText='height:48px;width:48px;object-fit:contain;background:#282830;border-radius:10px;cursor:pointer;';
+            picture.onload=()=>URL.revokeObjectURL(previewUrl);
+            picture.onclick=async()=>{
+              const bitmap=await createImageBitmap(record.blob);
+              const side=Math.max(32,Math.min(surface.width,surface.height)*.28);
+              g.drawImage(bitmap,(surface.width-side)/2,(surface.height-side)/2,side,side);
+              bitmap.close();
+              status.textContent='Saved sticker added to your photo.';
+            };
+            gallery.append(picture);
+            const remove=mkBtn('✕',async()=>{
+              if(!window.confirm('Remove saved sticker from this browser?'))return;
+              await blinkStickerOperation('remove',record);
+              if(active==='Sticker')renderTools();
+            });
+            remove.setAttribute('aria-label','Remove saved sticker');
+            gallery.append(remove);
+          });
+          lower.append(gallery);
+        }).catch(err=>{status.textContent=err.message;});
       }else if(active==='Text'){
         const input=document.createElement('input');input.type='text';input.maxLength=80;
         input.placeholder='Write on picture';input.style.cssText='background:#212127;color:#fff;border:1px solid #aaa;padding:8px;border-radius:8px;';
