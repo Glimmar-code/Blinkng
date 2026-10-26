@@ -1975,14 +1975,14 @@ private fun DesktopConnectCampusOverview(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Campus Communities", fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            Text("Campus Channels", fontSize = 17.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
             TextButton(onClick = { showAllCommunities = !showAllCommunities }) {
                 Text(if (showAllCommunities) "Show less" else "See all ›")
             }
         }
         if (communities.isEmpty()) {
-            Text("No public communities on this campus yet. Explore Communities in the sidebar.",
+            Text("No public channels on this campus yet. Explore Channels in the sidebar.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -2101,7 +2101,7 @@ fun ConnectScreen(state: DesktopAppState) {
         "project_teammates" to "Project Teammates", "skill_exchange" to "Skill Exchange",
         "career_guidance" to "Career Guidance", "internship_network" to "Internships",
         "research_partners" to "Research Partners", "founders_builders" to "Founders & Builders",
-        "freelance_collaborators" to "Freelancers", "campus_communities" to "Communities",
+        "freelance_collaborators" to "Freelancers", "campus_communities" to "Channels",
         "event_partners" to "Event Partners", "accountability_partners" to "Accountability",
         "alumni_network" to "Alumni & Seniors", "course_tutors" to "Course Tutors",
         "relocation_support" to "Relocation Support", "game_challenges" to "Game Challenges"
@@ -2160,7 +2160,7 @@ fun ConnectScreen(state: DesktopAppState) {
             studentsResult.exceptionOrNull()?.let { "Student discovery" },
             followingResult.exceptionOrNull()?.let { "Following" },
             inboxResult.exceptionOrNull()?.let { "Connect inbox" },
-            communityResult.exceptionOrNull()?.let { "Campus communities" },
+            communityResult.exceptionOrNull()?.let { "Campus channels" },
             postsResult.exceptionOrNull()?.let { "Campus posts" },
         ).takeIf { it.isNotEmpty() }?.joinToString(", ")
         loading = false
