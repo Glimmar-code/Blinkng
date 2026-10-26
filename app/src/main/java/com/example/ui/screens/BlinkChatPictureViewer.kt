@@ -99,6 +99,7 @@ internal fun BlinkChatPictureViewer(
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
     var savedUri by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var pendingLocalAction by remember(message.id) { mutableStateOf<String?>(null) }
     var reactionMenu by remember { mutableStateOf(false) }
     val time = remember(message.rawTimestamp, message.timestamp) {
         runCatching {
@@ -106,6 +107,68 @@ internal fun BlinkChatPictureViewer(
                 DateTimeFormatter.ofPattern("dd MMMM, h:mm a")
             )
         }.getOrDefault(message.timestamp)
+    }
+
+    // The original viewer only enabled actions after an unrelated manual gallery save.
+    // A selected action now asks for that download once and resumes automatically.
+    fun downloadToGallery() {
+        if (downloadJob?.isActive == true) return
+        downloadError = null
+        progress = 0
+        downloadJob = scope.launch {
+            runCatching {
+                saveChatPhotoToGallery(context, message.attachedImageUrl!!) {
+                    progress = it
+                }
+            }.onSuccess { savedUri = it; progress = 100 }
+                .onFailure {
+                    downloadError = if (it is CancellationException) null
+                        else "Download failed. Tap download to retry."
+                    pendingLocalAction = null
+                    progress = -1
+                }
+        }
+    }
+    fun requestLocalAction(action: String) {
+        moreOpen = false
+        pendingLocalAction = action
+        if (savedUri == null && downloadJob?.isActive != true) {
+            confirmation = "download_required"
+        }
+    }
+    LaunchedEffect(savedUri, pendingLocalAction) {
+        val local = savedUri ?: return@LaunchedEffect
+        val action = pendingLocalAction ?: return@LaunchedEffect
+        pendingLocalAction = null
+        when (action) {
+            "edit" -> editingPhoto = local
+            "share", "external_search" -> {
+                if (action == "external_search") {
+                    confirmation = "external_search"
+                } else runCatching {
+                    context.startActivity(Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = context.contentResolver.getType(local) ?: "image/*"
+                            putExtra(Intent.EXTRA_STREAM, local)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, "Share picture"
+                    ))
+                }.onFailure { downloadError = "No compatible sharing app available." }
+            }
+            "gallery" -> runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(local, "image/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            }.onFailure { downloadError = "No compatible gallery app available." }
+            "sticker", "ai", "group", "profile" -> confirmation = action
+            "wallpaper" -> runCatching {
+                context.startActivity(
+                    android.app.WallpaperManager.getInstance(context)
+                        .getCropAndSetWallpaperIntent(local)
+                )
+            }.onFailure { downloadError = "Wallpaper setting unavailable on this device." }
+        }
     }
     DisposableEffect(message.id) { onDispose { downloadJob?.cancel() } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
@@ -224,22 +287,7 @@ internal fun BlinkChatPictureViewer(
                     IconButton(onClick = {
                         if (downloadJob?.isActive == true) {
                             downloadJob?.cancel()
-                        } else {
-                            downloadError = null
-                            progress = 0
-                            downloadJob = scope.launch {
-                                runCatching {
-                                    saveChatPhotoToGallery(context, message.attachedImageUrl!!) {
-                                        progress = it
-                                    }
-                                }.onSuccess { savedUri = it; progress = 100 }
-                                    .onFailure {
-                                        downloadError = if (it is CancellationException) null
-                                            else "Download failed. Tap download to retry."
-                                        progress = -1
-                                    }
-                            }
-                        }
+                        } else downloadToGallery()
                     }) {
                         Icon(
                             if (downloadJob?.isActive == true) Icons.Default.Close
@@ -258,24 +306,11 @@ internal fun BlinkChatPictureViewer(
                         }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                             DropdownMenuItem(text = { Text("Edit") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; editingPhoto = savedUri },
-                                leadingIcon = { Icon(Icons.Default.Edit,null) })
-                            DropdownMenuItem(text = { Text("Share") }, enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(Intent.createChooser(
-                                                Intent(Intent.ACTION_SEND).apply {
-                                                    type = "image/jpeg"
-                                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }, "Share picture"
-                                            ))
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.Share, null) })
+                                onClick = { requestLocalAction("edit") },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) })
+                            DropdownMenuItem(text = { Text("Share") },
+                                onClick = { requestLocalAction("share") },
+                                leadingIcon = { Icon(Icons.Default.Share, null) })
                             DropdownMenuItem(text = { Text(if (message.isStarred) "Unstar" else "Star") },
                                 onClick = { moreOpen = false; onStar() },
                                 leadingIcon = { Icon(Icons.Default.Star, null) })
@@ -288,62 +323,32 @@ internal fun BlinkChatPictureViewer(
                             DropdownMenuItem(text = { Text("Rotate") },
                                 onClick = { moreOpen = false; rotateDegrees = (rotateDegrees + 90) % 360 },
                                 leadingIcon = { Icon(Icons.Default.RotateRight, null) })
-                            DropdownMenuItem(text = { Text("View in gallery") }, enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                                setDataAndType(uri, "image/*")
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            })
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
-                            DropdownMenuItem(
-                                text = { Text("Create reusable sticker") },
-                                enabled = savedUri != null && !savingSticker,
-                                onClick = { moreOpen = false; confirmation = "sticker" },
-                                leadingIcon = { Icon(Icons.Default.EmojiEmotions, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Ask BLINK AI about this picture") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; confirmation = "ai" },
-                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
-                            )
+                            DropdownMenuItem(text = { Text("View in gallery") },
+                                onClick = { requestLocalAction("gallery") },
+                                leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(text = { Text("Create reusable sticker") },
+                                enabled = !savingSticker,
+                                onClick = { requestLocalAction("sticker") },
+                                leadingIcon = { Icon(Icons.Default.EmojiEmotions, null) })
+                            DropdownMenuItem(text = { Text("Ask BLINK AI about this picture") },
+                                onClick = { requestLocalAction("ai") },
+                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
                             if (!groupConversationId.isNullOrBlank()) {
-                                DropdownMenuItem(
-                                    text = { Text("Set as group picture") },
-                                    enabled = savedUri != null && !settingGroupIcon,
-                                    onClick = { moreOpen = false; confirmation = "group" },
-                                    leadingIcon = { Icon(Icons.Default.Groups, null) }
-                                )
+                                DropdownMenuItem(text = { Text("Set as group picture") },
+                                    enabled = !settingGroupIcon,
+                                    onClick = { requestLocalAction("group") },
+                                    leadingIcon = { Icon(Icons.Default.Groups, null) })
                             }
                             DropdownMenuItem(text = { Text("Set as my profile picture") },
-                                enabled = savedUri != null && !settingProfilePhoto,
-                                onClick = { moreOpen = false; confirmation = "profile" },
+                                enabled = !settingProfilePhoto,
+                                onClick = { requestLocalAction("profile") },
                                 leadingIcon = { Icon(Icons.Default.AccountCircle, null) })
                             DropdownMenuItem(text = { Text("Set as wallpaper") },
-                                enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(
-                                                android.app.WallpaperManager
-                                                    .getInstance(context)
-                                                    .getCropAndSetWallpaperIntent(uri)
-                                            )
-                                        }.onFailure {
-                                            downloadError = "Wallpaper setting unavailable on this device."
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.Wallpaper, null) })
+                                onClick = { requestLocalAction("wallpaper") },
+                                leadingIcon = { Icon(Icons.Default.Wallpaper, null) })
                             DropdownMenuItem(text = { Text("Search with another app") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; confirmation = "external_search" },
-                                leadingIcon = { Icon(Icons.Default.Search,null) })
+                                onClick = { requestLocalAction("external_search") },
+                                leadingIcon = { Icon(Icons.Default.Search, null) })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Delete for me") },
                                 onClick = { moreOpen = false; onDeleteForMe() },
@@ -441,8 +446,12 @@ internal fun BlinkChatPictureViewer(
     }
     if (confirmation != null) {
         AlertDialog(
-            onDismissRequest={confirmation=null},
+            onDismissRequest={
+                if (confirmation == "download_required") pendingLocalAction = null
+                confirmation = null
+            },
             title={Text(when(confirmation) {
+                "download_required" -> "Download photo to continue?"
                 "external_search" -> "Share photo with another app?"
                 "profile" -> "Use this picture as your BLINK avatar?"
                 "group" -> "Set this group picture?"
@@ -451,6 +460,8 @@ internal fun BlinkChatPictureViewer(
                 else -> "Edited copy created"
             })},
             text={Text(when(confirmation) {
+                "download_required" ->
+                    "BLINK needs a local copy to use this feature. Download and save the photo to your gallery, then the selected action will open automatically."
                 "external_search" ->
                     "Another app may upload or analyze this image. Choose only an app you trust."
                 "profile" ->
@@ -464,7 +475,9 @@ internal fun BlinkChatPictureViewer(
                 else -> "Your original picture in BLINK has not been changed."
             })},
             confirmButton={TextButton(onClick={
-                if (confirmation=="sticker") {
+                if (confirmation=="download_required") {
+                    downloadToGallery()
+                } else if (confirmation=="sticker") {
                     val image = savedUri
                     if (image != null) {
                         savingSticker=true
@@ -542,7 +555,10 @@ internal fun BlinkChatPictureViewer(
                 }
                 confirmation=null
             }) { Text("Continue") }},
-            dismissButton={TextButton(onClick={confirmation=null}){Text("Cancel")}}
+            dismissButton={TextButton(onClick={
+                if (confirmation == "download_required") pendingLocalAction = null
+                confirmation = null
+            }){Text("Cancel")}}
         )
     }
 }
