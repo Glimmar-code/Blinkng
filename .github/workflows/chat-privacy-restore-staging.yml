@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - 'docs/integration/user-chat-privacy-repair-staging-20261026.sql'
-      - 'supabase/tests/link_chat_privacy_staging_assertions.sql'
+      - 'supabase/tests/link_chat_privacy_staging_assertions.pgfixture'
       - '.github/workflows/chat-privacy-restore-staging.yml'
   workflow_dispatch:
 permissions:
@@ -34,6 +34,6 @@ jobs:
       - name: Install psql if missing
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Verify contract against fake accounts in isolated Postgres
-        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/link_chat_privacy_staging_assertions.sql
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/link_chat_privacy_staging_assertions.pgfixture
       - name: Confirm no production connection was used
         run: echo "Disposable GitHub Actions PostgreSQL passed without a Supabase production URL."
