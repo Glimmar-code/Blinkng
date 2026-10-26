@@ -3,7 +3,11 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=p=>readFileSync(p,'utf8');
-const kotlin=read('app/src/main/java/com/example/data/models/NigerianUniversities.kt');
+// The Android alias delegates to the shared cross-platform canonical catalogue.
+// Read the real lists instead of assuming that the compatibility alias owns them.
+const kotlin=read('shared/src/main/kotlin/com/blinkng/shared/discovery/BlinkNigerianUniversities.kt');
+const androidAlias=read('app/src/main/java/com/example/data/models/NigerianUniversities.kt');
+assert.ok(androidAlias.includes('BlinkNigerianUniversities.all'), 'Android must use the shared university catalogue');
 const exported=JSON.parse(read('web/campuses.json'));
 const extract=kind=>{
  const m=kotlin.match(new RegExp('private val '+kind+' = listOf\\(([\\s\\S]*?)\\n    \\)'));
