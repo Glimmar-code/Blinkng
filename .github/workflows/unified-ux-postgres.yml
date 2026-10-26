@@ -7,6 +7,7 @@ on:
       - 'supabase/migrations/20261026113000_featured_reels_completed_12h.sql'
       - 'supabase/migrations/20261026114500_google_onboarding_referral_claim.sql'
       - 'supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql'
+      - 'supabase/migrations/20261026124500_group_avatar_admin_only.sql'
       - 'supabase/tests/unified_ux_feature_*'
       - '.github/workflows/unified-ux-postgres.yml'
   push:
@@ -15,6 +16,7 @@ on:
       - 'supabase/migrations/20261026113000_featured_reels_completed_12h.sql'
       - 'supabase/migrations/20261026114500_google_onboarding_referral_claim.sql'
       - 'supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql'
+      - 'supabase/migrations/20261026124500_group_avatar_admin_only.sql'
       - 'supabase/tests/unified_ux_feature_*'
   workflow_dispatch:
 
@@ -65,6 +67,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026114500_google_onboarding_referral_claim.sql
       - name: Install idempotent direct and group messaging on disposable database
         run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026121500_idempotent_text_and_group_message_rpc.sql
+      - name: Install admin-gated group icon changes in disposable database
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026124500_group_avatar_admin_only.sql
       - name: Verify privacy and idempotency assertions
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/unified_ux_feature_assertions.sql
       - name: Confirm production remains untouched
