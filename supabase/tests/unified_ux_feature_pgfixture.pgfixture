@@ -101,8 +101,12 @@ create schema storage;
 create table storage.objects(
   id uuid primary key default gen_random_uuid(),
   bucket_id text not null,
-  name text not null unique
+  name text not null unique,
+  owner_id text,
+  owner uuid
 );
-insert into storage.objects(bucket_id,name) values
-  ('profile-media','users/00000000-0000-0000-0000-000000000101/avatar/test-image.png'),
-  ('profile-media','users/00000000-0000-0000-0000-000000000102/avatar/test-image.png');
+insert into storage.objects(bucket_id,name,owner_id,owner) values
+  ('profile-media','users/00000000-0000-0000-0000-000000000101/avatar/test-image.png',
+    '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000101'),
+  ('profile-media','users/00000000-0000-0000-0000-000000000102/avatar/test-image.png',
+    '00000000-0000-0000-0000-000000000102', '00000000-0000-0000-0000-000000000102');
