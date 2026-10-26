@@ -67,6 +67,19 @@ alter table public.blink_referral_share_events enable row level security;
 alter table public.blink_communities enable row level security;
 alter table public.blink_community_members enable row level security;
 
+-- Explicit, per-table Data API access. ANON reads stay denied even when
+-- a complete migration has already enabled authenticated feature RPCs.
+revoke all on table public.blink_referrals from anon;
+grant select on table public.blink_referrals to authenticated,service_role;
+revoke all on table public.blink_referral_achievements from anon;
+grant select on table public.blink_referral_achievements to authenticated,service_role;
+revoke all on table public.blink_referral_share_events from anon;
+grant select on table public.blink_referral_share_events to authenticated,service_role;
+revoke all on table public.blink_communities from anon;
+grant select on table public.blink_communities to authenticated,service_role;
+revoke all on table public.blink_community_members from anon;
+grant select on table public.blink_community_members to authenticated,service_role;
+
 -- On partial deployments, deny client writes. Once the full reviewed
 -- referral/community RPCs are deployed, retain their already-approved grants.
 do $roles$
