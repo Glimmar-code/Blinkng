@@ -2696,7 +2696,7 @@ fun MainAppContent(
                             launched = runCatching {
                                 context.startActivity(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                     setPackage(pkg)
-                                    type = "text/plain"
+                                    this.type = "text/plain"
                                     putExtra(android.content.Intent.EXTRA_TEXT, text)
                                 })
                                 true
