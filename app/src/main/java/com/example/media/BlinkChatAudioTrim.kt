@@ -69,7 +69,11 @@ internal object BlinkChatAudioTrim {
                     info.offset = 0
                     info.size = bytes
                     info.presentationTimeUs = sampleUs - originUs
-                    info.flags = extractor.sampleFlags
+                    // Extractor sample flags and codec buffer flags are different domains.
+                    // Only map sync samples; do not copy encrypted/partial flags blindly.
+                    info.flags = if (
+                        extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                    ) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
                     writer.writeSampleData(muxedTrack, buffer, info)
                     wrote = true
                 }
