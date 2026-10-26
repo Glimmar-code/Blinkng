@@ -901,20 +901,26 @@
     const file=document.getElementById('post-media-file');
     const mediaName=document.getElementById('media-name');
     const submit=form.querySelector('button[type="submit"]');
+    let editedMedia=null;
     form.elements.text.oninput=e=>storageSet(draftKey(),e.target.value);
-    file.onchange=()=>{
+    file.onchange=async()=>{
       try{
+        editedMedia=null;
         const media=file.files[0];
-        if(media)validateMediaFile(media);
+        const info=media?validateMediaFile(media):null;
         mediaName.textContent=media?.name||'';
+        if(info?.isImage){
+          editedMedia=await blinkEditSelectedPhoto(media);
+          mediaName.textContent=`${editedMedia.name} · ready to publish`;
+        }
       }catch(err){
-        file.value='';
+        file.value='';editedMedia=null;
         mediaName.textContent=err.message;
       }
     };
     form.onsubmit=async e=>{
       e.preventDefault();
-      const f=new FormData(form),msg=document.getElementById('post-msg'),media=file.files[0];
+      const f=new FormData(form),msg=document.getElementById('post-msg'),media=editedMedia||file.files[0];
       submit.disabled=true;
       msg.innerHTML='<span class="muted">Publishing…</span>';
       try{
@@ -952,13 +958,23 @@
     const form=document.getElementById('story-form');
     const label=document.getElementById('story-file-name');
     const submit=form.querySelector('button[type="submit"]');
-    file.onchange=()=>{
-      try{const media=file.files[0];if(media)validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80});label.textContent=media?.name||'';}
-      catch(err){file.value='';label.textContent=err.message;}
+    let editedStoryFile=null;
+    file.onchange=async()=>{
+      try{
+        editedStoryFile=null;
+        const media=file.files[0];
+        const kind=media?validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80}):null;
+        label.textContent=media?.name||'';
+        if(kind?.isImage){
+          editedStoryFile=await blinkEditSelectedPhoto(media);
+          label.textContent=`${editedStoryFile.name} · ready to share`;
+        }
+      }
+      catch(err){file.value='';editedStoryFile=null;label.textContent=err.message;}
     };
     form.onsubmit=async e=>{
       e.preventDefault();
-      const media=file.files[0],msg=document.getElementById('story-msg');
+      const media=editedStoryFile||file.files[0],msg=document.getElementById('story-msg');
       if(!media){msg.innerHTML='<div class="error">Choose an image or video.</div>';return;}
       submit.disabled=true;
       msg.innerHTML='<span class="muted">Uploading…</span>';
@@ -1711,12 +1727,14 @@
       }finally{submit.disabled=false;}
     };
     document.getElementById('avatar-file').onchange=async e=>{
-      const file=e.target.files[0];if(!file)return;
-      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:8});const url=await uploadPublicFile('avatars',file,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}
+      let file=e.target.files[0];if(!file)return;
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:8});
+        file=await blinkEditSelectedPhoto(file);
+        const url=await uploadPublicFile('avatars',file,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}
       catch(err){e.target.value='';toast(err.message);}
     };
     document.getElementById('cover-file').onchange=async e=>{
-      const file=e.target.files[0];if(!file)return;
+      let file=e.target.files[0];if(!file)return;
       try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
       catch(err){e.target.value='';toast(err.message);}
     };
