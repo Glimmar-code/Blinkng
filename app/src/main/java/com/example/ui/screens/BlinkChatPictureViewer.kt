@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
@@ -123,7 +125,9 @@ internal fun BlinkChatPictureViewer(
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
+    // A private local copy is separate from an explicitly exported gallery photo.
     var savedUri by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var galleryUri by remember(message.id) { mutableStateOf<Uri?>(null) }
     var pendingLocalAction by remember(message.id) { mutableStateOf<String?>(null) }
     var reactionMenu by remember { mutableStateOf(false) }
     val time = remember(message.rawTimestamp, message.timestamp) {
@@ -134,8 +138,23 @@ internal fun BlinkChatPictureViewer(
         }.getOrDefault(message.timestamp)
     }
 
-    // The original viewer only enabled actions after an unrelated manual gallery save.
-    // A selected action now asks for that download once and resumes automatically.
+    fun preparePrivateCopy() {
+        if (downloadJob?.isActive == true) return
+        downloadError = null
+        progress = 0
+        downloadJob = scope.launch {
+            runCatching {
+                preparePrivateChatPhoto(context, message.attachedImageUrl!!) { progress = it }
+            }.onSuccess { savedUri = it; progress = 100 }
+                .onFailure {
+                    downloadError = if (it is CancellationException) null
+                        else "Could not prepare the private picture. Try again."
+                    pendingLocalAction = null
+                    progress = -1
+                }
+        }
+    }
+    // Public gallery export must be an explicit action, not an editing prerequisite.
     fun downloadToGallery() {
         if (downloadJob?.isActive == true) return
         downloadError = null
@@ -145,7 +164,7 @@ internal fun BlinkChatPictureViewer(
                 saveChatPhotoToGallery(context, message.attachedImageUrl!!) {
                     progress = it
                 }
-            }.onSuccess { savedUri = it; progress = 100 }
+            }.onSuccess { galleryUri = it; progress = 100 }
                 .onFailure {
                     downloadError = if (it is CancellationException) null
                         else "Download failed. Tap download to retry."
@@ -157,13 +176,15 @@ internal fun BlinkChatPictureViewer(
     fun requestLocalAction(action: String) {
         moreOpen = false
         pendingLocalAction = action
-        if (savedUri == null && downloadJob?.isActive != true) {
-            confirmation = "download_required"
+        val ready = if (action == "gallery") galleryUri != null else savedUri != null
+        if (!ready && downloadJob?.isActive != true) {
+            confirmation = if (action == "gallery") "gallery_download" else "private_copy_required"
         }
     }
-    LaunchedEffect(savedUri, pendingLocalAction) {
-        val local = savedUri ?: return@LaunchedEffect
+    LaunchedEffect(savedUri, galleryUri, pendingLocalAction) {
         val action = pendingLocalAction ?: return@LaunchedEffect
+        val local = (if (action == "gallery") galleryUri else savedUri)
+            ?: return@LaunchedEffect
         pendingLocalAction = null
         when (action) {
             "edit" -> editingPhoto = local
@@ -432,7 +453,7 @@ internal fun BlinkChatPictureViewer(
                         Text("Downloading · $progress% · Tap ✕ to cancel",
                             color = Color.White.copy(alpha = .8f), fontSize = 11.sp)
                     }
-                    if (savedUri != null) {
+                    if (galleryUri != null) {
                         Text("Saved to gallery", color = Color(0xFF62D9A3), fontSize = 11.sp)
                     }
                     downloadError?.let { Text(it, color = Color(0xFFFF8585), fontSize = 11.sp) }
@@ -530,11 +551,12 @@ internal fun BlinkChatPictureViewer(
     if (confirmation != null) {
         AlertDialog(
             onDismissRequest={
-                if (confirmation == "download_required") pendingLocalAction = null
+                if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
                 confirmation = null
             },
             title={Text(when(confirmation) {
-                "download_required" -> "Download photo to continue?"
+                "private_copy_required" -> "Prepare private picture?"
+                "gallery_download" -> "Save picture to gallery?"
                 "external_search" -> "Share photo with another app?"
                 "profile" -> "Use this picture as your BLINK avatar?"
                 "group" -> "Set this group picture?"
@@ -543,8 +565,10 @@ internal fun BlinkChatPictureViewer(
                 else -> "Edited copy created"
             })},
             text={Text(when(confirmation) {
-                "download_required" ->
-                    "BLINK needs a local copy to use this feature. Download and save the photo to your gallery, then the selected action will open automatically."
+                "private_copy_required" ->
+                    "BLINK will prepare a temporary app-private copy for this action. It will not appear in your gallery unless you save it separately."
+                "gallery_download" ->
+                    "Save this picture to your device gallery? Other gallery apps may be able to see it."
                 "external_search" ->
                     "Another app may upload or analyze this image. Choose only an app you trust."
                 "profile" ->
@@ -558,7 +582,9 @@ internal fun BlinkChatPictureViewer(
                 else -> "Your original picture in BLINK has not been changed."
             })},
             confirmButton={TextButton(onClick={
-                if (confirmation=="download_required") {
+                if (confirmation=="private_copy_required") {
+                    preparePrivateCopy()
+                } else if (confirmation=="gallery_download") {
                     downloadToGallery()
                 } else if (confirmation=="sticker") {
                     // Editing a private copy never alters the original received message.
@@ -627,7 +653,7 @@ internal fun BlinkChatPictureViewer(
                 confirmation=null
             }) { Text("Continue") }},
             dismissButton={TextButton(onClick={
-                if (confirmation == "download_required") pendingLocalAction = null
+                if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
                 confirmation = null
             }){Text("Cancel")}}
         )
@@ -666,6 +692,64 @@ private suspend fun saveLocalChatPhotoToGallery(context: Context, localUri: Uri)
         }
     }
 
+/**
+ * Consent-triggered, app-private temporary image. The configured FileProvider only
+ * grants access to chosen recipient apps; opening the editor never saves to gallery.
+ */
+private suspend fun preparePrivateChatPhoto(
+    context: Context, remoteUrl: String, onProgress: (Int) -> Unit
+): Uri = withContext(Dispatchers.IO) {
+    require(remoteUrl.startsWith("https://", ignoreCase = true)) {
+        "A secure picture URL is required."
+    }
+    val privateDir = File(context.cacheDir, "blink-share").apply {
+        check(isDirectory || mkdirs()) { "Cannot create a private picture cache." }
+    }
+    val cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+    privateDir.listFiles()?.forEach { old ->
+        if (old.isFile && old.name.startsWith("blink-chat-") && old.lastModified() < cutoff) {
+            old.delete()
+        }
+    }
+    val local = File.createTempFile("blink-chat-", ".jpg", privateDir)
+    try {
+        val req = Request.Builder().url(remoteUrl).get().build()
+        OkHttpClient().newCall(req).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("Image unavailable (${response.code})")
+            val mime = response.header("Content-Type")?.substringBefore(';')?.trim()
+                ?.lowercase()
+            if (mime != null && mime != "application/octet-stream" &&
+                !mime.startsWith("image/")) throw IOException("Not an image.")
+            val body = response.body ?: throw IOException("Image response was empty.")
+            val maxBytes = 30L * 1024 * 1024
+            val total = body.contentLength()
+            if (total > maxBytes) throw IOException("Image is too large.")
+            var received = 0L
+            local.outputStream().use { output ->
+                body.byteStream().use { input ->
+                    val buffer = ByteArray(16_384)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val n = input.read(buffer)
+                        if (n == -1) break
+                        received += n
+                        if (received > maxBytes) throw IOException("Image is too large.")
+                        output.write(buffer, 0, n)
+                        if (total > 0) withContext(Dispatchers.Main) {
+                            onProgress((received * 100 / total).toInt().coerceIn(0, 99))
+                        }
+                    }
+                }
+            }
+            if (received == 0L) throw IOException("Image response was empty.")
+        }
+        FileProvider.getUriForFile(context, "${context.packageName}.chatfiles", local)
+    } catch (error: Throwable) {
+        local.delete()
+        throw error
+    }
+}
+
 /** User-triggered MediaStore write; never changes the remote or original image. */
 private suspend fun saveChatPhotoToGallery(
     context: Context, remoteUrl: String, onProgress: (Int) -> Unit
@@ -692,6 +776,8 @@ private suspend fun saveChatPhotoToGallery(
             if (!response.isSuccessful) throw IOException("Image unavailable (${response.code})")
             val body = response.body ?: throw IOException("Image response was empty.")
             val total = body.contentLength()
+            val maxBytes = 30L * 1024 * 1024
+            if (total > maxBytes) throw IOException("Image is too large.")
             resolver.openOutputStream(uri)?.use { output ->
                 body.byteStream().use { stream ->
                     val buffer = ByteArray(16_384)
@@ -702,6 +788,7 @@ private suspend fun saveChatPhotoToGallery(
                         if (n == -1) break
                         output.write(buffer, 0, n)
                         saved += n
+                        if (saved > maxBytes) throw IOException("Image is too large.")
                         if (total > 0) withContext(Dispatchers.Main) {
                             onProgress((saved * 100 / total).toInt().coerceIn(0, 99))
                         }
