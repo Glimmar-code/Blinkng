@@ -713,7 +713,7 @@ private fun DesktopRightPanel(state: DesktopAppState) {
         HorizontalDivider()
         Text("${profile?.followerCount ?: 0} followers", fontWeight = FontWeight.SemiBold)
         Text("${profile?.followingCount ?: 0} following", fontWeight = FontWeight.SemiBold)
-        Text("${profile?.coinBalance ?: 0} Blink Coins", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        Text("${profile?.coinBalance ?: 0} Blink Coins", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { state.selectedRoute = "wallet" })
         HorizontalDivider()
         Text("Windows status", fontWeight = FontWeight.Bold)
         Text(
