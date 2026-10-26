@@ -48,7 +48,7 @@ jobs:
       - name: Create completely synthetic Supabase-style actors and storage
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_fixture.pgfixture
       - name: Apply versioned Channels migration in isolated Postgres
-        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql
+        run: psql -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql
       - name: Assert security and behavior with independent identities
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_assertions.pgfixture
       - name: Confirm production untouched
