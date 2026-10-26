@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -83,6 +84,7 @@ fun BlinkUniversalPhotoEditor(
     var activeStroke by remember { mutableStateOf<List<Pair<Float,Float>>>(emptyList()) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.WHITE) }
     var brushWidth by remember { mutableFloatStateOf(.007f) }
+    var labelSize by remember { mutableFloatStateOf(.07f) }
     var precisionCropRatio by remember { mutableStateOf<Float?>(null) }
     var precisionCropScale by remember { mutableFloatStateOf(1f) }
     var straightenAngle by remember { mutableFloatStateOf(0f) }
@@ -302,6 +304,36 @@ fun BlinkUniversalPhotoEditor(
                                     },
                                     onDragCancel={ activeStroke=emptyList() }
                                 )
+                            } else if ((tool=="TEXT" || tool=="STICKER") &&
+                                labels.isNotEmpty() && !busy) {
+                                Modifier.pointerInput(tool, labels.size) {
+                                    var movingLabel = -1
+                                    detectDragGestures(
+                                        onDragStart = { position ->
+                                            val radiusX = size.width * .25f
+                                            val radiusY = size.height * .12f
+                                            movingLabel = labels.indices.reversed().firstOrNull { i ->
+                                                val label = labels[i]
+                                                kotlin.math.abs(label.x * size.width - position.x) < radiusX &&
+                                                    kotlin.math.abs(label.y * size.height - position.y) < radiusY
+                                            } ?: -1
+                                            if (movingLabel >= 0) saveUndo()
+                                        },
+                                        onDrag = { change, delta ->
+                                            val i = movingLabel
+                                            if (i in labels.indices) {
+                                                val label = labels[i]
+                                                labels[i] = label.copy(
+                                                    x = (label.x + delta.x / size.width).coerceIn(.05f,.95f),
+                                                    y = (label.y + delta.y / size.height).coerceIn(.1f,.96f)
+                                                )
+                                                change.consume()
+                                            }
+                                        },
+                                        onDragEnd = { movingLabel = -1 },
+                                        onDragCancel = { movingLabel = -1 }
+                                    )
+                                }
                             } else Modifier
                         )
                     ) {
@@ -352,7 +384,9 @@ fun BlinkUniversalPhotoEditor(
                     }
                 }
             }
-            Column(Modifier.fillMaxWidth().heightIn(min=130.dp).background(Color(0xFF0F0F0F))
+            Column(Modifier.fillMaxWidth().heightIn(min=130.dp,max=310.dp)
+                .background(Color(0xFF0F0F0F))
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal=16.dp,vertical=8.dp)) {
                 when(tool) {
                     "ADJUST" -> {
@@ -453,20 +487,25 @@ fun BlinkUniversalPhotoEditor(
                     }
                     "STICKER" -> {
                         Text("ADD A STICKER",color=Color.White,fontSize=12.sp)
+                        Slider(value=labelSize,onValueChange={labelSize=it},
+                            valueRange=.025f.. .2f)
                         Row(Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("❤️","🔥","✨","🎉","💜","😂","👍","⭐","🌈").forEach { emoji ->
                                 Text(emoji,fontSize=27.sp,modifier=Modifier
                                     .clickable {
                                          saveUndo()
-                                         labels.add(BlinkChatPhotoEditor.Label(emoji))
+                                         labels.add(BlinkChatPhotoEditor.Label(emoji,sizeFraction=labelSize))
                                      }
                                     .padding(4.dp))
                             }
                         }
-                        Text("Tap an emoji to place it in the centre.",color=Color.Gray,fontSize=11.sp)
+                        Text("Tap an emoji to place it in the centre; drag it to reposition.",color=Color.Gray,fontSize=11.sp)
                     }
                     "TEXT" -> {
+                        Text("Text size", color=Color.White, fontSize=12.sp)
+                        Slider(value=labelSize,onValueChange={labelSize=it},
+                            valueRange=.025f.. .2f)
                         OutlinedTextField(
                             value=newText,onValueChange={newText=it.take(80)},
                             placeholder={Text("Write on the photo",color=Color.LightGray)},
@@ -479,7 +518,7 @@ fun BlinkUniversalPhotoEditor(
                             if(newText.isNotBlank()) {
                                  saveUndo()
                                  labels.add(BlinkChatPhotoEditor.Label(newText.trim(),
-                                    color=brushColor))
+                                    color=brushColor,sizeFraction=labelSize))
                                 newText=""
                             }
                         },enabled=newText.isNotBlank()) { Text("Add text",color=Color(0xFF46B7FF)) }
