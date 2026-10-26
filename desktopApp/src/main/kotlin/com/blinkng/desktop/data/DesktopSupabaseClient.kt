@@ -598,7 +598,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -655,6 +655,7 @@ class DesktopSupabaseClient(
     suspend fun saveOnboardingProfile(
         username: String? = null,
         university: String? = null,
+        accountType: String? = null,
         department: String? = null,
         academicLevel: String? = null,
         gender: String? = null,
@@ -672,6 +673,7 @@ class DesktopSupabaseClient(
             body.put("username", clean)
         }
         university?.let { body.put("university", it.trim()) }
+        accountType?.let { body.put("account_type", it) }
         department?.let { body.put("department", it.trim()) }
         academicLevel?.let {
             val clean = it.trim()
@@ -2799,6 +2801,7 @@ class DesktopSupabaseClient(
                     name = row.optString("name"),
                     handle = row.optString("username"),
                     university = row.optNullableString("university"),
+        accountType = row.optString("account_type"),
                     verificationTier = row.optString("verification_badge"),
                     worldScore = row.optLong("score"),
                     worldRank = row.optNullableInt("world_rank"),

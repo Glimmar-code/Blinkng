@@ -1466,3 +1466,6 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
+
+## October 26, 2026 — Non-student signup option (Testlab)
+Android and Windows allow a self-declared `NON_STUDENT` account type. Selecting it disables and clears campus/department/level entries. Both use shared onboarding validation and an additive database constraint migration. Campus-specific access is NOT conferred by self-declaration.

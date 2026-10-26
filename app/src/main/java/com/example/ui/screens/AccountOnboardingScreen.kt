@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -46,6 +47,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -143,6 +145,7 @@ fun AccountOnboardingScreen(
         mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) }.let { NigerianUniversitySearch.canonical(it) ?: it })
     }
     var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
+    var notStudent by rememberSaveable(profile.id) { mutableStateOf(profile.accountType == BlinkOnboardingPolicy.NON_STUDENT) }
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
@@ -399,7 +402,7 @@ fun AccountOnboardingScreen(
                     item {
                         StepHeader(
                             title = "Build your basic profile",
-                            subtitle = "University, department and gender are required. Your picture, level and birthday can be skipped.",
+                            subtitle = "Students choose their university and department. All members choose gender.",
                             icon = Icons.Default.Person
                         )
 
@@ -457,12 +460,22 @@ fun AccountOnboardingScreen(
                         }
 
                         Spacer(Modifier.height(16.dp))
-
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = notStudent, onCheckedChange = { checked ->
+                                notStudent = checked
+                                universityPicker = false
+                                departmentPicker = false
+                                levelPicker = false
+                                if (checked) { university = ""; department = ""; level = "" }
+                            }, modifier = Modifier.testTag("onboarding_not_student"))
+                            Text("I am not a university student", color = Color.White)
+                        }
                         PickerField(
                             label = "University",
                             value = university,
                             icon = Icons.Default.AccountBalance,
                             placeholder = "Select university",
+                            enabled = !notStudent,
                             onClick = { universityPicker = true }
                         )
 
@@ -473,6 +486,7 @@ fun AccountOnboardingScreen(
                             value = department,
                             icon = Icons.Default.MenuBook,
                             placeholder = "Select department",
+                            enabled = !notStudent,
                             onClick = { departmentPicker = true }
                         )
 
@@ -483,6 +497,7 @@ fun AccountOnboardingScreen(
                             value = level,
                             icon = Icons.Default.School,
                             placeholder = "Optional — select or skip",
+                            enabled = !notStudent,
                             onClick = { levelPicker = true }
                         )
 
@@ -524,8 +539,7 @@ fun AccountOnboardingScreen(
 
                         PrimaryOnboardingButton(
                             text = if (saving) "Saving..." else "Continue",
-                            enabled = university.isNotBlank() &&
-                                department.isNotBlank() &&
+                            enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
                                 gender.isNotBlank() &&
                                 birthdayValid &&
                                 !saving
@@ -549,9 +563,9 @@ fun AccountOnboardingScreen(
                                 }
 
                                 onSaveBasics(
-                                    NigerianUniversitySearch.canonical(university) ?: university,
-                                    department,
-                                    level,
+                                    if (notStudent) "" else (NigerianUniversitySearch.canonical(university) ?: university),
+                                    if (notStudent) "" else department,
+                                    if (notStudent) "" else level,
                                     gender,
                                     birthDate,
                                     finalAvatar
@@ -746,7 +760,7 @@ fun AccountOnboardingScreen(
         }
     }
 
-    if (universityPicker) {
+    if (universityPicker && !notStudent) {
         UniversityCampusPickerDialog(
             selected = university,
             onDismiss = { universityPicker = false },
@@ -757,7 +771,7 @@ fun AccountOnboardingScreen(
         )
     }
 
-    if (departmentPicker) {
+    if (departmentPicker && !notStudent) {
         SearchablePickerDialog(
             title = "Select department",
             items = BlinkOnboardingCatalog.departments,
@@ -841,6 +855,7 @@ private fun PickerField(
     value: String,
     icon: ImageVector,
     placeholder: String,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
@@ -849,7 +864,8 @@ private fun PickerField(
         border = BorderStroke(1.dp, DarkBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .alpha(if (enabled) 1f else .38f)
+            .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(13.dp),

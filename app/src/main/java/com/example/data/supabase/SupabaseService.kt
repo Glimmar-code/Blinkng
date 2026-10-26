@@ -1665,6 +1665,7 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
+                put("account_type", profile.accountType.ifBlank { "STUDENT" })
                 put("faculty", profile.faculty)
                 put("department", profile.department)
                 put("course_of_study", profile.courseOfStudy)
@@ -4273,6 +4274,7 @@ suspend fun uploadPostMedia(
             points = obj.optInt("score", obj.optInt("points", 0)),
             faculty = obj.cleanString("faculty"),
             university = obj.cleanString("university"),
+            accountType = obj.cleanString("account_type"),
             level = obj.cleanString("academic_level"),
             streakDays = obj.optInt("streak", 0),
             coins = obj.optInt("coins", 0),

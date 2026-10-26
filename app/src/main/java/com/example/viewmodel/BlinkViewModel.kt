@@ -228,6 +228,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_USERNAME = "username"
         private const val KEY_FACULTY = "faculty"
         private const val KEY_UNIVERSITY = "university"
+        private const val KEY_ACCOUNT_TYPE = "account_type"
         private const val KEY_DEPARTMENT = "department"
         private const val KEY_ACADEMIC_LEVEL = "academic_level"
         private const val KEY_GENDER = "gender"
@@ -836,6 +837,7 @@ private suspend fun restoreSupabaseSession() {
         if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.safeString(KEY_FACULTY, authPrefs.safeString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.safeString(KEY_UNIVERSITY, authPrefs.safeString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedAccountType = prefs.safeString(KEY_ACCOUNT_TYPE, "").orEmpty()
         val savedDepartment = prefs.safeString(KEY_DEPARTMENT, "").orEmpty()
         val savedAcademicLevel = prefs.safeString(KEY_ACADEMIC_LEVEL, "").orEmpty()
         val savedGender = prefs.safeString(KEY_GENDER, "").orEmpty()
@@ -872,6 +874,7 @@ private suspend fun restoreSupabaseSession() {
                 email = ContactField(savedEmail, true),
                 faculty = savedFaculty,
                 university = savedUniversity,
+                accountType = savedAccountType,
                 department = savedDepartment,
                 academicLevel = savedAcademicLevel,
                 gender = savedGender,
@@ -914,6 +917,7 @@ private suspend fun restoreSupabaseSession() {
             .putString(KEY_USERNAME, profile.username)
             .putString(KEY_FACULTY, profile.faculty)
             .putString(KEY_UNIVERSITY, profile.university)
+            .putString(KEY_ACCOUNT_TYPE, profile.accountType)
             .putString(KEY_DEPARTMENT, profile.department)
             .putString(KEY_ACADEMIC_LEVEL, profile.academicLevel)
             .putString(KEY_GENDER, profile.gender)
@@ -3060,13 +3064,14 @@ private suspend fun restoreSupabaseSession() {
         val cleanLevel = level.trim()
         val cleanGender = gender.trim()
         val cleanBirthDate = birthDate.trim()
+        val notStudent = cleanUniversity.isBlank() && cleanDepartment.isBlank()
 
         when {
-            cleanUniversity.isBlank() -> {
+            cleanUniversity.isBlank() && !notStudent -> {
                 onResult(false, "Choose your university.")
                 return
             }
-            cleanDepartment.isBlank() -> {
+            cleanDepartment.isBlank() && !notStudent -> {
                 onResult(false, "Choose your department.")
                 return
             }
@@ -3085,7 +3090,9 @@ private suspend fun restoreSupabaseSession() {
             val current = _uiState.value.myProfile
             val updated = current.copy(
                 university = cleanUniversity,
+                faculty = if (notStudent) "" else current.faculty,
                 department = cleanDepartment,
+                accountType = if (notStudent) BlinkOnboardingPolicy.NON_STUDENT else "STUDENT",
                 academicLevel = cleanLevel,
                 gender = cleanGender,
                 birthDate = cleanBirthDate,
@@ -3162,8 +3169,8 @@ private suspend fun restoreSupabaseSession() {
             val current = _uiState.value.myProfile
             if (
                 current.username.isBlank() ||
-                current.university.isBlank() ||
-                current.department.isBlank() ||
+                (BlinkOnboardingPolicy.campusRequired(current.accountType) &&
+                    (current.university.isBlank() || current.department.isBlank())) ||
                 current.gender.isBlank() ||
                 current.interests.isEmpty()
             ) {
