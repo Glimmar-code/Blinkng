@@ -127,11 +127,15 @@ begin
  if public.blink_verify_channel_worker(''invalid-worker-token'') then
   raise exception ''Unauthorized worker accepted'';
  end if;
- if has_table_privilege(''service_role'',''private.blink_channel_worker_credentials'',''SELECT'') then
+end';
+reset role;
+do '
+begin
+ if has_schema_privilege(''service_role'',''private'',''USAGE'') and
+    has_table_privilege(''service_role'',''private.blink_channel_worker_credentials'',''SELECT'') then
   raise exception ''Channel worker secret exposed to service-role API'';
  end if;
 end';
-reset role;
 -- A disposable cron invocation can enqueue at most 200 due notifications;
 -- it never exposes follower IDs to authenticated Data API callers.
 select private.blink_channel_emit_due(200);
