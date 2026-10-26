@@ -230,7 +230,7 @@
     }
   }
 
-  async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
+  async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,profile_theme,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
   async function loadFollowing(){ if(!isAuthed())return; try{ const rows=await rpc('get_my_following_ids',{}); state.following=new Set((rows||[]).map(String)); }catch{ state.following=new Set(); } }
   async function refreshUnreadCount(){ if(!uid())return; try{ const rows=await table('notifications',`user_id=eq.${encodeQ(uid())}&is_read=eq.false&select=id&limit=99`); state.notificationsUnread=rows?.length||0; }catch{state.notificationsUnread=0;} }
 
@@ -1001,6 +1001,27 @@
     }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
   }
 
+
+  // Same stable IDs and six palettes as shared/BlinkProfileThemes.kt.
+  // Never echo untrusted profile values into CSS: all values come from this allowlist.
+  const PROFILE_THEME_PALETTES = Object.freeze({
+    black: {title:'Pure Black',top:'#000000',bottom:'#000000',card:'#111111',accent:'#ffffff'},
+    royal_purple: {title:'Royal Purple',top:'#52146b',bottom:'#160b23',card:'#391744',accent:'#d16fff'},
+    sapphire: {title:'Sapphire Blue',top:'#123f88',bottom:'#081326',card:'#132c52',accent:'#75b7ff'},
+    emerald: {title:'Emerald',top:'#126252',bottom:'#081f1a',card:'#16443a',accent:'#7ae7be'},
+    rose: {title:'Rose',top:'#76254e',bottom:'#260e1d',card:'#51203c',accent:'#ff91c9'},
+    amber: {title:'Amber',top:'#77501a',bottom:'#261909',card:'#4d3415',accent:'#ffcd75'}
+  });
+  function themeId(value){return Object.hasOwn(PROFILE_THEME_PALETTES,String(value||'').trim())?value:'black';}
+  function ownerThemeCss(value){
+    const p=PROFILE_THEME_PALETTES[themeId(value)];
+    return `--profile-theme-top:${p.top};--profile-theme-bottom:${p.bottom};--profile-theme-card:${p.card};--profile-theme-accent:${p.accent};`;
+  }
+  function ownerThemePicker(value){
+    const selected=themeId(value);
+    return `<label class="form-label">Profile theme<select class="field" name="profile_theme">${Object.entries(PROFILE_THEME_PALETTES).map(([id,p])=>`<option value="${id}" ${id===selected?'selected':''}>${p.title}</option>`).join('')}</select></label>`;
+  }
+
   async function renderPublicProfile(identifier){
     ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';
     try{
@@ -1009,6 +1030,7 @@
       const data=await anonRpc('get_public_web_profile',{p_username:cleanIdentifier});
       if(!data?.available||!data.profile)throw new Error('Profile not available');
       const p=data.profile,items=Array.isArray(data.items)?data.items:[];
+      const publicTheme=themeId(await anonRpc('get_public_web_profile_theme',{p_username:p.username}).catch(()=>null));
       let publicPremium=null;
       if(isAuthed()){
         try{
@@ -1028,7 +1050,7 @@
         const itemType=String(i.type||'').toLowerCase()==='reel'||i.isReel||!!i.videoUrl?'reel':'post';
         return `<button type="button" class="profile-tile" data-nav="/${itemType}/${esc(i.id)}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="none"></video>`:`<img src="${esc(media)}" alt="" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${itemType==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;
       }).join('');
-      const html=`<div class="profile-card card ${publicPremium?'premium-profile-surface':''}" ${publicPremium?`style="${cosmeticVars(publicPremium)}"`:''}><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
+      const html=`<div class="profile-card card owner-profile-theme ${publicPremium?'premium-profile-surface':''}" style="${ownerThemeCss(publicTheme)}${publicPremium?cosmeticVars(publicPremium):''}"><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
       ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button type="button" class="brand nav-btn" data-nav="/"><img class="mark" src="${LOGO_URL}" alt="" aria-hidden="true">Blink</button><div><a class="btn download-app" href="${APK_URL}">Download app</a><button type="button" class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;
       bindCommon();
       document.querySelector('[data-open-app-profile]')?.addEventListener('click',()=>openAndroid('profile',p.username));
@@ -1523,7 +1545,7 @@
       const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
       return `<div class="card" style="padding:12px;margin-top:9px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:flex-start"><div class="grow"><strong>${esc(m.title||'Daily mission')}</strong><div class="muted small">${esc(m.description||'')}</div></div><span class="small"><strong>${Math.min(progress,target)}/${target}</strong></span></div><div style="height:6px;border-radius:99px;overflow:hidden;background:var(--surface-2,#e5e7eb);margin:9px 0"><div style="height:100%;width:${pct}%;background:currentColor"></div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span class="muted small">+${fmt(m.coin_reward||0)} coins · +${fmt(m.xp_reward||0)} XP</span><button type="button" class="btn small-btn ${m.claimable?'primary':'ghost'}" data-claim-mission="${esc(m.key||'')}" ${m.claimable?'':'disabled'}>${status}</button></div></div>`;
     }).join('');
-    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
+    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea>${ownerThemePicker(p.profile_theme)}<input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
     bindCommon();
     document.querySelectorAll('[data-claim-mission]').forEach(button=>button.onclick=async()=>{
       const key=button.dataset.claimMission;if(!key)return;button.disabled=true;button.textContent='Claiming…';
@@ -1538,7 +1560,7 @@
       try{
         await patch('profiles',`id=eq.${encodeQ(uid())}`,{
           full_name:String(f.get('name')||'').trim(),username,handle:username,bio:String(f.get('bio')||'').trim(),
-          professional_headline:String(f.get('headline')||'').trim(),university:String(f.get('university')||'').trim(),
+          professional_headline:String(f.get('headline')||'').trim(),profile_theme:themeId(f.get('profile_theme')),university:String(f.get('university')||'').trim(),
           faculty:String(f.get('faculty')||'').trim(),department:String(f.get('department')||'').trim(),academic_level:String(f.get('level')||'').trim()
         });
         await loadMyProfile();msg.innerHTML='<div class="success">Profile saved.</div>';
