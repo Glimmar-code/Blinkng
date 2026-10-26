@@ -32,7 +32,8 @@ begin
   -- Sponsored flags are server-owned. A regular authenticated client MUST NOT
   -- be able to claim feed-ad status simply by choosing a benign category.
   if (new.is_sponsored is true
-      or length(btrim(coalesce(new.ad_label,''))) > 0)
+      or length(btrim(coalesce(new.ad_label,''))) > 0
+      or length(btrim(coalesce(new.ad_cta,''))) > 0)
      and current_user not in ('postgres', 'service_role') then
     raise exception 'BLINK_AD_REQUIRES_SERVER_APPROVAL'
       using errcode = '42501',
@@ -58,7 +59,7 @@ $$;
 drop trigger if exists feed_route_product_ads_trigger on public.feed_posts;
 drop trigger if exists blink_feed_market_category_guard on public.feed_posts;
 create trigger blink_feed_market_category_guard
-before insert or update of category, text, caption, alt_text, is_sponsored, ad_label
+before insert or update of category, text, caption, alt_text, is_sponsored, ad_label, ad_cta
 on public.feed_posts
 for each row
 execute function public.blink_validate_feed_market_category();
@@ -72,7 +73,7 @@ commit;
 -- 3. authenticated UPDATE of an ordinary post to category='Market' is rejected.
 -- 3a. authenticated INSERT with category='Campus Life', is_sponsored=true
 --     must ALSO be rejected; never trust a client-supplied sponsored flag.
--- 3b. authenticated UPDATE of is_sponsored=true or ad_label on an existing
+-- 3b. authenticated UPDATE of is_sponsored=true, ad_label or ad_cta on an existing
 --     post must be rejected unless performed by the verified server role.
 -- 4. Authenticated ordinary social posts (including discussion of prices) stay accepted.
 -- 4a. Explicit sales intent + naira price in text/caption/alt_text is rejected.
