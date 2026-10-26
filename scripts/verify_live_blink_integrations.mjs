@@ -127,6 +127,25 @@ if(postDeploy){
   }
  });
 }
+// Check real Cloudflare Pages routing only after deployment. A live public
+// content ID need not exist: this tests HTML delivery, not private post data.
+if(postDeploy){
+ await check('Direct BLINK post, reel and profile URLs return the SPA shell',async()=>{
+  const paths=[
+   '/post/00000000-0000-4000-8000-000000000001',
+   '/reel/00000000-0000-4000-8000-000000000001',
+   '/@blink',
+   '/profile/blink',
+  ];
+  for(const path of paths){
+   const {res,body}=await get(path+'?route_smoke=1');
+   assert.equal(res.status,200,path+' should not serve the custom 404');
+   assert.equal(new URL(res.url).pathname,path,path+' must keep its shared URL');
+   assert.match(body,/<script src="app\.js" defer><\/script>/,path+' must deliver the BLINK app shell');
+  }
+ });
+}
+
 await check('Published assetlinks and Android package/certificate',async()=>{
  const {body}=await get('/.well-known/assetlinks.json');
  const links=JSON.parse(body);
