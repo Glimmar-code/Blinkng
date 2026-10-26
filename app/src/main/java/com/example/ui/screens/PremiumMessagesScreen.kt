@@ -3170,7 +3170,7 @@ private fun MessageBubble(
                     // Compact inside-bubble timestamp and one overlapping double-check glyph.
                     val metadata = when (message.status) {
                         MessageStatus.SENDING -> "Sending…"
-                        MessageStatus.FAILED -> "Failed • tap to retry"
+                        MessageStatus.FAILED -> "Waiting to retry"
                         MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ ->
                             message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
                     }
