@@ -6,6 +6,7 @@ on:
       - 'docs/integration/blink-channels-*.sql'
       - 'supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql'
       - 'supabase/migrations/20261026213000_blink_channel_notifications.sql'
+      - 'supabase/migrations/20261026221000_blink_channel_push_delivery.sql'
       - 'supabase/tests/blink_channels_*'
       - '.github/workflows/blink-channels-postgres.yml'
   push:
@@ -52,6 +53,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql
       - name: Install idempotent Channel notification outbox
         run: psql -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/20261026213000_blink_channel_notifications.sql
+      - name: Install authenticated Channel FCM retry dispatcher
+        run: psql -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/20261026221000_blink_channel_push_delivery.sql
       - name: Assert security and behavior with independent identities
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_assertions.pgfixture
       - name: Confirm production untouched
