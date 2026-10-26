@@ -83,6 +83,9 @@ fun BlinkUniversalPhotoEditor(
     var activeStroke by remember { mutableStateOf<List<Pair<Float,Float>>>(emptyList()) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.WHITE) }
     var brushWidth by remember { mutableFloatStateOf(.007f) }
+    var precisionCropRatio by remember { mutableStateOf<Float?>(null) }
+    var precisionCropScale by remember { mutableFloatStateOf(1f) }
+    var straightenAngle by remember { mutableFloatStateOf(0f) }
     val undoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
     val redoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
     fun snapshot() = PhotoStudioHistory(
@@ -172,6 +175,29 @@ fun BlinkUniversalPhotoEditor(
                 .onFailure { Toast.makeText(context,it.message ?: "Cannot edit this image.",
                     Toast.LENGTH_SHORT).show() }
             busy=false
+        }
+    }
+    fun applyPrecisionCrop() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            runCatching {
+                com.example.media.BlinkChatPhotoGeometry.edit(
+                    context, workingUri, precisionCropRatio, straightenAngle,
+                    precisionCropScale
+                )
+            }.onSuccess { result ->
+                saveUndo()
+                transientCopies.add(result)
+                workingUri = result
+                strokes.clear(); labels.clear(); activeStroke = emptyList()
+                straightenAngle = 0f
+                precisionCropScale = 1f
+            }.onFailure {
+                Toast.makeText(context, it.message ?: "Could not crop image.",
+                    Toast.LENGTH_LONG).show()
+            }
+            busy = false
         }
     }
     fun commit() {
@@ -374,6 +400,33 @@ fun BlinkUniversalPhotoEditor(
                                     Text(name,color=Color.White,fontSize=11.sp)
                                 }
                             }
+                        }
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            val ratioOptions: List<Pair<String,Float?>> = listOf(
+                                "Free" to null, "1:1" to 1f, "4:5" to .8f,
+                                "9:16" to .5625f, "16:9" to (16f/9f)
+                            )
+                            ratioOptions.forEach { (name, ratio) ->
+                                FilterChip(
+                                    selected = precisionCropRatio == ratio,
+                                    onClick = { precisionCropRatio = ratio },
+                                    label = { Text(name) }
+                                )
+                            }
+                        }
+                        Text("Straighten ${"%.1f".format(straightenAngle)}°",
+                            fontSize=11.sp, color=Color.White)
+                        Slider(value=straightenAngle,
+                            onValueChange={straightenAngle=it},
+                            valueRange=-45f..45f,enabled=!busy)
+                        Text("Crop zoom ${(precisionCropScale*100).toInt()}%",
+                            fontSize=11.sp, color=Color.White)
+                        Slider(value=precisionCropScale,
+                            onValueChange={precisionCropScale=it},
+                            valueRange=.45f..1f,enabled=!busy)
+                        Button(onClick={applyPrecisionCrop()},enabled=!busy) {
+                            Text("Apply precision crop")
                         }
                     }
                     "DRAW" -> {
