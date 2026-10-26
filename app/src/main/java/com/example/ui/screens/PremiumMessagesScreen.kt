@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkReplySwipePhysics
+import com.blinkng.shared.BlinkChatMediaAccessPolicy
 
 import com.example.ui.components.BlinkSkeletonChatHistory
 
@@ -2236,8 +2237,10 @@ private fun PremiumChatDetail(
             (conversation.messages + historicalViewerPhotos)
                 .distinctBy { it.id }
                 .filter {
-                    !it.imageViewOnce && !it.deletedForEveryone &&
+                    BlinkChatMediaAccessPolicy.mayBrowse(
+                        it.imageViewOnce, it.deletedForEveryone,
                         !it.attachedImageUrl.isNullOrBlank()
+                    )
                 }
                 .sortedWith(compareBy<ChatMessage> { it.rawTimestamp }
                     .thenBy { it.imageAlbumPosition })
@@ -4169,10 +4172,12 @@ private fun SharedChatContentSheet(
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
     val media = remember(conversation.messages) {
         conversation.messages.filter {
-            !it.imageViewOnce && !it.deletedForEveryone &&
-                (!it.attachedImageUrl.isNullOrBlank() ||
+            BlinkChatMediaAccessPolicy.mayBrowse(
+                it.imageViewOnce, it.deletedForEveryone,
+                !it.attachedImageUrl.isNullOrBlank() ||
                     !it.attachedVideoUrl.isNullOrBlank() ||
-                    !it.attachedAudioUrl.isNullOrBlank())
+                    !it.attachedAudioUrl.isNullOrBlank()
+            )
         }
     }
     val links = remember(conversation.messages) {
@@ -4187,7 +4192,9 @@ private fun SharedChatContentSheet(
     }
     val starred = remember(conversation.messages) {
         conversation.messages.filter {
-            it.isStarred && !it.deletedForEveryone && !it.imageViewOnce
+            BlinkChatMediaAccessPolicy.mayKeepInSavedMedia(
+                it.imageViewOnce, it.deletedForEveryone, it.isStarred
+            )
         }
     }
     var historicalPictures by remember(conversation.id) {
