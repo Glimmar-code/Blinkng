@@ -103,7 +103,11 @@ fun BlinkCommunitiesPanel(
         BlinkChannelDetail(
             channel = channel, backend = backend,
             onBack = { selectedChannel = null }, modifier = modifier,
-            initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId }
+            initialUpdateId = initialUpdateId.takeIf { channel.id == initialChannelId },
+            onChannelEdited = { edited ->
+                selectedChannel = edited
+                communities = communities.map { if (it.id == edited.id) edited else it }
+            }
         )
         return
     }
