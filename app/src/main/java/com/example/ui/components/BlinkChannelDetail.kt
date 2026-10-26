@@ -6,6 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.example.data.repository.BlinkChannelMediaService
@@ -79,6 +82,7 @@ fun BlinkChannelDetail(
 
     val context = LocalContext.current
     var muted by remember(channel.id) { mutableStateOf(false) }
+    var menuOpen by remember(channel.id) { mutableStateOf(false) }
     var showScheduled by remember(channel.id) { mutableStateOf(false) }
     var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var unread by remember(channel.id) { mutableStateOf(0) }
@@ -158,30 +162,43 @@ fun BlinkChannelDetail(
                     }
                 }, enabled = !loading && !saving
             ) { Text(if (muted) "🔕" else "🔔") }
-            if (admin) TextButton(onClick = {
-                scope.launch {
-                    try { stats = backend.channelStats(channel.id).toString(2); showStats = true }
-                    catch (e: Exception) { error = e.message }
+            Box {
+                TextButton(onClick = { menuOpen = true }) { Text("⋮") }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Refresh updates") }, onClick = {
+                        menuOpen = false
+                        scope.launch { refresh() }
+                    })
+                    if (admin) {
+                        DropdownMenuItem(text = { Text("Channel analytics") }, onClick = {
+                            menuOpen = false
+                            scope.launch {
+                                try {
+                                    stats = backend.channelStats(channel.id).toString(2)
+                                    showStats = true
+                                } catch (e: Exception) { error = e.message }
+                            }
+                        })
+                        DropdownMenuItem(text = { Text("Scheduled updates") }, onClick = {
+                            menuOpen = false
+                            scope.launch {
+                                try {
+                                    scheduled = backend.scheduledChannelUpdates(channel.id)
+                                    showScheduled = true
+                                } catch (e: Exception) { error = e.message }
+                            }
+                        })
+                        DropdownMenuItem(text = { Text("Review reports") }, onClick = {
+                            menuOpen = false
+                            scope.launch {
+                                try {
+                                    reports = backend.channelReports(channel.id)
+                                    showReports = true
+                                } catch (e: Exception) { error = e.message }
+                            }
+                        })
+                    }
                 }
-            }) { Text("Stats") }
-            if (admin) TextButton(onClick = {
-                scope.launch {
-                    try {
-                        scheduled = backend.scheduledChannelUpdates(channel.id)
-                        showScheduled = true
-                    } catch (e: Exception) { error = e.message }
-                }
-            }) { Text("Scheduled") }
-            if (admin) TextButton(onClick = {
-                scope.launch {
-                    try {
-                        reports = backend.channelReports(channel.id)
-                        showReports = true
-                    } catch (e: Exception) { error = e.message }
-                }
-            }) { Text("Reports") }
-            TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
-                Text("Refresh")
             }
         }
         HorizontalDivider()
