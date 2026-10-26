@@ -1,1 +1,43 @@
+# Keep existing www to apex redirect. Domain rules may additionally be needed at zone level.
 https://www.blink.com.ng/* https://blink.com.ng/:splat 301
+
+# Cloudflare Pages does not enable implicit SPA fallback when /404.html exists.
+# Serve the web application for client-side routes without redirecting their URLs.
+# These are explicit 200 internal proxies, not HTTP 301/302 redirects.
+# Do not use /*: public SEO pages and assets must retain their own responses.
+/@* /index.html 200
+/profile/* /index.html 200
+/post/* /index.html 200
+/reel/* /index.html 200
+/invite/* /index.html 200
+/feed /index.html 200
+/reels /index.html 200
+/search /index.html 200
+/messages /index.html 200
+/messages/* /index.html 200
+/activity /index.html 200
+/market /index.html 200
+/connect /index.html 200
+/games /index.html 200
+/scheduled /index.html 200
+/ai /index.html 200
+/settings /index.html 200
+/settings/* /index.html 200
+/login /index.html 200
+/site-stats /index.html 200
+/more /index.html 200
+/store /index.html 200
+/vault /index.html 200
+/vip /index.html 200
+/boosts /index.html 200
+/gifts /index.html 200
+/calls /index.html 200
+/offline /index.html 200
+/drafts /index.html 200
+/verification /index.html 200
+/analytics /index.html 200
+/study /index.html 200
+/accounts /index.html 200
+/professional /index.html 200
+/leaderboard /index.html 200
+/seller /index.html 200
