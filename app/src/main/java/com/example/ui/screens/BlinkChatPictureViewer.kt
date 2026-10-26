@@ -75,6 +75,8 @@ internal fun BlinkChatPictureViewer(
     onNext: () -> Unit = {},
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
+    photoIndex: Int = 0,
+    totalPhotos: Int = 0,
     groupConversationId: String? = null,
     onAskBlinkAi: (Uri) -> Unit = {},
 ) {
@@ -282,7 +284,14 @@ internal fun BlinkChatPictureViewer(
                     }
                     Column(Modifier.weight(1f)) {
                         Text(senderName, fontSize = 16.sp, color = Color.White, maxLines = 1)
-                        Text(time, fontSize = 11.sp, color = Color.White.copy(alpha = .75f))
+                        Text(
+                            if (totalPhotos > 1 && photoIndex in 1..totalPhotos)
+                                "$time  ·  $photoIndex of $totalPhotos"
+                            else time,
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = .75f),
+                            maxLines = 1
+                        )
                     }
                     IconButton(onClick = {
                         if (downloadJob?.isActive == true) {
