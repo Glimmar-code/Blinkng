@@ -17,6 +17,16 @@ object BlinkChatMediaSelectionPolicy {
         }
     }
 
+    /** Reorder selected albums before creating the immutable send snapshot. */
+    fun move(selected: List<String>, from: Int, to: Int): List<String> {
+        if (from !in selected.indices || to !in selected.indices || from == to) {
+            return selected.toList()
+        }
+        return selected.toMutableList().apply {
+            add(to, removeAt(from))
+        }
+    }
+
     fun selectionNumber(selected: List<String>, mediaId: String): Int =
         selected.indexOf(mediaId).let { if (it == -1) 0 else it + 1 }
 
