@@ -96,6 +96,16 @@ class BlinkCommunityRepository {
         return (0 until arr.length()).mapNotNull { index -> arr.optJSONObject(index)?.let(::parse) }
     }
 
+    /** RLS checks authorization for private channels; never expose another follower's roster. */
+    suspend fun findChannel(id: String): BlinkCommunity? {
+        val valid = runCatching { UUID.fromString(id).toString() }.getOrNull() ?: return null
+        val raw = request(
+            "blink_communities?select=id,owner_id,name,description,university,category,visibility,cover_url,rules" +
+                "&id=eq.$valid&limit=1"
+        )
+        return JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)?.let(::parse)
+    }
+
     suspend fun create(
         name: String, description: String, university: String, category: String,
         visibility: BlinkCommunityPolicy.Visibility, rules: List<String>,
