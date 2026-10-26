@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'docs/integration/blink-channels-*.sql'
+      - 'supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql'
       - 'supabase/tests/blink_channels_*'
       - '.github/workflows/blink-channels-postgres.yml'
   push:
@@ -46,10 +47,8 @@ jobs:
         run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
       - name: Create completely synthetic Supabase-style actors and storage
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_fixture.pgfixture
-      - name: Install original broadcast SQL draft
-        run: psql -v ON_ERROR_STOP=1 -f docs/integration/blink-channels-broadcast-staging.sql
-      - name: Install privacy, polls, media, reporting SQL draft
-        run: psql -v ON_ERROR_STOP=1 -f docs/integration/blink-channels-whatsapp-completion-staging.sql
+      - name: Apply versioned Channels migration in isolated Postgres
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261026190000_blink_channels_broadcast_media_polls.sql
       - name: Assert security and behavior with independent identities
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/blink_channels_assertions.pgfixture
       - name: Confirm production untouched
