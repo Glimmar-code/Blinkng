@@ -64,9 +64,9 @@ internal object BlinkChatDocumentScanner {
                     } finally { bitmap.recycle() }
                 }
                 file.outputStream().use(document::writeTo)
-                require(file.length() in 1..(40L * 1024 * 1024)) {
-                    "Scanned PDF exceeds the upload limit."
-                }
+                com.blinkng.shared.BlinkChatAttachmentKind.DOCUMENT.verify(
+                    "application/pdf", file.length()
+                )
                 FileProvider.getUriForFile(
                     context, "${context.packageName}.chatfiles", file
                 )
