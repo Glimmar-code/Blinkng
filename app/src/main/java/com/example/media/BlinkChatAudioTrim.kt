@@ -73,6 +73,9 @@ internal object BlinkChatAudioTrim {
                 if (!extractor.advance()) break
             }
             require(wrote) { "No supported audio samples in the selected range." }
+            com.blinkng.shared.BlinkChatAttachmentKind.VOICE.verify(
+                "audio/mp4", output.length()
+            )
             finished = true
             FileProvider.getUriForFile(
                 context, "${context.packageName}.chatfiles", output
