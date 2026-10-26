@@ -2540,6 +2540,7 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onOpenCoinsWallet = { showWallet = true },
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
                     selectedMainTabRoute = when (uiState.selectedTab) {
@@ -2935,13 +2936,7 @@ fun MainAppContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.closeCoinPackPicker()
-                                showGiftPurchase = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("🎁 Gift BLINK Coins to a friend") }
+
                         uiState.economyPolicy.coinPacks.forEach { pack ->
                             OutlinedButton(
                                 onClick = { startV2Checkout("coin_pack", pack.id, 1); viewModel.closeCoinPackPicker() },
