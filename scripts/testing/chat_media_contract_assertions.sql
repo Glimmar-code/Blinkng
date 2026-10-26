@@ -115,3 +115,80 @@ END;
 $$;
 RESET ROLE;
 SELECT 'Chat private media staging contract passed' AS result;
+
+-- Album metadata and preview ownership are enforced server-side, even for
+-- older clients that still display each image as its own message.
+DO $$
+DECLARE
+    conversation uuid := '00000000-0000-4000-8000-000000000010';
+    sender uuid := '00000000-0000-4000-8000-000000000001';
+    message_id uuid := '00000000-0000-4000-8000-000000000021';
+    album_id uuid := '00000000-0000-4000-8000-000000000024';
+BEGIN
+    IF (SELECT count(*) FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='messages'
+            AND column_name IN (
+                'image_album_id','image_album_position','image_album_size','image_preview_url'
+            )) <> 4 THEN
+        RAISE EXCEPTION 'Missing one or more private photo metadata columns';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='public.messages'::regclass
+          AND conname='blink_chat_preview_owner_v1'
+    ) THEN
+        RAISE EXCEPTION 'Private thumbnail owner constraint missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='public.messages'::regclass
+          AND conname='blink_chat_album_invariants_v1'
+    ) THEN
+        RAISE EXCEPTION 'Photo album invariants not present';
+    END IF;
+
+    INSERT INTO public.messages(
+        id,conversation_id,sender_id,message_type,content,media_url,
+        image_album_id,image_album_position,image_album_size,image_preview_url
+    ) VALUES (
+        message_id,conversation,sender,'image','first photo',
+        'message-media:conversations/' || conversation::text || '/users/' ||
+            sender::text || '/image/' || message_id::text || '.jpg',
+        album_id,0,2,
+        'message-media:conversations/' || conversation::text || '/users/' ||
+            sender::text || '/preview/' || message_id::text || '.jpg'
+    );
+
+    BEGIN
+        INSERT INTO public.messages(
+            id,conversation_id,sender_id,message_type,media_url,
+            image_album_id,image_album_position,image_album_size
+        ) VALUES (
+            '00000000-0000-4000-8000-000000000022',
+            conversation,sender,'image','message-media:conversations/test',
+            album_id,9,2
+        );
+        RAISE EXCEPTION 'Invalid album position was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO public.messages(
+            id,conversation_id,sender_id,message_type,media_url,image_preview_url
+        ) VALUES (
+            '00000000-0000-4000-8000-000000000023',
+            conversation,sender,'image',
+            'message-media:conversations/' || conversation::text ||
+                '/users/' || sender::text || '/image/other.jpg',
+            'message-media:conversations/' || conversation::text ||
+                '/users/00000000-0000-4000-8000-000000000003/preview/other.jpg'
+        );
+        RAISE EXCEPTION 'Cross-owner private thumbnail reference was accepted';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+
+    IF (SELECT cardinality(allowed_mime_types) FROM storage.buckets
+        WHERE id='message-media') <> 24 THEN
+        RAISE EXCEPTION 'Private media MIME allow-list drifted';
+    END IF;
+END $$;
