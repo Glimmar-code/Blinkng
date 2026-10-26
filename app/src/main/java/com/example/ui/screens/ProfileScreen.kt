@@ -152,6 +152,7 @@ fun ProfileScreen(
     rewardedAdsToday: Int = 0,
     onWatchAdForCoins: () -> Unit = {},
     onBuyBlinkCoins: () -> Unit = {},
+    onOpenCoinsWallet: () -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
@@ -439,7 +440,7 @@ fun ProfileScreen(
                             }
                         },
                         onVerify = onOpenGetVerified,
-                        onEarnCoins = { showEarnCoinDialog = true },
+                        onEarnCoins = onOpenCoinsWallet,
                         onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
                         onShare = { showShareSheet = true },
                         onCopyUsername = {
@@ -458,14 +459,14 @@ fun ProfileScreen(
                                     java.util.UUID.randomUUID().toString()
                                 }
                                 overlayScope.launch {
-                                    val sent = interactionRepository.giftCoinsOnce(
+                                    val sent = interactionRepository.giftHpOnce(
                                         profile.id, amount, requestId
                                     )
                                     if (sent) pendingGiftRequests.remove(amount)
                                     Toast.makeText(
                                         context,
-                                        if (sent) "Sent $amount BLINK Coins"
-                                        else "Coin gift not confirmed. No transfer shown.",
+                                        if (sent) "Sent $amount HP toward their level"
+                                        else "HP gift not confirmed. Please try again.",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
