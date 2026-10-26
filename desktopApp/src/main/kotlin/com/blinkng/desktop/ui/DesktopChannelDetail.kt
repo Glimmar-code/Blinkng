@@ -56,7 +56,8 @@ import kotlinx.coroutines.launch
 fun DesktopChannelDetail(
     state: DesktopAppState,
     channel: DesktopCommunity,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onChannelEdited: (DesktopCommunity) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var updates by remember(channel.id) { mutableStateOf<List<BlinkChannelUpdate>>(emptyList()) }
@@ -68,6 +69,10 @@ fun DesktopChannelDetail(
     var draft by remember(channel.id) { mutableStateOf("") }
 
     var muted by remember(channel.id) { mutableStateOf(false) }
+    var editInfoOpen by remember(channel.id) { mutableStateOf(false) }
+    var editName by remember(channel.id) { mutableStateOf(channel.name) }
+    var editDescription by remember(channel.id) { mutableStateOf(channel.description) }
+    var editCover by remember(channel.id) { mutableStateOf(channel.coverUrl.orEmpty()) }
     var showScheduled by remember(channel.id) { mutableStateOf(false) }
     var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var unread by remember(channel.id) { mutableStateOf(0) }
@@ -136,6 +141,12 @@ fun DesktopChannelDetail(
                     finally { saving = false }
                 }
             }, enabled = !saving) { Text(if (muted) "🔕" else "🔔") }
+            if (role == "owner") TextButton(onClick = {
+                editName = channel.name
+                editDescription = channel.description
+                editCover = channel.coverUrl.orEmpty()
+                editInfoOpen = true
+            }) { Text("Edit Channel") }
             if (admin) TextButton(onClick = {
                 scope.launch {
                     try { stats = state.client.channelStats(channel.id).toString(2); showStats = true }
@@ -524,6 +535,42 @@ fun DesktopChannelDetail(
                             finally { saving = false }
                         }
                     }) { Text("Post to Status") }
+                }
+            )
+        }
+        if (editInfoOpen && role == "owner") {
+            AlertDialog(
+                onDismissRequest = { editInfoOpen = false },
+                title = { Text("Edit Channel information") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(editName, { editName = it.take(80) },
+                            label = { Text("Channel name") }, singleLine = true)
+                        OutlinedTextField(editDescription, { editDescription = it.take(1500) },
+                            label = { Text("Description") }, maxLines = 4)
+                        OutlinedTextField(editCover, { editCover = it.take(500) },
+                            label = { Text("Picture HTTPS URL") }, singleLine = true)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editInfoOpen = false }) { Text("Cancel") }
+                },
+                confirmButton = {
+                    TextButton(enabled = !saving && editName.trim().length >= 3, onClick = {
+                        scope.launch {
+                            saving = true
+                            try {
+                                val updated = state.client.updateChannelInfo(
+                                    channel.id, editName, editDescription, editCover
+                                )
+                                onChannelEdited(updated)
+                                editInfoOpen = false
+                                info = "Channel information saved"
+                                error = null
+                            } catch (e: Exception) { error = e.message }
+                            finally { saving = false }
+                        }
+                    }) { Text("Save changes") }
                 }
             )
         }
