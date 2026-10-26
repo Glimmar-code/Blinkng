@@ -77,6 +77,23 @@ type Preview = {
   canonicalUrl: string;
 };
 
+async function publicContent(id: string, type: string): Promise<Record<string, unknown> | null> {
+  const base = Deno.env.get("SUPABASE_URL") || "";
+  const key = serviceKey();
+  if (!base || !key) throw new Error("Supabase runtime credentials are unavailable");
+  // Reuse the existing authenticated-policy-independent PUBLIC content projection:
+  // this RPC excludes inactive, non-Everyone posts AND private authors.
+  const response = await fetch(`${base}/rest/v1/rpc/get_public_web_content`, {
+    method: "POST",
+    headers: { ...gatewayHeaders(key), "Content-Type": "application/json" },
+    body: JSON.stringify({ p_content_id: id, p_content_type: type }),
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`Public content lookup failed (${response.status})`);
+  const record = await response.json() as Record<string, unknown>;
+  return record.available === true ? record : null;
+}
+
 async function buildPreview(type: string, id: string): Promise<Preview | null> {
   if (id.length > 128) return null;
   const canonicalUrl = type === "profile"
@@ -90,12 +107,14 @@ async function buildPreview(type: string, id: string): Promise<Preview | null> {
     const rows = await rest(`profiles?${selector}&select=id,username,full_name,avatar_url,bio,professional_headline,university&limit=1`);
     const p = rows[0] as Record<string, unknown> | undefined;
     if (!p) return null;
+    // A public link must not reveal private account biography/avatar.
+    const privateRows = await rest(`user_settings?user_id=eq.${encodeURIComponent(String(p.id))}&select=private_account&limit=1`);
+    if ((privateRows[0] as Record<string, unknown> | undefined)?.private_account === true) return null;
     const username = cleanText(p.username, 60);
     const fullName = cleanText(p.full_name, 90) || username;
     const detail = cleanText(p.professional_headline, 180) || cleanText(p.bio, 180) || cleanText(p.university, 180);
     return {
-      type,
-      id: String(p.id || id),
+      type, id: String(p.id || id),
       title: `${fullName}${username ? ` (@${username})` : ""} on Blink`,
       description: detail || `View ${fullName}'s profile on Blink.`,
       image: String(p.avatar_url || ""),
@@ -104,31 +123,20 @@ async function buildPreview(type: string, id: string): Promise<Preview | null> {
   }
 
   if (!isUuid(id)) return null;
-  const rows = await rest(
-    `feed_posts?id=eq.${encodeURIComponent(id)}&is_active=eq.true&audience=eq.Everyone&select=id,user_id,text,caption,image_url,images,video_url,is_reel,created_at&limit=1`,
-  );
-  const post = rows[0] as Record<string, unknown> | undefined;
-  if (!post) return null;
-
-  const actualIsReel = Boolean(post.is_reel) || Boolean(post.video_url);
-  if ((type === "reel") !== actualIsReel) return null;
-
-  const authorRows = await rest(
-    `profiles?id=eq.${encodeURIComponent(String(post.user_id || ""))}&select=username,full_name,avatar_url&limit=1`,
-  );
-  const author = (authorRows[0] || {}) as Record<string, unknown>;
+  const result = await publicContent(id, type);
+  if (!result) return null;
+  const content = (result.content || {}) as Record<string, unknown>;
+  const author = (content.author || {}) as Record<string, unknown>;
   const username = cleanText(author.username, 60);
-  const caption = cleanText(post.text, 180) || cleanText(post.caption, 180);
-  const images = Array.isArray(post.images) ? post.images.filter(Boolean).map(String) : [];
-  const image = String(images[0] || post.image_url || author.avatar_url || "");
-
+  const caption = cleanText(content.text, 180) || cleanText(content.caption, 180);
+  const images = Array.isArray(content.imageUrls) ? content.imageUrls.filter(Boolean).map(String) : [];
+  const video = type === "reel" ? String(content.videoUrl || "") : "";
   return {
-    type,
-    id,
-    title: `${actualIsReel ? "Reel" : "Post"}${username ? ` by @${username}` : ""} on Blink`,
-    description: caption || `Open this ${actualIsReel ? "reel" : "post"} on Blink.`,
-    image,
-    video: actualIsReel ? String(post.video_url || "") : undefined,
+    type, id,
+    title: `${type === "reel" ? "Reel" : "Post"}${username ? ` by @${username}` : ""} on Blink`,
+    description: caption || `Open this ${type} on Blink.`,
+    image: String(images[0] || author.avatarUrl || ""),
+    video: video || undefined,
     canonicalUrl,
   };
 }
