@@ -13,6 +13,7 @@ import androidx.lifecycle.Observer
 import androidx.work.WorkInfo
 import androidx.work.NetworkType
 import androidx.work.Constraints
+import androidx.work.BackoffPolicy
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -5233,6 +5234,7 @@ private suspend fun restoreSupabaseSession() {
                 val request = OneTimeWorkRequestBuilder<BlinkChatImageUploadWorker>()
                     .setConstraints(Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
                     .setInputData(workDataOf(
                         "ownerId" to pending.ownerId,
                         "partner" to partner,
