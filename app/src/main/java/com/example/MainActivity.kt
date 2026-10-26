@@ -153,8 +153,11 @@ class MainActivity : ComponentActivity() {
 
     private fun showRewardedAdForCoins() {
         val rewardState = viewModel.uiState.value
-        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday)) {
-            viewModel.rewardedAdUnavailable("Today's rewarded ads are complete.")
+        if (!rewardState.economyPolicy.canWatchRewardedAd(rewardState.rewardedAdsToday, rewardState.myProfile.hasActiveMarketVerification())) {
+            viewModel.rewardedAdUnavailable(
+                if (rewardState.myProfile.hasActiveMarketVerification()) "Today's rewarded ads are complete."
+                else "Unlock ads 11–15 by getting verified."
+            )
             return
         }
         if (!BlinkAdsRuntime.canRequestAds.value) {
@@ -3215,7 +3218,7 @@ fun MainAppContent(
                 missions = uiState.dailyMissions,
                 loadingMissions = uiState.isDailyMissionsLoading,
                 isDark = uiState.isDarkMode,
-                isVerified = uiState.myProfile.verificationBadge != com.example.data.models.VerificationBadge.NONE,
+                isVerified = uiState.myProfile.hasActiveMarketVerification(),
                 onVerifyCoins = { viewModel.verifyBlueWithCoins() },
                 onBuyPack = { pack -> startV2Checkout("coin_pack", pack.id, 1) },
                 onBack = {
