@@ -6,6 +6,7 @@ import {readFileSync,statSync} from 'node:fs';
 const read=p=>readFileSync(p,'utf8');
 const sizes={
   'web/app.js':160_000,
+  'web/link-previews.js':10_000,
   'web/parity.js':115_000,
   'web/discovery.js':20_000,
   'web/styles.css':35_000,
@@ -18,7 +19,7 @@ for(const [path,maxBytes] of Object.entries(sizes)){
   const bytes=statSync(path).size;
   assert.ok(bytes<=maxBytes,`${path} grew to ${bytes} bytes; mobile budget is ${maxBytes} bytes`);
 }
-const initialBytes=['web/app.js','web/parity.js','web/discovery.js','web/styles.css','web/landing.css','web/parity.css']
+const initialBytes=['web/app.js','web/link-previews.js','web/parity.js','web/discovery.js','web/styles.css','web/landing.css','web/parity.css']
   .reduce((sum,path)=>sum+statSync(path).size,0);
 assert.ok(initialBytes<=360_000,'Mobile first-party JS+CSS exceeds 360 KB uncompressed budget');
 
@@ -27,11 +28,11 @@ const diagnostics=read('web/performance-diagnostics.js');
 const discovery=read('web/discovery.js');
 const manifest=JSON.parse(read('web/manifest.webmanifest'));
 const html=read('web/index.html');
-assert.ok(sw.includes("blink-web-v27-approved-blink-logo"),'Mobile service worker cache version mismatch');
+assert.ok(sw.includes("blink-web-v28-link-previews"),'Mobile service worker cache version mismatch');
 assert.ok(!sw.includes("'./blink-logo.png'"),'Do not precache large 512px PWA icon on each phone');
 assert.ok(manifest.icons.some(icon=>icon.src==='pwa-512.png'),'PWA icon must remain available on demand');
 assert.ok(sw.includes("'./blink-logo-v2.png'"),'Lightweight BLINK logo should remain in offline shell');
-assert.ok(sw.includes("'./discovery.js'")&&sw.includes("'./campuses.json'"),'Discovery should be available offline');
+assert.ok(sw.includes("'./link-previews.js'")&&sw.includes("'./discovery.js'")&&sw.includes("'./campuses.json'"),'Discovery should be available offline');
 assert.ok(sw.includes("url.search")&&sw.includes("request.headers.has('Authorization')"),'User-specific navigation URLs must not be cached');
 assert.ok(discovery.includes("get('blink_perf')==='1'"),'Diagnostics must require explicit user opt-in');
 assert.ok(discovery.includes("import(prefix+'performance-diagnostics.js')"),'Diagnostics must load lazily, not for every visitor');
