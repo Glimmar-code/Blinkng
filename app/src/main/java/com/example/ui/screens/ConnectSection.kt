@@ -131,6 +131,9 @@ fun ConnectSection(
     onLikePost: (String) -> Unit = {},
     onCommentPost: (String) -> Unit = {},
     onBookmarkPost: (String) -> Unit = {},
+    onRepostPost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    hasUnreadNotifications: Boolean = false,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
@@ -363,7 +366,8 @@ fun ConnectSection(
             onProfile = onProfileClick,
             onSearch = onSearchClick,
             onGame = onGameClick,
-            onNotifications = onOpenActivity
+            onNotifications = onOpenActivity,
+            hasUnreadNotifications = hasUnreadNotifications
         )
         ConnectReferenceTabs(referenceTab) { referenceTab = it }
         when (referenceTab) {
@@ -378,6 +382,8 @@ fun ConnectSection(
                 onLikePost = onLikePost,
                 onCommentPost = onCommentPost,
                 onBookmarkPost = onBookmarkPost,
+                onRepostPost = onRepostPost,
+                onOptionsClick = onOptionsClick,
                 modifier = Modifier.weight(1f)
             )
             1 -> BlinkCommunitiesPanel(
