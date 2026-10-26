@@ -45,6 +45,7 @@ import com.blinkng.desktop.data.DesktopCommunity
 import com.blinkng.shared.BlinkChannelPolicy
 import com.blinkng.shared.BlinkChannelUpdate
 import com.blinkng.shared.BlinkChannelReport
+import com.blinkng.desktop.data.DesktopProfile
 import org.json.JSONObject
 import kotlinx.coroutines.launch
 
@@ -72,6 +73,13 @@ fun DesktopChannelDetail(
     var reports by remember(channel.id) { mutableStateOf<List<BlinkChannelReport>>(emptyList()) }
     var reportingUpdate by remember(channel.id) { mutableStateOf<String?>(null) }
     var reportReason by remember(channel.id) { mutableStateOf("Spam or misleading information") }
+    var shareUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var shareChat by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var shareChannel by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var shareQuery by remember(channel.id) { mutableStateOf("") }
+    var sharePeople by remember(channel.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var shareChannels by remember(channel.id) { mutableStateOf<List<DesktopCommunity>>(emptyList()) }
+    var info by remember(channel.id) { mutableStateOf<String?>(null) }
     var showStats by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
@@ -167,6 +175,7 @@ fun DesktopChannelDetail(
                 }
             }
             if (loading) item { CircularProgressIndicator(Modifier.padding(12.dp)) }
+            if (!info.isNullOrBlank()) item { Text(info.orEmpty(), color = MaterialTheme.colorScheme.primary) }
             if (!error.isNullOrBlank()) item {
                 Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
             }
@@ -246,10 +255,7 @@ fun DesktopChannelDetail(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(onClick = {
-                                Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                                    StringSelection("${channel.name} — BLINK Channel\n${update.body}"), null)
-                            }) { Text("Copy / Forward") }
+                            TextButton(onClick = { shareUpdate = update }) { Text("Forward ↗") }
                             TextButton(onClick = { reportingUpdate = update.id }) { Text("Report") }
                             if (admin) {
                                 TextButton(onClick = {
