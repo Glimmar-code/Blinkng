@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 fun BlinkCommunitiesPanel(
     searchProfiles: suspend (String, Int, String?, String?) -> List<UserProfile>,
     modifier: Modifier = Modifier,
-    onChannelOpenChange: (Boolean) -> Unit = {}
+    onChannelOpenChange: (Boolean) -> Unit = {},
+    initialChannelId: String? = null
 ) {
     val backend = remember { BlinkCommunityRepository() }
     val service = remember { SupabaseService() }
@@ -80,6 +81,16 @@ fun BlinkCommunitiesPanel(
     }
     LaunchedEffect(ownerId) {
         if (ownerId.isNotBlank()) refresh() else loading = false
+    }
+
+    LaunchedEffect(ownerId, initialChannelId) {
+        if (!initialChannelId.isNullOrBlank() && ownerId.isNotBlank()) {
+            try {
+                val found = backend.findChannel(initialChannelId)
+                if (found == null) error = "Channel not found or you do not have access."
+                else selectedChannel = found
+            } catch (cause: Exception) { error = cause.message ?: "Cannot open this channel." }
+        }
     }
 
     androidx.compose.runtime.DisposableEffect(selectedChannel) {
