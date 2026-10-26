@@ -1735,7 +1735,7 @@
     };
     document.getElementById('cover-file').onchange=async e=>{
       let file=e.target.files[0];if(!file)return;
-      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});file=await blinkEditSelectedPhoto(file);const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
       catch(err){e.target.value='';toast(err.message);}
     };
   }
