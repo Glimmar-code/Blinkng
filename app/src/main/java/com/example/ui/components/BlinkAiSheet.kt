@@ -97,7 +97,8 @@ private data class BlinkAiRequestSnapshot(
 @Composable
 fun BlinkAiSheet(
     onDismiss: () -> Unit,
-    initialImageUri: Uri? = null
+    initialImageUri: Uri? = null,
+    initialAudioUri: Uri? = null
 ) {
     val context = LocalContext.current
     // This dialog previously used green-black hardcoded colors even in app Dark Mode.
@@ -108,7 +109,13 @@ fun BlinkAiSheet(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    var input by remember { mutableStateOf("") }
+    var input by remember(initialAudioUri) {
+        mutableStateOf(
+            if (initialAudioUri != null)
+                "Transcribe this audio accurately. Identify uncertain words rather than guessing."
+            else ""
+        )
+    }
     var interactionId by remember { mutableStateOf<String?>(null) }
     var activeConversationId by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
@@ -119,7 +126,7 @@ fun BlinkAiSheet(
     var imageUris by remember(initialImageUri) {
         mutableStateOf(listOfNotNull(initialImageUri))
     }
-    var audioUri by remember { mutableStateOf<Uri?>(null) }
+    var audioUri by remember(initialAudioUri) { mutableStateOf(initialAudioUri) }
     var usePersonalContext by remember { mutableStateOf(true) }
     var useWebSearch by remember { mutableStateOf(true) }
     var temporaryChat by remember { mutableStateOf(false) }
@@ -1091,6 +1098,31 @@ fun BlinkAiSheet(
                             }
                         }
 
+                        if (initialAudioUri != null && audioUri != null) {
+                            Text(
+                                "Private audio is attached locally. BLINK AI receives it only if you press Send.",
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                listOf(
+                                    "Transcribe" to "Transcribe this audio accurately. Identify uncertain words rather than guessing.",
+                                    "Summarise" to "Summarise the important points in this audio.",
+                                    "Translate" to "Translate the speech in this recording into English."
+                                ).forEach { (label, prompt) ->
+                                    FilterChip(
+                                        selected = input == prompt,
+                                        enabled = !isSending && pendingAction == null,
+                                        onClick = { input = prompt },
+                                        label = { Text(label) }
+                                    )
+                                }
+                            }
+                        }
                         if (audioUri != null) {
                             Spacer(Modifier.height(6.dp))
                             Surface(
