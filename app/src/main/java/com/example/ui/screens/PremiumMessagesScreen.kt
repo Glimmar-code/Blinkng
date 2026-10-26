@@ -3534,7 +3534,7 @@ private fun MessageContent(
                     com.example.ui.components.BlinkRichLinkPreview(
                         text = message.text,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        compact = true
+                        compact = false
                     )
                 }
             }
