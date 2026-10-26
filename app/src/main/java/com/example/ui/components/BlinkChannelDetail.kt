@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -125,8 +125,8 @@ fun BlinkChannelDetail(
                         Text(update.body, style = MaterialTheme.typography.bodyLarge)
                         Text(update.createdAt.take(16).replace('T',' '),
                             style = MaterialTheme.typography.labelSmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            BlinkChannelPolicy.reactions.forEach { emoji ->
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            items(BlinkChannelPolicy.reactions) { emoji ->
                                 val count = update.reactions[emoji] ?: 0
                                 TextButton(
                                     enabled = following && !saving,
