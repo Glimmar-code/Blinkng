@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -76,6 +78,7 @@ fun DesktopChannelDetail(
     var shareUpdate by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
     var shareChat by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
     var shareChannel by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
+    var shareStatus by remember(channel.id) { mutableStateOf<BlinkChannelUpdate?>(null) }
     var shareQuery by remember(channel.id) { mutableStateOf("") }
     var sharePeople by remember(channel.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var shareChannels by remember(channel.id) { mutableStateOf<List<DesktopCommunity>>(emptyList()) }
@@ -104,18 +107,16 @@ fun DesktopChannelDetail(
     LaunchedEffect(channel.id) { refresh() }
     LaunchedEffect(channel.id) {
         while (true) {
-            delay(45_000)
+            delay(15_000)
             if (!saving) runCatching { updates = state.client.channelUpdates(channel.id) }
         }
     }
     val admin = role == "owner" || role == "moderator"
     val following = admin || role == "follower"
     val updatesListState = rememberLazyListState()
-    // Like a broadcast conversation, opening a channel reveals its newest update.
-    LaunchedEffect(channel.id, loading, updates.lastOrNull()?.id) {
-        if (!loading && updates.isNotEmpty()) {
-            updatesListState.scrollToItem(updates.size)
-        }
+    // Do not move the reader when newer updates arrive while scrolling.
+    LaunchedEffect(channel.id, loading) {
+        if (!loading && updates.isNotEmpty()) updatesListState.scrollToItem(updates.size)
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -199,6 +200,14 @@ fun DesktopChannelDetail(
                             color = MaterialTheme.colorScheme.primary)
                         if (update.body.isNotBlank())
                             Text(update.body, style = MaterialTheme.typography.bodyLarge)
+                        if (update.mediaKind == "image" && signedMedia != null) {
+                            AsyncImage(
+                                model = signedMedia,
+                                contentDescription = "Channel image preview",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxWidth().height(245.dp)
+                            )
+                        }
                         if (update.mediaPath != null) TextButton(
                             enabled = signedMedia != null,
                             onClick = {
@@ -404,6 +413,10 @@ fun DesktopChannelDetail(
                             }
                         }) { Text("Forward to another Channel") }
                         TextButton(onClick = {
+                            shareUpdate = null
+                            shareStatus = selected
+                        }) { Text("Share to my BLINK Status") }
+                        TextButton(onClick = {
                             val link = "https://blink.com.ng/channel/${channel.id}/update/${selected.id}"
                             Toolkit.getDefaultToolkit().systemClipboard.setContents(
                                 StringSelection("${channel.name} — $link"), null)
@@ -470,9 +483,15 @@ fun DesktopChannelDetail(
                                     saving = true
                                     try {
                                         val link = "https://blink.com.ng/channel/${channel.id}/update/${selected.id}"
+                                        val newMedia = state.client.forwardChannelMediaToChannel(selected, target.id)
+                                        val kind = if (newMedia != null) newMedia.first else if (selected.mediaKind == "poll") "poll" else "text"
                                         state.client.publishRichChannelUpdate(
                                             id = target.id,
                                             body = "Forwarded from ${channel.name}\\n${selected.body.take(4500)}\\n$link",
+                                            kind = kind,
+                                            mediaPath = newMedia?.second,
+                                            pollQuestion = if (kind == "poll") selected.pollQuestion else null,
+                                            options = if (kind == "poll") selected.pollOptions else emptyList(),
                                             forwardedFrom = selected.id
                                         )
                                         info = "Forwarded to ${target.name}"
@@ -485,6 +504,28 @@ fun DesktopChannelDetail(
                     }
                 },
                 confirmButton = { TextButton(onClick = { shareChannel = null }) { Text("Close") } }
+            )
+        }
+        shareStatus?.let { selected ->
+            AlertDialog(
+                onDismissRequest = { shareStatus = null },
+                title = { Text("Share to BLINK Status?") },
+                text = { Text("Publish an attributed preview card. Private Channel attachments stay private.") },
+                dismissButton = { TextButton(onClick = { shareStatus = null }) { Text("Cancel") } },
+                confirmButton = {
+                    TextButton(enabled = !saving, onClick = {
+                        shareStatus = null
+                        scope.launch {
+                            saving = true
+                            try {
+                                check(state.client.shareChannelUpdateToStatus(channel.name, selected))
+                                info = "Shared to your BLINK Status"
+                                error = null
+                            } catch (e: Exception) { error = e.message }
+                            finally { saving = false }
+                        }
+                    }) { Text("Post to Status") }
+                }
             )
         }
         if (reportingUpdate != null) {
