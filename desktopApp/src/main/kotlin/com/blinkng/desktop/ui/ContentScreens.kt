@@ -3550,7 +3550,10 @@ fun ProfileScreen(state: DesktopAppState) {
                                 }
                             }
                         }
-                        profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }
+                        profile.bio?.takeIf(String::isNotBlank)?.let {
+                            Text(it)
+                            DesktopRichLinkPreview(it, compact = true)
+                        }
                         HorizontalDivider()
                         Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
                             Stat("Posts", profile.postsCount.toString())
