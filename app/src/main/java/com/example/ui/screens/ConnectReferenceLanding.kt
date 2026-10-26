@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkElasticSwipeDirection
+import com.example.ui.components.blinkElasticSwipeAction
+
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -240,7 +243,11 @@ internal fun ConnectReferenceLanding(
     val headerTitle = if (campus.isBlank()) "Students on BLINK" else "People near you"
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().blinkElasticSwipeAction(
+            direction = BlinkElasticSwipeDirection.RIGHT,
+            onAction = { showAllPeople = false },
+            enabled = showAllPeople
+        ),
         contentPadding = PaddingValues(bottom = 114.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {

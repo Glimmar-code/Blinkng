@@ -13,4 +13,15 @@ object BlinkReplySwipePhysics {
 
     fun shouldReply(rawDistancePx: Float, activationDistancePx: Float): Boolean =
         activationDistancePx > 0f && rawDistancePx >= activationDistancePx
+
+    /** A quick deliberate reply flick also commits before the full drag distance. */
+    fun shouldReply(rawDistancePx: Float, activationDistancePx: Float, velocityPxPerSecond: Float): Boolean =
+        BlinkElasticGesturePhysics.shouldCommit(
+            distancePx = rawDistancePx,
+            velocityPxPerSecond = velocityPxPerSecond,
+            activationPx = activationDistancePx,
+            minimumFlickPx = activationDistancePx * (BlinkElasticGesturePhysics.MIN_FLICK_DP / activationDp),
+            fastVelocityPxPerSecond =
+                activationDistancePx * (BlinkElasticGesturePhysics.FAST_FLING_DP_PER_SECOND / activationDp)
+        )
 }

@@ -12,6 +12,11 @@ class BlinkReplySwipePhysicsTest {
         assertEquals(95f, BlinkReplySwipePhysics.visualOffset(500f, 76f), 0.001f)
         assertEquals(0f, BlinkReplySwipePhysics.visualOffset(-10f, 76f), 0.001f)
     }
+    @Test fun fastDeliberateFlickArmsReplyOnRelease() {
+        assertTrue(BlinkReplySwipePhysics.shouldReply(36f, 76f, 1300f))
+        assertFalse(BlinkReplySwipePhysics.shouldReply(36f, 76f, 100f))
+        assertFalse(BlinkReplySwipePhysics.shouldReply(36f, 76f, -1300f))
+    }
     @Test fun onlyDeliberateSwipeArmsReply() {
         assertFalse(BlinkReplySwipePhysics.shouldReply(75f, 76f))
         assertTrue(BlinkReplySwipePhysics.shouldReply(76f, 76f))
