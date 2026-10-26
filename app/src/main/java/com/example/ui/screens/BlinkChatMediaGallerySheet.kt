@@ -177,6 +177,71 @@ internal fun BlinkChatMediaGallerySheet(
                 TextButton(onClick = onSystemPhotoPicker) { Text("All photos") }
             }
         }
+        if (selected.size > 1) {
+            Text(
+                "Send order — move pictures left or right",
+                color = palette.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 6.dp)
+            )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                selected.toList().forEachIndexed { index, uri ->
+                    Column(
+                        modifier = Modifier.width(94.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box {
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = "Photo ${index + 1} in sending order",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(76.dp, 62.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                            Text(
+                                "${index + 1}",
+                                color = Color.White,
+                                modifier = Modifier.align(Alignment.TopStart)
+                                    .background(Color(0xCC0579BD), CircleShape)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.Center) {
+                            IconButton(
+                                onClick = {
+                                    val moved = BlinkChatMediaSelectionPolicy.move(
+                                        selected.map(Uri::toString), index, index - 1
+                                    )
+                                    selected.clear()
+                                    selected.addAll(moved.map(Uri::parse))
+                                },
+                                enabled = index > 0,
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, "Move photo earlier")
+                            }
+                            IconButton(
+                                onClick = {
+                                    val moved = BlinkChatMediaSelectionPolicy.move(
+                                        selected.map(Uri::toString), index, index + 1
+                                    )
+                                    selected.clear()
+                                    selected.addAll(moved.map(Uri::parse))
+                                },
+                                enabled = index < selected.lastIndex,
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronRight, "Move photo later")
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (gallerySearchOpen && permitted) {
             OutlinedTextField(
                 value = galleryQuery,
