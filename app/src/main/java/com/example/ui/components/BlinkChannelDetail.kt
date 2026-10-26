@@ -13,6 +13,12 @@ import kotlinx.coroutines.delay
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,6 +77,10 @@ fun BlinkChannelDetail(
 
     val context = LocalContext.current
     var muted by remember(channel.id) { mutableStateOf(false) }
+    var showScheduled by remember(channel.id) { mutableStateOf(false) }
+    var scheduled by remember(channel.id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var unread by remember(channel.id) { mutableStateOf(0) }
+
     var showStats by remember(channel.id) { mutableStateOf(false) }
     var stats by remember(channel.id) { mutableStateOf("") }
     var mediaKind by remember(channel.id) { mutableStateOf("text") }
@@ -89,6 +99,8 @@ fun BlinkChannelDetail(
             followers = backend.channelFollowerCount(channel.id)
             muted = backend.isChannelMuted(channel.id)
             updates = backend.channelUpdates(channel.id)
+            unread = runCatching { backend.channelUnreadCount(channel.id) }.getOrDefault(0)
+            runCatching { backend.markChannelSeen(channel.id) }
             error = null
         } catch (e: Exception) {
             error = e.message ?: "Unable to load this channel."
@@ -121,11 +133,14 @@ fun BlinkChannelDetail(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
-            Column(Modifier.weight(1f).padding(top = 8.dp)) {
+            TextButton(onClick = onBack) { Text("‹") }
+            AsyncImage(model = channel.coverUrl, contentDescription = "Channel picture",
+                modifier = Modifier.size(40.dp).clip(CircleShape))
+            Column(Modifier.weight(1f).padding(top = 4.dp)) {
                 Text(channel.name, style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold, maxLines = 1)
-                Text("$followers followers", style = MaterialTheme.typography.labelMedium)
+                Text("$followers followers" + if (unread > 0) " · $unread new" else "",
+                    style = MaterialTheme.typography.labelMedium)
             }
             TextButton(
                 onClick = {
@@ -142,7 +157,15 @@ fun BlinkChannelDetail(
                     try { stats = backend.channelStats(channel.id).toString(2); showStats = true }
                     catch (e: Exception) { error = e.message }
                 }
-            }) { Text("Stats") }            TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
+            }) { Text("Stats") }
+            if (admin) TextButton(onClick = {
+                scope.launch {
+                    try {
+                        scheduled = backend.scheduledChannelUpdates(channel.id)
+                        showScheduled = true
+                    } catch (e: Exception) { error = e.message }
+                }
+            }) { Text("Scheduled") }            TextButton(onClick = { scope.launch { refresh() } }, enabled = !loading && !saving) {
                 Text("Refresh")
             }
         }
@@ -183,7 +206,8 @@ fun BlinkChannelDetail(
                         runCatching { BlinkChannelMediaService.signedUrl(path) }.getOrNull()
                     }
                 }
-                Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(channel.name, style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold)
@@ -249,25 +273,25 @@ fun BlinkChannelDetail(
                                 }
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(onClick = {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            item { TextButton(onClick = {
                                 val message = "${channel.name} — BLINK Channel\\n${update.body}"
                                 context.startActivity(Intent.createChooser(
                                     Intent(Intent.ACTION_SEND).setType("text/plain")
                                         .putExtra(Intent.EXTRA_TEXT, message),
                                     "Forward channel update"
                                 ))
-                            }) { Text("Forward ↗") }
-                            TextButton(onClick = {
+                            }) { Text("Forward ↗") } }
+                            item { TextButton(onClick = {
                                 scope.launch {
                                     try { backend.reportChannelUpdate(update.id,
                                         "Inappropriate or misleading channel update")
                                         error = null
                                     } catch (e: Exception) { error = e.message }
                                 }
-                            }) { Text("Report") }
+                            }) { Text("Report") } }
                             if (admin) {
-                                TextButton(onClick = {
+                                item { TextButton(onClick = {
                                     scope.launch {
                                         try {
                                             backend.moderateChannelUpdate(update.id,
@@ -275,15 +299,15 @@ fun BlinkChannelDetail(
                                             updates = backend.channelUpdates(channel.id)
                                         } catch (e: Exception) { error = e.message }
                                     }
-                                }) { Text(if (update.pinned) "Unpin" else "Pin") }
-                                TextButton(onClick = {
+                                }) { Text(if (update.pinned) "Unpin" else "Pin") } }
+                                item { TextButton(onClick = {
                                     scope.launch {
                                         try {
                                             backend.moderateChannelUpdate(update.id, "remove")
                                             updates = backend.channelUpdates(channel.id)
                                         } catch (e: Exception) { error = e.message }
                                     }
-                                }) { Text("Remove") }
+                                }) { Text("Remove") } }
                             }
                         }
                     }
@@ -400,6 +424,33 @@ fun BlinkChannelDetail(
                     }
                 }
             ) { Text("Unfollow channel") }
+        }
+        if (showScheduled) {
+            AlertDialog(
+                onDismissRequest = { showScheduled = false },
+                title = { Text("Scheduled updates") },
+                text = {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (scheduled.isEmpty()) item { Text("No scheduled announcements.") }
+                        items(scheduled, key = { it.first }) { entry ->
+                            Column {
+                                Text(entry.second, style = MaterialTheme.typography.bodyMedium)
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        try {
+                                            backend.cancelScheduledChannelUpdate(entry.first)
+                                            scheduled = backend.scheduledChannelUpdates(channel.id)
+                                        } catch (e: Exception) { error = e.message }
+                                    }
+                                }) { Text("Cancel this scheduled update") }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showScheduled = false }) { Text("Close") }
+                }
+            )
         }
         if (showStats) {
             AlertDialog(
