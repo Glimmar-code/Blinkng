@@ -1,3 +1,11 @@
+-- destructive-change-reviewed: DROP POLICY IF EXISTS replaces only the
+-- invitation self-read policy atomically (no table/data deletion). The existing
+-- create_group_conversation RPC is replaced to require invited students'
+-- consent before activating membership, preserving the same signature.
+-- rollback-plan: Deploy a follow-up versioned transaction restoring the
+-- previous group-creation RPC from schema version 20261023, revoke EXECUTE
+-- on new consent RPCs, and preserve all group/member/invitation rows and RLS.
+-- A rollback must NOT silently auto-enroll already-invited students.
 -- BLINK group invitation consent (STAGING CANDIDATE ONLY).
 -- Deploy only after production-compatible Supabase/RLS and multi-account
 -- integration tests. Replaces immediate membership from blink_group_invite.
