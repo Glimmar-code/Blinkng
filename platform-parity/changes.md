@@ -1,3 +1,12 @@
+
+## 2026-10-26 — Chat media viewer gesture and action foundation (Testlab draft)
+
+- **Shared:** Added `BlinkChatMediaGesturePolicy` for directional thresholds, ambiguous diagonal rejection, zoom lock, and opacity calculation, with unit tests. No server-side/media visibility rules changed.
+- **Android:** Normal downloaded/sent picture viewer now handles one-finger vertical up/down dismissal, left/right conversation paging, two-finger zoom with pan, message position display, and a menu workflow which can download a photo after explicit confirmation then resume the selected edit/share/gallery/sticker/AI/profile/wallpaper action. Saved picture remains an independent copy. Normal gallery browsing combines loaded and historical authorized pictures; view-once/deleted messages stay excluded.
+- **Windows:** Retains existing previous/next and downloaded-copy actions; adds left/right keyboard navigation and Escape dismissal as the desktop equivalents of touch swipes.
+- **Not yet verified:** Exact visual screenshot parity, actual on-device pointer competition/double-tap behavior, CI builds and end-to-end Android↔Windows transfers. The much broader attachment-sheet, advanced photo/video/audio/document/AI studio plan is not implemented by this foundation commit; do not claim complete until integrated and tested.
+- **Promotion gate:** Testlab branch first; no `main` merge, live database edit or signed APK publication without green applicable Android, shared and Windows checks plus device gesture verification.
+
 ## 2026-10-26 — Premium Profile, Status and Reels (PR #581 integration)
 
 - **Android:** Owner-visible six profile themes, exact-reference-inspired profile cards/grid, three-dot Edit menu, story viewer rail and immersive Reels controls. A functional in-app Reel editor now offers trim, filmstrip, grayscale, rotation, text, emoji and audio using Media3 export; no mock-only trimming is shipped. Pixel-by-pixel reference equivalence still requires actual screenshot review.
