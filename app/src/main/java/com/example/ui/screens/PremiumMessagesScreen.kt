@@ -17,6 +17,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.example.data.supabase.MessageMediaService
+import com.example.data.supabase.BlinkChatPhotoEditor
 import com.blinkng.shared.BlinkChatImageQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import android.speech.RecognizerIntent
@@ -198,6 +199,12 @@ import kotlin.math.abs
 
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
+
+private data class ChatPhotoReviewItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val uri: Uri,
+    val caption: String = ""
+)
 
 private enum class MessageCallKind { AUDIO, VIDEO }
 private typealias MessageInboxTab = com.blinkng.shared.BlinkMessageInbox
@@ -1547,11 +1554,37 @@ private fun PremiumChatDetail(
     var selectedPhotoQuality by remember(conversation.id) {
         mutableStateOf(BlinkChatImageQuality.STANDARD)
     }
+    var pendingPhotoReview by remember(conversation.id) {
+        mutableStateOf<List<ChatPhotoReviewItem>>(emptyList())
+    }
+    var photoEditBusy by remember(conversation.id) { mutableStateOf(false) }
+
+    // Only delete files produced by BLINK's non-destructive editor. Never touch
+    // files returned by the Android Photo Picker or another application.
+    fun cleanupReviewEdit(uri: Uri) {
+        if (uri.scheme != "file") return
+        val file = java.io.File(uri.path.orEmpty())
+        if (file.parentFile?.canonicalFile == context.cacheDir.canonicalFile &&
+            file.name.startsWith("blink-edited-")) {
+            runCatching { file.delete() }
+        }
+    }
+
+    fun dismissPhotoReview() {
+        pendingPhotoReview.forEach { cleanupReviewEdit(it.uri) }
+        pendingPhotoReview = emptyList()
+        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        onPresenceChange("online")
+    }
+
     val photoAlbumPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
-        if (uris.isNotEmpty()) onSendPhotoAlbum(uris, selectedPhotoQuality)
-        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        if (uris.isNotEmpty()) {
+            pendingPhotoReview = uris.take(10).map { ChatPhotoReviewItem(uri = it) }
+        } else {
+            selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+        }
         onPresenceChange("online")
     }
     var viewOncePictureChoice by remember(conversation.id) { mutableStateOf(false) }
@@ -2222,6 +2255,170 @@ private fun PremiumChatDetail(
                 showNotificationSettings = false
             },
             onDismiss = { showNotificationSettings = false }
+        )
+    }
+
+
+    // Review before sending: selections and captions stay aligned while reordering,
+    // removing, rotating or cropping individual images. Originals are not modified.
+    if (pendingPhotoReview.isNotEmpty()) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!photoEditBusy) dismissPhotoReview() },
+            title = {
+                Text("Review ${pendingPhotoReview.size} photo(s)", color = palette.textPrimary)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { selectedPhotoQuality = BlinkChatImageQuality.STANDARD },
+                            enabled = !photoEditBusy
+                        ) {
+                            Text(
+                                if (selectedPhotoQuality == BlinkChatImageQuality.STANDARD)
+                                    "✓ Standard" else "Standard",
+                                color = palette.textPrimary
+                            )
+                        }
+                        androidx.compose.material3.TextButton(
+                            onClick = { selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL },
+                            enabled = !photoEditBusy
+                        ) {
+                            Text(
+                                if (selectedPhotoQuality == BlinkChatImageQuality.ORIGINAL)
+                                    "✓ Original / HD" else "Original / HD",
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(pendingPhotoReview, key = { _, item -> item.id }) { index, item ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = item.uri,
+                                        contentDescription = "Photo ${index + 1} preview",
+                                        modifier = Modifier.size(76.dp)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Photo ${index + 1}",
+                                            color = palette.textPrimary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Row {
+                                            androidx.compose.material3.TextButton(
+                                                enabled = !photoEditBusy && index > 0,
+                                                onClick = {
+                                                    pendingPhotoReview = pendingPhotoReview.toMutableList()
+                                                        .apply { add(index - 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↑ Up") }
+                                            androidx.compose.material3.TextButton(
+                                                enabled = !photoEditBusy &&
+                                                    index < pendingPhotoReview.lastIndex,
+                                                onClick = {
+                                                    pendingPhotoReview = pendingPhotoReview.toMutableList()
+                                                        .apply { add(index + 1, removeAt(index)) }
+                                                }
+                                            ) { Text("↓ Down") }
+                                        }
+                                    }
+                                    androidx.compose.material3.TextButton(
+                                        enabled = !photoEditBusy,
+                                        onClick = {
+                                            cleanupReviewEdit(item.uri)
+                                            pendingPhotoReview =
+                                                pendingPhotoReview.filterNot { it.id == item.id }
+                                            if (pendingPhotoReview.isEmpty()) {
+                                                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                                            }
+                                        }
+                                    ) { Text("Remove", color = palette.danger) }
+                                }
+                                TextField(
+                                    value = item.caption,
+                                    onValueChange = { value ->
+                                        pendingPhotoReview = pendingPhotoReview.map {
+                                            if (it.id == item.id) it.copy(caption = value.take(1024))
+                                            else it
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Caption (optional)") },
+                                    maxLines = 3,
+                                    enabled = !photoEditBusy
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf(
+                                        "Rotate" to BlinkChatPhotoEditor.Edit.ROTATE_RIGHT,
+                                        "Square crop" to BlinkChatPhotoEditor.Edit.CENTER_SQUARE
+                                    ).forEach { (label, operation) ->
+                                        androidx.compose.material3.TextButton(
+                                            enabled = !photoEditBusy,
+                                            onClick = {
+                                                photoEditBusy = true
+                                                scrollScope.launch {
+                                                    runCatching {
+                                                        BlinkChatPhotoEditor.edit(
+                                                            context, item.uri, operation
+                                                        )
+                                                    }.onSuccess { editedUri ->
+                                                        pendingPhotoReview = pendingPhotoReview.map {
+                                                            if (it.id == item.id) it.copy(uri = editedUri)
+                                                            else it
+                                                        }
+                                                        cleanupReviewEdit(item.uri)
+                                                    }.onFailure { failure ->
+                                                        Toast.makeText(
+                                                            context,
+                                                            failure.message ?: "This photo cannot be edited.",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    photoEditBusy = false
+                                                }
+                                            }
+                                        ) { Text(label, color = palette.textSecondary) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !photoEditBusy && pendingPhotoReview.isNotEmpty(),
+                    onClick = {
+                        val photos = pendingPhotoReview.map {
+                            it.uri to it.caption.trim().take(1024)
+                        }
+                        val quality = selectedPhotoQuality
+                        // Do not delete edited sources: the durable upload queue needs
+                        // them until staging has completed.
+                        pendingPhotoReview = emptyList()
+                        selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                        onPresenceChange("uploading")
+                        onSendPhotoAlbum(photos, quality)
+                    }
+                ) { Text("Send ${pendingPhotoReview.size}", color = palette.accent) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = !photoEditBusy,
+                    onClick = { dismissPhotoReview() }
+                ) { Text("Cancel", color = palette.textSecondary) }
+            }
         )
     }
 
