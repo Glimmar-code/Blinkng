@@ -549,10 +549,22 @@ fun BlinkChannelDetail(
                         try {
                             val preview = selected.body.take(240).ifBlank { "Channel update" }
                             val link = BlinkChannelStatusShare.publicUrl(channel.id, selected.id)
-                            currentService.sendMessage(
-                                account.username,
-                                "Forwarded from ${channel.name}: $preview\\n$link"
-                            ).getOrThrow()
+                            if (selected.mediaPath != null) {
+                                BlinkChannelMediaService.forwardToChat(
+                                    context = context,
+                                    sourcePath = selected.mediaPath,
+                                    recipientUsername = account.username,
+                                    channelId = channel.id,
+                                    channelName = channel.name,
+                                    updateId = selected.id,
+                                    previewText = preview
+                                )
+                            } else {
+                                currentService.sendMessage(
+                                    account.username,
+                                    "Forwarded from ${channel.name}: $preview\\n$link"
+                                ).getOrThrow()
+                            }
                             info = "Sent to @${account.username}"
                             error = null
                         } catch (e: Exception) { error = e.message }
