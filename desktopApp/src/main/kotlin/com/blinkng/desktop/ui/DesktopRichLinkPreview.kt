@@ -23,7 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.blinkng.shared.BlinkRichLink
 import com.blinkng.shared.BlinkRichLinks
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.spacedBy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -71,11 +74,21 @@ private object DesktopRichMetadataClient {
 /** Desktop implementation of BLINK's shared link-preview policy and metadata contract. */
 @Composable
 fun DesktopRichLinkPreview(text: String, modifier: Modifier = Modifier, compact: Boolean = false) {
-    val link = remember(text) { BlinkRichLinks.first(text) } ?: return
+    val links = remember(text) { BlinkRichLinks.all(text) }
+    if (links.isEmpty()) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        links.forEach { link ->
+            key(link.url) { DesktopRichLinkCard(link = link, compact = compact) }
+        }
+    }
+}
+
+@Composable
+private fun DesktopRichLinkCard(link: BlinkRichLink, compact: Boolean) {
     var metadata by remember(link.url) { mutableStateOf<DesktopRichMetadata?>(null) }
     LaunchedEffect(link.url) { metadata = DesktopRichMetadataClient.find(link.url) }
     Surface(
-        modifier = modifier.fillMaxWidth().clickable {
+        modifier = Modifier.fillMaxWidth().clickable {
             runCatching { if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(link.url)) }
         },
         shape = RoundedCornerShape(12.dp),
