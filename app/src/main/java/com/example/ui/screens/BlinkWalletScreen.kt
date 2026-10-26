@@ -114,7 +114,8 @@ fun BlinkWalletScreen(
         loading = false
     }
 
-    LaunchedEffect(accountId, adsToday) {
+    // Reload the authoritative ledger when an ad, daily mission, or payment updates the account.
+    LaunchedEffect(accountId, adsToday, lastKnownBalance, missions.map { it.key to it.claimed }) {
         if (accountId.isNotBlank()) {
             onRefresh()
             refresh()
@@ -136,7 +137,10 @@ fun BlinkWalletScreen(
         missions = missions,
         loadingMissions = loadingMissions,
         onBack = onBack,
-        onRetry = { scope.launch { refresh() } },
+        onRetry = {
+            onRefresh()
+            scope.launch { refresh() }
+        },
         onWatchAd = onWatchOptionalAd,
         onClaimMission = onClaimMission,
         onVerifyCoins = onVerifyCoins,
