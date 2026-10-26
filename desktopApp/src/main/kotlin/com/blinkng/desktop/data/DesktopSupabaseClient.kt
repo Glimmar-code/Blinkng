@@ -633,7 +633,11 @@ class DesktopSupabaseClient(
             JSONObject().put("profile_theme", chosen)
         )
         profileCache.remove(userId)
-        fetchProfile(userId)
+        fetchProfile(userId).also { updated ->
+            check(updated.profileTheme == chosen) {
+                "Profile theme update did not persist. Verify database migration and account permissions."
+            }
+        }
     }
 
     suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
