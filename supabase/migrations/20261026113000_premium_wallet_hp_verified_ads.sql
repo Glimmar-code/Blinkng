@@ -1,3 +1,4 @@
+-- destructive-change-reviewed
 -- TESTLAB ONLY: BLINK Wallet five-page server contract.
 -- Requires disposable PostgreSQL/Supabase staging before production.
 -- rollback-plan: restore the three rewarded-ad RPCs from their original migrations;
