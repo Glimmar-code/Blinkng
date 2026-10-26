@@ -1391,3 +1391,12 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Windows:** same shared discovery semantics and public RPC contract; no Windows-only UI changes.
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
+
+
+## 2026-10-26 — Premium profile themes, reference Story/Reels UI (Testlab PR, not deployed)
+
+- **Public profile data:** six stable owner-selected `profile_theme` identifiers (`black`, `royal_purple`, `sapphire`, `emerald`, `rose`, `amber`). The additive migration has NOT been run in production; profile save/read and live cross-device behavior depend on migrating the column and testing authorization first.
+- **Android:** premium owner-selected profile gradients/cards, four reference-style stats, two-column content thumbnails, three-dot Edit/Share menu, removed profile bottom navigation, compact rank/Earn Coins/Get Verified actions, Edit Profile theme selector and preview. Status now has the creator-avatar rail and preserves time on pause. Expanded Reels gain reference back/create buttons and bottom comment entry; preview expands using the existing continuously mounted pager. Create Reel video preview is portrait on pure black with real seek, play/pause and volume controls. Existing extended settings remain below the editor.
+- **Windows:** reads and displays the same theme palette and offers owners a theme picker with authenticated profile update.
+- **Web:** no web UI changes in this PR. Theme contract requires a parity follow-up before claiming Web visual equivalence. Do not interpret this note as complete visual parity.
+- **Checks required before main:** migration in compatible isolated database, screenshot comparison at several screen/font sizes, Android current-head UI/build tests, Windows current-head tests, cross-device theme propagation, real status video/like/reply and Reel publishing/upload tests, full-editor functional checks, playback state retention, and staged RLS review. No production DB writes or auto-deployment were performed here.
