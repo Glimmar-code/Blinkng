@@ -487,7 +487,7 @@ fun DesktopChannelDetail(
                                         val kind = if (newMedia != null) newMedia.first else if (selected.mediaKind == "poll") "poll" else "text"
                                         state.client.publishRichChannelUpdate(
                                             id = target.id,
-                                            body = "Forwarded from ${channel.name}\\n${selected.body.take(4500)}\\n$link",
+                                            body = "Forwarded from ${channel.name}\n${selected.body.take(4500)}\n$link",
                                             kind = kind,
                                             mediaPath = newMedia?.second,
                                             pollQuestion = if (kind == "poll") selected.pollQuestion else null,
