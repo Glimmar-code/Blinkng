@@ -1561,6 +1561,7 @@ private fun PremiumChatDetail(
         mutableStateOf<List<ChatPhotoReviewItem>>(emptyList())
     }
     var photoEditBusy by remember(conversation.id) { mutableStateOf(false) }
+    var photoAdjustmentItem by remember(conversation.id) { mutableStateOf<ChatPhotoReviewItem?>(null) }
 
     // Only delete files produced by BLINK's non-destructive editor. Never touch
     // files returned by the Android Photo Picker or another application.
@@ -2497,6 +2498,12 @@ private fun PremiumChatDetail(
                                     enabled = !photoEditBusy
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    androidx.compose.material3.TextButton(
+                                        enabled = !photoEditBusy,
+                                        onClick = { photoAdjustmentItem = item }
+                                    ) {
+                                        Text("Adjust", color = palette.textSecondary)
+                                    }
                                     listOf(
                                         "Rotate" to BlinkChatPhotoEditor.Edit.ROTATE_RIGHT,
                                         "Square crop" to BlinkChatPhotoEditor.Edit.CENTER_SQUARE
@@ -2557,6 +2564,20 @@ private fun PremiumChatDetail(
                     onClick = { dismissPhotoReview() }
                 ) { Text("Cancel", color = palette.textSecondary) }
             }
+        )
+    }
+
+    photoAdjustmentItem?.let { item ->
+        BlinkPictureAdjustDialog(
+            uri = item.uri,
+            onEdited = { editedUri ->
+                pendingPhotoReview = pendingPhotoReview.map {
+                    if (it.id == item.id) it.copy(uri = editedUri) else it
+                }
+                cleanupReviewEdit(item.uri)
+                photoAdjustmentItem = null
+            },
+            onDismiss = { photoAdjustmentItem = null }
         )
     }
 
