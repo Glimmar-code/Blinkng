@@ -1,0 +1,66 @@
+-- Disposable, fake users only; never connect these tests to production.
+\set ON_ERROR_STOP on
+do $roles$
+begin
+  if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+  if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+end $roles$;
+create schema auth;
+create schema private;
+create or replace function auth.uid() returns uuid language sql stable
+as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+create table public.profiles (
+ id uuid primary key,
+ verification_badge text not null default 'NONE',
+ verification_expires_at timestamptz
+);
+create table private.blink_economy_config (
+ key text primary key, int_value integer, json_value jsonb, bool_value boolean
+);
+insert into private.blink_economy_config(key,int_value,json_value,bool_value) values
+('rewarded_ad_base_coins',10,null,null),
+('rewarded_ad_daily_limit',15,null,null),
+('blue_verification_cash_ngn',800,null,null),
+('blue_verification_coin_cost',3000,null,null),
+('blue_verification_valid_days',30,null,null),
+('cash_checkout_enabled',null,null,false),
+('rewarded_milestones',null,'[{"ads":5,"total_coins":60},{"ads":10,"total_coins":130},{"ads":15,"total_coins":210}]'::jsonb,null),
+('coin_packs',null,'[{"id":"coins_100","price_ngn":100,"coins":100}]'::jsonb,null);
+create table public.blink_rewarded_ad_claims (
+ id uuid primary key default gen_random_uuid(),
+ user_id uuid not null references public.profiles(id),
+ started_at timestamptz not null default now(),
+ rewarded_at timestamptz,
+ reward_amount integer not null default 10,
+ credited_amount integer,
+ milestone_bonus integer,
+ metadata jsonb not null default '{}'::jsonb
+);
+create table public.user_balances (
+ user_id uuid primary key references public.profiles(id),
+ spendable_coin_balance numeric not null default 0,
+ updated_at timestamptz not null default now()
+);
+create table public.game_profiles (
+ user_id uuid primary key references public.profiles(id),
+ coins bigint not null default 0,
+ updated_at timestamptz not null default now()
+);
+create table public.blink_coin_transactions (
+ id bigint generated always as identity primary key,
+ user_id uuid not null references public.profiles(id),
+ kind text not null,
+ item_name text not null,
+ amount integer not null,
+ balance_after bigint not null,
+ metadata jsonb not null default '{}'::jsonb
+);
+insert into public.profiles(id,verification_badge) values
+('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','NONE'),
+('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','GOLD'),
+('cccccccc-cccc-4ccc-8ccc-cccccccccccc','BLUE');
+update public.profiles set verification_expires_at=now() + interval '20 days'
+where id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+insert into public.blink_rewarded_ad_claims(user_id,started_at,rewarded_at,credited_amount)
+select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid, now()-interval '30 minutes',
+now()-interval '20 minutes',10 from generate_series(1,10);
