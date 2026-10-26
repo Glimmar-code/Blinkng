@@ -1206,6 +1206,26 @@ class DesktopSupabaseClient(
             ?: error("Community creation was not confirmed by Supabase."))
     }
 
+    suspend fun updateChannelInfo(
+        id: String, name: String, description: String, coverUrl: String?
+    ): DesktopCommunity = withContext(Dispatchers.IO) {
+        val uuid = UUID.fromString(id).toString()
+        val cover = coverUrl?.trim().orEmpty()
+        require(cover.isEmpty() || (cover.length <= 500 &&
+            cover.startsWith("https://", ignoreCase = true))) {
+            "Channel picture must be an HTTPS URL."
+        }
+        val body = JSONObject()
+            .put("name", com.blinkng.shared.BlinkCommunityPolicy.validatedName(name))
+            .put("description", com.blinkng.shared.BlinkCommunityPolicy.validatedDescription(description))
+            .put("cover_url", cover.ifBlank { JSONObject.NULL })
+        val raw = execute(authenticatedRequest("/rest/v1/blink_communities?id=eq.$uuid&select=*")
+            .header("Prefer", "return=representation")
+            .patch(body.toString().toRequestBody(jsonMedia)).build())
+        parseCommunity(JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
+            ?: error("Only Channel owners can edit their Channel."))
+    }
+
     private suspend fun communityRpc(name: String, args: JSONObject): String = withContext(Dispatchers.IO) {
         (postObject("/rest/v1/rpc/" + name, args) as? JSONObject)
             ?.optString("value").orEmpty().removeSurrounding("\"")
