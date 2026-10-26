@@ -652,6 +652,26 @@ class DesktopSupabaseClient(
         ))
     }
 
+    suspend fun requestOnboardingPhoneCode(raw: String) = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
+        execute(authenticatedRequest("/auth/v1/user")
+            .put(JSONObject().put("phone", number).toString().toRequestBody(jsonMedia)).build())
+    }
+
+    suspend fun verifyOnboardingPhoneCode(raw: String, code: String): Boolean = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Invalid phone number." }
+        require(com.blinkng.shared.BlinkPhonePolicy.otpIsValid(code)) { "Enter a six-digit code." }
+        val rawReply = execute(authenticatedRequest("/auth/v1/verify")
+            .post(JSONObject().put("phone", number).put("token", code).put("type", "phone_change")
+                .toString().toRequestBody(jsonMedia)).build())
+        val reply = JSONObject(rawReply)
+        if (reply.optString("access_token").isNotBlank() && reply.optString("refresh_token").isNotBlank()) {
+            saveAuthResponseBlocking(reply, requireSession().email)
+        }
+        val user = JSONObject(execute(authenticatedRequest("/auth/v1/user").get().build()))
+        user.optString("phone") == number && user.optString("phone_confirmed_at").isNotBlank()
+    }
+
     suspend fun saveOnboardingProfile(
         username: String? = null,
         university: String? = null,

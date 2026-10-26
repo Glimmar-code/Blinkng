@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.BlinkPhonePolicy
 import com.blinkng.shared.discovery.BlinkUniversitySearch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,6 +86,11 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
     var level by remember(profile.id) { mutableStateOf(profile.academicLevel.orEmpty()) }
     var gender by remember(profile.id) { mutableStateOf(profile.gender.orEmpty()) }
     var birthDate by remember(profile.id) { mutableStateOf(profile.birthDate.orEmpty()) }
+    var phoneNumber by remember(profile.id) { mutableStateOf("") }
+    var phoneCode by remember(profile.id) { mutableStateOf("") }
+    var phoneCodeSent by remember(profile.id) { mutableStateOf(false) }
+    var phoneVerified by remember(profile.id) { mutableStateOf(false) }
+    var phoneBusy by remember { mutableStateOf(false) }
     val selectedInterests = remember(profile.id) {
         mutableStateListOf<String>().apply { addAll(profile.interests) }
     }
@@ -363,10 +369,44 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                                 placeholder = { Text("YYYY-MM-DD") },
                             )
 
+                            Spacer(Modifier.height(14.dp))
+                            OutlinedTextField(value = phoneNumber,
+                                onValueChange = { phoneNumber = it.take(24); phoneCodeSent = false; phoneVerified = false; phoneCode = "" },
+                                label = { Text("Phone / WhatsApp number") },
+                                enabled = !phoneBusy && !phoneVerified, singleLine = true,
+                                modifier = Modifier.fillMaxWidth())
+                            Text("SMS verification required. Contact syncing remains optional.", color = OnboardingMuted, fontSize = 11.sp)
+                            if (!phoneVerified) {
+                                Button(onClick = {
+                                    scope.launch {
+                                        phoneBusy = true
+                                        runCatching { state.client.requestOnboardingPhoneCode(phoneNumber) }
+                                            .onSuccess { phoneCodeSent = true; localMessage = null }
+                                            .onFailure { localMessage = it.message }
+                                        phoneBusy = false
+                                    }
+                                }, enabled = !phoneBusy && !phoneCodeSent && BlinkPhonePolicy.normalize(phoneNumber) != null) { Text("Send SMS code") }
+                                if (phoneCodeSent) {
+                                    OutlinedTextField(value = phoneCode,
+                                        onValueChange = { phoneCode = it.filter(Char::isDigit).take(6) },
+                                        label = { Text("Six-digit SMS code") }, singleLine = true)
+                                    Button(onClick = {
+                                        scope.launch {
+                                            phoneBusy = true
+                                            runCatching { state.client.verifyOnboardingPhoneCode(phoneNumber, phoneCode) }
+                                                .onSuccess { confirmed ->
+                                                    if (confirmed) { phoneVerified = true; localMessage = null }
+                                                    else localMessage = "Phone was not confirmed. Try again."
+                                                }.onFailure { localMessage = it.message }
+                                            phoneBusy = false
+                                        }
+                                    }, enabled = !phoneBusy && BlinkPhonePolicy.otpIsValid(phoneCode)) { Text("Verify phone") }
+                                }
+                            } else Text("Phone verified", color = Color(0xFF56D88A))
                             Spacer(Modifier.height(16.dp))
                             OnboardingPrimaryButton(
                                 text = if (state.busy) "Saving..." else "Continue",
-                                enabled = (notStudent || (BlinkUniversitySearch.canonical(university) != null && department.isNotBlank())) &&
+                                enabled = phoneVerified && (notStudent || (BlinkUniversitySearch.canonical(university) != null && department.isNotBlank())) &&
                                     gender.isNotBlank() &&
                                     !state.busy,
                             ) {

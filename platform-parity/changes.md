@@ -1469,3 +1469,6 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 
 ## October 26, 2026 — Non-student signup option (Testlab)
 Android and Windows allow a self-declared `NON_STUDENT` account type. Selecting it disables and clears campus/department/level entries. Both use shared onboarding validation and an additive database constraint migration. Campus-specific access is NOT conferred by self-declaration.
+
+## October 26, 2026 — Phone OTP signup (Testlab candidate)
+Android and Windows both request a one-time SMS verification when a new user completes onboarding; phone normalization lives in shared Kotlin. This requires a properly configured Supabase Auth SMS provider and must be verified in isolated tests before production. No phonebook/call-log permissions or contact matching are enabled by this change.
