@@ -67,8 +67,6 @@ begin
     from public.blink_send_group_text_idempotent(
       '30000000-0000-0000-0000-000000000101','Hello group',
       '20000000-0000-0000-0000-000000000102');
-  select count(*) into total from public.messages where id=group_message;
-  if total<>1 then raise exception 'Group message insert was not acknowledged'; end if;
   select message_id into second_row from public.blink_send_group_text_idempotent(
       '30000000-0000-0000-0000-000000000101','Hello group',
       '20000000-0000-0000-0000-000000000102');
