@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
@@ -89,6 +91,7 @@ internal fun ConnectReferenceHeader(
     onSearch: () -> Unit,
     onGame: () -> Unit,
     onNotifications: () -> Unit,
+    hasUnreadNotifications: Boolean = false,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 15.dp),
@@ -122,8 +125,13 @@ internal fun ConnectReferenceHeader(
             Icon(Icons.Default.SportsEsports, contentDescription = "Games", modifier = Modifier.size(25.dp))
         }
         IconButton(onClick = onNotifications, modifier = Modifier.size(43.dp)) {
-            Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications",
-                modifier = Modifier.size(25.dp))
+            Box(Modifier.size(27.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications",
+                    modifier = Modifier.size(25.dp))
+                if (hasUnreadNotifications) Box(
+                    Modifier.size(8.dp).align(Alignment.TopEnd)
+                        .background(Color(0xFFF03245), CircleShape))
+            }
         }
     }
 }
@@ -164,6 +172,8 @@ internal fun ConnectReferenceLanding(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onRepostPost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -312,7 +322,9 @@ internal fun ConnectReferenceLanding(
                         onOpen = { onOpenPost(post) },
                         onLike = { onLikePost(post.id) },
                         onComment = { onCommentPost(post.id) },
-                        onSave = { onBookmarkPost(post.id) }
+                        onRepost = { onRepostPost(post.id) },
+                        onSave = { onBookmarkPost(post.id) },
+                        onOptions = { onOptionsClick(post) }
                     )
                 }
             }
@@ -420,7 +432,9 @@ private fun ConnectReferencePostCard(
     onOpen: () -> Unit,
     onLike: () -> Unit,
     onComment: () -> Unit,
-    onSave: () -> Unit
+    onRepost: () -> Unit,
+    onSave: () -> Unit,
+    onOptions: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
@@ -457,8 +471,10 @@ private fun ConnectReferencePostCard(
                         fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Icon(Icons.Default.MoreVert, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                IconButton(onClick = onOptions, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Post options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
             }
             if (post.text.isNotBlank()) {
                 Spacer(Modifier.height(9.dp))
@@ -490,9 +506,16 @@ private fun ConnectReferencePostCard(
                     Spacer(Modifier.width(4.dp))
                     Text(post.commentsCount.toString(), fontSize = 11.sp)
                 }
+                Row(Modifier.clickable(onClick = onRepost), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Repeat, contentDescription = "Repost",
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(post.repostsCount.toString(), fontSize = 11.sp)
+                }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onSave, modifier = Modifier.size(31.dp)) {
-                    Icon(Icons.Default.BookmarkBorder, contentDescription = "Save post",
+                    Icon(if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = "Save post",
                         modifier = Modifier.size(21.dp),
                         tint = if (post.isBookmarked) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface)
