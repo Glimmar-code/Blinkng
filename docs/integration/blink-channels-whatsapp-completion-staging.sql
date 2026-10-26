@@ -83,14 +83,14 @@ on conflict(id) do update set public=false, file_size_limit=26214400,
 create policy blink_channel_media_upload on storage.objects
  for insert to authenticated with check (
    bucket_id='blink-channel-media'
-   and (name like '%/%/%')
+   and (name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/')
    and public.blink_channel_is_admin((split_part(name,'/',1))::uuid)
    and split_part(name,'/',2)=(select auth.uid())::text
  );
 create policy blink_channel_media_read on storage.objects
  for select to authenticated using (
    bucket_id='blink-channel-media'
-   and (name like '%/%/%')
+   and (name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/')
    and public.blink_channel_can_read((split_part(name,'/',1))::uuid)
  );
 -- No client UPDATE/DELETE policy. Removing a channel update revokes its display
@@ -298,6 +298,38 @@ begin
  );
 end
 $$;
+
+
+-- Existing direct Data API reads cannot bypass the RPC's scheduled/removed
+-- visibility filters, otherwise ordinary followers could read future posts.
+revoke select on public.blink_channel_updates from authenticated,anon;
+
+create or replace function public.blink_channel_mute(
+ p_channel_id uuid,p_muted boolean
+) returns boolean language plpgsql security definer set search_path=''
+as $
+begin
+ if auth.uid() is null or not public.blink_channel_can_read(p_channel_id) then
+   raise exception 'CHANNEL_ACCESS_DENIED' using errcode='42501'; end if;
+ insert into public.blink_channel_notifications(channel_id,user_id,muted)
+ values(p_channel_id,auth.uid(),coalesce(p_muted,false))
+ on conflict(channel_id,user_id) do update set muted=excluded.muted;
+ return true;
+end
+$;
+
+create or replace function public.blink_channel_is_muted(p_channel_id uuid)
+returns boolean language sql stable security definer set search_path=''
+as $
+ select case when not public.blink_channel_can_read(p_channel_id) then true
+ else coalesce((select muted from public.blink_channel_notifications
+                where channel_id=p_channel_id and user_id=auth.uid()),false)
+ end
+$;
+revoke all on function public.blink_channel_mute(uuid,boolean),
+ public.blink_channel_is_muted(uuid) from public,anon;
+grant execute on function public.blink_channel_mute(uuid,boolean),
+ public.blink_channel_is_muted(uuid) to authenticated;
 
 revoke all on function public.blink_channel_updates_page(uuid,integer),
  public.blink_channel_publish_rich(uuid,text,text,text,text,jsonb,timestamptz,uuid),
