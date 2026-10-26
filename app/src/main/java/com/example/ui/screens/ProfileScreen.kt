@@ -517,28 +517,6 @@ fun ProfileScreen(
                 }
 
 
-                if (isMe) {
-                    // The old expanded profile carried this entry point. Keep it
-                    // available without bringing back the duplicate cover/identity.
-                    item(key = "refer_grow_entry") {
-                        OutlinedButton(
-                            onClick = { showReferGrow = true },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Refer & Grow · My Referrals")
-                        }
-                    }
-                    item(key = "progress_hub_entry") {
-                        ProgressHubEntryCard(
-                            profile = profile,
-                            onClick = { showProgressHub = true },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
-                        )
-                    }
-                }
-
                 // ============================================================
                 // TABS — real sliding pill indicator
                 // ============================================================
@@ -941,6 +919,8 @@ fun ProfileScreen(
                 clipboard.setText(AnnotatedString("@" + profile.username))
                 Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
             },
+            onReferGrow = { showMoreSheet = false; showReferGrow = true },
+            onProgressHub = { showMoreSheet = false; showProgressHub = true },
             onSearch = {
                 showMoreSheet = false
                 profileSearchActive = true
@@ -2398,6 +2378,8 @@ private fun ProfileMoreSheet(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onCopyUsername: () -> Unit,
+    onReferGrow: () -> Unit,
+    onProgressHub: () -> Unit,
     onSearch: () -> Unit,
     onShare: () -> Unit,
     onNotifications: () -> Unit,
@@ -2412,6 +2394,10 @@ private fun ProfileMoreSheet(
             if (isMe) {
                 ProfileOption(Icons.Default.Edit, "Edit profile",
                     "Personal details, pictures and profile theme", onEdit)
+                ProfileOption(Icons.Default.GroupAdd, "Refer & Grow",
+                    "My referrals and profile discovery", onReferGrow)
+                ProfileOption(Icons.Default.EmojiEvents, "Progress & achievements",
+                    "Campus rank, XP and milestones", onProgressHub)
             }
             ProfileOption(Icons.Default.ContentCopy, "Copy profile username",
                 "@${profile.username}", onCopyUsername)
