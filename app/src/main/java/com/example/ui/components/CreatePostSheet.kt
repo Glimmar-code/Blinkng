@@ -208,6 +208,7 @@ fun CreatePostSheet(
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var reelExporting by remember { mutableStateOf(false) }
+    var reelHasPendingEdits by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf(if (startInReelMode) "reel" else "post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
@@ -579,8 +580,8 @@ fun CreatePostSheet(
     }
 
     fun submit() {
-        if (reelExporting) {
-            Toast.makeText(context, "Complete or cancel Reel rendering first.", Toast.LENGTH_SHORT).show()
+        if (reelExporting || reelHasPendingEdits) {
+            Toast.makeText(context, "Apply Reel edits before publishing.", Toast.LENGTH_SHORT).show()
             return
         }
         // Older saved drafts may still contain the removed Marketplace category.
@@ -654,8 +655,8 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
-        if (reelExporting) {
-            Toast.makeText(context, "Complete Reel rendering before saving.", Toast.LENGTH_SHORT).show()
+        if (reelExporting || reelHasPendingEdits) {
+            Toast.makeText(context, "Apply Reel edits before saving.", Toast.LENGTH_SHORT).show()
             return
         }
         if (!hasComposerInput) {
@@ -1025,7 +1026,8 @@ fun CreatePostSheet(
                             selectedVideo = renderedUri
                             mode = "reel"
                         },
-                        onExporting = { reelExporting = it }
+                        onExporting = { reelExporting = it },
+                        onPendingEdits = { reelHasPendingEdits = it }
                     )
                 }
 
@@ -2241,12 +2243,14 @@ private fun VideoComposerPreview(
     uri: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
-    onExporting: (Boolean) -> Unit
+    onExporting: (Boolean) -> Unit,
+    onPendingEdits: (Boolean) -> Unit
 ) {
     PremiumReelEditor(
         uri = uri,
         onRemove = onRemove,
         onEdited = onEdited,
-        onExporting = onExporting
+        onExporting = onExporting,
+        onPendingEdits = onPendingEdits
     )
 }
