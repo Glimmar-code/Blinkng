@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -65,6 +66,13 @@ fun DesktopChannelDetail(
     LaunchedEffect(channel.id) { refresh() }
     val admin = role == "owner" || role == "moderator"
     val following = admin || role == "follower"
+    val updatesListState = rememberLazyListState()
+    // Like a broadcast conversation, opening a channel reveals its newest update.
+    LaunchedEffect(channel.id, loading, updates.lastOrNull()?.id) {
+        if (!loading && updates.isNotEmpty()) {
+            updatesListState.scrollToItem(updates.size)
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -80,6 +88,7 @@ fun DesktopChannelDetail(
         }
         HorizontalDivider()
         LazyColumn(Modifier.fillMaxWidth().weight(1f),
+            state = updatesListState,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
