@@ -626,7 +626,7 @@ fun EditProfileScreen(
                         Text(
                             "$completion% complete",
                             fontSize =
-                                9.sp,
+                                12.sp,
                             color =
                                 MaterialTheme
                                     .colorScheme
@@ -1138,7 +1138,7 @@ fun EditProfileScreen(
                     title =
                         "Contact",
                     subtitle =
-                        "Keep your campus contact details up to date."
+                        "Choose which contact details are visible to other users."
                 ) {
 
                     ProfileField(
@@ -1747,11 +1747,11 @@ private fun VisibilitySelector(
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Row(
+        LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ProfileVisibilityScope.entries.forEach { scope ->
+            items(ProfileVisibilityScope.entries) { scope ->
                 FilterChip(
                     selected = value == scope,
                     onClick = { onChange(scope) },
@@ -1763,10 +1763,10 @@ private fun VisibilitySelector(
                                 ProfileVisibilityScope.PRIVATE -> "Private"
                             },
                             maxLines = 1,
-                            fontSize = 10.sp
+                            fontSize = 12.sp
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
