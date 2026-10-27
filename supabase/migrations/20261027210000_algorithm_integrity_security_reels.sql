@@ -383,6 +383,7 @@ declare
   v_ad_cap_anchor text := 'if v_ads_before >= v_limit then raise exception ''REWARDED_AD_DAILY_LIMIT''; end if;';
   v_old_user text := 'v_user uuid := auth.uid();';
   v_service text;
+  v_begin text := pg_get_functiondef('public.begin_blink_rewarded_ad_claim()'::regprocedure);
 begin
   if v_source is null or position(v_anchor in v_source)=0
     or position(v_old_user in v_source)=0
@@ -407,7 +408,24 @@ if v_ads_before >= (case when exists (
     ) then v_limit else least(v_limit,10) end)
   then raise exception 'REWARDED_AD_DAILY_LIMIT'; end if;
 $verified$);
+  -- Signed delayed Google callbacks should not be invalidated by a 30-minute
+  -- client-only deadline. Google's signed event remains mandatory and Edge
+  -- verification already rejects callbacks older than 24 hours.
+  if position(v_anchor in v_source)=0 then
+    raise exception 'REWARDED_AD_EXPIRY_SOURCE_DRIFT';
+  end if;
+  v_source := replace(v_source,v_anchor,
+    'if v_claim.started_at < now()-interval ''24 hours''');
   execute v_source;
+
+  if v_begin is null
+    or position('and started_at < now() - interval ''30 minutes'';' in v_begin)=0 then
+    raise exception 'REWARDED_AD_BEGIN_CLEANUP_SOURCE_DRIFT';
+  end if;
+  v_begin := replace(v_begin,
+    'and started_at < now() - interval ''30 minutes'';',
+    'and started_at < now() - interval ''24 hours'';');
+  execute v_begin;
 
   -- Service-role-only sibling: identical transaction, cap, ledger and milestone
   -- rules; identity is looked up only from the already verified claim.
