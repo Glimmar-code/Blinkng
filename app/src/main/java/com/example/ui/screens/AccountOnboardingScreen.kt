@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -46,6 +47,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -89,11 +91,14 @@ import com.example.data.repository.FollowStateStore
 import com.example.data.repository.ProfileRepository
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkContactDiscoveryCard
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkTextSecondary
 import com.blinkng.shared.BlinkOnboardingPolicy
+import com.blinkng.shared.BlinkPhonePolicy
+import com.example.auth.BlinkPhoneVerificationClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -123,6 +128,7 @@ fun AccountOnboardingScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profileRepository = remember { ProfileRepository() }
+    val phoneClient = remember { BlinkPhoneVerificationClient() }
 
     val startingStep = profile.onboardingStep.coerceIn(0, 3)
     var step by rememberSaveable(profile.id) { mutableIntStateOf(startingStep) }
@@ -143,10 +149,16 @@ fun AccountOnboardingScreen(
         mutableStateOf(profile.university.ifBlank { SignupCampusPreference.get(context) }.let { NigerianUniversitySearch.canonical(it) ?: it })
     }
     var department by rememberSaveable(profile.id) { mutableStateOf(profile.department) }
+    var notStudent by rememberSaveable(profile.id) { mutableStateOf(profile.accountType == BlinkOnboardingPolicy.NON_STUDENT) }
     var level by rememberSaveable(profile.id) { mutableStateOf(profile.academicLevel) }
     var gender by rememberSaveable(profile.id) { mutableStateOf(profile.gender) }
     var birthDate by rememberSaveable(profile.id) { mutableStateOf(profile.birthDate) }
     var avatarUrl by rememberSaveable(profile.id) { mutableStateOf(profile.avatarUrl) }
+    var phoneNumber by rememberSaveable(profile.id) { mutableStateOf("") }
+    var phoneCode by rememberSaveable(profile.id) { mutableStateOf("") }
+    var phoneCodeSent by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var phoneVerified by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var phoneBusy by remember { mutableStateOf(false) }
     var pendingAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var avatarUriToEdit by remember { mutableStateOf<Uri?>(null) }
 
@@ -399,7 +411,7 @@ fun AccountOnboardingScreen(
                     item {
                         StepHeader(
                             title = "Build your basic profile",
-                            subtitle = "University, department and gender are required. Your picture, level and birthday can be skipped.",
+                            subtitle = "Students choose their university and department. All members choose gender.",
                             icon = Icons.Default.Person
                         )
 
@@ -457,12 +469,22 @@ fun AccountOnboardingScreen(
                         }
 
                         Spacer(Modifier.height(16.dp))
-
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = notStudent, onCheckedChange = { checked ->
+                                notStudent = checked
+                                universityPicker = false
+                                departmentPicker = false
+                                levelPicker = false
+                                if (checked) { university = ""; department = ""; level = "" }
+                            }, modifier = Modifier.testTag("onboarding_not_student"))
+                            Text("I am not a university student", color = Color.White)
+                        }
                         PickerField(
                             label = "University",
                             value = university,
                             icon = Icons.Default.AccountBalance,
                             placeholder = "Select university",
+                            enabled = !notStudent,
                             onClick = { universityPicker = true }
                         )
 
@@ -473,6 +495,7 @@ fun AccountOnboardingScreen(
                             value = department,
                             icon = Icons.Default.MenuBook,
                             placeholder = "Select department",
+                            enabled = !notStudent,
                             onClick = { departmentPicker = true }
                         )
 
@@ -483,6 +506,7 @@ fun AccountOnboardingScreen(
                             value = level,
                             icon = Icons.Default.School,
                             placeholder = "Optional — select or skip",
+                            enabled = !notStudent,
                             onClick = { levelPicker = true }
                         )
 
@@ -511,6 +535,50 @@ fun AccountOnboardingScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Spacer(Modifier.height(14.dp))
+                        OutlinedTextField(value = phoneNumber, onValueChange = {
+                            phoneNumber = it.take(24); phoneCodeSent = false; phoneVerified = false; phoneCode = ""
+                        }, label = { Text("Phone / WhatsApp number") },
+                            placeholder = { Text("+2348012345678") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            enabled = !phoneBusy && !phoneVerified, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"))
+                        Text("Verify ownership by SMS. Contact access is always optional.",
+                            color = DarkTextSecondary, fontSize = 11.sp)
+                        if (!phoneVerified) {
+                            Button(onClick = {
+                                scope.launch {
+                                    phoneBusy = true
+                                    runCatching { phoneClient.requestCode(phoneNumber) }
+                                        .onSuccess { phoneCodeSent = true; error = null }
+                                        .onFailure { error = it.message ?: "Could not send SMS code." }
+                                    phoneBusy = false
+                                }
+                            }, enabled = !phoneBusy && !phoneCodeSent && BlinkPhonePolicy.normalize(phoneNumber) != null) {
+                                Text("Send SMS code")
+                            }
+                            if (phoneCodeSent) {
+                                OutlinedTextField(value = phoneCode,
+                                    onValueChange = { phoneCode = it.filter(Char::isDigit).take(6) },
+                                    label = { Text("Six-digit SMS code") }, singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth())
+                                Button(onClick = {
+                                    scope.launch {
+                                        phoneBusy = true
+                                        runCatching { phoneClient.verify(phoneNumber, phoneCode) }
+                                            .onSuccess { confirmed ->
+                                                if (confirmed) { phoneVerified = true; error = null }
+                                                else error = "Phone is not confirmed. Try again."
+                                            }
+                                            .onFailure { error = it.message ?: "Verification failed." }
+                                        phoneBusy = false
+                                    }
+                                }, enabled = !phoneBusy && BlinkPhonePolicy.otpIsValid(phoneCode)) {
+                                    Text("Verify phone")
+                                }
+                            }
+                        } else Text("Phone verified", color = Color(0xFF51D88A))
                         Spacer(Modifier.height(8.dp))
                         BlinkReferrerPicker(
                             selected = selectedReferrer,
@@ -524,9 +592,9 @@ fun AccountOnboardingScreen(
 
                         PrimaryOnboardingButton(
                             text = if (saving) "Saving..." else "Continue",
-                            enabled = university.isNotBlank() &&
-                                department.isNotBlank() &&
+                            enabled = (notStudent || (university.isNotBlank() && department.isNotBlank())) &&
                                 gender.isNotBlank() &&
+                                phoneVerified &&
                                 birthdayValid &&
                                 !saving
                         ) {
@@ -549,9 +617,9 @@ fun AccountOnboardingScreen(
                                 }
 
                                 onSaveBasics(
-                                    NigerianUniversitySearch.canonical(university) ?: university,
-                                    department,
-                                    level,
+                                    if (notStudent) "" else (NigerianUniversitySearch.canonical(university) ?: university),
+                                    if (notStudent) "" else department,
+                                    if (notStudent) "" else level,
                                     gender,
                                     birthDate,
                                     finalAvatar
@@ -647,6 +715,9 @@ fun AccountOnboardingScreen(
                 }
 
                 else -> {
+                    item(key = "onboarding_optional_contact_discovery") {
+                        BlinkContactDiscoveryCard(profile.id)
+                    }
                     item {
                         StepHeader(
                             title = "Find your people",
@@ -746,7 +817,7 @@ fun AccountOnboardingScreen(
         }
     }
 
-    if (universityPicker) {
+    if (universityPicker && !notStudent) {
         UniversityCampusPickerDialog(
             selected = university,
             onDismiss = { universityPicker = false },
@@ -757,7 +828,7 @@ fun AccountOnboardingScreen(
         )
     }
 
-    if (departmentPicker) {
+    if (departmentPicker && !notStudent) {
         SearchablePickerDialog(
             title = "Select department",
             items = BlinkOnboardingCatalog.departments,
@@ -841,6 +912,7 @@ private fun PickerField(
     value: String,
     icon: ImageVector,
     placeholder: String,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
@@ -849,7 +921,8 @@ private fun PickerField(
         border = BorderStroke(1.dp, DarkBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .alpha(if (enabled) 1f else .38f)
+            .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(13.dp),

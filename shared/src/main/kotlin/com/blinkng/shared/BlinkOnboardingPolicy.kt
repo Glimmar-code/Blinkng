@@ -1,6 +1,9 @@
 package com.blinkng.shared
 
 object BlinkOnboardingPolicy {
+    const val NON_STUDENT = "NON_STUDENT"
+    fun campusRequired(accountType: String?): Boolean = accountType != NON_STUDENT
+
     const val REQUIRED_FOLLOWS: Int = 5
     const val PINNED_CREATOR_USERNAME: String = "futa_no1_blogger"
     const val TOTAL_STEPS: Int = 4

@@ -166,10 +166,9 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  // Service-role dispatch may ONLY send confirmed referral notifications.
-  // This allows a trusted outbox worker to deliver without the new user reopening BLINK.
-  const serverReferralDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
-  if (!actorId && !serverReferralDispatch) return json({ error: "Unauthorized" }, 401);
+  // Service-role dispatch is allowed ONLY for independently verified referral or contact alerts.
+  const serverTrustedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
+  if (!actorId && !serverTrustedDispatch) return json({ error: "Unauthorized" }, 401);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
   if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
@@ -196,20 +195,30 @@ Deno.serve(async (req) => {
   if (!notification) return json({ error: "Notification not found" }, 404);
 
   // Ordinary user notifications still require the authenticated originating actor.
-  if (serverReferralDispatch) {
-    if (notification.metadata?.kind !== "blink_referral_confirmed" ||
-        !notification.actor_id || !notification.user_id) {
-      return json({ error: "Server dispatch is restricted to confirmed referrals" }, 403);
-    }
-    const { data: referral, error: referralError } = await admin
-      .from("blink_referrals")
-      .select("referred_user_id")
-      .eq("referred_user_id", String(notification.actor_id))
-      .eq("referrer_user_id", String(notification.user_id))
-      .eq("status", "confirmed")
-      .maybeSingle();
-    if (referralError || !referral) {
-      return json({ error: "Referral record was not independently verified" }, 403);
+  if (serverTrustedDispatch) {
+    if (notification.metadata?.kind === "blink_contact_joined") {
+      const { data: permitted, error: permissionError } = await admin.rpc(
+        "blink_contact_push_is_authorized", { p_notification_id: notificationId },
+      );
+      if (permissionError || permitted !== true) {
+        return json({ error: "Contact notification was not independently authorized" }, 403);
+      }
+    } else if (notification.metadata?.kind === "blink_referral_confirmed") {
+      if (!notification.actor_id || !notification.user_id) {
+        return json({ error: "Invalid referral notification" }, 403);
+      }
+      const { data: referral, error: referralError } = await admin
+        .from("blink_referrals")
+        .select("referred_user_id")
+        .eq("referred_user_id", String(notification.actor_id))
+        .eq("referrer_user_id", String(notification.user_id))
+        .eq("status", "confirmed")
+        .maybeSingle();
+      if (referralError || !referral) {
+        return json({ error: "Referral record was not independently verified" }, 403);
+      }
+    } else {
+      return json({ error: "Server dispatch is limited to verified notification kinds" }, 403);
     }
   } else if (!notification.actor_id || String(notification.actor_id) !== actorId) {
     return json({ error: "Forbidden" }, 403);

@@ -1467,6 +1467,19 @@ Validation: Android unit and build gates, Windows build/parity, scroll+video lif
 - **Web:** a personal invitation link now opens a safe, optional preview instead of forcing login, verifies the referrer's public username, retains attribution only for eligible new signups, and never attributes existing users. Updated wording reflects live impression/source analytics.
 - **Verification:** new isolated PostgreSQL fraud assertions and Node browser-flow tests. Real email-confirmed signup, physical device notification delivery, Coin activation and production job secret configuration still require independent evidence.
 
+## October 26, 2026 — Non-student signup option (Testlab)
+Android and Windows allow a self-declared `NON_STUDENT` account type. Selecting it disables and clears campus/department/level entries. Both use shared onboarding validation and an additive database constraint migration. Campus-specific access is NOT conferred by self-declaration.
+
+## October 26, 2026 — Phone OTP signup (Testlab candidate)
+Android and Windows both request a one-time SMS verification when a new user completes onboarding; phone normalization lives in shared Kotlin. This requires a properly configured Supabase Auth SMS provider and must be verified in isolated tests before production. No phonebook/call-log permissions or contact matching are enabled by this change.
+
+## October 27, 2026 — Contact discovery Android permission
+Android asks for READ_CONTACTS only after the user presses Find My Friends in a clearly optional consent card. No READ_CALL_LOG permission is requested. The privacy card is available on Connect and at the end of new-user signup. Windows must provide the server-backed equivalent without reading device contacts.
+
+## October 27, 2026 — Windows contact discovery parity
+Windows Connect displays matches saved to the same Supabase account, supports opt-in discoverability and contact-joined alerts, allows refresh and removal, and navigates to matched profiles. Desktop does not request Android Contacts permission or infer access to a paired phonebook. Contact sync requires the explicit Android user action.
+
+
 ## 2026-10-26 — Consolidated Reels/Profile/Wallet/Intro Testlab candidate
 
 - Shared launch wordmark uses one vector B and consistent LINK letter height and baseline; Android native splash uses window drawable and Android 12 icon. Windows has an existing native launch screen, so Android XML is a platform-specific adapter.

@@ -53,6 +53,7 @@ data class UserProfile(
     var professionalHeadline: String = "",
     var currentJobTitle: String = "",
     var university: String = "",
+    var accountType: String = "",
     var faculty: String = "",
     var department: String = "",
     var courseOfStudy: String = "",
