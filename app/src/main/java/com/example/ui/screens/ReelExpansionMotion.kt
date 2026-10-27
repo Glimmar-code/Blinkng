@@ -11,7 +11,8 @@ import kotlin.math.abs
  */
 internal object ReelExpansionMotion {
     fun progressAfterDrag(progress: Float, dragDeltaPx: Float, viewportHeightPx: Float): Float {
-        if (!progress.isFinite() || !dragDeltaPx.isFinite() ||
+        if (!progress.isFinite()) return 0f
+        if (!dragDeltaPx.isFinite() ||
             !viewportHeightPx.isFinite() || viewportHeightPx <= 0f) return progress.coerceIn(0f, 1f)
         return (progress - dragDeltaPx / viewportHeightPx).coerceIn(0f, 1f)
     }
