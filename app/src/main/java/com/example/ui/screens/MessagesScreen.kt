@@ -125,6 +125,7 @@ fun ChatConversationView(
         myName = "",
         activePartner = convo.partnerUsername,
         isConversationFullScreen = true,
+        showInboxBehindChat = false,
         onConversationFullScreenChange = {},
         onOpenConversation = {},
         onCloseConversation = onBack,
