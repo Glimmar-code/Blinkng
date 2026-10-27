@@ -36,7 +36,9 @@ internal data class ReelEditSpec(
     val rotationDegrees: Float = 0f,
     val overlayText: String = "",
     val sticker: String = "",
-    val musicUri: String? = null
+    val musicUri: String? = null,
+    val overlayStartMs: Long = 0L,
+    val overlayEndMs: Long = Long.MAX_VALUE
 ) {
     fun validate(durationMs: Long): ReelEditSpec {
         require(durationMs >= 500L) { "Video is too short to edit." }
@@ -46,8 +48,17 @@ internal data class ReelEditSpec(
         }
         require(rotationDegrees in listOf(0f, 90f, 180f, 270f)) { "Invalid rotation." }
         require(overlayText.length <= 120 && sticker.length <= 16) { "Overlay text too long." }
+        require(overlayStartMs >= 0L && overlayStartMs <= durationMs) { "Overlay starts outside the Reel." }
+        require(overlayEndMs == Long.MAX_VALUE ||
+            (overlayEndMs > overlayStartMs && overlayEndMs <= durationMs)) {
+            "Overlay end must be after its start."
+        }
         return this
     }
+
+    fun overlayVisibleAt(positionMs: Long): Boolean =
+        (overlayText.isNotBlank() || sticker.isNotBlank()) &&
+            positionMs >= overlayStartMs && positionMs <= overlayEndMs
 
     fun hasChanges(durationMs: Long): Boolean =
         startMs > 0 || endMs < durationMs - 100 ||
@@ -118,8 +129,18 @@ internal suspend fun exportEditedReel(
     val overlayString = listOf(edit.overlayText.trim(), edit.sticker.trim())
         .filter(String::isNotBlank).joinToString("  ")
     if (overlayString.isNotBlank()) {
+        // Transformer emits the clipped video starting at zero. Convert overlay
+        // times into this clock so exported visibility matches the editor preview.
+        val startUs = (edit.overlayStartMs - edit.startMs).coerceAtLeast(0L) * 1_000L
+        val endUs = if (edit.overlayEndMs == Long.MAX_VALUE) Long.MAX_VALUE else
+            (edit.overlayEndMs - edit.startMs).coerceAtLeast(0L) * 1_000L
         videoEffects += OverlayEffect(
-            listOf(TextOverlay.createStaticTextOverlay(SpannableString(overlayString)))
+            listOf(object : TextOverlay() {
+                override fun getText(presentationTimeUs: Long): SpannableString =
+                    SpannableString(
+                        if (presentationTimeUs in startUs..endUs) overlayString else ""
+                    )
+            })
         )
     }
     val videoItem = EditedMediaItem.Builder(input)
