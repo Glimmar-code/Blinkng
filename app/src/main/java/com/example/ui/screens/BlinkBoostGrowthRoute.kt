@@ -38,6 +38,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
@@ -1580,14 +1583,24 @@ private fun SelectablePostTarget(
                     modifier = Modifier.fillMaxWidth().height(125.dp),
                 )
             } else if (post.isReel) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(116.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Movie, contentDescription = "Reel",
-                        modifier = Modifier.size(38.dp),
-                        tint = MaterialTheme.colorScheme.primary)
+                if (!post.videoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(post.videoUrl)
+                            .decoderFactory(VideoFrameDecoder.Factory()).videoFrameMillis(800).build(),
+                        contentDescription = "Reel video frame",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().height(125.dp),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(116.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = "Reel preview unavailable",
+                            modifier = Modifier.size(38.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
