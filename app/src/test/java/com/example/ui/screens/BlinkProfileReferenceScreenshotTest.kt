@@ -87,7 +87,8 @@ class BlinkProfileReferenceScreenshotTest {
                                     profileCompletion = 82,
                                     onAvatarClick = {}, onBack = {}, onEdit = {},
                                     onMessage = {}, onFollow = {}, onVerify = {},
-                                    onEarnCoins = {}, onShowBadges = {}, onShare = {},
+                                    onEarnCoins = {}, onWallet = {}, onCampusRank = {},
+                                     onShowBadges = {}, onShare = {},
                                     onCopyUsername = {}, onVisitors = {}, onTopAction = {}
                                 )
                             }

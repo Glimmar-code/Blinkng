@@ -2578,7 +2578,16 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
-                    initialTab = if (isMyProfile && showSavedProfile) 5 else 0,
+                    initialTab = if (isMyProfile && showSavedProfile) 7 else 0,
+                    storyForProfile = uiState.stories.firstOrNull { story ->
+                        val belongsToProfile = if (isMyProfile) {
+                            story.isUser || story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        } else {
+                            story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        }
+                        belongsToProfile && (story.storyImage.isNotBlank() || story.caption.isNotBlank())
+                    },
+                    onOpenProfileStory = { story -> viewModel.openStory(story) },
                     userPosts = profilePosts,
                     isPostsLoading = isProfilePostsLoading,
                     hasPostsLoadError = profilePostsLoadFailed,
@@ -2601,7 +2610,7 @@ fun MainAppContent(
                     onOpenPost = { postId ->
                         (profilePosts + profileLikedPosts + profileSavedPosts)
                             .firstOrNull { it.id == postId }
-                            ?.let { viewModel.openFeedPostDetails(it) }
+                            ?.let { viewModel.openProfilePost(it) }
                     },
                     onCommentPost = { viewModel.openCommentsForPost(it) },
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
@@ -2637,6 +2646,7 @@ fun MainAppContent(
                             "market" -> viewModel.setTab(MainTab.MARKET)
                             "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
                             "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                            "leaderboard" -> viewModel.navigateToPrimaryTab(MainTab.LEADERBOARD)
                         }
                     },
                     onTopAction = { action ->

@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import android.app.Application
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -24,12 +26,13 @@ import org.robolectric.annotation.GraphicsMode
 class ProfileSingleSurfaceRegressionTest {
     @get:Rule val rule = createComposeRule()
 
-    private fun renderProfile(isMe: Boolean) {
+    private fun renderProfile(isMe: Boolean, initialTab: Int = 0) {
         rule.setContent {
             BlinkTheme(darkTheme = false) {
                 ProfileScreen(
                     profile = UserProfile(id = "", fullName = "Test Profile", username = "test_profile"),
                     isMe = isMe,
+                    initialTab = initialTab,
                     userPosts = emptyList(),
                     likedPosts = emptyList(),
                     savedPosts = emptyList(),
@@ -59,6 +62,25 @@ class ProfileSingleSurfaceRegressionTest {
             .assertCountEquals(1)
         rule.onAllNodesWithText("More profile details & actions", useUnmergedTree = true)
             .assertCountEquals(0)
+    }
+
+    @Test fun ownerCanDeepLinkDirectlyToSavedSection() {
+        renderProfile(isMe = true, initialTab = 7)
+        rule.onNodeWithTag("premium_profile_tab_saved", useUnmergedTree = true)
+            .assertIsSelected()
+    }
+
+    @Test fun ownerDirectLikedSectionStillWorks() {
+        renderProfile(isMe = true, initialTab = 6)
+        rule.onNodeWithTag("premium_profile_tab_liked", useUnmergedTree = true)
+            .assertIsSelected()
+    }
+
+    @Test fun visitorInvalidOwnerTabFallsBackToPosts() {
+        renderProfile(isMe = false, initialTab = 7)
+        rule.waitForIdle()
+        rule.onNodeWithTag("premium_profile_tab_posts", useUnmergedTree = true)
+            .assertIsSelected()
     }
 
     @Test fun visitorSeesOneReferenceDashboardWithoutLegacyProfile() {

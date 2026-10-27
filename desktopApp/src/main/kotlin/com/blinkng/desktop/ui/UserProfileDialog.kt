@@ -92,6 +92,9 @@ fun DesktopUserProfileDialog(
     var notificationMode by remember(initialProfile.id) { mutableStateOf(DesktopProfileNotificationMode.OFF) }
     var muted by remember(initialProfile.id) { mutableStateOf(false) }
     var loading by remember(initialProfile.id) { mutableStateOf(true) }
+    var postsFailed by remember(initialProfile.id) { mutableStateOf(false) }
+    var likedFailed by remember(initialProfile.id) { mutableStateOf(false) }
+    var savedFailed by remember(initialProfile.id) { mutableStateOf(false) }
     var busy by remember(initialProfile.id) { mutableStateOf(false) }
     var selectedTab by remember(initialProfile.id) { mutableStateOf("Posts") }
     var shareReelId by remember(initialProfile.id) { mutableStateOf<String?>(null) }
@@ -110,12 +113,19 @@ fun DesktopUserProfileDialog(
     suspend fun reload() {
         loading = true
         profile = state.client.fetchProfileDetail(initialProfile.id) ?: initialProfile
-        content = runCatching { state.client.fetchProfileContent(initialProfile.id) }.getOrDefault(emptyList())
+        postsFailed = false
+        likedFailed = false
+        savedFailed = false
+        runCatching { state.client.fetchProfileContent(initialProfile.id) }
+            .onSuccess { content = it }
+            .onFailure { postsFailed = true; content = emptyList(); statusMessage = it.message }
         if (isMe) {
             runCatching { state.client.fetchMyProfileRelationContent(saved = false) }
-                .onSuccess { likedContent = it }.onFailure { statusMessage = it.message }
+                .onSuccess { likedContent = it }
+                .onFailure { likedFailed = true; likedContent = emptyList(); statusMessage = it.message }
             runCatching { state.client.fetchMyProfileRelationContent(saved = true) }
-                .onSuccess { savedContent = it }.onFailure { statusMessage = it.message }
+                .onSuccess { savedContent = it }
+                .onFailure { savedFailed = true; savedContent = emptyList(); statusMessage = it.message }
         }
         followingIds = runCatching { state.client.fetchFollowingIds() }.getOrDefault(emptySet())
         notificationMode = runCatching {
@@ -180,11 +190,20 @@ fun DesktopUserProfileDialog(
                         modifier = Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            profile.fullName.ifBlank { profile.username }.take(1).uppercase(),
-                            fontWeight = FontWeight.Black,
-                            fontSize = 20.sp,
-                        )
+                        if (!profile.avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = profile.avatarUrl,
+                                contentDescription = "Profile avatar",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                            )
+                        } else {
+                            Text(
+                                profile.fullName.ifBlank { profile.username }.take(1).uppercase(),
+                                fontWeight = FontWeight.Black,
+                                fontSize = 20.sp,
+                            )
+                        }
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -224,6 +243,17 @@ fun DesktopUserProfileDialog(
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        if (!profile.coverPhotoUrl.isNullOrBlank()) {
+                            item(key = "desktop_profile_cover") {
+                                AsyncImage(
+                                    model = profile.coverPhotoUrl,
+                                    contentDescription = "Profile cover photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth().height(155.dp)
+                                        .clip(RoundedCornerShape(17.dp))
+                                )
+                            }
+                        }
                         profile.bio?.takeIf(String::isNotBlank)?.let { bio ->
                             item {
                                 Surface(shape = RoundedCornerShape(18.dp),
@@ -390,6 +420,19 @@ fun DesktopUserProfileDialog(
                                     ProfileAboutLine("Phone", profile.phone)
                                     ProfileAboutLine("WhatsApp", profile.whatsapp)
                                     ProfileAboutLine("Joined", profile.createdAt)
+                                }
+                            }
+                        } else if (filteredContent.isEmpty() && (
+                            when (selectedTab) {
+                                "Liked" -> likedFailed
+                                "Saved" -> savedFailed
+                                else -> postsFailed
+                            }
+                        )) {
+                            item(key = "desktop_profile_content_error") {
+                                Column {
+                                    Text("Could not load profile content.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    TextButton(onClick = { scope.launch { reload() } }) { Text("Retry") }
                                 }
                             }
                         } else if (filteredContent.isEmpty()) {

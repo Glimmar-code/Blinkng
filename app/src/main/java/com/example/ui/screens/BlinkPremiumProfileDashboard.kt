@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -50,12 +51,16 @@ internal fun BlinkPremiumProfileDashboard(
     totalLoadedLikes: Long,
     profileCompletion: Int,
     onAvatarClick: () -> Unit,
+    hasActiveStory: Boolean = false,
+    onStoryClick: () -> Unit = {},
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onMessage: () -> Unit,
     onFollow: () -> Unit,
     onVerify: () -> Unit,
     onEarnCoins: () -> Unit,
+    onWallet: () -> Unit,
+    onCampusRank: () -> Unit,
     onShowBadges: () -> Unit,
     onShare: () -> Unit,
     onCopyUsername: () -> Unit,
@@ -99,16 +104,44 @@ internal fun BlinkPremiumProfileDashboard(
             }
         }
 
+        if (profile.coverPhotoUrl.isNotBlank()) {
+            Box(Modifier.fillMaxWidth().height(112.dp)
+                .clip(RoundedCornerShape(17.dp))) {
+                AsyncImage(
+                    model = profile.coverPhotoUrl,
+                    contentDescription = "Profile cover photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color(theme.bottomArgb).copy(alpha = .72f)))
+                ))
+            }
+        }
+
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = profile.avatarUrl,
-                fallback = painterResource(R.drawable.ic_default_profile),
-                error = painterResource(R.drawable.ic_default_profile),
-                contentDescription = "View profile picture",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(80.dp)
-                    .clip(RoundedCornerShape(19.dp)).clickable(onClick = onAvatarClick)
-            )
+            Box(
+                modifier = Modifier.size(if (hasActiveStory) 88.dp else 80.dp)
+                    .then(
+                        if (hasActiveStory) Modifier.border(
+                            BorderStroke(2.dp, Brush.sweepGradient(listOf(accent, Color.White, accent))),
+                            RoundedCornerShape(23.dp)
+                        ) else Modifier
+                    )
+                    .clickable(enabled = hasActiveStory, onClick = onStoryClick)
+                    .padding(if (hasActiveStory) 4.dp else 0.dp)
+            ) {
+                AsyncImage(
+                    model = profile.avatarUrl,
+                    fallback = painterResource(R.drawable.ic_default_profile),
+                    error = painterResource(R.drawable.ic_default_profile),
+                    contentDescription = "View profile picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                        .clip(RoundedCornerShape(19.dp))
+                        .then(if (hasActiveStory) Modifier else Modifier.clickable(onClick = onAvatarClick))
+                )
+            }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -205,7 +238,7 @@ internal fun BlinkPremiumProfileDashboard(
                 text = "Campus Rank ${profileRankLabel(profile.campusRank)}",
                 icon = Icons.Default.EmojiEvents,
                 modifier = Modifier.weight(1f),
-                onClick = { showDetails = !showDetails }
+                onClick = onCampusRank
             )
             if (isMe) {
                 PremiumProfileShortcut(
@@ -221,6 +254,10 @@ internal fun BlinkPremiumProfileDashboard(
             }
         }
 
+        TextButton(onClick = { showDetails = !showDetails }) {
+            Text(if (showDetails) "Hide profile details" else "More profile details", color = softInk)
+        }
+
         if (showDetails) {
             Surface(
                 color = card, shape = RoundedCornerShape(18.dp),
@@ -234,8 +271,10 @@ internal fun BlinkPremiumProfileDashboard(
                         fontSize = 11.sp, modifier = Modifier.clickable(onClick = onFollowing))
                     TextButton(onClick = onShowBadges) { Text("Badges and achievements", color = accent) }
                     if (isMe) {
-                        Text("BLINK Coins: ${NumberFormat.getIntegerInstance().format(blinkCoinBalance)}",
-                            color = softInk, fontSize = 11.sp)
+                        Text("BLINK Coins: ${NumberFormat.getIntegerInstance().format(blinkCoinBalance)}  ›",
+                            color = softInk, fontSize = 11.sp,
+                            modifier = Modifier.clickable(onClick = onWallet)
+                                .padding(vertical = 5.dp))
                         TextButton(onClick = onVisitors) { Text("Profile visitors", color = accent) }
                         if (profileCompletion < 100)
                             TextButton(onClick = onEdit) { Text("Complete profile · ${profileCompletion}%", color = accent) }
