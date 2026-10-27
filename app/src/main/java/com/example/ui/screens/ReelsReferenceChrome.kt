@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Visibility
@@ -81,6 +82,8 @@ internal fun ReelsReferenceChrome(
     onMenu: () -> Unit,
     featuredReels: List<BlinkFeaturedReel> = emptyList(),
     onFeaturedReelClick: (String) -> Unit = {},
+    onRefresh: () -> Unit = {},
+    isRefreshing: Boolean = false,
     autoSlideEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -101,7 +104,7 @@ internal fun ReelsReferenceChrome(
     Column(modifier.fillMaxWidth().background(background)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         val compact = maxWidth < 360.dp
-        val actionSize = if (compact) 34.dp else 40.dp
+        val actionSize = 48.dp
         Row(
             Modifier.fillMaxWidth().height(56.dp).padding(start = if (compact) 8.dp else 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -117,7 +120,7 @@ internal fun ReelsReferenceChrome(
             )
             Spacer(Modifier.width(if (compact) 7.dp else 13.dp))
             Text(
-                "B L I N K",
+                "BLINK",
                 fontSize = if (compact) 16.sp else 20.sp,
                 fontWeight = FontWeight.Black,
                 color = foreground,
@@ -147,9 +150,10 @@ internal fun ReelsReferenceChrome(
         }
 
         // Replace only the Reels preview's story row. Stories elsewhere stay untouched.
+        if (featured.isNotEmpty()) {
         Box(
             Modifier.fillMaxWidth().height(184.dp).padding(horizontal = 12.dp, vertical = 8.dp)
-                .semantics { contentDescription = "Top Reels: five featured videos refresh every twelve hours" }
+                .semantics { contentDescription = "Top Reels: up to five featured videos" }
         ) {
             if (featured.isNotEmpty()) {
                 HorizontalPager(
@@ -162,11 +166,11 @@ internal fun ReelsReferenceChrome(
                     Box(
                         Modifier.fillMaxSize()
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
-                            .border(1.dp, Color(0xFF8048E7),
+                            .border(1.dp, Color.White.copy(alpha = .20f),
                                 androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
                             .background(
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF48072A), Color(0xFF271A57), Color(0xFF00477E))
+                                    listOf(Color(0xFF17171D), Color(0xFF111720), Color(0xFF14212A))
                                 )
                             )
                             .clickable { onFeaturedReelClick(item.reel.id) }
@@ -180,8 +184,8 @@ internal fun ReelsReferenceChrome(
                         Box(
                             Modifier.fillMaxSize().background(
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF100818).copy(alpha = .97f),
-                                        Color(0xFF1B0C32).copy(alpha = .88f),
+                                    listOf(Color.Black.copy(alpha = .96f),
+                                        Color(0xFF141820).copy(alpha = .85f),
                                         Color.Transparent)
                                 )
                             )
@@ -216,12 +220,12 @@ internal fun ReelsReferenceChrome(
                                 }
                             }
                             Text(
-                                "🔥 Top Reel · 12h",
+                                "Top Reel · 12h",
                                 color = Color.White,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                    .background(Color(0xFFD92051)).padding(horizontal = 9.dp, vertical = 4.dp)
+                                    .background(Color(0xFF313942)).padding(horizontal = 9.dp, vertical = 4.dp)
                             )
                             Text(
                                 caption,
@@ -259,7 +263,7 @@ internal fun ReelsReferenceChrome(
                         Box(
                             Modifier.size(if (featuredPager.currentPage == index) 7.dp else 5.dp)
                                 .clip(CircleShape)
-                                .background(if (featuredPager.currentPage == index) Color(0xFFAA72FF)
+                                .background(if (featuredPager.currentPage == index) Color.White
                                     else Color.White.copy(alpha = .65f))
                         )
                     }
@@ -275,6 +279,7 @@ internal fun ReelsReferenceChrome(
                         color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
                 }
             }
+        }
         }
         val tabs = listOf("Reels", "Following", "For You")
         Row(
@@ -299,6 +304,9 @@ internal fun ReelsReferenceChrome(
                             .clip(CircleShape).background(foreground)
                     )
                 }
+            }
+            IconButton(onClick = onRefresh, enabled = !isRefreshing, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh reels", tint = foreground)
             }
         }
     }
