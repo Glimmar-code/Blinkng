@@ -96,9 +96,17 @@ Deno.serve(async request => {
   try {
     if (action === "get") {
       const settings = await freshSettings();
-      const matches = settings.sync_enabled
-        ? (await admin.rpc("blink_contact_matches_for", { p_user: uid })).data ?? []
-        : [];
+      // Do not misreport a broken/undeployed matching RPC as "zero friends".
+      let matches: unknown[] = [];
+      if (settings.sync_enabled) {
+        const { data: found, error: matchingError } = await admin.rpc(
+          "blink_contact_matches_for", { p_user: uid },
+        );
+        if (matchingError || !Array.isArray(found)) {
+          throw Error("Contact matches backend unavailable");
+        }
+        matches = found;
+      }
       return json({ settings, matches }, 200, origin);
     }
     if (action === "settings") {

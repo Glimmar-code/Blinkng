@@ -96,9 +96,13 @@ class BlinkContactsDiscoveryClient {
             == PackageManager.PERMISSION_GRANTED) { "Contacts permission was not granted." }
         val numbers = LinkedHashSet<String>()
         val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-        context.contentResolver.query(uri,
+        // Null means the provider failed to supply a result, NOT zero contacts.
+        // Never replace a previously synced address book with an empty import here.
+        val cursor = context.contentResolver.query(uri,
             arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
-            null, null, null)?.use { cursor ->
+            null, null, null)
+            ?: throw IllegalStateException("Could not read device contacts. Try again.")
+        cursor.use { cursor ->
             val index = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             if (index >= 0) {
                 while (cursor.moveToNext() && numbers.size < 500) {

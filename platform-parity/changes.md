@@ -1,3 +1,15 @@
+## 2026-10-27 — Notification push trust and preference safety (Testlab candidate, not deployed)
+
+- **Shared backend only:** Protects Android and Windows notifications equally; neither client changes its UI, API or notification event format.
+- **Client authorization:** Activity, direct-message and call FCM dispatchers now all verify sender JWTs with Supabase Auth rather than decoding and trusting unsigned `sub` claims. The service-role activity notification path remains independently restricted to verified referral, Channel and contact events.
+- **Call and direct-message parity:** Both Android and Windows rely on these shared server-side push authorization, recipient opt-out and dispatch-ledger semantics; the fix changes no on-device UI or calling/media protocol. Direct-message mute lookup failures are retried instead of overriding a user's preferences. Call push dispatches also fail closed when ledger read/write fails. Temporary TURN relay credentials use the same verified Auth identity rather than relying on a decoded JWT subject or the gateway configuration.
+- **Recipient consent:** Failure or non-boolean results from `notification_push_allowed` now return a retryable HTTP 503 rather than sending an unapproved push. Genuine opt-outs remain terminal skips.
+- **Deduplication:** An inaccessible notification dispatch ledger also yields a retryable failure instead of sending an untracked, potentially duplicate FCM push.
+- **Tests:** Node tests cover unsigned/forged JWTs, auth outages, opt-outs, missing preference results and backend errors; the tests are part of the standard Supabase CI package suite.
+- **Release hold:** No production Edge Function deployment, database migration, app merge or APK publication is implied. Isolated CI, real-auth/FCM staging, recipient preference and cross-platform delivery checks must pass before promotion. Existing `main`, unmerged #608/#609/#566 and production user notifications are untouched by this staging work.
+- **PARITY-EXCEPTION: contact-provider-null-cursor** — Android alone can read the OS Contacts Provider after READ_CONTACTS consent. Its null-cursor handling now preserves imported contacts instead of deleting them. Windows has no Android Contacts Provider; Windows continues to use the opt-in matching settings and profiles already synced to the shared backend. This does not change matching, consent or data-retention semantics.
+- **Contact discovery:** Android's permission-granted Contacts Provider returning a null cursor now shows a retryable error rather than syncing an empty contact list and deleting previously imported HMACs. This is Android-specific system integration; Windows does not read local address books and uses the same server suggestions/consent settings. The Edge Function now reports unavailable matching RPCs as errors rather than misleading zero matches.
+
 ## 2026-10-27 — Cloudflare R2 staged media migration (Testlab only)
 
 - **Shared contract:** `BlinkR2MediaPolicy` ensures strict public-media MIME/size allowlists, URL provenance and explicit-only fallback. R2 signing and keys exist only server-side.
