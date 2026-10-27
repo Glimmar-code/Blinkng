@@ -2,6 +2,9 @@ package com.example.ui.components
 
 import android.net.Uri
 import android.widget.Toast
+import com.example.data.local.PersistentTextDraftStore
+import org.json.JSONObject
+import java.security.MessageDigest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -55,6 +58,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun PremiumReelEditor(
     uri: String,
+    draftScope: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
     onExporting: (Boolean) -> Unit,
@@ -62,6 +66,15 @@ internal fun PremiumReelEditor(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val editKey = remember(uri) {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(uri.toByteArray(Charsets.UTF_8))
+        "reel_edit_" + digest.take(12).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+    val saved = remember(uri, draftScope) {
+        PersistentTextDraftStore.readValue(context, editKey, draftScope)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+    }
     val player = remember(uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(uri))
@@ -72,24 +85,24 @@ internal fun PremiumReelEditor(
     }
     var durationMs by remember(uri) { mutableLongStateOf(0L) }
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
-    var trimStartMs by remember(uri) { mutableLongStateOf(0L) }
-    var trimEndMs by remember(uri) { mutableLongStateOf(0L) }
+    var trimStartMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("trimStart", 0L)) }
+    var trimEndMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("trimEnd", 0L)) }
     var playing by remember(uri) { mutableStateOf(true) }
-    var muteOriginal by remember(uri) { mutableStateOf(false) }
-    var grayscale by remember(uri) { mutableStateOf(false) }
-    var rotation by remember(uri) { mutableFloatStateOf(0f) }
-    var overlayText by remember(uri) { mutableStateOf("") }
-    var sticker by remember(uri) { mutableStateOf("") }
-    var overlayStartMs by remember(uri) { mutableLongStateOf(0L) }
-    var overlayEndMs by remember(uri) { mutableLongStateOf(0L) }
-    var overlayX by remember(uri) { mutableFloatStateOf(0f) }
-    var overlayY by remember(uri) { mutableFloatStateOf(0f) }
-    var overlayScale by remember(uri) { mutableFloatStateOf(1f) }
+    var muteOriginal by remember(uri, draftScope) { mutableStateOf(saved.optBoolean("mute", false)) }
+    var grayscale by remember(uri, draftScope) { mutableStateOf(saved.optBoolean("grayscale", false)) }
+    var rotation by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("rotation", 0.0).toFloat()) }
+    var overlayText by remember(uri, draftScope) { mutableStateOf(saved.optString("text", "")) }
+    var sticker by remember(uri, draftScope) { mutableStateOf(saved.optString("sticker", "")) }
+    var overlayStartMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("overlayStart", 0L)) }
+    var overlayEndMs by remember(uri, draftScope) { mutableLongStateOf(saved.optLong("overlayEnd", 0L)) }
+    var overlayX by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("x", 0.0).toFloat()) }
+    var overlayY by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("y", 0.0).toFloat()) }
+    var overlayScale by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("scale", 1.0).toFloat()) }
     var previewWidth by remember(uri) { mutableIntStateOf(1) }
     var previewHeight by remember(uri) { mutableIntStateOf(1) }
-    var musicUri by remember(uri) { mutableStateOf<String?>(null) }
-    var originalAudioVolume by remember(uri) { mutableFloatStateOf(1f) }
-    var musicVolume by remember(uri) { mutableFloatStateOf(1f) }
+    var musicUri by remember(uri, draftScope) { mutableStateOf<String?>(saved.optString("music").takeIf { it.isNotBlank() && it != "null" }) }
+    var originalAudioVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("originalVolume", 1.0).toFloat()) }
+    var musicVolume by remember(uri, draftScope) { mutableFloatStateOf(saved.optDouble("musicVolume", 1.0).toFloat()) }
     var isExporting by remember(uri) { mutableStateOf(false) }
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
@@ -155,7 +168,7 @@ internal fun PremiumReelEditor(
         while (true) {
             if (player.duration > 0L) {
                 val freshDuration = player.duration
-                if (durationMs == 0L) trimEndMs = freshDuration
+                if (durationMs == 0L && trimEndMs == 0L) trimEndMs = freshDuration
                 durationMs = freshDuration
             }
             positionMs = player.currentPosition.coerceAtLeast(0L)
@@ -189,6 +202,33 @@ internal fun PremiumReelEditor(
     )
     val hasPendingEdits = durationMs >= 500L && spec.hasChanges(durationMs)
     LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
+    LaunchedEffect(spec, durationMs, draftScope) {
+        if (durationMs < 500L) return@LaunchedEffect
+        if (hasPendingEdits) {
+            PersistentTextDraftStore.writeValue(
+                context, editKey, draftScope,
+                JSONObject().apply {
+                    put("trimStart", trimStartMs)
+                    put("trimEnd", trimEndMs)
+                    put("mute", muteOriginal)
+                    put("grayscale", grayscale)
+                    put("rotation", rotation)
+                    put("text", overlayText)
+                    put("sticker", sticker)
+                    put("overlayStart", overlayStartMs)
+                    put("overlayEnd", overlayEndMs)
+                    put("x", overlayX)
+                    put("y", overlayY)
+                    put("scale", overlayScale)
+                    put("music", musicUri ?: JSONObject.NULL)
+                    put("originalVolume", originalAudioVolume)
+                    put("musicVolume", musicVolume)
+                }.toString()
+            )
+        } else {
+            PersistentTextDraftStore.clearValue(context, editKey, draftScope)
+        }
+    }
     val white = Color.White
     val surface = Color(0xFF1B1B20)
     val accent = Color.White
@@ -257,7 +297,10 @@ internal fun PremiumReelEditor(
                 ) { Icon(Icons.Default.Replay, "Replay clip", tint = white) }
                 IconButton(
                     enabled = !isExporting,
-                    onClick = onRemove,
+                    onClick = {
+                        PersistentTextDraftStore.clearValue(context, editKey, draftScope)
+                        onRemove()
+                    },
                     modifier = Modifier.background(Color.Black.copy(alpha = .45f), CircleShape)
                 ) { Icon(Icons.Default.Close, "Remove reel", tint = white) }
             }
@@ -422,6 +465,7 @@ internal fun PremiumReelEditor(
                             scope.launch {
                                 try {
                                     val result = exportEditedReel(context, uri, durationMs, spec)
+                                    PersistentTextDraftStore.clearValue(context, editKey, draftScope)
                                     onEdited(result)
                                     Toast.makeText(context, "Reel edits applied to the video.", Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
