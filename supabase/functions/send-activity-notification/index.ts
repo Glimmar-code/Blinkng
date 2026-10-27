@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { pushPreferenceDecision } from "./push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -95,7 +96,7 @@ function isUnregisteredFcmToken(status: number, responseText: string): boolean {
   return status === 404 || text.includes("UNREGISTERED") || text.includes("REGISTRATION-TOKEN-NOT-REGISTERED");
 }
 
-type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string };
+type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string; retryable?: boolean };
 
 async function claimDispatch(
   admin: ReturnType<typeof createClient>,
@@ -107,7 +108,8 @@ async function claimDispatch(
     .eq("notification_id", notificationId)
     .maybeSingle();
 
-  if (readError) return { proceed: true, tracked: false, attempts: 1 };
+  // Never send untracked pushes: a failed ledger read could cause duplicate delivery.
+  if (readError) return { proceed: false, tracked: false, attempts: 0, reason: "dispatch_ledger_unavailable", retryable: true };
   if (existing?.status === "sent") {
     return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sent" };
   }
@@ -127,8 +129,9 @@ async function claimDispatch(
     updated_at: new Date().toISOString(),
   }, { onConflict: "notification_id" });
 
+  // Failing open here allows duplicate FCM notifications when ledger writes fail.
   return error
-    ? { proceed: true, tracked: false, attempts }
+    ? { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true }
     : { proceed: true, tracked: true, attempts };
 }
 
@@ -271,12 +274,21 @@ Deno.serve(async (req) => {
     p_user_id: recipientId,
     p_type: type,
   });
-  if (!allowedError && allowed === false) {
+  const preferenceDecision = pushPreferenceDecision(allowed, allowedError);
+  if (preferenceDecision === "retry") {
+    // A missing/failing preference RPC must not silently opt the recipient into push.
+    // The outbox worker can retry after its dependency recovers.
+    return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
+  }
+  if (preferenceDecision === "skip") {
     return json({ ok: true, skipped: "recipient_preferences" });
   }
 
   const claim = await claimDispatch(admin, notificationId);
   if (!claim.proceed) {
+    if (claim.retryable) {
+      return json({ error: claim.reason ?? "dispatch_ledger_unavailable", retryable: true }, 503);
+    }
     return json({ ok: true, skipped: claim.reason ?? "duplicate", attempts: claim.attempts });
   }
 
