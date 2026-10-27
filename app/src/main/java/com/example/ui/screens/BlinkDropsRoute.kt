@@ -463,20 +463,8 @@ fun BlinkDropsRoute(
                             onComplete = null,
                             onCancel = if (drop.status == "ACTIVE") {
                                 {
-                                    busyDropId = drop.id
-                                    scope.launch {
-                                        service.cancelDrop(drop.id)
-                                            .onSuccess { result ->
-                                                result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-                                                message = "Drop cancelled. Unclaimed reserved coins were returned."
-                                                error = null
-                                                refresh()
-                                            }
-                                            .onFailure {
-                                                error = it.message ?: "Unable to cancel this Drop."
-                                            }
-                                        busyDropId = null
-                                    }
+                                    cancellationError = null
+                                    pendingCancelDropId = drop.id
                                 }
                             } else null,
                         )
@@ -535,6 +523,45 @@ fun BlinkDropsRoute(
             }
             }
         }
+    }
+
+    pendingCancelDropId?.let { cancelId ->
+        AlertDialog(
+            onDismissRequest = { if (busyDropId == null) pendingCancelDropId = null },
+            title = { Text("Cancel this Drop?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This stops new claims. Unclaimed reserved coins are returned according to the server's refund rules.")
+                    cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = busyDropId == null && isOnline,
+                    onClick = {
+                        busyDropId = cancelId
+                        scope.launch {
+                            service.cancelDrop(cancelId)
+                                .onSuccess { result ->
+                                    result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                    message = "Drop cancelled. Unclaimed reserved coins were returned."
+                                    error = null
+                                    pendingCancelDropId = null
+                                    cancellationError = null
+                                    refresh()
+                                }
+                                .onFailure { cancellationError = it.message ?: "Unable to cancel this Drop." }
+                            busyDropId = null
+                        }
+                    }
+                ) { Text(if (busyDropId != null) "Cancelling…" else "Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCancelDropId = null }, enabled = busyDropId == null) {
+                    Text("Keep Drop")
+                }
+            },
+        )
     }
 
     if (showOrganizer) {
@@ -1223,7 +1250,11 @@ private fun OrganizeDropDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                if (eligibleFollowers == 0) {
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry eligibility check") }
+                                 }
+                                 if (eligibleFollowers == 0) {
                                     Text("No eligible followers yet. At least one eligible follower is required to publish.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1258,7 +1289,12 @@ private fun OrganizeDropDialog(
                                     NumberFormat.getIntegerInstance(Locale.US).format(it)
                                 } ?: "—") + " coins")
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                if (!valid && !creating) {
+                                quoteError?.let { problem ->
+                                     Text(problem, color = MaterialTheme.colorScheme.error)
+                                     OutlinedButton(enabled = isOnline, onClick = { quoteRetryNonce++ }) { Text("Retry quote") }
+                                 }
+                                 publishError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                                 if (!valid && !creating) {
                                     Text(when {
                                         !isOnline -> "Reconnect to publish."
                                          quoteLoading -> "Verifying the rewards and eligibility…"
