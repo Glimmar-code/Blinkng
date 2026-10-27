@@ -1,6 +1,10 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkSearchPhase3
+import com.blinkng.shared.BlinkTrendingCreator
+import com.blinkng.shared.BlinkTrendingTags
+import com.blinkng.shared.BlinkTrendingDiscovery
+import com.blinkng.shared.BlinkSmartTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -78,6 +82,47 @@ class DesktopSearchPhase3Repository(private val client: DesktopSupabaseClient) {
         .readTimeout(45, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** Windows uses the same authenticated ranking contract as Android. */
+    suspend fun trendingCreators30Days(university: String?, limit: Int = 3): List<BlinkTrendingCreator> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1,3))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                val rows = JSONArray(rpc(BlinkTrendingDiscovery.THIRTY_DAY_CREATORS_RPC, body))
+                (0 until rows.length()).mapNotNull { index ->
+                    val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                    val id = row.optString("id")
+                    val username = row.optString("username")
+                    if (!BlinkTrendingDiscovery.validCreator(id, username)) return@mapNotNull null
+                    BlinkTrendingCreator(
+                        id = id, username = username,
+                        fullName = row.optString("full_name"),
+                        avatarUrl = row.optString("avatar_url"),
+                        university = row.optString("university"),
+                        isVerified = row.optBoolean("is_verified"),
+                        trendScore = row.optDouble("trend_score"),
+                    )
+                }.distinctBy { it.id }.take(3)
+            }.getOrDefault(emptyList())
+        }
+
+    suspend fun trendingTagsWithPeriod(university: String?, limit: Int = 5): BlinkTrendingTags =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("p_limit", limit.coerceIn(1,50))
+                .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+            val thirty = runCatching {
+                JSONArray(rpc(BlinkTrendingDiscovery.THIRTY_DAY_TAGS_RPC, body))
+            }.getOrNull()
+            val rows = thirty ?: runCatching {
+                JSONArray(rpc(BlinkTrendingDiscovery.CURRENT_TAGS_RPC, body))
+            }.getOrDefault(JSONArray())
+            val tags = (0 until rows.length()).mapNotNull { index ->
+                BlinkSmartTags.normalize(rows.optJSONObject(index)?.optString("tag").orEmpty())
+            }.distinct().take(limit.coerceIn(1,50))
+            BlinkTrendingTags(tags, BlinkTrendingDiscovery.windowDays(thirty != null))
+        }
 
     suspend fun capabilities(): DesktopSearchCapabilities = withContext(Dispatchers.IO) {
         val obj = rpcObject(BlinkSearchPhase3.CAPABILITIES_RPC, JSONObject())
