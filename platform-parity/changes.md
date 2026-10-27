@@ -1,3 +1,11 @@
+## 2026-10-28 — Gold Merchant Pro listing-health diagnostics (Testlab PR #629)
+
+- **Shared-first:** `BlinkMerchantInsightsPolicy` provides deduplicated, read-only listing health from the user's own loaded Market items, with nullable unknown quantities/view/save counts. No new database writes, RLS, payments or automatic promotion.
+- **Android:** Adds a Gold Merchant Pro card within the existing approved-seller dashboard for active Gold accounts. The card highlights low-stock items, missing listing photos, most viewed loaded items and represented categories; tapping a listing opens its existing product detail.
+- **Windows:** Adds the same Gold Merchant Pro diagnostic panel beside the seller dashboard; desktop parses optional quantity/views/saves fields when present rather than fabricating values. Dashboard and seller approval remain unchanged.
+- **Limitations:** Marketplace search, ranking filters and pagination may hide other seller listings. These figures are a *loaded-listing snapshot*, not shop-wide inventory, revenue, lifetime performance or reach guarantees. Full catalog-wide insights and merchant inbox tools remain roadmap items.
+- **Tests:** Shared Kotlin unit tests cover deduplication, sold-stock exclusion, unavailable values, and no-image flags. Require fresh latest-head Android + Windows build and device checks before merging.
+
 ## 2026-10-27 — Verified creator membership value (Testlab PR #629, not merged)
 
 - **Shared-first:** `BlinkCreatorStudioPolicy` computes unique loaded post/Reel aggregates, honest qualified views, interaction totals, top content and top tags. Both clients pass their real post models through thin adapters. No new backend/RLS/checkout paths.
