@@ -36,21 +36,3 @@ $$;
 
 revoke all on function public.mark_all_my_notifications_read_atomic() from public, anon;
 grant execute on function public.mark_all_my_notifications_read_atomic() to authenticated;
-
--- Maintain read_at for future read/unread transitions without client update grants
--- to the server-controlled timestamp column.
-create or replace function public.set_notification_read_timestamp()
-returns trigger language plpgsql security invoker set search_path = ''
-as $
-begin
-  if new.is_read is distinct from old.is_read then
-    new.read_at := case when new.is_read then now() else null end;
-  end if;
-  return new;
-end;
-$;
-
-drop trigger if exists sync_notification_read_timestamp on public.notifications;
-create trigger sync_notification_read_timestamp
-before update of is_read on public.notifications
-for each row execute function public.set_notification_read_timestamp();

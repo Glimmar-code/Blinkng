@@ -13,10 +13,9 @@ test("read-state grant is least-privilege and restricted to authenticated accoun
   assert.match(sql, /with check \(user_id = \(select auth\.uid\(\)\)\)/);
 });
 
-test("read timestamp is maintained server-side without granting clients column access", () => {
-  assert.match(sql, /create or replace function public\.set_notification_read_timestamp\(\)/);
-  assert.match(sql, /before update of is_read on public\.notifications/);
-  assert.match(sql, /new\.read_at := case when new\.is_read then now\(\) else null end/);
+test("existing read_at trigger is preserved rather than duplicated", () => {
+  assert.doesNotMatch(sql, /create trigger sync_notification_read_timestamp/);
+  assert.doesNotMatch(sql, /drop trigger .*trg_sync_notification_read_at/);
   assert.doesNotMatch(sql, /grant update \(read_at\)/);
 });
 

@@ -23,6 +23,23 @@ try {
     create table public.activities (
       id uuid primary key, recipient_id uuid not null, is_read boolean not null default false
     );
+    -- Production already provides trg_sync_notification_read_at and this function.
+    -- Rehearse against the same contract rather than installing a duplicate.
+    create function public.sync_notification_read_at()
+    returns trigger language plpgsql set search_path = ''
+    as $trigger$
+    begin
+      if new.is_read then
+        new.read_at := coalesce(new.read_at, now());
+      elsif tg_op = 'UPDATE' and old.is_read and not new.is_read then
+        new.read_at := null;
+      end if;
+      return new;
+    end;
+    $trigger$;
+    create trigger trg_sync_notification_read_at
+    before insert or update of is_read on public.notifications
+    for each row execute function public.sync_notification_read_at();
     grant select on public.notifications to authenticated;
     grant select, update on public.activities to authenticated;
     alter table public.notifications enable row level security;
