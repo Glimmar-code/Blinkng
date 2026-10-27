@@ -145,6 +145,12 @@ internal object BlinkPrivateMediaVault {
         val shareDir = File(context.cacheDir, "blink-share").apply {
             check(isDirectory || mkdirs()) { "Could not open private cache." }
         }
+        val expiredAt = System.currentTimeMillis() - 15L * 60 * 1000
+        shareDir.listFiles().orEmpty().forEach { candidate ->
+            if (candidate.isFile && candidate.name.startsWith("blink-vault-view-") &&
+                candidate.lastModified() < expiredAt
+            ) candidate.delete()
+        }
         val temporary = File.createTempFile("blink-vault-view-", ".jpg", shareDir)
         try {
             FileInputStream(input).use { stream ->
@@ -180,6 +186,24 @@ internal object BlinkPrivateMediaVault {
             throw error
         }
     }
+
+    /**
+     * Clear decrypted preview bytes when the viewer closes. The on-disk original
+     * stays encrypted; paths are strictly limited to our own scoped cache.
+     */
+    suspend fun clearTemporaryPreview(context: Context, preview: Uri): Boolean =
+        withContext(Dispatchers.IO) {
+            if (preview.authority != "${context.packageName}.chatfiles") {
+                return@withContext false
+            }
+            val filename = preview.lastPathSegment ?: return@withContext false
+            if (!filename.matches(Regex("blink-vault-view-[A-Za-z0-9_-]+\\.jpg"))) {
+                return@withContext false
+            }
+            val folder = File(context.cacheDir, "blink-share").canonicalFile
+            val file = File(folder, filename).canonicalFile
+            file.parentFile == folder && file.delete()
+        }
 
     suspend fun remove(context: Context, itemId: String): Boolean =
         withContext(Dispatchers.IO) {
