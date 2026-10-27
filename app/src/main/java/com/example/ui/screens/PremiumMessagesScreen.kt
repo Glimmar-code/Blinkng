@@ -787,7 +787,7 @@ private fun PremiumMessagesHome(
     val channelContext = androidx.compose.ui.platform.LocalContext.current
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.ALL) }
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
     var showAll by rememberSaveable { mutableStateOf(false) }
     val unreadCount = conversations.count {
@@ -807,27 +807,32 @@ private fun PremiumMessagesHome(
                 .thenByDescending { it.id }
         )
     }
-    val filteredConversations = remember(sortedConversations, query) {
+    // Inbox search covers all conversation folders, not only the selected filter.
+    val filteredConversations = remember(conversations, sortedConversations, query) {
         if (query.isBlank()) sortedConversations
-        else sortedConversations.filter {
+        else conversations.filter {
             com.blinkng.shared.BlinkConversationSearchPolicy.matches(
                 query, it.partnerName, it.partnerUsername, it.lastMessage
             )
-        }
+        }.sortedWith(
+            compareByDescending<ChatConversation> { it.isConversationPinned }
+                .thenByDescending { it.lastMessageRawTime }
+                .thenByDescending { it.id }
+        )
     }
     BlinkReferenceInbox(
         conversations = filteredConversations,
         stories = stories,
         myAvatar = myAvatar,
         myName = myName,
-        isDark = isDark,
+        isDark = !palette.isLight,
         query = query,
         onQueryChange = { query = it },
         onVoiceSearch = startVoiceSearch,
         showSearch = showSearch,
         onToggleSearch = { showSearch = !showSearch; if (!showSearch) query = "" },
         showAll = showAll,
-        onToggleAll = { showAll = !showAll; inboxTab = if (showAll) MessageInboxTab.ALL else MessageInboxTab.PRIMARY },
+        onToggleAll = { showAll = !showAll },
         onOpenConversation = onOpenConversation,
         onProfileClick = onProfileClick,
         onMyProfileClick = onMyProfileClick,
@@ -3046,29 +3051,38 @@ private fun ChatHeader(
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit
 ) {
-    Box(
+    // Keep contact, calling, and menu actions visible at ordinary phone widths.
+    // A weighted name column ellipsizes before it can overlap the action buttons.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.headerBrush())
             .border(1.dp, palette.border)
-            .padding(horizontal = 8.dp, vertical = 9.dp)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 6.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         GlassIconButton(
-            Icons.Default.ArrowBack,
-            "Back",
-            palette,
-            40.dp,
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.CenterStart)
+            Icons.Default.ArrowBack, "Back", palette, 40.dp,
+            onClick = onBack
         )
-
+        Spacer(Modifier.width(2.dp))
+        RingAvatar(
+            url = conversation.partnerAvatar,
+            name = conversation.partnerName,
+            palette = palette,
+            size = 38.dp,
+            online = conversation.isOnline,
+            modifier = Modifier.clickable(onClick = onProfileClick)
+        )
+        Spacer(Modifier.width(7.dp))
         Column(
-            modifier = Modifier.align(Alignment.Center).widthIn(max = 190.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
+            verticalArrangement = Arrangement.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    conversation.partnerName,
+                    text = conversation.partnerName,
                     color = palette.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -3077,44 +3091,29 @@ private fun ChatHeader(
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 VerificationDot(conversation.verificationBadge, conversation.isVerified)
-                BlinkVipMarkForUsername(
-                    username = conversation.partnerUsername,
-                    knownVip = if (conversation.partnerIsVip) true else null,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
             }
             Text(
                 conversation.presenceLabel.ifBlank {
                     if (conversation.isOnline) "Active now" else conversation.lastSeen
                 },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-
-        Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RingAvatar(
-                url = conversation.partnerAvatar,
-                name = conversation.partnerName,
-                palette = palette,
-                size = 38.dp,
-                online = conversation.isOnline,
-                modifier = Modifier.clickable(onClick = onProfileClick)
-            )
-            Spacer(Modifier.width(4.dp))
-            GlassIconButton(
-                Icons.Default.MoreVert,
-                "More chat options",
-                palette,
-                34.dp,
-                onClick = onMore
-            )
-        }
+        GlassIconButton(
+            Icons.Default.Call, "Voice call", palette, 38.dp,
+            onClick = onAudioCall
+        )
+        GlassIconButton(
+            Icons.Default.Videocam, "Video call", palette, 38.dp,
+            onClick = onVideoCall
+        )
+        GlassIconButton(
+            Icons.Default.MoreVert, "More chat options", palette, 38.dp,
+            onClick = onMore
+        )
     }
 }
 
@@ -3577,7 +3576,7 @@ private fun MessageBubble(
                             metadata,
                             color = if (message.status == MessageStatus.FAILED)
                                 palette.danger else palette.textSecondary,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
                         if (isMine && message.status in setOf(
@@ -3808,8 +3807,8 @@ private fun MessageContent(
                 Text(
                     message.text,
                     color = contentColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
                 if (allowLinkPreviews && !message.imageViewOnce && !message.deletedForEveryone) {
@@ -4135,7 +4134,7 @@ private fun MessageComposer(
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
+                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 14.sp) },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
@@ -4160,14 +4159,14 @@ private fun MessageComposer(
                         icon = Icons.Default.AttachFile,
                         contentDescription = "Attach picture, file or location",
                         palette = palette,
-                        size = 36.dp,
+                        size = 40.dp,
                         onClick = onAttachment
                     )
                     GlassIconButton(
                         icon = Icons.Default.CameraAlt,
                         contentDescription = "Open camera",
                         palette = palette,
-                        size = 36.dp,
+                        size = 40.dp,
                         onClick = onCamera
                     )
                 }
