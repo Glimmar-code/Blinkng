@@ -78,11 +78,26 @@ internal fun PremiumReelEditor(
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
 
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
-        picked -> musicUri = picked?.toString()
+    val audioPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { picked ->
+        if (picked != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    picked, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            musicUri = picked.toString()
+        }
     }
 
-    DisposableEffect(player) { onDispose { player.release() } }
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+            onExporting(false)
+            onPendingEdits(false)
+        }
+    }
     LaunchedEffect(uri) {
         filmstrip = reelFilmstrip(context, Uri.parse(uri))
     }
@@ -119,7 +134,7 @@ internal fun PremiumReelEditor(
     LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
     val white = Color.White
     val surface = Color(0xFF1B1B20)
-    val accent = Color(0xFFB976FC)
+    val accent = Color.White
     Column(
         modifier = Modifier.fillMaxWidth().background(Color.Black).testTag("premium_reel_editor"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -179,7 +194,7 @@ internal fun PremiumReelEditor(
                         Icon(Icons.Default.Replay5, "Back five seconds", tint = white)
                     }
                     Text("${display(positionMs)} / ${display(durationMs)}",
-                        color = white, fontSize = 11.sp, modifier = Modifier.weight(1f),
+                        color = white, fontSize = 13.sp, modifier = Modifier.weight(1f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { player.seekTo((player.currentPosition + 5_000L).coerceAtMost(trimEndMs)) },
                         enabled = !isExporting) {
@@ -204,23 +219,28 @@ internal fun PremiumReelEditor(
                         }
                     }
                 }
-                Text("Trim start · ${display(trimStartMs)}", fontSize = 11.sp, color = white)
-                Slider(value = if (durationMs > 0L) trimStartMs.toFloat() / durationMs else 0f,
-                    enabled = !isExporting && durationMs > 500L,
-                    onValueChange = {
-                        val next = (it * durationMs).toLong()
-                        trimStartMs = next.coerceAtMost((trimEndMs - 500L).coerceAtLeast(0L))
-                        player.seekTo(trimStartMs)
-                    }, modifier = Modifier.height(28.dp))
-                Text("Trim end · ${display(trimEndMs)}", fontSize = 11.sp, color = white)
-                Slider(value = if (durationMs > 0L) trimEndMs.toFloat() / durationMs else 1f,
-                    enabled = !isExporting && durationMs > 500L,
-                    onValueChange = {
-                        trimEndMs = (it * durationMs).toLong()
-                            .coerceIn((trimStartMs + 500L).coerceAtMost(durationMs), durationMs)
-                        player.seekTo(trimEndMs - 100L)
-                    }, modifier = Modifier.height(28.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Trim video", fontSize = 13.sp, color = white, fontWeight = FontWeight.SemiBold)
+                    Text("${display(trimStartMs)} – ${display(trimEndMs)}", fontSize = 12.sp, color = white)
+                }
+                // A two-handle timeline keeps the selected interval together.
+                RangeSlider(
+                    value = trimStartMs.toFloat()..trimEndMs.coerceAtLeast(trimStartMs).toFloat(),
+                    valueRange = 0f..durationMs.coerceAtLeast(500L).toFloat(),
+                    enabled = !isExporting && durationMs >= 500L,
+                    onValueChange = { selection ->
+                        val newStart = selection.start.toLong().coerceAtLeast(0L)
+                            .coerceAtMost(durationMs - 500L)
+                        val newEnd = selection.endInclusive.toLong()
+                            .coerceIn(newStart + 500L, durationMs)
+                        trimStartMs = newStart
+                        trimEndMs = newEnd
+                        player.seekTo(newStart)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = muteOriginal, onClick = {
                         muteOriginal = !muteOriginal
                         player.volume = if (muteOriginal) 0f else 1f
@@ -248,7 +268,7 @@ internal fun PremiumReelEditor(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             enabled = !isExporting,
-                            onClick = { audioPicker.launch("audio/*") }
+                            onClick = { audioPicker.launch(arrayOf("audio/*")) }
                         ) { Text(if (musicUri == null) "Add music" else "Change music") }
                         if (musicUri != null) TextButton(onClick = { musicUri = null }) {
                             Text("Remove music")
@@ -264,7 +284,7 @@ internal fun PremiumReelEditor(
                 }
                 if (isExporting) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text("Rendering the actual edited video…", color = white, fontSize = 11.sp)
+                    Text("Rendering video. Keep this screen open until it finishes.", color = white, fontSize = 12.sp)
                 } else {
                     Button(
                         enabled = hasPendingEdits,
