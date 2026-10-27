@@ -28,8 +28,13 @@ class BlinkPhoneVerificationClient {
         http.newCall(req).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IllegalStateException(
-                if (response.code == 429) "Too many requests. Try again later."
-                else "Phone verification is unavailable. Check SMS support and retry."
+                when (response.code) {
+                    400, 422 -> "SMS request was rejected. Check your phone number or BLINK's SMS provider settings."
+                    401, 403 -> "Your session expired. Sign in again to verify your phone."
+                    429 -> "Too many SMS requests. Retry after the provider's cooldown."
+                    500, 502, 503 -> "SMS service is temporarily unavailable. Try again after SMS delivery is enabled."
+                    else -> "SMS verification failed (HTTP ${response.code}). Please retry."
+                }
             )
             return raw.takeIf(String::isNotBlank)?.let(::JSONObject) ?: JSONObject()
         }
