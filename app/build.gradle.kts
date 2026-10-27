@@ -220,7 +220,11 @@ android {
       versionNameSuffix = "-rtcsmoke"
       isMinifyEnabled = true
       isShrinkResources = true
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro",
+        "rtc-smoke-proguard-rules.pro"
+      )
       matchingFallbacks.add("debug")
     }
     debug {
@@ -354,6 +358,9 @@ dependencies {
   // instrumentation APK. Missing androidx.tracing.Trace crashes the runner
   // before the WebRTC JNI test can execute.
   androidTestImplementation("androidx.tracing:tracing:1.2.0")
+  // AndroidJUnitRunner resolves Trace from the target app's class loader.
+  // The smoke-only target dependency + keep rule prevent R8 from pruning it.
+  add("rtcSmokeImplementation", "androidx.tracing:tracing:1.2.0")
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
