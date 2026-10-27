@@ -2460,7 +2460,7 @@ private fun ReelVideo(
     }
 
     LaunchedEffect(error, playbackAllowed, player) {
-        if (error != null && playbackAllowed && autoRetryCount < 2) {
+        if (shouldAutomaticallyRetryReel(error) && playbackAllowed && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -2532,16 +2532,11 @@ private fun ReelVideo(
         if (error != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    when {
-                        error?.contains("ERROR_CODE_IO") == true ->
-                            "Network error while loading this reel"
-                        error?.contains("ERROR_CODE_DECODING") == true ||
-                            error?.contains("ERROR_CODE_PARSING") == true ->
-                            "This video format could not be played"
-                        else -> "Unable to play this reel"
-                    },
+                    reelPlaybackErrorMessage(error),
                     color = Color.White,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 TextButton(onClick = {
                     autoRetryCount = 0
