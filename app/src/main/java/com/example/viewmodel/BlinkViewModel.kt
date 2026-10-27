@@ -181,6 +181,7 @@ data class BlinkUiState(
     val feedErrorMessage: String? = null,
     val followingFeedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
+    val postUploadProgress: Int? = null,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
     val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
@@ -3929,7 +3930,7 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
-        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+        _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val uploadedImages = mutableListOf<String>()
@@ -3965,7 +3966,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         scheduledPosts = latest,
                         isCreatePostOpen = false,
-                        isCreatingPost = false
+                        isCreatingPost = false,
+                        postUploadProgress = null
                     )
                     clearCreatePostPersistentState(profile)
                     cleanupPublishedEditorMedia(post.videoUrl)
@@ -3979,7 +3981,7 @@ private suspend fun restoreSupabaseSession() {
                 }
             } finally {
                 withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(isCreatingPost = false)
+                    _uiState.value = _uiState.value.copy(isCreatingPost = false, postUploadProgress = null)
                 }
             }
         }
@@ -4067,16 +4069,25 @@ private suspend fun restoreSupabaseSession() {
             ?: profile.id.takeIf { it.isNotBlank() }
             ?: "user_${profile.username}"
 
-        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+        _uiState.value = _uiState.value.copy(isCreatingPost = true, postUploadProgress = 0)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val imageInputs = parseImagePayload(imageUri)
+                val mediaTotal = imageInputs.size + if (videoUri.isNullOrBlank()) 0 else 1
+                fun reportTransfer(index: Int, sent: Long, total: Long) {
+                    if (total <= 0 || mediaTotal == 0) return
+                    val overall = (((index + sent.coerceIn(0L, total).toDouble() / total) /
+                        mediaTotal) * 100).toInt().coerceIn(0, 100)
+                    _uiState.value = _uiState.value.copy(postUploadProgress = overall)
+                }
                 val uploadedImageUrls = mutableListOf<String>()
 
-                for (input in imageInputs) {
+                for ((mediaIndex, input) in imageInputs.withIndex()) {
                     val uploaded = if (input.startsWith("content://")) {
-                        uploadPostUri(userId, input, false)
+                        uploadPostUri(userId, input, false) { sent, total ->
+                            reportTransfer(mediaIndex, sent, total)
+                        }
                     } else {
                         input
                     }
@@ -4088,8 +4099,13 @@ private suspend fun restoreSupabaseSession() {
                 }
 
                 val uploadedVideoUrl = if (!videoUri.isNullOrBlank()) {
-                    if (videoUri.startsWith("content://")) uploadPostUri(userId, videoUri, true) else videoUri
+                    if (videoUri.startsWith("content://")) {
+                        uploadPostUri(userId, videoUri, true) { sent, total ->
+                            reportTransfer(imageInputs.size, sent, total)
+                        }
+                    } else videoUri
                 } else null
+                _uiState.value = _uiState.value.copy(postUploadProgress = null)
 
                 if (!videoUri.isNullOrBlank() && uploadedVideoUrl.isNullOrBlank()) {
                     throw IllegalStateException("The selected video could not be uploaded.")
@@ -4156,7 +4172,8 @@ private suspend fun restoreSupabaseSession() {
                         },
                         feedErrorMessage = null,
                         isCreatePostOpen = false,
-                        isCreatingPost = false
+                        isCreatingPost = false,
+                        postUploadProgress = null
                     )
                     persistCurrentFeed()
                     clearCreatePostPersistentState(profile)
@@ -4175,7 +4192,7 @@ private suspend fun restoreSupabaseSession() {
                     }
                 )
             } finally {
-                _uiState.value = _uiState.value.copy(isCreatingPost = false)
+                _uiState.value = _uiState.value.copy(isCreatingPost = false, postUploadProgress = null)
             }
         }
     }
@@ -4238,7 +4255,8 @@ private suspend fun restoreSupabaseSession() {
     private suspend fun uploadPostUri(
         userId: String,
         uriString: String,
-        isVideo: Boolean
+        isVideo: Boolean,
+        onProgress: (Long, Long) -> Unit = { _, _ -> }
     ): String? = withContext(Dispatchers.IO) {
         try {
             val uri = Uri.parse(uriString)
@@ -4248,7 +4266,8 @@ private suspend fun restoreSupabaseSession() {
                 userId = userId,
                 uriString = uriString,
                 mimeType = mimeType,
-                isVideo = isVideo
+                isVideo = isVideo,
+                onProgress = onProgress
             )
         } catch (e: Exception) {
             Log.e(TAG, "uploadPostUri failed", e)
