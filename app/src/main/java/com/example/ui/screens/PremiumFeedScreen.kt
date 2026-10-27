@@ -1679,7 +1679,16 @@ private fun PremiumHomeFeed(
                                                 offlineNoCache = false,
                                                 onCreatePost = onOpenCreatePost,
                                                 onClearFilter = { filter = PremiumFeedFilter.ALL },
-                                                onRetry = onRetry
+                                                onRetry = onRetry,
+                                                onDiscover = onSearchClick,
+                                                hasMorePosts = hasMorePosts,
+                                                isLoadingMorePosts = isLoadingMorePosts,
+                                                onLoadMore = {
+                                                    // Manually request the next unseen backend page even
+                                                    // when the current filter hasn't produced a match.
+                                                    lastRequestedPostCursor = postPageCursor
+                                                    onLoadMorePosts()
+                                                }
                                             )
                                         }
                                     }
@@ -1699,7 +1708,16 @@ private fun PremiumHomeFeed(
                                                 offlineNoCache = !isOnline && stableRankedPosts.isEmpty() && offlineEmptyConfirmed,
                                                 onCreatePost = onOpenCreatePost,
                                                 onClearFilter = { filter = PremiumFeedFilter.ALL },
-                                                onRetry = onRetry
+                                                onRetry = onRetry,
+                                                onDiscover = onSearchClick,
+                                                hasMorePosts = hasMorePosts,
+                                                isLoadingMorePosts = isLoadingMorePosts,
+                                                onLoadMore = {
+                                                    // Manually request the next unseen backend page even
+                                                    // when the current filter hasn't produced a match.
+                                                    lastRequestedPostCursor = postPageCursor
+                                                    onLoadMorePosts()
+                                                }
                                             )
                                         }
                                     }
@@ -1943,9 +1961,7 @@ private fun PremiumHomeFeed(
                                 if (isLoadingMorePosts) {
                                     item(key = "loading_more") {
                                         Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 18.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(
@@ -1954,6 +1970,29 @@ private fun PremiumHomeFeed(
                                                 strokeWidth = 2.dp
                                             )
                                         }
+                                    }
+                                } else if (!paginationErrorMessage.isNullOrBlank()) {
+                                    item(key = "load_more_error") {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(paginationErrorMessage, style = MaterialTheme.typography.bodySmall)
+                                            TextButton(onClick = {
+                                                lastRequestedPostCursor = postPageCursor
+                                                onLoadMorePosts()
+                                            }) { Text("Retry loading posts") }
+                                        }
+                                    }
+                                } else if (!hasMorePosts && homeRows.isNotEmpty()) {
+                                    item(key = "feed_end") {
+                                        Text(
+                                            "You're all caught up",
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
                                     }
                                 }
                             }
@@ -2394,7 +2433,11 @@ private fun PremiumEmptyFeed(
     offlineNoCache: Boolean = false,
     onCreatePost: () -> Unit,
     onClearFilter: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onDiscover: () -> Unit,
+    hasMorePosts: Boolean = false,
+    isLoadingMorePosts: Boolean = false,
+    onLoadMore: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -2431,17 +2474,22 @@ private fun PremiumEmptyFeed(
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
-        if (!isFollowingLane || isFiltered) {
-            TextButton(onClick = when {
-                isFiltered -> onClearFilter
-                offlineNoCache -> onRetry
-                else -> onCreatePost
-            }) {
-                Text(when {
-                    isFiltered -> "Show all posts"
-                    offlineNoCache -> "Try again"
-                    else -> "Create Post"
-                }, color = MaterialTheme.colorScheme.primary)
+        TextButton(onClick = when {
+            isFiltered -> onClearFilter
+            isFollowingLane -> onDiscover
+            offlineNoCache -> onRetry
+            else -> onCreatePost
+        }) {
+            Text(when {
+                isFiltered -> "Show all posts"
+                isFollowingLane -> "Discover people"
+                offlineNoCache -> "Try again"
+                else -> "Create post"
+            }, color = MaterialTheme.colorScheme.primary)
+        }
+        if (isFiltered && hasMorePosts) {
+            TextButton(onClick = onLoadMore, enabled = !isLoadingMorePosts) {
+                Text(if (isLoadingMorePosts) "Loading…" else "Load more matching posts")
             }
         }
     }
