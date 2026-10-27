@@ -58,9 +58,6 @@ internal val introLetterExitTimings = listOf(
 fun BlinkBeyondLinkIntro(
     onFinished: () -> Unit,
     modifier: Modifier = Modifier,
-    // Android's mandatory native splash is the same Beyond LINK first frame.
-    // Scale into its safe area initially so it hands off without a size pop.
-    matchPlatformSplash: Boolean = false,
 ) {
     val latestOnFinished by rememberUpdatedState(onFinished)
     val timeline = remember { Animatable(0f) }
@@ -120,15 +117,8 @@ fun BlinkBeyondLinkIntro(
                 smoothstep(fraction(time, from, to))
             }
             val gapExit = smoothstep(fraction(time, 1_850, 2_100))
-            // The native 288dp icon keeps the full wordmark inside its 192dp
-            // circular safety mask. Expand continuously from that first frame,
-            // rather than flashing a different-sized logo when Compose starts.
-            val platformHandoff = if (matchPlatformSplash) {
-                0.68f + 0.32f * smoothstep(fraction(time, 0, 700))
-            } else {
-                1f
-            }
-            val enlarge = platformHandoff * (1f + 0.60f * smoothstep(fraction(time, 2_050, 2_700)))
+            // Compose is the only visual intro; no pre-shown static wordmark.
+            val enlarge = 1f + 0.60f * smoothstep(fraction(time, 2_050, 2_700))
 
             val dp = density.density * artworkScale
             val linkHeight = 42f * dp
