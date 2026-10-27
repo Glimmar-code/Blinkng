@@ -494,14 +494,19 @@ fun CreatePostSheet(
         hideLikes ||
         isDisappearing ||
         !allowComments
-    val canSubmit = hasContent &&
-        (mode != "reel" || selectedVideo != null) &&
-        tagsValid &&
-        marketOnlyWarning == null &&
-        linkValid &&
-        (!showPoll || pollValid) &&
-        !reelExporting && !reelHasPendingEdits &&
-        !isSubmitting
+    val canSubmit = PostComposerRules.canPublish(
+        hasContent = hasContent,
+        isReelMode = mode == "reel",
+        hasVideo = selectedVideo != null,
+        tagCount = allTags.size,
+        maxTags = BlinkSmartTags.MAX_TAGS,
+        linkValid = linkValid,
+        pollSelected = showPoll,
+        pollValid = pollValid,
+        allowedInFeed = marketOnlyWarning == null,
+        hasUnappliedVideoEdits = reelExporting || reelHasPendingEdits,
+        isSubmitting = isSubmitting
+    )
 
     fun scheduledPreviewPost(): FeedPost {
         val poll = if (pollValid) {
