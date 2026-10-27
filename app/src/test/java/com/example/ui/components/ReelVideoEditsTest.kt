@@ -50,4 +50,15 @@ class ReelVideoEditsTest {
         assertTrue(edit.overlayVisibleAt(0L))
         assertTrue(edit.overlayVisibleAt(4_000L))
     }
+
+    @Test fun audioLevelsAreBoundedAndRequireRender() {
+        assertTrue(ReelEditSpec(0L, 5_000L, originalAudioVolume = 0.4f)
+            .validate(5_000L).hasChanges(5_000L))
+        assertTrue(runCatching {
+            ReelEditSpec(0L, 5_000L, originalAudioVolume = 1.2f).validate(5_000L)
+        }.isFailure)
+        assertTrue(runCatching {
+            ReelEditSpec(0L, 5_000L, musicVolume = -0.1f).validate(5_000L)
+        }.isFailure)
+    }
 }
