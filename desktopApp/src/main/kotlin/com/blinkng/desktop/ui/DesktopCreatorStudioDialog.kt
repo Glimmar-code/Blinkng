@@ -53,7 +53,11 @@ internal fun DesktopCreatorStudioDialog(
         }
     )
     val tier = profile.verificationTier.uppercase()
-    val member = profile.isVerified && tier in setOf("BLUE", "GOLD")
+    // Honor the server's verified flag and any explicit expiry returned by the profile API.
+    // Legacy profile projections without expiry keep the prior server-verified fallback.
+    val notExpired = profile.verificationExpiresAtMillis == 0L ||
+        profile.verificationExpiresAtMillis > System.currentTimeMillis()
+    val member = profile.isVerified && notExpired && tier in setOf("BLUE", "GOLD")
     val gold = member && tier == "GOLD"
     var clipboardStatus by remember { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss) {
