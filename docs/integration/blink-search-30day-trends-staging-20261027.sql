@@ -28,6 +28,7 @@ as $sql$
      and coalesce(fp.is_flagged,false) is false
      and lower(coalesce(fp.audience,'everyone')) in ('everyone','public')
      and fp.created_at >= now()-interval '30 days'
+     and (fp.expires_at is null or fp.expires_at > now())
      and not exists(
        select 1 from public.blocks b
        where (b.blocker_id=(select auth.uid()) and b.blocked_id=fp.user_id)
@@ -95,6 +96,7 @@ as $sql$
     and coalesce(fp.is_flagged,false) is false
     and lower(coalesce(fp.audience,'everyone')) in ('everyone','public')
     and fp.created_at >= now()-interval '30 days'
+     and (fp.expires_at is null or fp.expires_at > now())
     and fp.user_id <> (select auth.uid())
     and not exists (
       select 1 from public.blocks b
