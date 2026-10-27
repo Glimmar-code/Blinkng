@@ -144,8 +144,12 @@ internal fun BlinkReferenceInbox(
                 IconButton(onClick = onToggleSearch, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_search")) {
                     Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
                 }
-                IconButton(onClick = onComposeMessage, modifier = Modifier.size(if (compactHeader) 40.dp else 44.dp).testTag("inbox_compose")) {
-                    Icon(Icons.Default.Edit, contentDescription = "New message", tint = primary, modifier = Modifier.size(24.dp))
+                // Keep the existing Items shortcut; the New Message action is additive.
+                IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_game")) {
+                    Icon(Icons.Outlined.GridView, contentDescription = "Open Items", tint = primary, modifier = Modifier.size(25.dp))
+                }
+                IconButton(onClick = onComposeMessage, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_compose")) {
+                    Icon(Icons.Default.Edit, contentDescription = "New message", tint = primary, modifier = Modifier.size(23.dp))
                 }
                 Box {
                     IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_notifications")) {
