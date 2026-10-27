@@ -327,6 +327,7 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        if (!isMe) {
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val isFollowing = profile.id in followingIds
@@ -335,9 +336,13 @@ fun DesktopUserProfileDialog(
                                     onClick = {
                                         scope.launch {
                                             busy = true
-                                            followingIds = runCatching {
+                                            runCatching {
                                                 state.client.setFollowing(profile.id, !isFollowing)
-                                            }.getOrDefault(followingIds)
+                                            }.onSuccess {
+                                                followingIds = it
+                                            }.onFailure {
+                                                statusMessage = "Could not update following. Retry."
+                                            }
                                             busy = false
                                         }
                                     },
@@ -364,6 +369,8 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        }
+
                         if (isMe) {
                             item {
                                 TextButton(onClick = { showVisitorHistory = true }) {
@@ -385,6 +392,7 @@ fun DesktopUserProfileDialog(
                             }
                         }
 
+                        if (!isMe) {
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(
@@ -393,10 +401,14 @@ fun DesktopUserProfileDialog(
                                         scope.launch {
                                             busy = true
                                             val desired = !muted
-                                            muted = runCatching {
+                                            runCatching {
                                                 state.client.setProfileMuted(profile.id, desired)
-                                            }.getOrDefault(muted)
-                                            statusMessage = if (muted) "Profile muted." else "Profile unmuted."
+                                            }.onSuccess {
+                                                muted = it
+                                                statusMessage = if (muted) "Profile muted." else "Profile unmuted."
+                                            }.onFailure {
+                                                statusMessage = "Could not update mute preference."
+                                            }
                                             busy = false
                                         }
                                     },
@@ -419,6 +431,16 @@ fun DesktopUserProfileDialog(
                                     Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(5.dp))
                                     Text("Search")
+                                }
+                            }
+                        }
+
+                        } else {
+                            item {
+                                OutlinedButton(onClick = { searchActive = !searchActive }) {
+                                    Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Search profile")
                                 }
                             }
                         }
