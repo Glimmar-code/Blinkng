@@ -212,7 +212,8 @@ android {
     // as release without requiring or exposing the production signing key.
     create("rtcSmoke") {
       initWith(getByName("debug"))
-      applicationIdSuffix = ".rtcsmoke"
+      // Keep the real package name: google-services.json only defines the production client.
+      // This debug-signed variant runs on a disposable CI emulator, never on user devices.
       versionNameSuffix = "-rtcsmoke"
       isMinifyEnabled = true
       isShrinkResources = true
