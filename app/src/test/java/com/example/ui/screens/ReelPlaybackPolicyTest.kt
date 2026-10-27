@@ -45,6 +45,17 @@ class ReelPlaybackPolicyTest {
         assertFalse(qualifiedReelCompletion(9_000L, 0L))
     }
 
+    @Test fun failedVideoDistinguishesNetworkFromMissingMedia() {
+        assertTrue(shouldAutomaticallyRetryReel("ERROR_CODE_IO_NETWORK_CONNECTION_FAILED"))
+        assertTrue(shouldAutomaticallyRetryReel("ERROR_CODE_IO_UNSPECIFIED"))
+        assertFalse(shouldAutomaticallyRetryReel("ERROR_CODE_IO_BAD_HTTP_STATUS"))
+        assertFalse(shouldAutomaticallyRetryReel("ERROR_CODE_DECODING_FAILED"))
+        assertFalse(shouldAutomaticallyRetryReel(null))
+        assertTrue(reelPlaybackErrorMessage("ERROR_CODE_IO_BAD_HTTP_STATUS").contains("unavailable"))
+        assertTrue(reelPlaybackErrorMessage("ERROR_CODE_DECODING_FAILED").contains("format"))
+        assertTrue(reelPlaybackErrorMessage("ERROR_CODE_IO_NETWORK_CONNECTION_FAILED").contains("connection"))
+    }
+
     @Test fun seekingClampsTouchPositionsAndRejectsInvalidDimensions() {
         assertEquals(0f, reelSeekFraction(-25f, 100), 0f)
         assertEquals(0.5f, reelSeekFraction(50f, 100), 0f)
