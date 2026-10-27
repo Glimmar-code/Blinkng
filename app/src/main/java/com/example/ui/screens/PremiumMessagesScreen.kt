@@ -2278,6 +2278,11 @@ private fun PremiumChatDetail(
                             onVideoActivate = { activeVideoMessageId = message.id },
                             onVideoDeactivate = {
                                 if (activeVideoMessageId == message.id) activeVideoMessageId = null
+                            },
+                            onLegacyPollChoice = { index ->
+                                replyingTo = message
+                                editingMessage = null
+                                text = (index + 1).toString()
                             }
                             )
                         }
@@ -3515,7 +3520,8 @@ private fun MessageBubble(
     allowLinkPreviews: Boolean,
     activeVideoMessageId: String?,
     onVideoActivate: () -> Unit,
-    onVideoDeactivate: () -> Unit
+    onVideoDeactivate: () -> Unit,
+    onLegacyPollChoice: (Int) -> Unit
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -3661,7 +3667,8 @@ private fun MessageBubble(
                         onOpenImage = onOpenImage,
                         videoActive = activeVideoMessageId == message.id,
                         onVideoActivate = onVideoActivate,
-                        onVideoDeactivate = onVideoDeactivate
+                        onVideoDeactivate = onVideoDeactivate,
+                        onLegacyPollChoice = onLegacyPollChoice
                     )
                     // Compact inside-bubble timestamp and one overlapping double-check glyph.
                     val metadata = when (message.status) {
@@ -3746,7 +3753,8 @@ private fun MessageContent(
     onOpenImage: (ChatMessage) -> Unit,
     videoActive: Boolean,
     onVideoActivate: () -> Unit,
-    onVideoDeactivate: () -> Unit
+    onVideoDeactivate: () -> Unit,
+    onLegacyPollChoice: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
@@ -3936,6 +3944,15 @@ private fun MessageContent(
                     }
                 }
             }
+            val legacyPoll = com.blinkng.shared.BlinkChatPollPolicy.parseTextFallback(message.text)
+            if (legacyPoll != null) {
+                BlinkChatLegacyPollCard(
+                    draft = legacyPoll,
+                    palette = palette,
+                    textColor = contentColor,
+                    onChoice = onLegacyPollChoice
+                )
+            }
             val sharedContact = com.blinkng.shared.BlinkChatContactCardPolicy.parse(message.text)
             if (sharedContact != null) {
                 BlinkChatContactMessageCard(
@@ -3952,7 +3969,7 @@ private fun MessageContent(
                         (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
                     !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly &&
-                !message.isVoiceNote && sharedContact == null) {
+                !message.isVoiceNote && sharedContact == null && legacyPoll == null) {
                 Text(
                     message.text,
                     color = contentColor,
