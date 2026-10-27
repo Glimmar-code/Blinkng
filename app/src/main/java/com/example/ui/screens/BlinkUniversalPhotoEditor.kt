@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -60,6 +61,12 @@ import java.io.File
  *
  * Android Photo Picker is deliberately retained for private scoped selection.
  */
+private data class PhotoStudioHistory(
+    val uri: Uri, val exposure: Float, val contrast: Float, val saturation: Float,
+    val strokes: List<BlinkChatPhotoEditor.Stroke>,
+    val labels: List<BlinkChatPhotoEditor.Label>
+)
+
 @Composable
 fun BlinkUniversalPhotoEditor(
     originalUri: Uri,
@@ -79,6 +86,42 @@ fun BlinkUniversalPhotoEditor(
     val labels = remember { mutableStateListOf<BlinkChatPhotoEditor.Label>() }
     var activeStroke by remember { mutableStateOf<List<Pair<Float,Float>>>(emptyList()) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.WHITE) }
+    var brushWidth by remember { mutableFloatStateOf(.007f) }
+    var labelSize by remember { mutableFloatStateOf(.07f) }
+    var precisionCropRatio by remember { mutableStateOf<Float?>(null) }
+    var precisionCropScale by remember { mutableFloatStateOf(1f) }
+    var straightenAngle by remember { mutableFloatStateOf(0f) }
+    val undoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
+    val redoHistory = remember(originalUri) { mutableStateListOf<PhotoStudioHistory>() }
+    fun snapshot() = PhotoStudioHistory(
+        workingUri, exposure, contrast, saturation, strokes.toList(), labels.toList()
+    )
+    fun restore(snapshot: PhotoStudioHistory) {
+        workingUri = snapshot.uri
+        exposure = snapshot.exposure
+        contrast = snapshot.contrast
+        saturation = snapshot.saturation
+        strokes.clear(); strokes.addAll(snapshot.strokes)
+        labels.clear(); labels.addAll(snapshot.labels)
+        activeStroke = emptyList()
+    }
+    fun saveUndo() {
+        undoHistory.add(snapshot())
+        if (undoHistory.size > 40) undoHistory.removeAt(0)
+        redoHistory.clear()
+    }
+    fun undo() {
+        if (!busy && undoHistory.isNotEmpty()) {
+            redoHistory.add(snapshot())
+            restore(undoHistory.removeAt(undoHistory.lastIndex))
+        }
+    }
+    fun redo() {
+        if (!busy && redoHistory.isNotEmpty()) {
+            undoHistory.add(snapshot())
+            restore(redoHistory.removeAt(redoHistory.lastIndex))
+        }
+    }
     var newText by remember { mutableStateOf("") }
     var photoAspect by remember(workingUri) { mutableFloatStateOf(1f) }
     var imageSize by remember { mutableStateOf(IntSize(1,1)) }
@@ -130,12 +173,36 @@ fun BlinkUniversalPhotoEditor(
         scope.launch {
             runCatching { BlinkChatPhotoEditor.edit(context,workingUri,operation) }
                 .onSuccess { uri ->
+                    saveUndo()
                     transientCopies.add(uri); workingUri = uri
                     strokes.clear(); labels.clear(); activeStroke = emptyList()
                 }
                 .onFailure { Toast.makeText(context,it.message ?: "Cannot edit this image.",
                     Toast.LENGTH_SHORT).show() }
             busy=false
+        }
+    }
+    fun applyPrecisionCrop() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            runCatching {
+                com.example.media.BlinkChatPhotoGeometry.edit(
+                    context, workingUri, precisionCropRatio, straightenAngle,
+                    precisionCropScale
+                )
+            }.onSuccess { result ->
+                saveUndo()
+                transientCopies.add(result)
+                workingUri = result
+                strokes.clear(); labels.clear(); activeStroke = emptyList()
+                straightenAngle = 0f
+                precisionCropScale = 1f
+            }.onFailure {
+                Toast.makeText(context, it.message ?: "Could not crop image.",
+                    Toast.LENGTH_LONG).show()
+            }
+            busy = false
         }
     }
     fun commit() {
@@ -193,6 +260,12 @@ fun BlinkUniversalPhotoEditor(
                     Icon(Icons.Default.Close,"Cancel edits",tint=Color.White)
                     Text("CANCEL",color=Color.White,fontSize=12.sp)
                 }
+                IconButton(onClick = { undo() }, enabled = !busy && undoHistory.isNotEmpty()) {
+                    Icon(Icons.Default.Undo, "Undo edit", tint = Color.White)
+                }
+                IconButton(onClick = { redo() }, enabled = !busy && redoHistory.isNotEmpty()) {
+                    Icon(Icons.Default.Redo, "Redo edit", tint = Color.White)
+                }
                 Spacer(Modifier.weight(1f))
                 Text("BLINK PHOTO",color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
                 Spacer(Modifier.weight(1f))
@@ -219,9 +292,10 @@ fun BlinkUniversalPhotoEditor(
                     )
                     Canvas(
                         Modifier.fillMaxSize().then(
-                            if(tool=="DRAW" && !busy) Modifier.pointerInput(tool,brushColor) {
+                            if(tool=="DRAW" && !busy) Modifier.pointerInput(tool,brushColor,brushWidth) {
                                 detectDragGestures(
                                     onDragStart={ pos ->
+                                        saveUndo()
                                         activeStroke = listOf(
                                             pos.x/size.width.coerceAtLeast(1),
                                             pos.y/size.height.coerceAtLeast(1))
@@ -235,16 +309,46 @@ fun BlinkUniversalPhotoEditor(
                                     },
                                     onDragEnd={
                                         if(activeStroke.isNotEmpty()) strokes.add(
-                                            BlinkChatPhotoEditor.Stroke(activeStroke,brushColor))
+                                            BlinkChatPhotoEditor.Stroke(activeStroke,brushColor,brushWidth))
                                         activeStroke=emptyList()
                                     },
                                     onDragCancel={ activeStroke=emptyList() }
                                 )
+                            } else if ((tool=="TEXT" || tool=="STICKER") &&
+                                labels.isNotEmpty() && !busy) {
+                                Modifier.pointerInput(tool, labels.size) {
+                                    var movingLabel = -1
+                                    detectDragGestures(
+                                        onDragStart = { position ->
+                                            val radiusX = size.width * .25f
+                                            val radiusY = size.height * .12f
+                                            movingLabel = labels.indices.reversed().firstOrNull { i ->
+                                                val label = labels[i]
+                                                kotlin.math.abs(label.x * size.width - position.x) < radiusX &&
+                                                    kotlin.math.abs(label.y * size.height - position.y) < radiusY
+                                            } ?: -1
+                                            if (movingLabel >= 0) saveUndo()
+                                        },
+                                        onDrag = { change, delta ->
+                                            val i = movingLabel
+                                            if (i in labels.indices) {
+                                                val label = labels[i]
+                                                labels[i] = label.copy(
+                                                    x = (label.x + delta.x / size.width).coerceIn(.05f,.95f),
+                                                    y = (label.y + delta.y / size.height).coerceIn(.1f,.96f)
+                                                )
+                                                change.consume()
+                                            }
+                                        },
+                                        onDragEnd = { movingLabel = -1 },
+                                        onDragCancel = { movingLabel = -1 }
+                                    )
+                                }
                             } else Modifier
                         )
                     ) {
                         val widthPx=size.width; val heightPx=size.height
-                        fun plot(points:List<Pair<Float,Float>>, color:Int) {
+                        fun plot(points:List<Pair<Float,Float>>, color:Int, width:Float) {
                             if(points.isEmpty()) return
                             val p=Path().apply {
                                 moveTo(points.first().first*widthPx,points.first().second*heightPx)
@@ -253,10 +357,10 @@ fun BlinkUniversalPhotoEditor(
                                 }
                             }
                             drawPath(p,color=Color(color),style=ComposeStroke(
-                                width=widthPx*.007f,cap=StrokeCap.Round))
+                                width=widthPx*width,cap=StrokeCap.Round))
                         }
-                        strokes.forEach { plot(it.points,it.color) }
-                        plot(activeStroke,brushColor)
+                        strokes.forEach { plot(it.points,it.color,it.widthFraction) }
+                        plot(activeStroke,brushColor,brushWidth)
                         labels.forEach { label ->
                             drawIntoCanvas { canvas ->
                                 canvas.nativeCanvas.drawText(
@@ -290,10 +394,26 @@ fun BlinkUniversalPhotoEditor(
                     }
                 }
             }
-            Column(Modifier.fillMaxWidth().heightIn(min=130.dp).background(Color(0xFF0F0F0F))
+            Column(Modifier.fillMaxWidth().heightIn(min=130.dp,max=310.dp)
+                .background(Color(0xFF0F0F0F))
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal=16.dp,vertical=8.dp)) {
                 when(tool) {
                     "ADJUST" -> {
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                listOf(0f,1f,1f) to "Original",
+                                listOf(.22f,1.08f,1.12f) to "Bright",
+                                listOf(0f,1.3f,1.12f) to "Vivid",
+                                listOf(.02f,1.12f,0f) to "B&W"
+                            ).forEach { (values, title) ->
+                                OutlinedButton(onClick={
+                                    saveUndo()
+                                    exposure=values[0]; contrast=values[1]; saturation=values[2]
+                                },enabled=!busy) { Text(title,fontSize=10.sp) }
+                            }
+                        }
                         listOf("Enhance / Exposure","Contrast","Saturation").forEachIndexed { index,label ->
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Text(label,color=Color.White,fontSize=11.sp,
@@ -325,9 +445,42 @@ fun BlinkUniversalPhotoEditor(
                                 }
                             }
                         }
+                        Row(Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            val ratioOptions: List<Pair<String,Float?>> = listOf(
+                                "Free" to null, "1:1" to 1f, "4:5" to .8f,
+                                "9:16" to .5625f, "16:9" to (16f/9f)
+                            )
+                            ratioOptions.forEach { (name, ratio) ->
+                                FilterChip(
+                                    selected = precisionCropRatio == ratio,
+                                    onClick = { precisionCropRatio = ratio },
+                                    label = { Text(name) }
+                                )
+                            }
+                        }
+                        Text("Straighten ${"%.1f".format(straightenAngle)}°",
+                            fontSize=11.sp, color=Color.White)
+                        Slider(value=straightenAngle,
+                            onValueChange={straightenAngle=it},
+                            valueRange=-45f..45f,enabled=!busy)
+                        Text("Crop zoom ${(precisionCropScale*100).toInt()}%",
+                            fontSize=11.sp, color=Color.White)
+                        Slider(value=precisionCropScale,
+                            onValueChange={precisionCropScale=it},
+                            valueRange=.45f..1f,enabled=!busy)
+                        Button(onClick={applyPrecisionCrop()},enabled=!busy) {
+                            Text("Apply precision crop")
+                        }
                     }
                     "DRAW" -> {
                         Text("DRAW ON THE PICTURE",color=Color.White,fontSize=12.sp)
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Brush size", color=Color.White, fontSize=11.sp,
+                                modifier=Modifier.width(82.dp))
+                            Slider(value=brushWidth, onValueChange={brushWidth=it},
+                                valueRange=.002f.. .035f,modifier=Modifier.weight(1f))
+                        }
                         Row(verticalAlignment=Alignment.CenterVertically,
                             horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             palette.forEach { color ->
@@ -337,26 +490,32 @@ fun BlinkUniversalPhotoEditor(
                                         Color.LightGray,CircleShape)
                                     .clickable { brushColor=color })
                             }
-                            TextButton(onClick={
-                                if(strokes.isNotEmpty()) strokes.removeAt(strokes.lastIndex)
-                            }) { Text("Undo",color=Color.White) }
+                            TextButton(onClick={ undo() }, enabled=undoHistory.isNotEmpty()) { Text("Undo",color=Color.White) }
                         }
                         Text("Swipe your finger over the photo to draw.",
                             color=Color.Gray,fontSize=11.sp)
                     }
                     "STICKER" -> {
                         Text("ADD A STICKER",color=Color.White,fontSize=12.sp)
+                        Slider(value=labelSize,onValueChange={labelSize=it},
+                            valueRange=.025f.. .2f)
                         Row(Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("❤️","🔥","✨","🎉","💜","😂","👍","⭐","🌈").forEach { emoji ->
                                 Text(emoji,fontSize=27.sp,modifier=Modifier
-                                    .clickable { labels.add(BlinkChatPhotoEditor.Label(emoji)) }
+                                    .clickable {
+                                         saveUndo()
+                                         labels.add(BlinkChatPhotoEditor.Label(emoji,sizeFraction=labelSize))
+                                     }
                                     .padding(4.dp))
                             }
                         }
-                        Text("Tap an emoji to place it in the centre.",color=Color.Gray,fontSize=11.sp)
+                        Text("Tap an emoji to place it in the centre; drag it to reposition.",color=Color.Gray,fontSize=11.sp)
                     }
                     "TEXT" -> {
+                        Text("Text size", color=Color.White, fontSize=12.sp)
+                        Slider(value=labelSize,onValueChange={labelSize=it},
+                            valueRange=.025f.. .2f)
                         OutlinedTextField(
                             value=newText,onValueChange={newText=it.take(80)},
                             placeholder={Text("Write on the photo",color=Color.LightGray)},
@@ -367,8 +526,9 @@ fun BlinkUniversalPhotoEditor(
                         )
                         TextButton(onClick={
                             if(newText.isNotBlank()) {
-                                labels.add(BlinkChatPhotoEditor.Label(newText.trim(),
-                                    color=brushColor))
+                                 saveUndo()
+                                 labels.add(BlinkChatPhotoEditor.Label(newText.trim(),
+                                    color=brushColor,sizeFraction=labelSize))
                                 newText=""
                             }
                         },enabled=newText.isNotBlank()) { Text("Add text",color=Color(0xFF46B7FF)) }

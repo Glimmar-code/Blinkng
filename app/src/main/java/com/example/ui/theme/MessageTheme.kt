@@ -92,6 +92,29 @@ private val DarkMessagePalette = MessagePalette(
     outgoingText = Color.White
 )
 
+/**
+ * Conversation-only WhatsApp-reference-inspired dark colours.
+ * Inbox cards and alternative user-selected message themes remain unchanged.
+ * Kept separate from the global BLINK palette to avoid unrelated regressions.
+ */
+fun referenceChatPalette(base: MessagePalette): MessagePalette =
+    if (base.mode != MessageThemeMode.DARK) base else base.copy(
+        backgroundTop = Color(0xFF0B141A),
+        backgroundMiddle = Color(0xFF0B141A),
+        backgroundBottom = Color(0xFF0B141A),
+        glass = Color(0xFF111B21),
+        glassElevated = Color(0xFF111B21),
+        border = Color(0xFF25353D),
+        accent = Color(0xFF00A884),
+        accentSecondary = Color(0xFF005C4B),
+        incomingBubble = Color(0xFF202C33),
+        outgoingBubble = Color(0xFF005C4B),
+        textPrimary = Color(0xFFE9EDEF),
+        textSecondary = Color(0xFFB8C4C9),
+        textMuted = Color(0xFF8696A0),
+        outgoingText = Color.White
+    )
+
 private val LightMessagePalette = MessagePalette(
     mode = MessageThemeMode.LIGHT,
     backgroundTop = Color(0xFFFFFBFD),
