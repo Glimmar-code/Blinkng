@@ -393,7 +393,6 @@ private fun ReelsContent(
     onReelFullscreenChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    val refreshScope = rememberCoroutineScope()
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -509,7 +508,7 @@ private fun ReelsContent(
     LaunchedEffect(selectedTab) {
         if (!tabSelectionInitialized) {
             tabSelectionInitialized = true
-        } else if (pagerItems.isNotEmpty()) {
+        } else if (pagerItems.isNotEmpty() && unconsumedLaunchId == null) {
             pager.scrollToPage(0)
         }
     }
@@ -903,14 +902,12 @@ private fun ReelsContent(
                 onRefresh = onRefreshSelected,
                 isRefreshing = isRefreshing,
                 onFeaturedReelClick = { reelId ->
-                    refreshScope.launch {
-                        // Banner reels are present in the same vertical pager as feed reels.
-                        val targetPage = reelPageIndex(pagerItems, reelId)
-                        if (targetPage != null) {
-                            pager.scrollToPage(targetPage)
-                            expanded = true
-                        }
-                    }
+                    // Featured videos must open from every tab, including Following.
+                    // Let the keyed launch effect find the real page *after* tab content changes.
+                    selectedTab = "Reels"
+                    unconsumedLaunchId = reelId
+                    launchLookupTimedOut = false
+                    expanded = true
                 },
                 autoSlideEnabled = isScreenActive && !isInteractionOverlayOpen,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
@@ -1309,16 +1306,18 @@ private fun ReelPage(
                         }
                     },
                     onDoubleTap = {
-                        if (!reel.isLiked) onLike(reel.id)
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        burstTrigger++
+                        if (isActive && !isInteractionOverlayOpen) {
+                            if (!reel.isLiked) onLike(reel.id)
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            burstTrigger++
+                        }
                     },
                     onTap = {
                         if (isPreview) {
                             // Tapping the preview opens the SAME mounted reel
                             // into fullscreen; it must not toggle pause first.
                             if (isActive && !isInteractionOverlayOpen) onExpandPreview()
-                        } else {
+                        } else if (isActive && !isInteractionOverlayOpen) {
                             isPausedByUser = !isPausedByUser
                             showPlaybackHint = true
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
