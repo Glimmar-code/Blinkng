@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- An immediate brand frame, before the Compose intro is ready on slow devices. -->
+    <!-- Keep the native prelaunch frame visually continuous with the animated intro. -->
     <item android:drawable="@color/black" />
-    <item android:drawable="@drawable/ic_splash_b" android:gravity="center" />
+    <item android:drawable="@drawable/blink_intro_wordmark" android:gravity="center" />
 </layer-list>
