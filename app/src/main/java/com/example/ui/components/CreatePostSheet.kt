@@ -246,6 +246,7 @@ fun CreatePostSheet(
     var autosaveRestored by rememberSaveable { mutableStateOf(false) }
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var activeDraftId by rememberSaveable { mutableStateOf<String?>(null) }
+    var reelEditorStage by rememberSaveable { mutableStateOf(startInReelMode) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -279,6 +280,7 @@ fun CreatePostSheet(
                 .take(10)
             selectedVideo = null
             showPoll = false
+            reelEditorStage = false
             mode = "post"
         }
     }
@@ -295,6 +297,7 @@ fun CreatePostSheet(
             }
             selectedVideo = uri.toString()
             selectedImages = emptyList()
+            reelEditorStage = true
             mode = "reel"
             showPoll = false
         }
@@ -389,6 +392,7 @@ fun CreatePostSheet(
                     ?: clientRequestId
                 activeDraftId = value.optString("active_draft_id")
                     .takeIf { it.isNotBlank() && it != "null" }
+                reelEditorStage = value.optBoolean("reel_editor_stage", selectedVideo != null)
             }
         }
         autosaveRestored = true
@@ -416,7 +420,8 @@ fun CreatePostSheet(
         isDisappearing,
         audioTitle,
         clientRequestId,
-        activeDraftId
+        activeDraftId,
+        reelEditorStage
     ) {
         if (!autosaveRestored) return@LaunchedEffect
         val hasAnything = text.isNotBlank() ||
@@ -454,6 +459,7 @@ fun CreatePostSheet(
                 put("audio_title", audioTitle)
                 put("client_request_id", clientRequestId)
                 put("active_draft_id", activeDraftId ?: JSONObject.NULL)
+                put("reel_editor_stage", reelEditorStage)
                 put("selected_tags", JSONArray(selectedTags))
             }
             PersistentTextDraftStore.writeValue(
@@ -790,16 +796,54 @@ fun CreatePostSheet(
                 .navigationBarsPadding()
                 .imePadding()
         ) {
+            val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
-                canSubmit = canSubmit,
+                canSubmit = if (isEditingReel)
+                    !isSubmitting && !reelExporting && !reelHasPendingEdits
+                else canSubmit,
                 isReel = selectedVideo != null || mode == "reel",
+                isEditingReel = isEditingReel,
                 onDismiss = ::requestDismiss,
-                onSubmit = ::submit
+                onSubmit = {
+                    if (isEditingReel) reelEditorStage = false else submit()
+                }
             )
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            if (isEditingReel) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                        .padding(bottom = 20.dp)
+                ) {
+                    selectedVideo?.let { uri ->
+                        VideoComposerPreview(
+                            uri = uri,
+                            onRemove = {
+                                if (!isSubmitting && !reelExporting) {
+                                    selectedVideo = null
+                                    reelHasPendingEdits = false
+                                    reelEditorStage = false
+                                    mode = "post"
+                                }
+                            },
+                            onEdited = { renderedUri ->
+                                selectedVideo = renderedUri
+                                mode = "reel"
+                            },
+                            onExporting = { reelExporting = it },
+                            onPendingEdits = { reelHasPendingEdits = it }
+                        )
+                    }
+                    Text(
+                        "Trim and apply your edits, then tap Next to add a caption, cover details and publishing settings.",
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            } else {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1068,24 +1112,27 @@ fun CreatePostSheet(
                     }
                 }
 
-                selectedVideo?.let {
-                    VideoComposerPreview(
-                        uri = it,
-                        onRemove = {
-                            if (!isSubmitting && !reelExporting) {
-                                selectedVideo = null
-                                reelHasPendingEdits = false
-                                mode = "post"
+                if (selectedVideo != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Reel video attached", fontWeight = FontWeight.SemiBold)
+                                Text("Video edits are saved before publishing.",
+                                    style = MaterialTheme.typography.bodySmall)
                             }
-                        },
-                        onEdited = { renderedUri ->
-                            // The publisher and draft store always use the actual rendered MP4.
-                            selectedVideo = renderedUri
-                            mode = "reel"
-                        },
-                        onExporting = { reelExporting = it },
-                        onPendingEdits = { reelHasPendingEdits = it }
-                    )
+                            TextButton(onClick = { reelEditorStage = true }, enabled = !isSubmitting) {
+                                Text("Edit Reel")
+                            }
+                        }
+                    }
                 }
 
                 AnimatedVisibility(
@@ -1426,6 +1473,7 @@ fun CreatePostSheet(
                                     selectedTags = draft.tags
                                     selectedImages = parseDraftImages(draft.imageUri)
                                     selectedVideo = draft.videoUri
+                                    reelEditorStage = !draft.videoUri.isNullOrBlank()
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
@@ -1550,6 +1598,7 @@ fun CreatePostSheet(
                     }
                 }
             }
+            }
         }
         }
         }
@@ -1574,6 +1623,7 @@ fun CreatePostSheet(
                         "post" -> {
                             selectedVideo = null
                             reelHasPendingEdits = false
+                            reelEditorStage = false
                             mode = "post"
                             showPoll = false
                         }
@@ -1581,6 +1631,7 @@ fun CreatePostSheet(
                             selectedVideo = null
                             selectedImages = emptyList()
                             reelHasPendingEdits = false
+                            reelEditorStage = false
                             mode = "post"
                             showPoll = true
                         }
@@ -1927,6 +1978,7 @@ private fun ComposerTopBar(
     isSubmitting: Boolean,
     canSubmit: Boolean,
     isReel: Boolean,
+    isEditingReel: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
@@ -1946,7 +1998,7 @@ private fun ComposerTopBar(
         }
 
         Text(
-            text = if (isReel) "Create reel" else "Create post",
+            text = if (isEditingReel) "Edit Reel" else if (isReel) "Create Reel" else "Create post",
             fontWeight = FontWeight.Black,
             fontSize = 20.sp,
             modifier = Modifier.align(Alignment.Center)
@@ -1964,7 +2016,7 @@ private fun ComposerTopBar(
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text(if (isReel) "Publish Reel" else "Post")
+                Text(if (isEditingReel) "Next" else if (isReel) "Publish Reel" else "Post")
             }
         }
     }
