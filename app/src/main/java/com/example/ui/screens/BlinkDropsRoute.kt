@@ -931,6 +931,8 @@ private fun OrganizeDropDialog(
     var duration by remember { mutableIntStateOf(draft.durationHours) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var quoteError by remember { mutableStateOf<String?>(null) }
+    var quoteRetryNonce by remember { mutableIntStateOf(0) }
     var confirmPublish by remember { mutableStateOf(false) }
 
     val availableTargets = when (targetType) {
@@ -957,6 +959,8 @@ private fun OrganizeDropDialog(
         winnerText,
         audience,
         duration,
+        isOnline,
+        quoteRetryNonce,
     ) {
         DropDraftStore.value = DropDraftSnapshot(
             targetType = targetType,
@@ -969,6 +973,8 @@ private fun OrganizeDropDialog(
         )
 
         quote = null
+        quoteError = null
+        quoteLoading = false
         if (
             !isOnline ||
             selectedTarget == null ||
@@ -989,8 +995,10 @@ private fun OrganizeDropDialog(
             durationHours = duration,
         ).onSuccess {
             quote = it
+            quoteError = null
         }.onFailure {
             quote = null
+            quoteError = "Couldn't verify the Drop budget and eligible followers. Please retry."
         }
         quoteLoading = false
     }
@@ -1012,6 +1020,11 @@ private fun OrganizeDropDialog(
         total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
         balance != null &&
         total <= balance &&
+        !quoteLoading &&
+        quote != null &&
+        quoteError == null &&
+        eligibleFollowers > 0 &&
+        maximumPossibleRecipients > 0 &&
         action in actions.map { it.name }
 
     var setupStep by remember { mutableIntStateOf(0) }
@@ -1041,7 +1054,7 @@ private fun OrganizeDropDialog(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     if (!isOnline) {
-                        Text("Offline · Your draft will be kept until you reconnect.",
+                        Text("Offline · This draft remains available while the screen is open.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)
                     }
@@ -1211,7 +1224,7 @@ private fun OrganizeDropDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                 if (eligibleFollowers == 0) {
-                                    Text("No eligible followers yet. You can save your draft and try when followers become eligible.",
+                                    Text("No eligible followers yet. At least one eligible follower is required to publish.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -1248,6 +1261,9 @@ private fun OrganizeDropDialog(
                                 if (!valid && !creating) {
                                     Text(when {
                                         !isOnline -> "Reconnect to publish."
+                                         quoteLoading -> "Verifying the rewards and eligibility…"
+                                         quoteError != null || quote == null -> "A verified quote is needed before publishing."
+                                         eligibleFollowers < 1 -> "At least one eligible follower is required."
                                         selectedTarget == null -> "Choose content first."
                                         !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
                                         !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
@@ -1416,7 +1432,11 @@ private fun EmptyCard(message: String) {
 }
 
 private fun shortDropDate(raw: String): String =
-    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
+    runCatching {
+        java.time.OffsetDateTime.parse(raw)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }.getOrElse { raw.replace('T', ' ').take(16).ifBlank { "—" } }
 
 private fun actionLabel(value: String): String = when (value.uppercase()) {
     "LIKE" -> "Like post"
