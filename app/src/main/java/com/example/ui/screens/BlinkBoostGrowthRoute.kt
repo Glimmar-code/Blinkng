@@ -344,25 +344,34 @@ private fun BoostCampaignColumn(
 
     val me = myProfile.username.trim().removePrefix("@")
     var ownedContent by remember { mutableStateOf<JSONObject?>(null) }
+    var ownedPages by remember { mutableStateOf<Map<String,List<JSONObject>>>(emptyMap()) }
+    var ownedMore by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var contentPageBusy by remember { mutableStateOf(false) }
+    var targetSearch by remember { mutableStateOf("") }
     var contentLoading by remember { mutableStateOf(true) }
     var contentError by remember { mutableStateOf<String?>(null) }
-    val ownContent = remember(posts, reels, me, ownedContent) {
+    val ownContent = remember(posts, reels, me, ownedContent, ownedPages) {
         val cached = (posts + reels).filter {
             it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
         }.distinctBy { it.id }
-        val server = ownedContent?.optJSONArray("posts").objectList().mapNotNull { item ->
+        val serverRows = if (ownedPages.containsKey("POST") || ownedPages.containsKey("REEL"))
+            (ownedPages["POST"].orEmpty() + ownedPages["REEL"].orEmpty())
+        else ownedContent?.optJSONArray("posts").objectList()
+        val server = serverRows.mapNotNull { item ->
             val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             cached.firstOrNull { it.id == id } ?: FeedPost(
                 id = id,
                 author = myProfile.fullName.ifBlank { me },
                 authorAvatar = "",
-                timeAgo = "Your content",
+                timeAgo = if (item.has("view_count")) "Server content" else "Your content",
                 text = item.optString("text"),
-                likes = 0,
-                commentsCount = 0,
+                images = item.optString("image_url").takeIf { it.startsWith("https://") }?.let(::listOf).orEmpty(),
+                likes = item.optInt("like_count", 0),
+                commentsCount = item.optInt("comment_count", 0),
                 sharesCount = 0,
-                viewsCount = 0,
+                viewsCount = item.optInt("view_count", 0),
                 isReel = item.optString("type").equals("REEL", ignoreCase = true),
+                videoUrl = item.optString("video_url").takeIf { it.startsWith("https://") },
                 createdAt = item.optString("created_at"),
                 authorUsername = me,
             )
@@ -371,11 +380,12 @@ private fun BoostCampaignColumn(
     }
     val ownPosts = ownContent.filterNot { it.isReel }
     val ownReels = ownContent.filter { it.isReel }
-    val ownListings = remember(marketItems, me, ownedContent) {
+    val ownListings = remember(marketItems, me, ownedContent, ownedPages) {
         val cached = marketItems
-            .filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
+            .filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) && !it.isSold }
             .associateBy { it.id }
-        val server = ownedContent?.optJSONArray("market").objectList().mapNotNull { item ->
+        val listingRows = ownedPages["LISTING"] ?: ownedContent?.optJSONArray("market").objectList()
+        val server = listingRows.orEmpty().mapNotNull { item ->
             val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             BoostListingTarget(
                 id = id,
@@ -439,6 +449,12 @@ private fun BoostCampaignColumn(
         service.boostableContent()
             .onSuccess { ownedContent = it; contentError = null }
             .onFailure { contentError = "Unable to load all your content. Showing cached posts." }
+        for (type in listOf("POST","REEL","LISTING")) {
+            service.boostableContentPage(type,0).onSuccess { payload ->
+                ownedPages = ownedPages + (type to payload.optJSONArray("items").objectList())
+                ownedMore = if (payload.optBoolean("has_more")) ownedMore + type else ownedMore - type
+            }
+        }
         contentLoading = false
     }
 
@@ -651,7 +667,7 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownPosts.take(80), key = { it.id }) { post ->
+                                                items(ownPosts.filter { targetSearch.isBlank() || it.text.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { post ->
                                                     SelectablePostTarget(
                                                         post = post,
                                                         selected = targetId == post.id,
@@ -675,7 +691,7 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownReels.take(80), key = { it.id }) { reel ->
+                                                items(ownReels.filter { targetSearch.isBlank() || it.text.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { reel ->
                                                     SelectablePostTarget(
                                                         post = reel,
                                                         selected = targetId == reel.id,
@@ -705,7 +721,7 @@ private fun BoostCampaignColumn(
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                 contentPadding = PaddingValues(end = 16.dp),
                                             ) {
-                                                items(ownListings.take(80), key = { it.id }) { listing ->
+                                                items(ownListings.filter { targetSearch.isBlank() || it.title.contains(targetSearch,true) || it.id.contains(targetSearch,true) }, key = { it.id }) { listing ->
                                                     if (listing.listing != null) {
                                                         SelectableListingTarget(
                                                             listing = listing.listing,
@@ -723,6 +739,39 @@ private fun BoostCampaignColumn(
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                if (targetType != BlinkBoostTargetType.PROFILE) {
+                                    OutlinedTextField(
+                                        value = targetSearch,
+                                        onValueChange = { targetSearch = it.take(80) },
+                                        label = { Text("Search your ${targetType.name.lowercase()} content") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    if (targetType.name in ownedMore) {
+                                        OutlinedButton(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            enabled = !contentPageBusy && isOnline,
+                                            onClick = {
+                                                val type = targetType.name
+                                                contentPageBusy = true
+                                                scope.launch {
+                                                    service.boostableContentPage(type,ownedPages[type].orEmpty().size)
+                                                        .onSuccess { payload ->
+                                                            val updated = (ownedPages[type].orEmpty() +
+                                                                payload.optJSONArray("items").objectList())
+                                                                .distinctBy { it.optString("id") }
+                                                            ownedPages = ownedPages + (type to updated)
+                                                            ownedMore = if (payload.optBoolean("has_more"))
+                                                                ownedMore + type else ownedMore - type
+                                                            contentError = null
+                                                        }
+                                                        .onFailure { contentError = "Couldn't load more content. Retry." }
+                                                    contentPageBusy = false
+                                                }
+                                            },
+                                        ) { Text(if (contentPageBusy) "Loading…" else "Load more of your content") }
                                     }
                                 }
                                 contentError?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
