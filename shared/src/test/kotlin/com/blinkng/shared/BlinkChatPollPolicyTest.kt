@@ -62,4 +62,23 @@ class BlinkChatPollPolicyTest {
         assertFalse(BlinkChatPollPolicy.canVote(true, true, false))
         assertFalse(BlinkChatPollPolicy.canVote(true, false, true))
     }
+
+    @Test fun textPollsRenderBackToStructuredChoicesWithoutInventingVotes() {
+        val draft = BlinkChatPollPolicy.prepare("Campus meeting?", listOf("Morning", "Evening"))
+        val encoded = BlinkChatPollPolicy.textFallback(draft)
+        assertEquals(draft, BlinkChatPollPolicy.parseTextFallback(encoded))
+        assertNull(BlinkChatPollPolicy.parseTextFallback("Hello"))
+        assertNull(BlinkChatPollPolicy.parseTextFallback(
+            "📊 Poll question: Campus meeting?\n2. Morning\n1. Evening\n(Reply with your choice number)"
+        ))
+    }
+
+    @Test fun pollInputsCannotInjectFakeOptionsOrResults() {
+        assertTrue(runCatching {
+            BlinkChatPollPolicy.prepare("Meet?\nVote: 200", listOf("Yes", "No"))
+        }.isFailure)
+        assertTrue(runCatching {
+            BlinkChatPollPolicy.prepare("Meet?", listOf("Yes\n3. Other", "No"))
+        }.isFailure)
+    }
 }
