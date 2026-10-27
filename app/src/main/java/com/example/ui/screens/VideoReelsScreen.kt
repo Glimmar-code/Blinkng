@@ -167,7 +167,8 @@ fun VideoReelsScreen(
     onNotificationsClick: () -> Unit = {},
     onMenuClick: () -> Unit = {},
     hasUnreadNotifications: Boolean = false,
-    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    onReelFullscreenChange: (Boolean) -> Unit = {}
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
     var firstPageVisible by remember(currentUsername) { mutableStateOf(true) }
@@ -249,7 +250,8 @@ fun VideoReelsScreen(
                     onNotificationsClick = onNotificationsClick,
                     onMenuClick = onMenuClick,
                     hasUnreadNotifications = hasUnreadNotifications,
-                    onBottomBarVisibilityChange = onBottomBarVisibilityChange
+                    onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+                    onReelFullscreenChange = onReelFullscreenChange
                 )
             }
         }
@@ -377,7 +379,8 @@ private fun ReelsContent(
     onNotificationsClick: () -> Unit,
     onMenuClick: () -> Unit,
     hasUnreadNotifications: Boolean,
-    onBottomBarVisibilityChange: (Boolean) -> Unit
+    onBottomBarVisibilityChange: (Boolean) -> Unit,
+    onReelFullscreenChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val refreshScope = rememberCoroutineScope()
@@ -550,10 +553,12 @@ private fun ReelsContent(
     val animationScope = rememberCoroutineScope()
     val reducedMotion = rememberBlinkReduceMotion()
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
+    val latestReelFullscreenChange by rememberUpdatedState(onReelFullscreenChange)
     LaunchedEffect(initialReelId) {
         if (!initialReelId.isNullOrBlank()) expanded = true
     }
     LaunchedEffect(expanded, isScreenActive) {
+        latestReelFullscreenChange(expanded && isScreenActive)
         if (isScreenActive) latestBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
@@ -571,6 +576,7 @@ private fun ReelsContent(
     DisposableEffect(isScreenActive) {
         onDispose {
             if (isScreenActive && latestExpanded) latestBottomBarVisibilityChange(true)
+            if (isScreenActive) latestReelFullscreenChange(false)
         }
     }
     BackHandler(enabled = expanded && !isInteractionOverlayOpen) { expanded = false }
