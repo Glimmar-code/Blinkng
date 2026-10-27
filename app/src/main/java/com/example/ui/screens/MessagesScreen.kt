@@ -7,6 +7,7 @@ import com.blinkng.shared.BlinkChatPhotoAlbum
 import androidx.compose.runtime.Composable
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ChatPrivacySettings
 
 /**
  * Compatibility entry point for callers that still reference the original MessagesScreen.
@@ -96,6 +97,13 @@ fun ChatConversationView(
     convo: ChatConversation,
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onSendMessageWithReply: ((String, String?) -> Unit)? = null,
+    onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
+    onPresenceChange: (String) -> Unit = {},
+    interactionActions: ChatInteractionActions = ChatInteractionActions(),
+    chatPrivacySettings: ChatPrivacySettings = ChatPrivacySettings(),
+    allConversations: List<ChatConversation> = listOf(convo),
+    isLoadingMessages: Boolean = false,
     onSendVideo: (Uri) -> Unit = {},
     onSendAttachment: (Uri, BlinkChatAttachmentKind, Long, String, BlinkChatImageQuality, BlinkChatPhotoAlbum) -> Unit = { _, _, _, _, _, _ -> },
     onSendViewOncePicture: (Uri, String, BlinkChatImageQuality) -> Unit = { _, _, _ -> },
@@ -110,7 +118,7 @@ fun ChatConversationView(
     onLoadOlder: () -> Unit = {}
 ) {
     PremiumMessagesScreen(
-        conversations = listOf(convo),
+        conversations = allConversations,
         stories = emptyList(),
         activities = emptyList(),
         myAvatar = "",
@@ -120,7 +128,13 @@ fun ChatConversationView(
         onConversationFullScreenChange = {},
         onOpenConversation = {},
         onCloseConversation = onBack,
-        onSendMessage = { _, text, _ -> onSendMessage(text) },
+        onSendMessage = { _, text, replyTo ->
+            if (onSendMessageWithReply != null) onSendMessageWithReply(text, replyTo)
+            else onSendMessage(text)
+        },
+        onForwardMessage = onForwardMessage,
+        onPresenceChange = { _, state -> onPresenceChange(state) },
+        chatPrivacySettings = chatPrivacySettings,
         onSendVideo = { _, uri -> onSendVideo(uri) },
         onSendAttachment = { _, uri, kind ->
             val attachment = BlinkChatAttachmentKind.fromWireType(kind)
@@ -149,12 +163,12 @@ fun ChatConversationView(
         hasMoreMessages = { hasMoreMessages },
         isLoadingOlder = { isLoadingOlder },
         onLoadOlder = { onLoadOlder() },
-        isLoadingMessages = { false },
+        isLoadingMessages = { isLoadingMessages },
         onProfileClick = onProfileClick,
         onStoryClick = {},
         onAddStoryClick = {},
         onOpenActivity = {},
-        interactionActions = ChatInteractionActions(),
+        interactionActions = interactionActions,
         isConnected = isConnected,
         isLoading = false,
         isDark = isDark
