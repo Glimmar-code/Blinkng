@@ -245,6 +245,7 @@ fun CreatePostSheet(
     var pendingMediaSwitch by rememberSaveable { mutableStateOf<String?>(null) }
     var autosaveRestored by rememberSaveable { mutableStateOf(false) }
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var activeDraftId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = BlinkPostGrowthTips.feedCategories
@@ -335,6 +336,7 @@ fun CreatePostSheet(
         selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
+        activeDraftId = null
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
         PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
@@ -385,6 +387,8 @@ fun CreatePostSheet(
                 clientRequestId = value.optString("client_request_id")
                     .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
                     ?: clientRequestId
+                activeDraftId = value.optString("active_draft_id")
+                    .takeIf { it.isNotBlank() && it != "null" }
             }
         }
         autosaveRestored = true
@@ -411,7 +415,8 @@ fun CreatePostSheet(
         hideLikes,
         isDisappearing,
         audioTitle,
-        clientRequestId
+        clientRequestId,
+        activeDraftId
     ) {
         if (!autosaveRestored) return@LaunchedEffect
         val hasAnything = text.isNotBlank() ||
@@ -448,6 +453,7 @@ fun CreatePostSheet(
                 put("is_disappearing", isDisappearing)
                 put("audio_title", audioTitle)
                 put("client_request_id", clientRequestId)
+                put("active_draft_id", activeDraftId ?: JSONObject.NULL)
                 put("selected_tags", JSONArray(selectedTags))
             }
             PersistentTextDraftStore.writeValue(
@@ -694,8 +700,10 @@ fun CreatePostSheet(
             return
         }
 
+        val draftId = activeDraftId ?: "draft_${UUID.randomUUID()}"
         onSaveDraft(
             PostDraft(
+                id = draftId,
                 text = text,
                 faculty = profile.faculty,
                 imageUri = imagePayload(selectedImages),
@@ -723,6 +731,7 @@ fun CreatePostSheet(
                 }
             )
         )
+        activeDraftId = draftId
     }
 
     val currentHasContent by rememberUpdatedState(hasComposerInput)
@@ -1412,6 +1421,7 @@ fun CreatePostSheet(
                             DraftCard(
                                 draft = draft,
                                 onLoad = {
+                                    activeDraftId = draft.id
                                     text = draft.text
                                     selectedTags = draft.tags
                                     selectedImages = parseDraftImages(draft.imageUri)
