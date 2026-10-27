@@ -98,7 +98,9 @@ Supabase JWT server-side and stores a ledger row in
   contract. They fall back to Supabase only when R2 is deliberately disabled
   or the new function has not yet been deployed. They must not silently
   duplicate uploads after a real provider failure.
-- The website must use the same contract before the public cutover.
+- The website's public post/avatar/cover uploader now uses the same optional
+  signed R2 contract and deliberately retains the old Story route. Validate
+  cross-origin signed PUT/CORS in a real browser before any rollout.
 - Stories, Channels, private chat attachments, voice notes and view-once
   **stay on Supabase** until their private read/visibility rules, access-token
   refreshes, cache invalidation, deletion semantics and existing client
@@ -123,7 +125,7 @@ Supabase JWT server-side and stores a ledger row in
 - Resolve original URLs, thumbnails, multi-photo albums, private attachments,
   expired Stories, deleted messages, and view-once claims. Do not disclose
   signed chat object URLs through logs, public API feeds or cached HTML.
-- Test Android and Windows against staging: offline retries, large video
+- Test Android, Windows and Web against staging: offline retries, large video
   streaming, cancellation, multiple accounts, sharing, open-in-chat,
   posts/Reels playback, Story audiences, channel subscribers, and old-client
   compatibility. Test web parity.
