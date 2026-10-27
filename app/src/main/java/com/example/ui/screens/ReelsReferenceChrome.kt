@@ -289,8 +289,9 @@ internal fun ReelsReferenceChrome(
             tabs.forEach { tab ->
                 val active = tab == selectedTab
                 Column(
-                    Modifier.weight(1f).clickable { onSelectTab(tab) },
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    Modifier.weight(1f).fillMaxHeight().clickable { onSelectTab(tab) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = tab,
