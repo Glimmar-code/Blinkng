@@ -1781,6 +1781,11 @@ fun getCurrentUserId(): String? {
                     return@withContext null
                 }
 
+                BlinkR2PublicUploader.tryUpload(
+                    "profile", mimeType, bytes.size.toLong(),
+                    bytes.toRequestBody(mimeType.toMediaType())
+                )?.let { return@withContext it }
+
                 val extension =
                     when {
 
@@ -2686,6 +2691,11 @@ suspend fun uploadPostMedia(
                     return@withContext null
                 }
 
+                BlinkR2PublicUploader.tryUpload(
+                    if (isVideo) "reel" else "feed", mimeType, bytes.size.toLong(),
+                    bytes.toRequestBody(mimeType.toMediaType())
+                )?.let { return@withContext it }
+
                 val extension =
                     when {
 
@@ -2795,6 +2805,29 @@ suspend fun uploadPostMedia(
         val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return@withContext null
         val length = contentLength(context, uri)
         if (userId.isBlank() || length == 0L) return@withContext null
+
+        // Stream video to R2 rather than buffering on low-memory phones.
+        if (length > 0L) {
+            val body = object : RequestBody() {
+                override fun contentType() = mimeType.toMediaType()
+                override fun contentLength(): Long = length
+                override fun writeTo(sink: BufferedSink) {
+                    val stream = context.contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("Selected media is no longer available.")
+                    stream.use { input ->
+                        val chunk = ByteArray(64 * 1024)
+                        while (true) {
+                            val count = input.read(chunk)
+                            if (count < 0) break
+                            if (count > 0) sink.write(chunk, 0, count)
+                        }
+                    }
+                }
+            }
+            BlinkR2PublicUploader.tryUpload(
+                if (isVideo) "reel" else "feed", mimeType, length, body
+            )?.let { return@withContext it }
+        }
 
         if (length > 6L * 1024L * 1024L) {
             uploadPostMediaResumable(
@@ -3738,6 +3771,10 @@ suspend fun uploadPostMedia(
         if (userId.isBlank() || bytes.isEmpty() || bytes.size > 10 * 1024 * 1024) return@withContext null
         try {
             val normalizedMime = mimeType.ifBlank { "image/jpeg" }
+            BlinkR2PublicUploader.tryUpload(
+                "market", normalizedMime, bytes.size.toLong(),
+                bytes.toRequestBody(normalizedMime.toMediaType())
+            )?.let { return@withContext it }
             val extension = when {
                 normalizedMime.contains("png", true) -> "png"
                 normalizedMime.contains("webp", true) -> "webp"
@@ -3776,6 +3813,10 @@ suspend fun uploadPostMedia(
                 mimeType !in setOf("video/mp4", "video/webm")
             ) return@withContext null
             runCatching {
+                BlinkR2PublicUploader.tryUpload(
+                    "market", mimeType, bytes.size.toLong(),
+                    bytes.toRequestBody(mimeType.toMediaType())
+                )?.let { return@withContext it }
                 val ext = if (mimeType == "video/webm") "webm" else "mp4"
                 val path = "users/$userId/listings/${UUID.randomUUID()}.$ext"
                 val response = executeRequest(
