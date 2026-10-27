@@ -41,6 +41,7 @@ fun Modifier.trackContentExposure(
     contentId: String,
     currentlyDisplayedCount: Int,
     minVisibleMillis: Long = POST_QUALIFICATION_MS,
+    playbackActive: Boolean = true,
 ): Modifier {
     if (contentId.isBlank()) return this
     val appContext = LocalContext.current.applicationContext
@@ -60,10 +61,10 @@ fun Modifier.trackContentExposure(
         }
     }
 
-    LaunchedEffect(contentId, currentlyVisible, windowFocused, minVisibleMillis, wasRecorded) {
-        if (!currentlyVisible || !windowFocused || wasRecorded) return@LaunchedEffect
+    LaunchedEffect(contentId, currentlyVisible, windowFocused, playbackActive, minVisibleMillis, wasRecorded) {
+        if (!currentlyVisible || !windowFocused || !playbackActive || wasRecorded) return@LaunchedEffect
         delay(minVisibleMillis.coerceAtLeast(1_000L))
-        if (currentlyVisible && windowFocused && !wasRecorded) {
+        if (currentlyVisible && windowFocused && playbackActive && !wasRecorded) {
             wasRecorded = true
             ContentViewCoordinator.recordExposure(
                 context = appContext,
