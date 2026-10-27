@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.example.R
 import com.example.BuildConfig
 import com.example.ads.BlinkAdsRuntime
@@ -544,6 +545,7 @@ private fun ReelsContent(
     }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
     val animationScope = rememberCoroutineScope()
+    val reducedMotion = rememberBlinkReduceMotion()
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
     LaunchedEffect(initialReelId) {
         if (!initialReelId.isNullOrBlank()) expanded = true
@@ -552,7 +554,7 @@ private fun ReelsContent(
         if (isScreenActive) latestBottomBarVisibilityChange(!expanded)
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
-            animationSpec = spring(
+            animationSpec = if (reducedMotion) snap() else spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
                 stiffness = Spring.StiffnessMedium
             )
@@ -607,8 +609,7 @@ private fun ReelsContent(
                 override suspend fun onPreFling(available: Velocity): Velocity {
                     if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
                         val fastDownwardFlick = available.y > with(density) { 1100.dp.toPx() }
-                        val target = if (fastDownwardFlick) false
-                            else shouldKeepReelFullscreen(expansion.value)
+                        val target = !fastDownwardFlick
                         if (target == expanded) {
                             animationScope.launch {
                                 expansion.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
@@ -650,16 +651,14 @@ private fun ReelsContent(
                                         distance, -velocity.calculateVelocity().y,
                                         65.dp.toPx(), 28.dp.toPx(), 1100.dp.toPx()
                                     )
-                                val target = fastFlick || shouldExpandReelPreview(
-                                    expansion.value, distance, 65.dp.toPx()
-                                )
+                                val target = fastFlick
                                 if (target == expanded) animationScope.launch {
                                     expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
                                 }
                                 expanded = target
                             },
                             onDragCancel = {
-                                val target = expansion.value >= 0.5f
+                                val target = false
                                 if (target == expanded) animationScope.launch {
                                     expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
                                 }
@@ -1220,7 +1219,8 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
-                fillViewport = true,
+                // Preserve the complete source frame for square, landscape and portrait uploads.
+                fillViewport = false,
                 isActive = shouldPlayReel(
                     selected = isActive,
                     foreground = true,
@@ -1585,7 +1585,7 @@ private fun ReelPage(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .then(if (isPreview) Modifier else Modifier.navigationBarsPadding())
-                .padding(bottom = if (isPreview) 0.dp else 6.dp, start = 10.dp, end = 10.dp)
+                .padding(bottom = if (isPreview) 0.dp else 84.dp, start = 10.dp, end = 10.dp)
         )
     }
 }

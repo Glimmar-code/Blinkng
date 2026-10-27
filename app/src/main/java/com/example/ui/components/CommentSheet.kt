@@ -168,15 +168,16 @@ fun CommentSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.78f)
-                .padding(bottom = 16.dp)
+                .fillMaxHeight(0.64f)
+                .imePadding()
+                .padding(bottom = 12.dp)
         ) {
             val totalCommentCount = comments.sumOf { 1 + it.replies.size }
             Row(

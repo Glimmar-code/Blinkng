@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -108,14 +109,15 @@ internal fun BlinkChatPictureViewer(
     val elasticActivation = with(LocalDensity.current) { 110.dp.toPx() }
     val quickFlickMin = with(LocalDensity.current) { 28.dp.toPx() }
     val quickFlickVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     val animatedVerticalDrag by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(verticalDrag, elasticActivation),
-        animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(verticalDrag, elasticActivation),
+        animationSpec = if (draggingPicture || reducedMotion) snap() else spring(stiffness = Spring.StiffnessMedium),
         label = "chat_photo_vertical_drag"
     )
     val animatedHorizontalDrag by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(horizontalDrag, elasticActivation),
-        animationSpec = if (draggingPicture) snap() else spring(stiffness = Spring.StiffnessMedium),
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(horizontalDrag, elasticActivation),
+        animationSpec = if (draggingPicture || reducedMotion) snap() else spring(stiffness = Spring.StiffnessMedium),
         label = "chat_photo_horizontal_drag"
     )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }

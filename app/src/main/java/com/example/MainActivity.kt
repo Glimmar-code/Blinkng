@@ -1416,28 +1416,26 @@ fun MainAppContent(
     }
 
     var startReelComposer by rememberSaveable { mutableStateOf(false) }
+    var sharingPostId by rememberSaveable { mutableStateOf<String?>(null) }
+    var storySharePrefill by rememberSaveable { mutableStateOf("") }
+    var storyShareCardLabel by rememberSaveable { mutableStateOf("") }
+
+    // Sharing must work from Profile, Liked and Saved as well as the main Feed.
+    // Resolve from authenticated in-memory posts, not from unverified IDs or placeholders.
+    fun findShareablePost(postId: String): com.example.data.models.FeedPost? =
+        (uiState.posts + uiState.followingPosts + uiState.reels +
+            uiState.discoverPosts + uiState.profilePostsByUserId.values.flatten() +
+            uiState.myLikedPosts + uiState.mySavedPosts +
+            listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost))
+            .firstOrNull { it.id == postId }
 
     fun sharePostOrReel(postId: String) {
-        val post = (
-            uiState.posts +
-                uiState.followingPosts +
-                uiState.reels +
-                uiState.discoverPosts +
-                listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost)
-            ).firstOrNull { it.id == postId }
-        if (post == null) {
+        if (findShareablePost(postId) == null) {
             viewModel.showToast("This content is unavailable.")
             return
         }
-        viewModel.sharePost(postId)
-        ShareLinkManager.share(
-            context = context,
-            type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
-            id = post.id,
-            title = if (post.isReel) "Share reel" else "Share post",
-            message = post.text.take(180),
-            previewImageUrl = post.images.firstOrNull() ?: post.authorAvatar.takeIf { it.isNotBlank() }
-        )
+        // Keep Reels mounted while the user chooses a BLINK recipient or external app.
+        sharingPostId = postId
     }
 
     LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
@@ -1616,7 +1614,14 @@ fun MainAppContent(
                         // foreground destination may own an active Feed/Reels player.
                         isMainPageActive = selectedPage == page &&
                             pagerState.currentPage == page &&
-                            !pagerState.isScrollInProgress && mainPageSwipeEnabled,
+                            !pagerState.isScrollInProgress &&
+                            // Comments/share are overlays, not navigation away from Reels.
+                            // Keeping the page composed preserves the Media3 player,
+                            // its video frame and its exact playback position.
+                            (mainPageSwipeEnabled ||
+                                uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null),
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -1691,7 +1696,9 @@ fun MainAppContent(
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         unreadNotificationCount = uiState.activities.count { it.isUnread },
                         isInteractionOverlayOpen =
-                            uiState.activeCommentsPostId != null || uiState.activePostOptionsPost != null,
+                            uiState.activeCommentsPostId != null ||
+                                uiState.activePostOptionsPost != null ||
+                                sharingPostId != null,
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
@@ -2663,6 +2670,77 @@ fun MainAppContent(
             )
         }
 
+        sharingPostId?.let { requestedId ->
+            val sharedPost = findShareablePost(requestedId)
+            if (sharedPost == null) {
+                LaunchedEffect(requestedId) { sharingPostId = null }
+            } else {
+                val type = if (sharedPost.isReel) ShareContentType.REEL else ShareContentType.POST
+                val url = ShareLinkManager.generateShareLink(type, sharedPost.id)
+                BlinkNativeShareSheet(
+                    post = sharedPost,
+                    recentChats = uiState.conversations,
+                    suggestedUsers = (uiState.profiles + uiState.discoverProfiles).distinctBy { it.id },
+                    searchUsers = { query -> viewModel.searchMentionProfiles(query, limit = 60) },
+                    currentUsername = uiState.myProfile.username,
+                    onDismiss = { sharingPostId = null },
+                    onSendToUsers = { usernames ->
+                        usernames.distinctBy { it.trim().lowercase() }
+                            .take(15).forEach { username ->
+                                viewModel.sendMessage(username, url)
+                            }
+                        // One share event per explicit send action, not per selected recipient.
+                        if (usernames.isNotEmpty()) {
+                            viewModel.sharePost(sharedPost.id)
+                            viewModel.showToast("Queued ${usernames.size} share message(s). Check Messages for delivery.")
+                        }
+                        sharingPostId = null
+                    },
+                    onCopyLink = {
+                        ShareLinkManager.copyLink(context, type, sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onStory = {
+                        // Prefill the real permalink in Story composer, without claiming
+                        // to have published anything or bypassing the media picker.
+                        storySharePrefill = url
+                        storyShareCardLabel = listOf(
+                            sharedPost.author.trim(),
+                            sharedPost.text.trim().take(180)
+                        ).filter { it.isNotBlank() }.joinToString("\n")
+                        sharingPostId = null
+                        viewModel.openCreateStory(true)
+                    },
+                    onWhatsApp = {
+                        val text = listOfNotNull(sharedPost.text.take(140).takeIf { it.isNotBlank() }, url).joinToString("\n")
+                        var launched = false
+                        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+                            if (launched) break
+                            launched = runCatching {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    setPackage(pkg)
+                                    this.type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                })
+                                true
+                            }.getOrDefault(false)
+                        }
+                        if (!launched) ShareLinkManager.share(
+                            context, type, sharedPost.id, "Share on BLINK", sharedPost.text.take(140))
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    },
+                    onOtherApps = {
+                        ShareLinkManager.share(context, type, sharedPost.id,
+                            "Share on BLINK", sharedPost.text.take(180),
+                            sharedPost.images.firstOrNull())
+                        viewModel.sharePost(sharedPost.id)
+                        sharingPostId = null
+                    }
+                )
+            }
+        }
+
         // Modals: Comments Modal Sheet with reply & like interactions
         if (uiState.activeCommentsPostId != null && uiState.deepLinkedPost == null) {
             CommentSheet(
@@ -2993,8 +3071,16 @@ fun MainAppContent(
             CreateStoryScreen(
                 profile = uiState.myProfile,
                 isUploading = uiState.isCreatingStory,
-                onBack = { viewModel.openCreateStory(false) },
+                initialCaption = storySharePrefill,
+                initialShareCardLabel = storyShareCardLabel,
+                onBack = {
+                    storySharePrefill = ""
+                    storyShareCardLabel = ""
+                    viewModel.openCreateStory(false)
+                },
                 onPublish = { uri, caption, isVideo ->
+                    storySharePrefill = ""
+                    storyShareCardLabel = ""
                     viewModel.publishStory(uri, caption, isVideo)
                 }
             )

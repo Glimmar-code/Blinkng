@@ -68,7 +68,10 @@ fun Modifier.blinkHorizontalPageSwipe(
                         deltaY = finalY - down.position.y,
                         thresholdPx = thresholdPx,
                         handledByChild = handledByChild,
-                        velocityXPxPerSecond = velocity.calculateVelocity().x,
+                        velocityXPxPerSecond = BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                            finalX - down.position.x, velocity.calculateVelocity().x,
+                            change.uptimeMillis - down.uptimeMillis
+                        ),
                     )) {
                         -1 -> latestLeft()
                          1 -> latestRight()
