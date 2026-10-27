@@ -3429,6 +3429,7 @@ class DesktopSupabaseClient(
         isBlinkVip = isFutureTimestamp(row.optNullableString("blink_vip_until")),
         blinkVipUntil = row.optNullableString("blink_vip_until"),
         verifiedAtMillis = parseTimestampMillis(row.optNullableString("verified_at")),
+        verificationExpiresAtMillis = parseTimestampMillis(row.optNullableString("verification_expires_at")),
         profileViewsThisWeek = row.optInt("profile_views_this_week"),
         email = row.optNullableString("email"),
         phone = row.optNullableString("phone"),
