@@ -3976,6 +3976,9 @@ private suspend fun restoreSupabaseSession() {
                     throw IllegalStateException("The selected video could not be uploaded.")
                 }
 
+                if (supabaseService.getCurrentUserId() != userId) {
+                    throw IllegalStateException("Account changed while scheduling.")
+                }
                 val remotePost = post.copy(
                     author = profile.username,
                     authorAvatar = profile.avatarUrl,
@@ -4206,6 +4209,10 @@ private suspend fun restoreSupabaseSession() {
                     else -> JSONArray(uploadedImageUrls).toString()
                 }
 
+                // A queued upload must not post to another user after an account switch.
+                if (supabaseService.getCurrentUserId() != userId) {
+                    throw IllegalStateException("Account changed during upload.")
+                }
                 val finalIsReel = isReel || !uploadedVideoUrl.isNullOrBlank()
                 val resultPost = supabaseService.createFeedPost(
                     profile.username,
