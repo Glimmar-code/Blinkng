@@ -718,6 +718,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         )
                         saveLocalProfile(profile)
+                        loadDraftsFromPrefs()
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
                     }
@@ -2885,6 +2886,7 @@ private suspend fun restoreSupabaseSession() {
                     destination = authenticatedDestination(profile)
                 )
                 saveLocalProfile(profile)
+                loadDraftsFromPrefs()
                 fetchSupabaseData()
                 showToast(
                     if (profile.onboardingCompleted) "✨ Signed in as @${profile.username}"
@@ -3770,12 +3772,22 @@ private suspend fun restoreSupabaseSession() {
         persistCurrentFeed()
     }
 
-    private fun loadDraftsFromPrefs() {
-        try {
-            val raw = prefs.safeString("blink_saved_drafts_data", null).orEmpty()
-            if (raw.isBlank()) return
+    // Each account sees only its own phone drafts. The legacy global preference had
+    // no owner marker, so it must never be adopted by another signed-in account.
+    private fun draftStorageKey(): String? =
+        _uiState.value.myProfile.id.trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { "blink_saved_drafts_data_${it}" }
 
-            val drafts = if (raw.trimStart().startsWith("[")) {
+    private fun loadDraftsFromPrefs() {
+        val key = draftStorageKey()
+        if (key == null) {
+            _uiState.value = _uiState.value.copy(savedDrafts = emptyList())
+            return
+        }
+        try {
+            val raw = prefs.safeString(key, null).orEmpty()
+            val drafts = if (raw.isBlank()) emptyList() else {
                 val array = JSONArray(raw)
                 buildList {
                     for (index in 0 until array.length()) {
@@ -3784,36 +3796,11 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
                 }
-            } else {
-                // One-time migration from the legacy delimiter format.
-                buildList {
-                    for (item in raw.split(";;;DRAFT_DELIM;;;")) {
-                        if (item.isBlank()) continue
-                        val parts = item.split(":::FIELD:::")
-                        if (parts.size < 8) continue
-                        add(
-                            PostDraft(
-                                id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}",
-                                text = parts.getOrNull(1) ?: "",
-                                faculty = parts.getOrNull(2) ?: "SIMME",
-                                imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() },
-                                videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() },
-                                isReel = parts.getOrNull(5)?.toBoolean() ?: false,
-                                category = parts.getOrNull(6) ?: "Campus Life",
-                                audience = parts.getOrNull(7) ?: "Everyone",
-                                tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
-                                mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
-                                savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis(),
-                                textStyle = parts.getOrNull(11)?.takeIf { it.isNotBlank() }
-                            )
-                        )
-                    }
-                }.also(::saveDraftsToPrefs)
             }
-
             _uiState.value = _uiState.value.copy(savedDrafts = drafts)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load drafts", e)
+            Log.e(TAG, "Failed to load account-specific drafts", e)
+            _uiState.value = _uiState.value.copy(savedDrafts = emptyList())
         }
     }
 
@@ -3876,18 +3863,34 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private fun saveDraftsToPrefs(drafts: List<PostDraft>) {
-        try {
+    private fun saveDraftsToPrefs(drafts: List<PostDraft>): Boolean {
+        val key = draftStorageKey() ?: return false
+        return try {
             val serialized = JSONArray().apply {
                 drafts.forEach { put(postDraftToJson(it)) }
             }.toString()
-            prefs.edit().putString("blink_saved_drafts_data", serialized).apply()
+            prefs.edit().putString(key, serialized).commit()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save drafts", e)
+            Log.e(TAG, "Failed to save account-specific drafts", e)
+            false
         }
     }
-    fun saveDraft(draft: PostDraft) { val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("💾 Draft saved to phone storage") }
-    fun deleteDraft(draftId: String) { val updated = _uiState.value.savedDrafts.filter { it.id != draftId }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("🗑️ Draft deleted") }
+
+    fun saveDraft(draft: PostDraft) {
+        val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
+        if (saveDraftsToPrefs(updated)) {
+            _uiState.value = _uiState.value.copy(savedDrafts = updated)
+            showToast("Draft saved to this account on your phone.")
+        } else showToast("Couldn't save the draft. Sign in and try again.")
+    }
+
+    fun deleteDraft(draftId: String) {
+        val updated = _uiState.value.savedDrafts.filter { it.id != draftId }
+        if (saveDraftsToPrefs(updated)) {
+            _uiState.value = _uiState.value.copy(savedDrafts = updated)
+            showToast("Draft deleted.")
+        } else showToast("Couldn't delete the draft.")
+    }
 
     fun refreshScheduledPosts() {
         if (!_uiState.value.isOnline) return
@@ -4173,6 +4176,7 @@ private suspend fun restoreSupabaseSession() {
             "create_post_text",
             "create_post_poll_question",
             "create_post_poll_options",
+            "create_post_tags",
             "create_post_autosave_v2"
         ).forEach { key ->
             PersistentTextDraftStore.clearValue(appContext, key, scope)
