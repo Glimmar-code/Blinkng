@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
 import com.blinkng.shared.BlinkChatPollPolicy
+import com.blinkng.shared.BlinkChatContactCardPolicy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -118,7 +119,7 @@ internal fun BlinkChatExtrasDialog(
         isArticle && details.startsWith("https://", ignoreCase=true) ->
             "📰 ${title.trim()}\n${details.trim()}"
         isContact && contact != null ->
-            "👤 Contact: ${contact.first}\nPhone: ${contact.second}"
+            BlinkChatContactCardPolicy.encode(contact.first, contact.second)
         isPoll && pollDraft != null -> {
             // Until the server/native clients are deployed, send an honest text
             // fallback, never silently drop duplicate or ninth poll options.
