@@ -172,6 +172,9 @@ fun ProfileScreen(
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
     val overlayOffset = remember(profile.id) { Animatable(0f) }
+    // Apply finger motion in the draw layer, not by starting one coroutine
+    // for every pixel while the LazyColumn is being scrolled.
+    var overlayDragPx by remember(profile.id) { mutableFloatStateOf(Float.NaN) }
     val overlayScope = rememberCoroutineScope()
     val interactionRepository = remember { UserInteractionRepository() }
     // Preserve request UUID across retries so an unknown network outcome
@@ -374,7 +377,10 @@ fun ProfileScreen(
                 .align(Alignment.CenterStart)
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
+                .offset {
+                    IntOffset((if (overlayDragPx.isFinite()) overlayDragPx
+                        else overlayOffset.value).roundToInt(), 0)
+                }
                 .pointerInput(profile.id, overlayThresholdPx) {
                     var rawDrag = 0f
                     var tracker = VelocityTracker()
@@ -382,35 +388,37 @@ fun ProfileScreen(
                         onDragStart = {
                             rawDrag = 0f
                             tracker = VelocityTracker()
+                            overlayDragPx = overlayOffset.value
                         },
                         onHorizontalDrag = { change, dragAmount ->
-                            // Keep the original left-to-close direction; resist overshooting.
-                            rawDrag = (rawDrag + dragAmount).coerceAtMost(0f)
+                            // Standard Telegram back direction: drag RIGHT to uncover
+                            // the existing screen. A slow release springs to the start.
+                            rawDrag = (rawDrag + dragAmount).coerceAtLeast(0f)
                             tracker.addPosition(change.uptimeMillis, change.position)
                             change.consume()
-                            overlayScope.launch {
-                                overlayOffset.snapTo(
-                                    BlinkElasticGesturePhysics.visualDistance(rawDrag, overlayThresholdPx)
-                                )
-                            }
+                            overlayDragPx = rawDrag
                         },
                         onDragEnd = {
-                            val commit = rawDrag < 0f && BlinkElasticGesturePhysics.shouldCommit(
+                            val commit = rawDrag > 0f && BlinkElasticGesturePhysics.shouldCommit(
                                 rawDrag, tracker.calculateVelocity().x, overlayThresholdPx,
                                 28.dp.toPx(), 1100.dp.toPx()
                             )
                             overlayScope.launch {
+                                overlayOffset.snapTo(rawDrag)
+                                overlayDragPx = Float.NaN
                                 if (commit) onBack()
                                 else overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMedium
                                 ))
                             }
                         },
                         onDragCancel = {
                             overlayScope.launch {
+                                overlayOffset.snapTo(rawDrag)
+                                overlayDragPx = Float.NaN
                                 overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMedium
                                 ))
                             }
