@@ -83,6 +83,37 @@ class ReelsReferenceChromeTest {
     }
 
     @Test
+    fun uploadedMyStoryOpensViewerInsteadOfAddStory() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = listOf(
+                        Story(id = "story_me", username = "current", avatar = "",
+                            isUser = true, storyImage = "https://example.com/mine.jpg")
+                    ),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = { actions += "add" },
+                    onStoryClick = { actions += "open:${it.id}" },
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Open my story").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("open:story_me"), actions) }
+    }
+
+    @Test
     fun previewShowsReferenceNavigationAndRoutesRealActions() {
         var currentTab = "Reels"
         val actions = mutableListOf<String>()
