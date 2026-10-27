@@ -19,6 +19,11 @@ class NewMemberTests(unittest.TestCase):
             self.assertIn(s, code)
         self.assertIn("support@blink.com.ng", code)
 
+    def test_edge_function_auth_modes_are_pinned(self):
+        config = source("supabase/config.toml")
+        self.assertIn("[functions.send-essential-email]\nverify_jwt = false", config)
+        self.assertIn("[functions.blink-contact-discovery]\nverify_jwt = true", config)
+
     def test_contacts_are_opt_in_and_verification_gated(self):
         migration = source("supabase/migrations/20261027002000_private_contact_discovery.sql").lower()
         edge = source("supabase/functions/blink-contact-discovery/index.ts")
