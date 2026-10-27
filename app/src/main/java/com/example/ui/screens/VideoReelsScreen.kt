@@ -285,11 +285,25 @@ private sealed interface ReelPagerItem {
     data class Sponsored(val slot: Int) : ReelPagerItem
 }
 
+/**
+ * "For You" preserves the recommendation service order supplied by the backend.
+ * "Reels" is the chronological discovery lane instead of silently duplicating
+ * For You. ISO-8601 dates compare lexicographically; unknown dates remain in
+ * their original relative order at the end.
+ */
 internal fun selectReelsForTab(
     reels: List<FeedPost>,
     followingReels: List<FeedPost>,
     selectedTab: String
-): List<FeedPost> = if (selectedTab == "Following") followingReels else reels
+): List<FeedPost> = when (selectedTab) {
+    "Following" -> followingReels
+    "Reels" -> reels.withIndex()
+        .sortedWith(
+            compareByDescending<IndexedValue<FeedPost>> { it.value.createdAt.trim() }
+                .thenBy { it.index }
+        ).map { it.value }
+    else -> reels // Server-ranked discovery, never fabricate local personalization.
+}
 
 // Keep only the active decoder and the next video warm. Recreating the previous
 // decoder on every swipe can triple hardware surface/memory pressure.
