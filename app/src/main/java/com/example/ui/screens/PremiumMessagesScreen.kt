@@ -2280,9 +2280,16 @@ private fun PremiumChatDetail(
                                 if (activeVideoMessageId == message.id) activeVideoMessageId = null
                             },
                             onLegacyPollChoice = { index ->
-                                replyingTo = message
-                                editingMessage = null
-                                text = (index + 1).toString()
+                                if (text.isBlank() && editingMessage == null) {
+                                    replyingTo = message
+                                    text = (index + 1).toString()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Finish your current draft before choosing a poll reply.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
                             )
                         }
