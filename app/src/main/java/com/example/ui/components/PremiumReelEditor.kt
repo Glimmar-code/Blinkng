@@ -72,6 +72,8 @@ internal fun PremiumReelEditor(
     var rotation by remember(uri) { mutableFloatStateOf(0f) }
     var overlayText by remember(uri) { mutableStateOf("") }
     var sticker by remember(uri) { mutableStateOf("") }
+    var overlayStartMs by remember(uri) { mutableLongStateOf(0L) }
+    var overlayEndMs by remember(uri) { mutableLongStateOf(0L) }
     var musicUri by remember(uri) { mutableStateOf<String?>(null) }
     var isExporting by remember(uri) { mutableStateOf(false) }
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
@@ -128,7 +130,9 @@ internal fun PremiumReelEditor(
         rotationDegrees = rotation,
         overlayText = overlayText.trim(),
         sticker = sticker,
-        musicUri = musicUri
+        musicUri = musicUri,
+        overlayStartMs = overlayStartMs.coerceAtLeast(0L),
+        overlayEndMs = if (overlayEndMs == 0L) Long.MAX_VALUE else overlayEndMs
     )
     val hasPendingEdits = durationMs >= 500L && spec.hasChanges(durationMs)
     LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
@@ -157,7 +161,8 @@ internal fun PremiumReelEditor(
                 update = { it.player = player },
                 modifier = Modifier.fillMaxSize()
             )
-            if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+            if ((overlayText.isNotBlank() || sticker.isNotBlank()) &&
+                spec.overlayVisibleAt(positionMs)) {
                 Column(
                     modifier = Modifier.align(Alignment.Center).padding(horizontal = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -265,6 +270,26 @@ internal fun PremiumReelEditor(
                         onValueChange = { sticker = it.take(16) },
                         label = { Text("Sticker / emoji") }, singleLine = true,
                         enabled = !isExporting, modifier = Modifier.fillMaxWidth())
+                    if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+                        Text("Overlay timing", fontWeight = FontWeight.Medium, color = white,
+                            fontSize = 13.sp)
+                        val overlayStart = overlayStartMs.coerceIn(0L, durationMs)
+                        val overlayEnd = if (overlayEndMs == 0L) durationMs else
+                            overlayEndMs.coerceIn(overlayStart, durationMs)
+                        RangeSlider(
+                            value = overlayStart.toFloat()..overlayEnd.toFloat(),
+                            valueRange = 0f..durationMs.coerceAtLeast(500L).toFloat(),
+                            enabled = !isExporting && durationMs >= 500L,
+                            onValueChange = { range ->
+                                overlayStartMs = range.start.toLong().coerceIn(0L, durationMs)
+                                overlayEndMs = range.endInclusive.toLong()
+                                    .coerceIn(overlayStartMs + 1L, durationMs)
+                                player.seekTo(overlayStartMs)
+                            }
+                        )
+                        Text("${display(overlayStart)} – ${display(overlayEnd)}",
+                            fontSize = 12.sp, color = white)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             enabled = !isExporting,
