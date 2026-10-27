@@ -1147,6 +1147,9 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // A full-screen Reel owns horizontal gestures; the five-tab pager must not
+    // steal them from video controls or accidentally navigate to Market.
+    var isReelFullScreen by remember { mutableStateOf(false) }
     // Switching back to Home without leaving Android's Activity still counts as
     // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
     LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
@@ -1623,7 +1626,8 @@ fun MainAppContent(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4
+            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4 &&
+                !(pagerState.currentPage == 1 && isReelFullScreen)
         ) { page ->
             val tab = when (page) {
                 2 -> MainTab.MARKET
@@ -1758,6 +1762,9 @@ fun MainAppContent(
                         isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onReelFullscreenChange = { isExpanded ->
+                            isReelFullScreen = isExpanded
                         },
                         // Home now requests complete hide/show, never partial translation.
                         onBottomBarTravelChange = { _ -> }
