@@ -24,9 +24,9 @@ object BlinkElasticGesturePhysics {
     }
 
     /**
-     * Slow, incomplete drags snap back. A fast flick can commit sooner, but only
-     * with enough deliberate travel and a velocity in the same direction.
-     * A long deliberate drag also commits without demanding a fast swipe.
+     * Quick-action gestures commit only for deliberate, direction-matched fast flicks.
+     * Slow releases, even after long drags, spring back without taking the action.
+     * Platform-native scrolling and paging retain their own settling policy.
      */
     fun shouldCommit(
         distancePx: Float,
@@ -39,9 +39,8 @@ object BlinkElasticGesturePhysics {
             !activationPx.isFinite() || !minimumFlickPx.isFinite() ||
             !fastVelocityPxPerSecond.isFinite() ||
             activationPx <= 0f || minimumFlickPx <= 0f || fastVelocityPxPerSecond <= 0f) return false
-        return abs(distancePx) >= activationPx ||
-            (abs(distancePx) >= minimumFlickPx &&
-                abs(velocityPxPerSecond) >= fastVelocityPxPerSecond &&
-                distancePx * velocityPxPerSecond > 0f)
+        return abs(distancePx) >= minimumFlickPx &&
+            abs(velocityPxPerSecond) >= fastVelocityPxPerSecond &&
+            distancePx * velocityPxPerSecond > 0f
     }
 }
