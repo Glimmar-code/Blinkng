@@ -110,6 +110,8 @@ internal fun BlinkReferenceSearchScreen(
     val prefs = remember(context) { context.getSharedPreferences(REF_RECENTS_PREF, Context.MODE_PRIVATE) }
     var query by rememberSaveable(accountKey) { mutableStateOf("") }
     var category by rememberSaveable(accountKey) { mutableStateOf(ReferenceCategory.ALL) }
+    var visibleResultLimit by remember(accountKey) { mutableIntStateOf(20) }
+    LaunchedEffect(query, category) { visibleResultLimit = 20 }
     var recents by remember(accountKey) {
         mutableStateOf(
             prefs.getString(recentsKey, "").orEmpty().split(REF_RECENTS_SEPARATOR)
@@ -217,7 +219,7 @@ internal fun BlinkReferenceSearchScreen(
     val live = if (discovery.backendAvailable && discovery.query == query && !discovery.isLoading) discovery.results else emptyList()
     val livePeople = live.filter { it.type == DiscoveryResultType.PROFILE }
     val livePosts = live.filter { it.type == DiscoveryResultType.POST }
-    val limit = if (category == ReferenceCategory.ALL) 2 else 20
+    val limit = if (category == ReferenceCategory.ALL) 2 else visibleResultLimit
 
     if (showReferralDashboard) {
         BlinkReferGrowDialog(username = currentUsername, onDismiss = { showReferralDashboard = false })
@@ -559,6 +561,30 @@ internal fun BlinkReferenceSearchScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
+            if (category != ReferenceCategory.ALL) {
+                val remainingLocal = when (category) {
+                    ReferenceCategory.PEOPLE -> localPeople.size > visibleResultLimit
+                    ReferenceCategory.POSTS -> localPosts.size > visibleResultLimit
+                    else -> false
+                }
+                val moreResultsAvailable =
+                    (discovery.backendAvailable && discovery.hasMore) ||
+                        (discovery.backendAvailable && live.size > visibleResultLimit) ||
+                        remainingLocal
+                if (discovery.isLoadingMore) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(12.dp))
+                } else if (moreResultsAvailable) {
+                    TextButton(
+                        onClick = {
+                            visibleResultLimit += 20
+                            if (discovery.backendAvailable && discovery.hasMore &&
+                                live.size <= visibleResultLimit) search.loadMore()
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Load more results", color = fg) }
+                }
+            }
             Spacer(Modifier.height(22.dp))
         }
     }
