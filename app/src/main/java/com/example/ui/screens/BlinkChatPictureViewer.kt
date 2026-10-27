@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -97,15 +98,16 @@ internal fun BlinkChatPictureViewer(
     var pictureDragY by remember(message.id) { mutableFloatStateOf(0f) }
     var pictureIsDragging by remember(message.id) { mutableStateOf(false) }
     val pictureSwipeThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     val pictureDisplayX by animateFloatAsState(
-        BlinkElasticGesturePhysics.visualDistance(pictureDragX, pictureSwipeThresholdPx),
-        if (pictureIsDragging) snap() else spring(
+        if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(pictureDragX, pictureSwipeThresholdPx),
+        if (pictureIsDragging || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
         ), label = "pictureElasticHorizontal"
     )
     val pictureDisplayY by animateFloatAsState(
-        BlinkElasticGesturePhysics.visualDistance(pictureDragY, pictureSwipeThresholdPx),
-        if (pictureIsDragging) snap() else spring(
+        if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(pictureDragY, pictureSwipeThresholdPx),
+        if (pictureIsDragging || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
         ), label = "pictureElasticVertical"
     )
