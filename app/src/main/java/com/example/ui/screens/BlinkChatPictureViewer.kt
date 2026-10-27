@@ -7,18 +7,19 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.animation.core.Spring
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Spring
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import com.blinkng.shared.BlinkElasticGesturePhysics
-import kotlin.math.abs
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,7 +35,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import com.blinkng.shared.BlinkChatDownloadPolicy
+import com.blinkng.shared.BlinkChatMediaGesturePolicy
+import com.blinkng.shared.BlinkChatMediaSwipe
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +51,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ChatMessage
 import com.example.data.repository.ProfileRepository
 import com.example.data.local.BlinkStickerLibrary
+import com.example.data.local.BlinkPrivateMediaVault
 import com.example.data.supabase.BlinkGroupAvatarClient
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.CancellationException
@@ -81,6 +87,8 @@ internal fun BlinkChatPictureViewer(
     onNext: () -> Unit = {},
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
+    photoIndex: Int = 0,
+    totalPhotos: Int = 0,
     groupConversationId: String? = null,
     onAskBlinkAi: (Uri) -> Unit = {},
 ) {
@@ -94,32 +102,40 @@ internal fun BlinkChatPictureViewer(
     var rotateDegrees by remember(message.id) { mutableIntStateOf(0) }
     var zoom by remember(message.id) { mutableFloatStateOf(1f) }
     var pan by remember(message.id) { mutableStateOf(Offset.Zero) }
-    var pictureDragX by remember(message.id) { mutableFloatStateOf(0f) }
-    var pictureDragY by remember(message.id) { mutableFloatStateOf(0f) }
-    var pictureIsDragging by remember(message.id) { mutableStateOf(false) }
-    val pictureSwipeThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+    var horizontalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var verticalDrag by remember(message.id) { mutableFloatStateOf(0f) }
+    var viewerHeightPx by remember { mutableFloatStateOf(1200f) }
+    var draggingPicture by remember(message.id) { mutableStateOf(false) }
+    val elasticActivation = with(LocalDensity.current) { 110.dp.toPx() }
+    val quickFlickMin = with(LocalDensity.current) { 28.dp.toPx() }
+    val quickFlickVelocity = with(LocalDensity.current) { 1100.dp.toPx() }
     val reducedMotion = rememberBlinkReduceMotion()
-    val pictureDisplayX by animateFloatAsState(
-        if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(pictureDragX, pictureSwipeThresholdPx),
-        if (pictureIsDragging || reducedMotion) snap() else spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
-        ), label = "pictureElasticHorizontal"
+    val animatedVerticalDrag by animateFloatAsState(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(verticalDrag, elasticActivation),
+        animationSpec = if (draggingPicture || reducedMotion) snap() else spring(stiffness = Spring.StiffnessMedium),
+        label = "chat_photo_vertical_drag"
     )
-    val pictureDisplayY by animateFloatAsState(
-        if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(pictureDragY, pictureSwipeThresholdPx),
-        if (pictureIsDragging || reducedMotion) snap() else spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium
-        ), label = "pictureElasticVertical"
+    val animatedHorizontalDrag by animateFloatAsState(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(horizontalDrag, elasticActivation),
+        animationSpec = if (draggingPicture || reducedMotion) snap() else spring(stiffness = Spring.StiffnessMedium),
+        label = "chat_photo_horizontal_drag"
     )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var pendingEditedUri by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var stickerEditingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
     var savingSticker by remember(message.id) { mutableStateOf(false) }
     var settingGroupIcon by remember(message.id) { mutableStateOf(false) }
+    var vaultOpen by remember(message.id) { mutableStateOf(false) }
+    var vaultBusy by remember(message.id) { mutableStateOf(false) }
     var downloadJob by remember(message.id) { mutableStateOf<Job?>(null) }
     var progress by remember(message.id) { mutableIntStateOf(-1) }
     var downloadError by remember(message.id) { mutableStateOf<String?>(null) }
+    // A private local copy is separate from an explicitly exported gallery photo.
     var savedUri by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var galleryUri by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var pendingLocalAction by remember(message.id) { mutableStateOf<String?>(null) }
     var reactionMenu by remember { mutableStateOf(false) }
     val time = remember(message.rawTimestamp, message.timestamp) {
         runCatching {
@@ -128,11 +144,93 @@ internal fun BlinkChatPictureViewer(
             )
         }.getOrDefault(message.timestamp)
     }
+
+    fun preparePrivateCopy() {
+        if (downloadJob?.isActive == true) return
+        downloadError = null
+        progress = 0
+        downloadJob = scope.launch {
+            runCatching {
+                preparePrivateChatPhoto(context, message.attachedImageUrl!!) { progress = it }
+            }.onSuccess { savedUri = it; progress = 100 }
+                .onFailure {
+                    downloadError = if (it is CancellationException) null
+                        else "Could not prepare the private picture. Try again."
+                    pendingLocalAction = null
+                    progress = -1
+                }
+        }
+    }
+    // Public gallery export must be an explicit action, not an editing prerequisite.
+    fun downloadToGallery() {
+        if (downloadJob?.isActive == true) return
+        downloadError = null
+        progress = 0
+        downloadJob = scope.launch {
+            runCatching {
+                saveChatPhotoToGallery(context, message.attachedImageUrl!!) {
+                    progress = it
+                }
+            }.onSuccess { galleryUri = it; progress = 100 }
+                .onFailure {
+                    downloadError = if (it is CancellationException) null
+                        else "Download failed. Tap download to retry."
+                    pendingLocalAction = null
+                    progress = -1
+                }
+        }
+    }
+    fun requestLocalAction(action: String) {
+        moreOpen = false
+        pendingLocalAction = action
+        val ready = if (action == "gallery") galleryUri != null else savedUri != null
+        if (!ready && downloadJob?.isActive != true) {
+            confirmation = if (action == "gallery") "gallery_download" else "private_copy_required"
+        }
+    }
+    LaunchedEffect(savedUri, galleryUri, pendingLocalAction) {
+        val action = pendingLocalAction ?: return@LaunchedEffect
+        val local = (if (action == "gallery") galleryUri else savedUri)
+            ?: return@LaunchedEffect
+        pendingLocalAction = null
+        when (action) {
+            "edit" -> editingPhoto = local
+            "share", "external_search" -> {
+                if (action == "external_search") {
+                    confirmation = "external_search"
+                } else runCatching {
+                    context.startActivity(Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = context.contentResolver.getType(local) ?: "image/*"
+                            putExtra(Intent.EXTRA_STREAM, local)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, "Share picture"
+                    ))
+                }.onFailure { downloadError = "No compatible sharing app available." }
+            }
+            "gallery" -> runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(local, "image/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            }.onFailure { downloadError = "No compatible gallery app available." }
+            "sticker", "ai", "group", "profile", "vault" -> confirmation = action
+            "wallpaper" -> runCatching {
+                context.startActivity(
+                    android.app.WallpaperManager.getInstance(context)
+                        .getCropAndSetWallpaperIntent(local)
+                )
+            }.onFailure { downloadError = "Wallpaper setting unavailable on this device." }
+        }
+    }
     DisposableEffect(message.id) { onDispose { downloadJob?.cancel() } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false
     )) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize()
+            .onSizeChanged { viewerHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+            .background(Color.Black.copy(alpha =
+                BlinkChatMediaGesturePolicy.backdropAlpha(animatedVerticalDrag, viewerHeightPx)))) {
             AsyncImage(
                 model = message.attachedImageUrl,
                 contentDescription = "Full-size shared photo",
@@ -140,77 +238,109 @@ internal fun BlinkChatPictureViewer(
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer {
                         rotationZ = rotateDegrees.toFloat()
-                        scaleX = zoom
-                        scaleY = zoom
-                        translationX = pan.x + pictureDisplayX
-                        translationY = pan.y + pictureDisplayY
+                        val dismissFraction = (kotlin.math.abs(animatedVerticalDrag) /
+                            viewerHeightPx).coerceIn(0f, .18f)
+                        scaleX = zoom * (1f - dismissFraction)
+                        scaleY = zoom * (1f - dismissFraction)
+                        translationX = pan.x + animatedHorizontalDrag
+                        translationY = pan.y + animatedVerticalDrag
                     }
-                    .pointerInput(message.id) {
-                        detectTransformGestures { _,delta,scale,_ ->
-                            zoom = (zoom * scale).coerceIn(1f,4f)
-                            pan = if (zoom > 1f) pan + delta else Offset.Zero
-                        }
-                    }
-                    .pointerInput(message.id, zoom, hasPrevious, hasNext, pictureSwipeThresholdPx) {
-                        var sumX = 0f
-                        var sumY = 0f
-                        var axis = 0 // 1 = horizontal photo paging; 2 = vertical dismiss
-                        var velocity = VelocityTracker()
-                        detectDragGestures(
-                            onDragStart = {
-                                sumX = 0f
-                                sumY = 0f
-                                axis = 0
-                                velocity = VelocityTracker()
-                                pictureDragX = 0f
-                                pictureDragY = 0f
-                                pictureIsDragging = true
-                            },
-                            onDrag = { change, delta ->
-                                // A zoomed photo belongs to pan/zoom, not page navigation.
-                                if (zoom <= 1.05f) {
-                                    sumX += delta.x
-                                    sumY += delta.y
-                                    if (axis == 0) {
-                                        if (abs(sumX) > abs(sumY) * 1.25f &&
-                                            abs(sumX) >= 8.dp.toPx()) axis = 1
-                                        else if (abs(sumY) > abs(sumX) * 1.25f &&
-                                            abs(sumY) >= 8.dp.toPx()) axis = 2
+                    .pointerInput(message.id, hasPrevious, hasNext) {
+                        // One gesture owner prevents pan/zoom, horizontal paging, and
+                        // vertical dismissal from fighting for pointer consumption.
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var travelX = 0f
+                            var travelY = 0f
+                            val velocityTracker = VelocityTracker()
+                            var multiTouch = false
+                            var previousPinchDistance = 0f
+                            var previousCentroid: Offset? = null
+                            do {
+                                val event = awaitPointerEvent()
+                                val active = event.changes.filter { it.pressed }
+                                if (active.size >= 2) {
+                                    multiTouch = true
+                                    val centroid = (active[0].position + active[1].position) / 2f
+                                    val distance = (active[0].position - active[1].position).getDistance()
+                                    if (previousPinchDistance > 0f) {
+                                        zoom = (zoom * distance / previousPinchDistance)
+                                            .coerceIn(1f, 4f)
+                                        pan = if (zoom > 1f) pan +
+                                            (centroid - (previousCentroid ?: centroid))
+                                            else Offset.Zero
                                     }
-                                    if (axis != 0) {
-                                        velocity.addPosition(change.uptimeMillis, change.position)
-                                        if (axis == 1) pictureDragX = sumX else pictureDragY = sumY
-                                        change.consume()
+                                    previousPinchDistance = distance
+                                    previousCentroid = centroid
+                                    horizontalDrag = 0f
+                                    verticalDrag = 0f
+                                    active.forEach { it.consume() }
+                                } else if (active.size == 1) {
+                                    val change = active.first()
+                                    val delta = change.position - change.previousPosition
+                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                    if (delta.getDistance() > 0f) draggingPicture = true
+                                    if (zoom > BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
+                                        pan += delta
+                                    } else if (!multiTouch) {
+                                        travelX += delta.x
+                                        travelY += delta.y
+                                        if (kotlin.math.abs(travelY) >
+                                            kotlin.math.abs(travelX) * 1.25f) {
+                                            verticalDrag = travelY
+                                            horizontalDrag = 0f
+                                        } else if (kotlin.math.abs(travelX) >
+                                            kotlin.math.abs(travelY) * 1.25f) {
+                                            horizontalDrag = travelX
+                                            verticalDrag = 0f
+                                        }
                                     }
+                                    // Leave stationary taps to detectTapGestures below.
+                                    if (delta.getDistance() > 0f) change.consume()
                                 }
-                            },
-                            onDragEnd = {
-                                val pxVelocity = velocity.calculateVelocity()
-                                val navigate = axis == 1 &&
+                            } while (event.changes.any { it.pressed })
+                            if (!multiTouch) {
+                                val direction = BlinkChatMediaGesturePolicy.action(
+                                    travelX, travelY,
+                                    BlinkChatMediaGesturePolicy.SWIPE_THRESHOLD_DP.dp.toPx(),
+                                    zoom, hasPrevious, hasNext
+                                )
+                                val speed = velocityTracker.calculateVelocity()
+                                val horizontalIntent = kotlin.math.abs(travelX) >
+                                    kotlin.math.abs(travelY) * 1.25f
+                                val verticalIntent = kotlin.math.abs(travelY) >
+                                    kotlin.math.abs(travelX) * 1.25f
+                                val nextByFlick = zoom <= 1.05f && horizontalIntent &&
+                                    travelX < 0f && hasNext &&
                                     BlinkElasticGesturePhysics.shouldCommit(
-                                        pictureDragX, pxVelocity.x, pictureSwipeThresholdPx,
-                                        28.dp.toPx(), 1100.dp.toPx()
+                                        travelX, speed.x, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
                                     )
-                                val dismiss = axis == 2 &&
+                                val previousByFlick = zoom <= 1.05f && horizontalIntent &&
+                                    travelX > 0f && hasPrevious &&
                                     BlinkElasticGesturePhysics.shouldCommit(
-                                        pictureDragY, pxVelocity.y, pictureSwipeThresholdPx,
-                                        28.dp.toPx(), 1100.dp.toPx()
+                                        travelX, speed.x, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
                                     )
-                                pictureIsDragging = false
-                                pictureDragX = 0f
-                                pictureDragY = 0f
+                                val dismissByFlick = zoom <= 1.05f && verticalIntent &&
+                                    BlinkElasticGesturePhysics.shouldCommit(
+                                        travelY, speed.y, elasticActivation,
+                                        quickFlickMin, quickFlickVelocity
+                                    )
                                 when {
-                                    navigate && sumX < 0f && hasNext -> onNext()
-                                    navigate && sumX > 0f && hasPrevious -> onPrevious()
-                                    dismiss -> onDismiss()
+                                    direction == BlinkChatMediaSwipe.DISMISS || dismissByFlick -> onDismiss()
+                                    direction == BlinkChatMediaSwipe.NEXT || nextByFlick -> onNext()
+                                    direction == BlinkChatMediaSwipe.PREVIOUS || previousByFlick -> onPrevious()
                                 }
-                            },
-                            onDragCancel = {
-                                pictureIsDragging = false
-                                pictureDragX = 0f
-                                pictureDragY = 0f
                             }
-                        )
+                            draggingPicture = false
+                            horizontalDrag = 0f
+                            verticalDrag = 0f
+                            if (zoom <= BlinkChatMediaGesturePolicy.ZOOM_LOCK_THRESHOLD) {
+                                zoom = 1f
+                                pan = Offset.Zero
+                            }
+                        }
                     }
                     .pointerInput(message.id) {
                         detectTapGestures(
@@ -234,27 +364,19 @@ internal fun BlinkChatPictureViewer(
                     }
                     Column(Modifier.weight(1f)) {
                         Text(senderName, fontSize = 16.sp, color = Color.White, maxLines = 1)
-                        Text(time, fontSize = 11.sp, color = Color.White.copy(alpha = .75f))
+                        Text(
+                            if (totalPhotos > 1 && photoIndex in 1..totalPhotos)
+                                "$time  ·  $photoIndex of $totalPhotos"
+                            else time,
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = .75f),
+                            maxLines = 1
+                        )
                     }
                     IconButton(onClick = {
                         if (downloadJob?.isActive == true) {
                             downloadJob?.cancel()
-                        } else {
-                            downloadError = null
-                            progress = 0
-                            downloadJob = scope.launch {
-                                runCatching {
-                                    saveChatPhotoToGallery(context, message.attachedImageUrl!!) {
-                                        progress = it
-                                    }
-                                }.onSuccess { savedUri = it; progress = 100 }
-                                    .onFailure {
-                                        downloadError = if (it is CancellationException) null
-                                            else "Download failed. Tap download to retry."
-                                        progress = -1
-                                    }
-                            }
-                        }
+                        } else downloadToGallery()
                     }) {
                         Icon(
                             if (downloadJob?.isActive == true) Icons.Default.Close
@@ -273,24 +395,11 @@ internal fun BlinkChatPictureViewer(
                         }
                         DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                             DropdownMenuItem(text = { Text("Edit") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; editingPhoto = savedUri },
-                                leadingIcon = { Icon(Icons.Default.Edit,null) })
-                            DropdownMenuItem(text = { Text("Share") }, enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(Intent.createChooser(
-                                                Intent(Intent.ACTION_SEND).apply {
-                                                    type = "image/jpeg"
-                                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }, "Share picture"
-                                            ))
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.Share, null) })
+                                onClick = { requestLocalAction("edit") },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) })
+                            DropdownMenuItem(text = { Text("Share") },
+                                onClick = { requestLocalAction("share") },
+                                leadingIcon = { Icon(Icons.Default.Share, null) })
                             DropdownMenuItem(text = { Text(if (message.isStarred) "Unstar" else "Star") },
                                 onClick = { moreOpen = false; onStar() },
                                 leadingIcon = { Icon(Icons.Default.Star, null) })
@@ -303,62 +412,39 @@ internal fun BlinkChatPictureViewer(
                             DropdownMenuItem(text = { Text("Rotate") },
                                 onClick = { moreOpen = false; rotateDegrees = (rotateDegrees + 90) % 360 },
                                 leadingIcon = { Icon(Icons.Default.RotateRight, null) })
-                            DropdownMenuItem(text = { Text("View in gallery") }, enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                                setDataAndType(uri, "image/*")
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            })
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
-                            DropdownMenuItem(
-                                text = { Text("Create reusable sticker") },
-                                enabled = savedUri != null && !savingSticker,
-                                onClick = { moreOpen = false; confirmation = "sticker" },
-                                leadingIcon = { Icon(Icons.Default.EmojiEmotions, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Ask BLINK AI about this picture") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; confirmation = "ai" },
-                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
-                            )
+                            DropdownMenuItem(text = { Text("View in gallery") },
+                                onClick = { requestLocalAction("gallery") },
+                                leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) })
+                            DropdownMenuItem(text = { Text("Save in encrypted Media Vault") },
+                                enabled = !vaultBusy,
+                                onClick = { requestLocalAction("vault") },
+                                leadingIcon = { Icon(Icons.Default.Lock, null) })
+                            DropdownMenuItem(text = { Text("Open my Media Vault") },
+                                onClick = { moreOpen = false; vaultOpen = true },
+                                leadingIcon = { Icon(Icons.Default.Folder, null) })
+                            DropdownMenuItem(text = { Text("Create reusable sticker") },
+                                enabled = !savingSticker,
+                                onClick = { requestLocalAction("sticker") },
+                                leadingIcon = { Icon(Icons.Default.EmojiEmotions, null) })
+                            DropdownMenuItem(text = { Text("Ask BLINK AI about this picture") },
+                                onClick = { requestLocalAction("ai") },
+                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
                             if (!groupConversationId.isNullOrBlank()) {
-                                DropdownMenuItem(
-                                    text = { Text("Set as group picture") },
-                                    enabled = savedUri != null && !settingGroupIcon,
-                                    onClick = { moreOpen = false; confirmation = "group" },
-                                    leadingIcon = { Icon(Icons.Default.Groups, null) }
-                                )
+                                DropdownMenuItem(text = { Text("Set as group picture") },
+                                    enabled = !settingGroupIcon,
+                                    onClick = { requestLocalAction("group") },
+                                    leadingIcon = { Icon(Icons.Default.Groups, null) })
                             }
                             DropdownMenuItem(text = { Text("Set as my profile picture") },
-                                enabled = savedUri != null && !settingProfilePhoto,
-                                onClick = { moreOpen = false; confirmation = "profile" },
+                                enabled = !settingProfilePhoto,
+                                onClick = { requestLocalAction("profile") },
                                 leadingIcon = { Icon(Icons.Default.AccountCircle, null) })
                             DropdownMenuItem(text = { Text("Set as wallpaper") },
-                                enabled = savedUri != null,
-                                onClick = {
-                                    moreOpen = false
-                                    savedUri?.let { uri ->
-                                        runCatching {
-                                            context.startActivity(
-                                                android.app.WallpaperManager
-                                                    .getInstance(context)
-                                                    .getCropAndSetWallpaperIntent(uri)
-                                            )
-                                        }.onFailure {
-                                            downloadError = "Wallpaper setting unavailable on this device."
-                                        }
-                                    }
-                                }, leadingIcon = { Icon(Icons.Default.Wallpaper, null) })
+                                onClick = { requestLocalAction("wallpaper") },
+                                leadingIcon = { Icon(Icons.Default.Wallpaper, null) })
                             DropdownMenuItem(text = { Text("Search with another app") },
-                                enabled = savedUri != null,
-                                onClick = { moreOpen = false; confirmation = "external_search" },
-                                leadingIcon = { Icon(Icons.Default.Search,null) })
+                                onClick = { requestLocalAction("external_search") },
+                                leadingIcon = { Icon(Icons.Default.Search, null) })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Delete for me") },
                                 onClick = { moreOpen = false; onDeleteForMe() },
@@ -381,7 +467,7 @@ internal fun BlinkChatPictureViewer(
                         Text("Downloading · $progress% · Tap ✕ to cancel",
                             color = Color.White.copy(alpha = .8f), fontSize = 11.sp)
                     }
-                    if (savedUri != null) {
+                    if (galleryUri != null) {
                         Text("Saved to gallery", color = Color(0xFF62D9A3), fontSize = 11.sp)
                     }
                     downloadError?.let { Text(it, color = Color(0xFFFF8585), fontSize = 11.sp) }
@@ -440,32 +526,65 @@ internal fun BlinkChatPictureViewer(
             }
         }
     }
+    if (vaultOpen) BlinkMediaVaultDialog(onDismiss = { vaultOpen = false })
+    stickerEditingPhoto?.let { source ->
+        BlinkUniversalPhotoEditor(
+            originalUri = source,
+            onEdited = { editedUri ->
+                stickerEditingPhoto = null
+                savingSticker = true
+                scope.launch {
+                    val outcome = runCatching {
+                        val id = SupabaseService().getCurrentUserId()
+                            ?: error("Sign in to save stickers.")
+                        BlinkStickerLibrary.create(context, id, editedUri)
+                    }
+                    downloadError = outcome.fold(
+                        onSuccess = { "Sticker saved in your private library." },
+                        onFailure = { it.message ?: "Couldn't save sticker." }
+                    )
+                    savingSticker = false
+                }
+            },
+            onDismiss = { stickerEditingPhoto = null }
+        )
+    }
     editingPhoto?.let { saved ->
         BlinkUniversalPhotoEditor(
             originalUri=saved,
             onEdited={ result ->
                 editingPhoto=null
-                scope.launch {
-                    runCatching { saveLocalChatPhotoToGallery(context,result) }
-                        .onSuccess { savedUri=it; downloadError=null; confirmation="edit_saved" }
-                        .onFailure { downloadError="Edited picture could not be saved to gallery." }
-                }
+                // Editing a received photo does not imply consent to save it publicly.
+                pendingEditedUri = result
+                confirmation = "edit_save_required"
             },
             onDismiss={editingPhoto=null}
         )
     }
     if (confirmation != null) {
         AlertDialog(
-            onDismissRequest={confirmation=null},
+            onDismissRequest={
+                if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
+                if (confirmation == "edit_save_required") pendingEditedUri = null
+                confirmation = null
+            },
             title={Text(when(confirmation) {
+                "private_copy_required" -> "Prepare private picture?"
+                "gallery_download" -> "Save picture to gallery?"
                 "external_search" -> "Share photo with another app?"
                 "profile" -> "Use this picture as your BLINK avatar?"
                 "group" -> "Set this group picture?"
                 "sticker" -> "Save as reusable sticker?"
+                "vault" -> "Encrypt picture in Media Vault?"
                 "ai" -> "Send image to BLINK AI?"
-                else -> "Edited copy created"
+                "edit_save_required" -> "Save edited copy to gallery?"
+                else -> "Picture action"
             })},
             text={Text(when(confirmation) {
+                "private_copy_required" ->
+                    "BLINK will prepare a temporary app-private copy for this action. It will not appear in your gallery unless you save it separately."
+                "gallery_download" ->
+                    "Save this picture to your device gallery? Other gallery apps may be able to see it."
                 "external_search" ->
                     "Another app may upload or analyze this image. Choose only an app you trust."
                 "profile" ->
@@ -473,28 +592,38 @@ internal fun BlinkChatPictureViewer(
                 "group" ->
                     "Only group owners and admins can change this picture. It will be visible to group members."
                 "sticker" ->
-                    "Save a reusable copy in this device's private sticker library. Do not save someone else's private photo without permission."
+                    "Open the editor to crop, draw and add text before saving this private sticker. Do not reuse someone's private photo without permission."
+                "vault" ->
+                    "Save this received picture as an encrypted, device-only copy? Your vault is account-scoped, not backed up or synced, and may be lost if you uninstall BLINK."
                 "ai" ->
                     "BLINK AI may process the selected picture. It will be attached to a draft; nothing is sent until you press Send."
+                "edit_save_required" ->
+                    "Your original message is unchanged. Save your edited picture to the device gallery, or discard this edit."
                 else -> "Your original picture in BLINK has not been changed."
             })},
             confirmButton={TextButton(onClick={
-                if (confirmation=="sticker") {
-                    val image = savedUri
-                    if (image != null) {
-                        savingSticker=true
+                if (confirmation=="private_copy_required") {
+                    preparePrivateCopy()
+                } else if (confirmation=="gallery_download") {
+                    downloadToGallery()
+                } else if (confirmation=="vault") {
+                    savedUri?.let { image ->
+                        vaultBusy = true
                         scope.launch {
-                            val outcome=runCatching {
-                                val id=SupabaseService().getCurrentUserId()
-                                    ?: error("Sign in to save stickers.")
-                                BlinkStickerLibrary.create(context,id,image)
+                            val result = runCatching {
+                                BlinkPrivateMediaVault.add(context, image)
                             }
-                            downloadError=outcome.fold(
-                                onSuccess={ "Sticker saved. Open Attachments → Stickers to reuse." },
-                                onFailure={ it.message ?: "Couldn't save sticker." })
-                            savingSticker=false
+                            downloadError = result.fold(
+                                onSuccess = { "Photo encrypted in your private Media Vault." },
+                                onFailure = { it.message ?: "Unable to save to Media Vault." }
+                            )
+                            vaultBusy = false
                         }
                     }
+                } else if (confirmation=="sticker") {
+                    // Editing a private copy never alters the original received message.
+                    // The user explicitly completes the editor before the sticker is saved.
+                    stickerEditingPhoto = savedUri
                 } else if (confirmation=="ai") {
                     savedUri?.let(onAskBlinkAi)
                 } else if (confirmation=="group") {
@@ -542,6 +671,20 @@ internal fun BlinkChatPictureViewer(
                             settingProfilePhoto=false
                         }
                     }
+                } else if (confirmation=="edit_save_required") {
+                    pendingEditedUri?.let { edited ->
+                        scope.launch {
+                            runCatching { saveLocalChatPhotoToGallery(context, edited) }
+                                .onSuccess {
+                                    galleryUri = it
+                                    downloadError = "Edited picture saved to gallery."
+                                }
+                                .onFailure {
+                                    downloadError = "Could not save edited picture to gallery."
+                                }
+                        }
+                    }
+                    pendingEditedUri = null
                 } else if (confirmation=="external_search") {
                     savedUri?.let { uri ->
                         runCatching {
@@ -557,7 +700,11 @@ internal fun BlinkChatPictureViewer(
                 }
                 confirmation=null
             }) { Text("Continue") }},
-            dismissButton={TextButton(onClick={confirmation=null}){Text("Cancel")}}
+            dismissButton={TextButton(onClick={
+                if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
+                if (confirmation == "edit_save_required") pendingEditedUri = null
+                confirmation = null
+            }){Text(if (confirmation == "edit_save_required") "Discard" else "Cancel")}}
         )
     }
 }
@@ -594,11 +741,70 @@ private suspend fun saveLocalChatPhotoToGallery(context: Context, localUri: Uri)
         }
     }
 
+/**
+ * Consent-triggered, app-private temporary image. The configured FileProvider only
+ * grants access to chosen recipient apps; opening the editor never saves to gallery.
+ */
+private suspend fun preparePrivateChatPhoto(
+    context: Context, remoteUrl: String, onProgress: (Int) -> Unit
+): Uri = withContext(Dispatchers.IO) {
+    require(BlinkChatDownloadPolicy.acceptsSource(remoteUrl)) {
+        "A secure picture URL is required."
+    }
+    val privateDir = File(context.cacheDir, "blink-share").apply {
+        check(isDirectory || mkdirs()) { "Cannot create a private picture cache." }
+    }
+    val cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+    privateDir.listFiles()?.forEach { old ->
+        if (old.isFile && old.name.startsWith("blink-chat-") && old.lastModified() < cutoff) {
+            old.delete()
+        }
+    }
+    val local = File.createTempFile("blink-chat-", ".jpg", privateDir)
+    try {
+        val req = Request.Builder().url(remoteUrl).get().build()
+        OkHttpClient().newCall(req).execute().use { response ->
+            if (!response.isSuccessful || !response.request.url.isHttps) {
+                throw IOException("Image unavailable or redirected insecurely (${response.code})")
+            }
+            val mime = response.header("Content-Type")?.substringBefore(';')?.trim()
+                ?.lowercase()
+            if (!BlinkChatDownloadPolicy.acceptsMime(mime)) throw IOException("Not an image.")
+            val body = response.body ?: throw IOException("Image response was empty.")
+            val maxBytes = BlinkChatDownloadPolicy.MAX_IMAGE_BYTES
+            val total = body.contentLength()
+            if (!BlinkChatDownloadPolicy.acceptsLength(total)) throw IOException("Image is too large.")
+            var received = 0L
+            local.outputStream().use { output ->
+                body.byteStream().use { input ->
+                    val buffer = ByteArray(16_384)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val n = input.read(buffer)
+                        if (n == -1) break
+                        received += n
+                        if (received > maxBytes) throw IOException("Image is too large.")
+                        output.write(buffer, 0, n)
+                        if (total > 0) withContext(Dispatchers.Main) {
+                            onProgress((received * 100 / total).toInt().coerceIn(0, 99))
+                        }
+                    }
+                }
+            }
+            if (received == 0L) throw IOException("Image response was empty.")
+        }
+        FileProvider.getUriForFile(context, "${context.packageName}.chatfiles", local)
+    } catch (error: Throwable) {
+        local.delete()
+        throw error
+    }
+}
+
 /** User-triggered MediaStore write; never changes the remote or original image. */
 private suspend fun saveChatPhotoToGallery(
     context: Context, remoteUrl: String, onProgress: (Int) -> Unit
 ): Uri = withContext(Dispatchers.IO) {
-    require(remoteUrl.startsWith("https://")) { "An HTTPS photo URL is required." }
+    require(BlinkChatDownloadPolicy.acceptsSource(remoteUrl)) { "An HTTPS photo URL is required." }
     // Never create an orphan MediaStore item on legacy Android versions.
     require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         "Saving to gallery needs Android 10 or newer."
@@ -617,9 +823,15 @@ private suspend fun saveChatPhotoToGallery(
     try {
         val req = Request.Builder().url(remoteUrl).get().build()
         OkHttpClient().newCall(req).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Image unavailable (${response.code})")
+            if (!response.isSuccessful || !response.request.url.isHttps) {
+                throw IOException("Image unavailable or redirected insecurely (${response.code})")
+            }
+            val mime = response.header("Content-Type")
+            if (!BlinkChatDownloadPolicy.acceptsMime(mime)) throw IOException("Not an image.")
             val body = response.body ?: throw IOException("Image response was empty.")
             val total = body.contentLength()
+            val maxBytes = BlinkChatDownloadPolicy.MAX_IMAGE_BYTES
+            if (!BlinkChatDownloadPolicy.acceptsLength(total)) throw IOException("Image is too large.")
             resolver.openOutputStream(uri)?.use { output ->
                 body.byteStream().use { stream ->
                     val buffer = ByteArray(16_384)
@@ -630,6 +842,7 @@ private suspend fun saveChatPhotoToGallery(
                         if (n == -1) break
                         output.write(buffer, 0, n)
                         saved += n
+                        if (saved > maxBytes) throw IOException("Image is too large.")
                         if (total > 0) withContext(Dispatchers.Main) {
                             onProgress((saved * 100 / total).toInt().coerceIn(0, 99))
                         }

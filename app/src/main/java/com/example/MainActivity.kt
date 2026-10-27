@@ -16,7 +16,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
@@ -74,7 +73,6 @@ import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
 import com.blinkng.shared.BlinkStoreAvailability
-import com.blinkng.shared.BlinkSwipeNavigation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -633,6 +631,15 @@ class MainActivity : ComponentActivity() {
             val snackbarHostState = remember { SnackbarHostState() }
             // Covers auth/session restoration too: returning users must see the intro.
             var showStartupIntro by remember { mutableStateOf(true) }
+            var introAnimationFinished by remember { mutableStateOf(false) }
+            // Never reveal the legacy black SPLASH placeholder after the wordmark.
+            // Keep the final BLINK frame visible until a real destination is ready.
+            LaunchedEffect(introAnimationFinished, uiState.destination) {
+                if (introAnimationFinished && uiState.destination != AppDestination.SPLASH) {
+                    startupIntroComplete = true
+                    showStartupIntro = false
+                }
+            }
             // Ad consent and rewarded-ad loading compete with first-frame rendering.
             // Run them only after the exact approved BLINK intro finishes.
             LaunchedEffect(showStartupIntro) {
@@ -1099,7 +1106,7 @@ class MainActivity : ComponentActivity() {
                 // how quickly a cached session transitions from SPLASH to MAIN.
                 if (showStartupIntro) {
                     com.blinkng.shared.brand.BlinkBeyondLinkIntro(
-                        onFinished = { startupIntroComplete = true; showStartupIntro = false },
+                        onFinished = { introAnimationFinished = true },
                         modifier = Modifier.fillMaxSize()
                             .zIndex(1000f)
                             .pointerInput(Unit) {
@@ -1140,6 +1147,9 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    // A full-screen Reel owns horizontal gestures; the five-tab pager must not
+    // steal them from video controls or accidentally navigate to Market.
+    var isReelFullScreen by remember { mutableStateOf(false) }
     // Switching back to Home without leaving Android's Activity still counts as
     // a foreground visit. Scoped stale checks avoid redundant whole-app syncs.
     LaunchedEffect(uiState.selectedTab, uiState.feedSubTab, uiState.myProfile.id) {
@@ -1544,11 +1554,12 @@ fun MainAppContent(
     }
     val pagerState = rememberPagerState(
         initialPage = selectedPage,
-        pageCount = { if (selectedPage in 0..4) 5 else 8 }
+        // Keep page count constant: rebuilding pager topology when navigating to
+        // Search/Leaderboard/Game could reset the ongoing drag and flash a blank frame.
+        pageCount = { 8 }
     )
     var requestedPage by remember { mutableIntStateOf(selectedPage) }
     val latestSelectedPage by rememberUpdatedState(selectedPage)
-    val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
 
     LaunchedEffect(selectedPage) {
         requestedPage = selectedPage
@@ -1615,7 +1626,8 @@ fun MainAppContent(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4
+            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4 &&
+                !(pagerState.currentPage == 1 && isReelFullScreen)
         ) { page ->
             val tab = when (page) {
                 2 -> MainTab.MARKET
@@ -1624,14 +1636,10 @@ fun MainAppContent(
                 6 -> MainTab.LEADERBOARD
                 else -> MainTab.HOME
             }
-            val pageDistance = (pagerState.currentPage - page) +
-                pagerState.currentPageOffsetFraction
-            Box(modifier = Modifier.fillMaxSize().graphicsLayer {
-                val scale = if (reducePageMotion) 1f else BlinkSwipeNavigation.scale(pageDistance)
-                scaleX = scale
-                scaleY = scale
-                alpha = if (reducePageMotion) 1f else BlinkSwipeNavigation.alpha(pageDistance)
-            }) {
+            // Telegram-like native paging: the outgoing page follows the finger
+            // and exposes its full-size neighbour. Never scale or fade the whole
+            // surface, which caused dark seams and made text look jittery.
+            Box(modifier = Modifier.fillMaxSize()) {
             when (tab) {
                 MainTab.HOME -> {
                     PremiumFeedScreen(
@@ -1754,6 +1762,9 @@ fun MainAppContent(
                         isBottomNavigationVisible = isBottomBarVisibleByScroll,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
+                        },
+                        onReelFullscreenChange = { isExpanded ->
+                            isReelFullScreen = isExpanded
                         },
                         // Home now requests complete hide/show, never partial translation.
                         onBottomBarTravelChange = { _ -> }
@@ -2433,12 +2444,18 @@ fun MainAppContent(
             }
         }
 
+        // Hold outgoing route content through its exit animation. Otherwise a
+        // null ViewModel destination removes the whole page one frame early.
+        var previousPost by remember { mutableStateOf(uiState.deepLinkedPost) }
+        LaunchedEffect(uiState.deepLinkedPost) {
+            uiState.deepLinkedPost?.let { previousPost = it }
+        }
         AnimatedVisibility(
             visible = uiState.deepLinkedPost != null,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.deepLinkedPost?.let { post ->
+            (uiState.deepLinkedPost ?: previousPost)?.let { post ->
                 SharedPostScreen(
                     post = post,
                     currentUsername = uiState.myProfile.username,
@@ -2463,12 +2480,16 @@ fun MainAppContent(
         }
 
         // Sub-screen Overlays: Product Detail
+        var previousProduct by remember { mutableStateOf(uiState.viewingProduct) }
+        LaunchedEffect(uiState.viewingProduct) {
+            uiState.viewingProduct?.let { previousProduct = it }
+        }
         AnimatedVisibility(
             visible = uiState.viewingProduct != null,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.viewingProduct?.let { product ->
+            (uiState.viewingProduct ?: previousProduct)?.let { product ->
                 ProductDetailScreen(
                     item = product,
                     onBack = { viewModel.closeProductDetail() },
@@ -2509,25 +2530,18 @@ fun MainAppContent(
             }
         }
 
-        // Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging
+        // Keep profiles rendered while sliding out to reveal the originating page.
+        // All detail routes enter from the right and leave to the right.
+        var previousProfile by remember { mutableStateOf(uiState.viewingProfile) }
+        LaunchedEffect(uiState.viewingProfile) {
+            uiState.viewingProfile?.let { previousProfile = it }
+        }
         AnimatedVisibility(
             visible = uiState.viewingProfile != null,
-            enter = slideInHorizontally(
-                initialOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 280,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            ) + fadeIn(androidx.compose.animation.core.tween(180)),
-            exit = slideOutHorizontally(
-                targetOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 230,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            ) + fadeOut(androidx.compose.animation.core.tween(160))
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.viewingProfile?.let { profile ->
+            (uiState.viewingProfile ?: previousProfile)?.let { profile ->
                 val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
@@ -2564,7 +2578,16 @@ fun MainAppContent(
                 ProfileScreen(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
-                    initialTab = if (isMyProfile && showSavedProfile) 5 else 0,
+                    initialTab = if (isMyProfile && showSavedProfile) 7 else 0,
+                    storyForProfile = uiState.stories.firstOrNull { story ->
+                        val belongsToProfile = if (isMyProfile) {
+                            story.isUser || story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        } else {
+                            story.username.equals(currentProfileToDisplay.username, ignoreCase = true)
+                        }
+                        belongsToProfile && (story.storyImage.isNotBlank() || story.caption.isNotBlank())
+                    },
+                    onOpenProfileStory = { story -> viewModel.openStory(story) },
                     userPosts = profilePosts,
                     isPostsLoading = isProfilePostsLoading,
                     hasPostsLoadError = profilePostsLoadFailed,
@@ -2587,7 +2610,7 @@ fun MainAppContent(
                     onOpenPost = { postId ->
                         (profilePosts + profileLikedPosts + profileSavedPosts)
                             .firstOrNull { it.id == postId }
-                            ?.let { viewModel.openFeedPostDetails(it) }
+                            ?.let { viewModel.openProfilePost(it) }
                     },
                     onCommentPost = { viewModel.openCommentsForPost(it) },
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
@@ -2623,6 +2646,7 @@ fun MainAppContent(
                             "market" -> viewModel.setTab(MainTab.MARKET)
                             "connect" -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
                             "messages" -> viewModel.setTab(MainTab.MESSAGES)
+                            "leaderboard" -> viewModel.navigateToPrimaryTab(MainTab.LEADERBOARD)
                         }
                     },
                     onTopAction = { action ->

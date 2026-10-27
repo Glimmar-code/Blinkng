@@ -5,6 +5,7 @@ import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkReplySwipePhysics
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import com.blinkng.shared.BlinkChatMediaAccessPolicy
 
 import com.example.ui.components.BlinkSkeletonChatHistory
 
@@ -93,6 +94,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
@@ -197,6 +200,7 @@ import com.example.ui.theme.BlinkMessageTheme
 import com.example.ui.theme.MessagePalette
 import com.example.ui.theme.MessageThemeMode
 import com.example.ui.theme.messagePalette
+import com.example.ui.theme.referenceChatPalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -345,10 +349,10 @@ fun PremiumMessagesScreen(
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // The inbox remains available for the entrance/exit transition.
-                    // Do not keep a blurred offscreen inbox alive during full-screen chat.
-                    if (activeConversation == null || !isConversationFullScreen) {
-                        PremiumMessagesHome(
+                    // Telegram-style interactive back needs the actual previous
+                    // conversation list underneath the chat even at full screen.
+                    // Do not blank it while the top screen follows the finger.
+                    PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
                             myAvatar = myAvatar,
@@ -367,27 +371,29 @@ fun PremiumMessagesScreen(
                             isConnected = isConnected,
                             isLoading = isLoading,
                             isDark = isDark,
-                            onVisibleInboxReceipt = onVisibleInboxReceipt
+                            // Hidden inbox rows must not mark conversations read.
+                            onVisibleInboxReceipt = { conversationId, receiptId ->
+                                if (!chatSlideVisible) onVisibleInboxReceipt(conversationId, receiptId)
+                            }
                         )
-                    }
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
                         enter = slideInHorizontally(
-                            initialOffsetX = { -it },
-                            animationSpec = tween(420, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(260)),
+                            initialOffsetX = { it },
+                            animationSpec = tween(260, easing = FastOutSlowInEasing)
+                        ),
                         exit = slideOutHorizontally(
-                            targetOffsetX = { -it },
-                            animationSpec = tween(390, easing = FastOutSlowInEasing)
-                        ) + fadeOut(tween(240))
+                            targetOffsetX = { it },
+                            animationSpec = tween(240, easing = FastOutSlowInEasing)
+                        )
                     ) {
                         val displayedConversation = activeConversation ?: retainedActiveConversation
                         if (displayedConversation != null) {
                             PremiumMessagesMasterDetail(
                                 conversations = conversations,
                                 activeConversation = displayedConversation,
-                                palette = palette,
+                                palette = referenceChatPalette(palette),
                                 isFullScreen = isConversationFullScreen,
                                 onFullScreenChange = onConversationFullScreenChange,
                                 onOpenConversation = onOpenConversation,
@@ -468,9 +474,17 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeLeftSwipeToClose(
+/** Pure direction lock for Telegram-style chat back. Vertical scroll and zoom win. */
+internal fun isTelegramChatBackIntent(
+    deltaX: Float,
+    deltaY: Float,
+    touchSlopPx: Float
+): Boolean = deltaX.isFinite() && deltaY.isFinite() && touchSlopPx.isFinite() &&
+    touchSlopPx >= 0f && deltaX > touchSlopPx && deltaX > abs(deltaY) * 1.35f
+
+private fun Modifier.observeRightSwipeToClose(
     thresholdPx: Float,
-    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
     onDragProgress: (Float) -> Unit,
     onRelease: () -> Unit
 ): Modifier = pointerInput(thresholdPx) {
@@ -480,21 +494,29 @@ private fun Modifier.observeLeftSwipeToClose(
         tracker.addPosition(down.uptimeMillis, down.position)
         var committed = false
         var childHandled = false
+        var visualDragActive = false
+        val touchSlopPx = viewConfiguration.touchSlop
         while (true) {
             // Final pass lets a photo carousel or child swipe claim its own gesture.
             // This observer never consumes pointer changes from the conversation.
             val event = awaitPointerEvent(PointerEventPass.Final)
+            if (event.changes.size != 1) childHandled = true
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
             if (change.pressed && change.isConsumed) childHandled = true
             tracker.addPosition(change.uptimeMillis, change.position)
             val horizontal = change.position.x - down.position.x
             val vertical = change.position.y - down.position.y
-            val leftIntent = horizontal < 0f && -horizontal > abs(vertical) * 1.35f
+            val rightIntent = isTelegramChatBackIntent(horizontal, vertical, touchSlopPx)
             if (change.pressed) {
-                if (!childHandled && leftIntent) onDragProgress(horizontal)
-                else onDragProgress(0f)
+                if (!childHandled && rightIntent) {
+                    visualDragActive = true
+                    onDragProgress(horizontal - touchSlopPx)
+                } else if (visualDragActive) {
+                    visualDragActive = false
+                    onDragProgress(0f)
+                }
             } else {
-                committed = !childHandled && leftIntent && BlinkElasticGesturePhysics.shouldCommit(
+                committed = !childHandled && rightIntent && BlinkElasticGesturePhysics.shouldCommit(
                     horizontal, BlinkElasticGesturePhysics.resolvedFlickVelocity(
                         horizontal, tracker.calculateVelocity().x, change.uptimeMillis - down.uptimeMillis
                     ), thresholdPx,
@@ -504,7 +526,7 @@ private fun Modifier.observeLeftSwipeToClose(
             }
         }
         onRelease()
-        if (committed) onSwipeLeft()
+        if (committed) onSwipeRight()
     }
 }
 
@@ -543,9 +565,11 @@ private fun PremiumMessagesMasterDetail(
     var closeDragPx by remember(activeConversation.partnerUsername) { mutableStateOf(0f) }
     var closeDragging by remember(activeConversation.partnerUsername) { mutableStateOf(false) }
     val closeVisual by animateFloatAsState(
-        targetValue = if (chatReducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(closeDragPx, swipeThresholdPx),
+        // Follow the user's finger instead of the old capped rubber offset.
+        // The inbox remains fully drawn underneath the chat during the drag.
+        targetValue = if (chatReducedMotion) 0f else closeDragPx,
         animationSpec = if (closeDragging || chatReducedMotion) snap() else spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium
         ), label = "chatElasticClose"
     )
@@ -553,11 +577,11 @@ private fun PremiumMessagesMasterDetail(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { translationX = closeVisual }
+            .graphicsLayer { translationX = closeVisual.coerceAtMost(size.width) }
             .semantics { contentDescription = "Chat" }
-            .observeLeftSwipeToClose(
+            .observeRightSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeLeft = onCloseConversation,
+                onSwipeRight = onCloseConversation,
                 onDragProgress = { closeDragging = true; closeDragPx = it },
                 onRelease = { closeDragging = false; closeDragPx = 0f }
             )
@@ -760,9 +784,9 @@ private fun PremiumMessagesHome(
     isDark: Boolean,
     onVisibleInboxReceipt: (String, String) -> Unit
 ) {
+    val channelContext = androidx.compose.ui.platform.LocalContext.current
     var query by rememberPersistentTextState(key = "message_home_search")
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
-    val channelContext = androidx.compose.ui.platform.LocalContext.current
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
     var showSearch by rememberSaveable { mutableStateOf(query.isNotBlank()) }
     var showAll by rememberSaveable { mutableStateOf(false) }
@@ -950,6 +974,41 @@ private fun MessageBackground(
             .fillMaxSize()
             .background(palette.backgroundBrush())
     ) {
+        if (palette.mode == MessageThemeMode.DARK &&
+            palette.incomingBubble == Color(0xFF202C33)) {
+            // Subtle original doodle wallpaper in the WhatsApp-reference conversation.
+            // Canvas vectors stay device-resolution independent and require no assets.
+            Canvas(Modifier.fillMaxSize()) {
+                val spacing = 98.dp.toPx()
+                val ink = Color(0xFF22323B).copy(alpha = .5f)
+                val line = 1.dp.toPx()
+                var col = 0
+                var x = 18.dp.toPx()
+                while (x < size.width) {
+                    var row = 0
+                    var y = 22.dp.toPx()
+                    while (y < size.height) {
+                        val shift = if (row % 2 == 0) 0f else 32.dp.toPx()
+                        val center = Offset(x + shift, y)
+                        val radius = if ((row + col) % 3 == 0) 17.dp.toPx()
+                            else 11.dp.toPx()
+                        drawCircle(ink, radius, center,
+                            style = Stroke(width = line))
+                        if ((row + col) % 2 == 0) {
+                            drawLine(ink, center - Offset(radius * .5f, 0f),
+                                center + Offset(radius * .5f, 0f), strokeWidth = line)
+                        } else {
+                            drawCircle(ink, 3.dp.toPx(), center,
+                                style = Stroke(width = line))
+                        }
+                        row++
+                        y += spacing
+                    }
+                    col++
+                    x += spacing
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1556,8 +1615,39 @@ private fun PremiumChatDetail(
     )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    var chatExtraMode by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var selectedContact by remember(conversation.id) { mutableStateOf<Pair<String,String>?>(null) }
+    val contactPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.query(uri,
+                    arrayOf(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+                    ), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val name = cursor.getString(0).orEmpty().take(100)
+                        val number = cursor.getString(1).orEmpty().take(60)
+                        if (name.isNotBlank() && number.isNotBlank()) name to number else null
+                    } else null
+                }
+            }.onSuccess { info ->
+                if (info != null) {
+                    selectedContact = info
+                    chatExtraMode = "contact"
+                } else Toast.makeText(context, "No phone number selected.", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Contact unavailable.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     var showStickers by remember(conversation.id) { mutableStateOf(false) }
     var aiPhotoUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
+    var aiAudioUri by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var viewedImageMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var historicalViewerPhotos by remember(conversation.id) { mutableStateOf<List<ChatMessage>>(emptyList()) }
@@ -1630,6 +1720,26 @@ private fun PremiumChatDetail(
         onPresenceChange("online")
     }
 
+    var galleryPermissionVersion by remember { mutableIntStateOf(0) }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        galleryPermissionVersion++
+    }
+    fun askForGalleryPermission() {
+        galleryPermissionLauncher.launch(
+            when {
+                android.os.Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                )
+                android.os.Build.VERSION.SDK_INT >= 33 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES
+                )
+                else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        )
+    }
     val photoAlbumPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
@@ -1700,16 +1810,39 @@ private fun PremiumChatDetail(
         viewOncePictureChoice = false
         onPresenceChange("online")
     }
+    var pendingVideoReview by remember(conversation.id) { mutableStateOf<Uri?>(null) }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendVideo(uri)
+        if (uri != null) pendingVideoReview = uri
         onPresenceChange("online")
     }
+    var pendingFileReview by remember(conversation.id) { mutableStateOf<Pair<Uri, Boolean>?>(null) }
+    var scanningDocument by remember(conversation.id) { mutableStateOf(false) }
+    val documentScanPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { pages ->
+        if (pages.isNotEmpty() && !scanningDocument) {
+            scanningDocument = true
+            scrollScope.launch {
+                runCatching {
+                    com.example.media.BlinkChatDocumentScanner.fromPhotos(
+                        context, pages.take(10)
+                    )
+                }.onSuccess { pdf ->
+                    pendingFileReview = pdf to false
+                }.onFailure {
+                    Toast.makeText(context,
+                        it.message ?: "Cannot scan these pages.", Toast.LENGTH_LONG).show()
+                }
+                scanningDocument = false
+            }
+        }
+    }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) onSendAttachment(uri, "audio")
+        if (uri != null) pendingFileReview = uri to true
         onPresenceChange("online")
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) onSendAttachment(uri, "document")
+        if (uri != null) pendingFileReview = uri to false
         onPresenceChange("online")
     }
     val startDictation = rememberSpeechInput { spoken ->
@@ -2145,6 +2278,7 @@ private fun PremiumChatDetail(
                 onValueChange = { text = it },
                 palette = palette,
                 onAttachment = { showAttachmentSheet = true },
+                onCamera = { requestChatCamera() },
                 onDictation = startDictation,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
@@ -2160,11 +2294,19 @@ private fun PremiumChatDetail(
 
     viewedImageMessage?.let { requestedImage ->
         val message = conversation.messages.firstOrNull { it.id == requestedImage.id } ?: requestedImage
-        val normalPictures = remember(conversation.messages,historicalViewerPhotos) {
-            (historicalViewerPhotos.ifEmpty { conversation.messages }).filter {
-                !it.imageViewOnce && !it.deletedForEveryone &&
-                    !it.attachedImageUrl.isNullOrBlank()
-            }
+        val normalPictures = remember(conversation.messages, historicalViewerPhotos) {
+            // Include both paginated history and current messages, without duplicate rows.
+            // Sorted ascending for an intuitive left-to-right conversation gallery.
+            (conversation.messages + historicalViewerPhotos)
+                .distinctBy { it.id }
+                .filter {
+                    BlinkChatMediaAccessPolicy.mayBrowse(
+                        it.imageViewOnce, it.deletedForEveryone,
+                        !it.attachedImageUrl.isNullOrBlank()
+                    )
+                }
+                .sortedWith(compareBy<ChatMessage> { it.rawTimestamp }
+                    .thenBy { it.imageAlbumPosition })
         }
         val pictureIndex = normalPictures.indexOfFirst { it.id == message.id }
         if (!message.imageViewOnce && !message.attachedImageUrl.isNullOrBlank()) {
@@ -2219,6 +2361,8 @@ private fun PremiumChatDetail(
                 },
                 hasPrevious = pictureIndex > 0,
                 hasNext = pictureIndex >= 0 && pictureIndex < normalPictures.lastIndex,
+                photoIndex = pictureIndex + 1,
+                totalPhotos = normalPictures.size,
                 onPrevious = {
                     if (pictureIndex > 0) viewedImageMessage = normalPictures[pictureIndex - 1]
                 },
@@ -2700,6 +2844,41 @@ private fun PremiumChatDetail(
         )
     }
 
+    pendingFileReview?.let { (selected, audio) ->
+        BlinkChatAttachmentReviewDialog(
+            uri = selected,
+            isAudio = audio,
+            onSend = {
+                pendingFileReview = null
+                onPresenceChange("uploading")
+                onSendAttachment(it, if (audio) "audio" else "document")
+            },
+            onOpenBlinkAi = { selectedAudio ->
+                pendingFileReview = null
+                aiAudioUri = selectedAudio
+                onPresenceChange("online")
+            },
+            onDismiss = {
+                pendingFileReview = null
+                onPresenceChange("online")
+            }
+        )
+    }
+    pendingVideoReview?.let { selected ->
+        BlinkChatVideoEditorDialog(
+            sourceUri = selected,
+            onSend = { finalVideo ->
+                pendingVideoReview = null
+                onPresenceChange("uploading")
+                onSendVideo(finalVideo)
+            },
+            onDismiss = {
+                pendingVideoReview = null
+                onPresenceChange("online")
+            }
+        )
+    }
+
     photoAdjustmentItem?.let { item ->
         BlinkUniversalPhotoEditor(
             originalUri = item.uri,
@@ -2714,6 +2893,12 @@ private fun PremiumChatDetail(
         )
     }
 
+    aiAudioUri?.let { selected ->
+        com.example.ui.components.BlinkAiSheet(
+            onDismiss = { aiAudioUri = null },
+            initialAudioUri = selected
+        )
+    }
     aiPhotoUri?.let { selected ->
         com.example.ui.components.BlinkAiSheet(
             onDismiss = { aiPhotoUri = null },
@@ -2730,57 +2915,92 @@ private fun PremiumChatDetail(
         )
     }
     if (showAttachmentSheet) {
-        AttachmentSheet(
+        BlinkChatMediaGallerySheet(
             palette = palette,
-            onImage = {
+            permissionVersion = galleryPermissionVersion,
+            onRequestPermission = { askForGalleryPermission() },
+            onSystemPhotoPicker = {
                 selectedPhotoQuality = BlinkChatImageQuality.STANDARD
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
                 photoAlbumPicker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
+            },
+            onPhotosSelected = { uris ->
+                selectedPhotoQuality = BlinkChatImageQuality.STANDARD
+                pendingPhotoReview = uris.take(10).map { ChatPhotoReviewItem(uri = it) }
+                gallerySelectedPhotoId = pendingPhotoReview.firstOrNull()?.id
+                showAttachmentSheet = false
             },
             onCamera = {
                 showAttachmentSheet = false
                 requestChatCamera()
             },
+            onDocument = {
+                showAttachmentSheet = false
+                documentPicker.launch(arrayOf("*/*"))
+            },
+            onDocumentScan = {
+                showAttachmentSheet = false
+                if (!scanningDocument) documentScanPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onAudio = {
+                showAttachmentSheet = false
+                audioPicker.launch("audio/*")
+            },
+            onVideo = {
+                showAttachmentSheet = false
+                videoPicker.launch("video/*")
+            },
             onSticker = {
                 showAttachmentSheet = false
                 showStickers = true
             },
-            onOriginalPhotos = {
-                selectedPhotoQuality = BlinkChatImageQuality.ORIGINAL
-                showAttachmentSheet = false
-                onPresenceChange("uploading")
-                photoAlbumPicker.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                )
-            },
             onViewOnce = {
                 viewOncePictureChoice = true
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
                 imagePicker.launch("image/*")
             },
-            onVideo = {
+            onShareLocation = {
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
-                videoPicker.launch("video/*")
+                chatExtraMode = "location"
             },
-            onAudio = {
+            onPickContact = {
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
-                audioPicker.launch("audio/*")
+                contactPicker.launch(
+                    Intent(Intent.ACTION_PICK,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                )
             },
-            onDocument = {
+            onShareArticle = {
                 showAttachmentSheet = false
-                onPresenceChange("uploading")
-                documentPicker.launch(arrayOf("*/*"))
+                chatExtraMode = "article"
+            },
+            onCreatePoll = {
+                showAttachmentSheet = false
+                chatExtraMode = "poll"
             },
             onDismiss = { showAttachmentSheet = false }
         )
     }
 
+    chatExtraMode?.let { mode ->
+        BlinkChatExtrasDialog(
+            mode = mode,
+            contact = selectedContact,
+            onSend = { content ->
+                chatExtraMode = null
+                selectedContact = null
+                onSend(content, null)
+            },
+            onDismiss = {
+                chatExtraMode = null
+                selectedContact = null
+            }
+        )
+    }
     if (showContactProfile) {
         ChatContactProfileOverlay(
             conversation = conversation,
@@ -3274,7 +3494,12 @@ private fun MessageBubble(
             }
 
             Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
-                val bubbleShape = RoundedCornerShape(17.dp)
+                val bubbleShape = RoundedCornerShape(
+                    topStart = if (isMine) 16.dp else 4.dp,
+                    topEnd = if (isMine) 4.dp else 16.dp,
+                    bottomStart = 16.dp,
+                    bottomEnd = 16.dp
+                )
                 Column(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
@@ -3283,7 +3508,12 @@ private fun MessageBubble(
                             brush = if (isMine) palette.outgoingBrush() else Brush.linearGradient(listOf(palette.incomingBubble, palette.incomingBubble)),
                             shape = bubbleShape
                         )
-                        .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
+                        .border(
+                            1.dp,
+                            if (palette.mode == MessageThemeMode.DARK) Color.Transparent
+                            else palette.border.copy(alpha = .55f),
+                            bubbleShape
+                        )
                 ) {
                     if (message.isForwarded) {
                         Text(
@@ -3823,6 +4053,7 @@ private fun MessageComposer(
     onValueChange: (String) -> Unit,
     palette: MessagePalette,
     onAttachment: () -> Unit,
+    onCamera: () -> Unit,
     onDictation: () -> Unit,
     onEmoji: () -> Unit,
     onSubmit: () -> Unit,
@@ -3863,11 +4094,11 @@ private fun MessageComposer(
                     )
                 } else {
                     GlassIconButton(
-                        icon = Icons.Default.Add,
-                        contentDescription = "Add attachment",
+                        icon = Icons.Default.EmojiEmotions,
+                        contentDescription = "Choose emoji",
                         palette = palette,
                         size = 40.dp,
-                        onClick = onAttachment
+                        onClick = onEmoji
                     )
                 }
                 Spacer(Modifier.width(5.dp))
@@ -3905,16 +4136,6 @@ private fun MessageComposer(
                         value = value,
                         onValueChange = onValueChange,
                         placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
-                        trailingIcon = {
-                            IconButton(onClick = onEmoji) {
-                                Icon(
-                                    Icons.Default.EmojiEmotions,
-                                    contentDescription = "Choose emoji",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        },
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
@@ -3934,6 +4155,22 @@ private fun MessageComposer(
                     )
                 }
 
+                if (!isRecording) {
+                    GlassIconButton(
+                        icon = Icons.Default.AttachFile,
+                        contentDescription = "Attach picture, file or location",
+                        palette = palette,
+                        size = 36.dp,
+                        onClick = onAttachment
+                    )
+                    GlassIconButton(
+                        icon = Icons.Default.CameraAlt,
+                        contentDescription = "Open camera",
+                        palette = palette,
+                        size = 36.dp,
+                        onClick = onCamera
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 when {
                     isRecording -> {
@@ -4019,9 +4256,12 @@ private fun SharedChatContentSheet(
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
     val media = remember(conversation.messages) {
         conversation.messages.filter {
-            !it.attachedImageUrl.isNullOrBlank() ||
-                !it.attachedVideoUrl.isNullOrBlank() ||
-                !it.attachedAudioUrl.isNullOrBlank()
+            BlinkChatMediaAccessPolicy.mayBrowse(
+                it.imageViewOnce, it.deletedForEveryone,
+                !it.attachedImageUrl.isNullOrBlank() ||
+                    !it.attachedVideoUrl.isNullOrBlank() ||
+                    !it.attachedAudioUrl.isNullOrBlank()
+            )
         }
     }
     val links = remember(conversation.messages) {
@@ -4030,10 +4270,16 @@ private fun SharedChatContentSheet(
         }
     }
     val files = remember(conversation.messages) {
-        conversation.messages.filter { !it.attachedDocumentUrl.isNullOrBlank() }
+        conversation.messages.filter {
+            !it.deletedForEveryone && !it.attachedDocumentUrl.isNullOrBlank()
+        }
     }
     val starred = remember(conversation.messages) {
-        conversation.messages.filter { it.isStarred }
+        conversation.messages.filter {
+            BlinkChatMediaAccessPolicy.mayKeepInSavedMedia(
+                it.imageViewOnce, it.deletedForEveryone, it.isStarred
+            )
+        }
     }
     var historicalPictures by remember(conversation.id) {
         mutableStateOf<List<ChatMessage>>(emptyList())

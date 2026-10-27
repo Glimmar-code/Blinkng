@@ -47,8 +47,13 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +73,7 @@ import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.ProfileConnectionKind
+import com.example.data.models.Story
 import com.example.data.models.ProfileFollowerPoint
 import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.UserProfile
@@ -157,6 +163,8 @@ fun ProfileScreen(
     onWatchAdForCoins: () -> Unit = {},
     onBuyBlinkCoins: () -> Unit = {},
     onOpenCoinsWallet: () -> Unit = {},
+    storyForProfile: Story? = null,
+    onOpenProfileStory: (Story) -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {},
@@ -167,11 +175,14 @@ fun ProfileScreen(
     onTopAction: (String) -> Unit = {},
     initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 6)) }
+    var selectedTab by rememberSaveable(profile.id, initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 7)) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
     var followBusy by remember(profile.id) { mutableStateOf(false) }
     val overlayOffset = remember(profile.id) { Animatable(0f) }
+    // Apply finger motion in the draw layer, not by starting one coroutine
+    // for every pixel while the LazyColumn is being scrolled.
+    var overlayDragPx by remember(profile.id) { mutableFloatStateOf(Float.NaN) }
     val overlayScope = rememberCoroutineScope()
     val interactionRepository = remember { UserInteractionRepository() }
     // Preserve request UUID across retries so an unknown network outcome
@@ -191,6 +202,11 @@ fun ProfileScreen(
     var showReferGrow by rememberSaveable(profile.id) { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
+    var showProfileVisitors by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var visitorTimes by remember(profile.id) { mutableStateOf<List<String>>(emptyList()) }
+    var visitorsLoading by remember(profile.id) { mutableStateOf(false) }
+    var visitorsLoadFailed by remember(profile.id) { mutableStateOf(false) }
+    var visitorsReloadKey by remember(profile.id) { mutableIntStateOf(0) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
 
@@ -219,6 +235,21 @@ fun ProfileScreen(
             profileMuted = profileService.isProfileMuted(profile.id)
         } else {
             followerHistory = profileService.fetchProfileFollowerHistory(profile.id, days = 30)
+        }
+    }
+
+    // Visitors are derived solely from the signed-in owner's activity records.
+    // Never expose the underlying actor IDs or claim that a missing activity is a visit.
+    LaunchedEffect(showProfileVisitors, profile.id, isMe, visitorsReloadKey) {
+        if (showProfileVisitors && isMe) {
+            visitorsLoading = true
+            visitorsLoadFailed = false
+            val response = profileService.fetchActivities()
+            visitorsLoadFailed = response.isFailure
+            visitorTimes = response.getOrNull().orEmpty()
+                .filter { it.action.contains("viewed your profile", ignoreCase = true) }
+                .map { it.time }
+            visitorsLoading = false
         }
     }
 
@@ -374,48 +405,64 @@ fun ProfileScreen(
                 .align(Alignment.CenterStart)
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
+                .offset {
+                    IntOffset((if (overlayDragPx.isFinite()) overlayDragPx
+                        else overlayOffset.value).roundToInt(), 0)
+                }
                 .pointerInput(profile.id, overlayThresholdPx) {
-                    var rawDrag = 0f
-                    var tracker = VelocityTracker()
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            rawDrag = 0f
-                            tracker = VelocityTracker()
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            // Keep the original left-to-close direction; resist overshooting.
-                            rawDrag = (rawDrag + dragAmount).coerceAtMost(0f)
+                    // Passive final-pass observer: LazyColumn, image carousels and
+                    // horizontal child controls always get first priority.
+                    // A rightward back drag follows the finger without consuming
+                    // scroll or producing one coroutine per touch sample.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        val touchSlop = viewConfiguration.touchSlop
+                        var childOwned = false
+                        var committed = false
+                        var lastDrag = 0f
+                        var moved = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (event.changes.size != 1) childOwned = true
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.pressed && change.isConsumed) childOwned = true
                             tracker.addPosition(change.uptimeMillis, change.position)
-                            change.consume()
-                            overlayScope.launch {
-                                overlayOffset.snapTo(
-                                    BlinkElasticGesturePhysics.visualDistance(rawDrag, overlayThresholdPx)
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            val eligible = !childOwned && dx > touchSlop &&
+                                dx > kotlin.math.abs(dy) * 1.35f
+                            if (change.pressed) {
+                                lastDrag = if (eligible) dx - touchSlop else 0f
+                                if (lastDrag > 0f) moved = true
+                                if (moved) overlayDragPx = lastDrag
+                            } else {
+                                committed = eligible && BlinkElasticGesturePhysics.shouldCommit(
+                                    dx,
+                                    BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                                        dx, tracker.calculateVelocity().x,
+                                        change.uptimeMillis - down.uptimeMillis
+                                    ),
+                                    overlayThresholdPx, 28.dp.toPx(), 1100.dp.toPx()
                                 )
-                            }
-                        },
-                        onDragEnd = {
-                            val commit = rawDrag < 0f && BlinkElasticGesturePhysics.shouldCommit(
-                                rawDrag, tracker.calculateVelocity().x, overlayThresholdPx,
-                                28.dp.toPx(), 1100.dp.toPx()
-                            )
-                            overlayScope.launch {
-                                if (commit) onBack()
-                                else overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ))
-                            }
-                        },
-                        onDragCancel = {
-                            overlayScope.launch {
-                                overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ))
+                                break
                             }
                         }
-                    )
+                        if (moved) {
+                            overlayScope.launch {
+                                overlayOffset.snapTo(lastDrag)
+                                overlayDragPx = Float.NaN
+                                if (committed) onBack()
+                                else overlayOffset.animateTo(
+                                    0f, spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
                 .testTag("profile_screen"),
             shape = RoundedCornerShape(0.dp),
@@ -452,6 +499,8 @@ fun ProfileScreen(
                         totalLoadedLikes = userPosts.sumOf { it.likes.coerceAtLeast(0).toLong() },
                         profileCompletion = profileCompletion,
                         onAvatarClick = { showAvatarViewer = true },
+                        hasActiveStory = storyForProfile != null,
+                        onStoryClick = { storyForProfile?.let(onOpenProfileStory) },
                         onBack = onBack,
                         onEdit = onEditProfileClick,
                         onMessage = { onDirectMessage(profile.username) },
@@ -468,13 +517,15 @@ fun ProfileScreen(
                         },
                         onVerify = onOpenGetVerified,
                         onEarnCoins = onOpenCoinsWallet,
+                        onWallet = onOpenCoinsWallet,
+                        onCampusRank = { onNavigateMainTab("leaderboard") },
                         onShowBadges = { selectedTab = tabs.indexOf("Skills").coerceAtLeast(0) },
                         onShare = { showShareSheet = true },
                         onCopyUsername = {
                             clipboard.setText(AnnotatedString("@" + profile.username))
                             Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
                         },
-                        onVisitors = { showMoreSheet = true },
+                        onVisitors = { showProfileVisitors = true },
                         onFollowers = { openConnectionList(ProfileConnectionKind.FOLLOWERS) },
                         onFollowing = { openConnectionList(ProfileConnectionKind.FOLLOWING) },
                         // Relationship actions live on the single reference dashboard.
@@ -594,19 +645,28 @@ fun ProfileScreen(
                         items = matchingContent(reelsOnly = true),
                         emptyMessage = if (isPostsLoading) "Loading reels..." else "No reels yet",
                         onOpen = onOpenPost,
-                        columns = 3
+                        columns = 3,
+                        isLoading = isPostsLoading,
+                        hasLoadError = hasPostsLoadError,
+                        onRetry = onRefreshProfile
                     )
 
                     "Liked" -> if (isMe) premiumProfileGridItems(
                         items = likedPosts,
                         emptyMessage = "Nothing liked yet",
-                        onOpen = onOpenPost
+                        onOpen = onOpenPost,
+                        isLoading = arePrivateCollectionsLoading,
+                        hasLoadError = havePrivateCollectionsError,
+                        onRetry = onRefreshProfile
                     )
 
                     "Saved" -> if (isMe) premiumProfileGridItems(
                         items = savedPosts,
                         emptyMessage = "Nothing saved yet",
-                        onOpen = onOpenPost
+                        onOpen = onOpenPost,
+                        isLoading = arePrivateCollectionsLoading,
+                        hasLoadError = havePrivateCollectionsError,
+                        onRetry = onRefreshProfile
                     )
 
                     "Market" -> profileMarketItems(
@@ -747,6 +807,43 @@ fun ProfileScreen(
             }
         }
     }
+    }
+
+    // ================================================================
+    // OWNER-ONLY PROFILE VISIT ACTIVITY
+    // ================================================================
+    if (showProfileVisitors && isMe) {
+        ModalBottomSheet(onDismissRequest = { showProfileVisitors = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Profile visits", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("Recent profile-view notifications. Visits are shown only when recorded by BLINK.",
+                    style = MaterialTheme.typography.bodySmall)
+                when {
+                    visitorsLoading -> CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    visitorsLoadFailed -> {
+                        Text("Could not load profile visits.")
+                        TextButton(onClick = { visitorsReloadKey++ }) {
+                            Text("Retry")
+                        }
+                    }
+                    visitorTimes.isEmpty() -> Text("No recorded profile visits yet.")
+                    else -> {
+                        Text("${visitorTimes.size} recent visit notification(s)",
+                            fontWeight = FontWeight.SemiBold)
+                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                            items(visitorTimes.size) { index ->
+                                Text("Profile viewed · ${visitorTimes[index]}",
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp))
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
     }
 
     // ================================================================
@@ -1198,6 +1295,7 @@ private fun PremiumProfileTabs(
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (selected) selectedThemeCard else Color.Transparent)
                     .testTag("premium_profile_tab_${name.lowercase()}")
+                    .semantics { this.selected = selected }
             ) {
                 Icon(
                     icons[i], contentDescription = name,
@@ -1229,8 +1327,28 @@ private fun LazyListScope.premiumProfileGridItems(
     items: List<FeedPost>,
     emptyMessage: String,
     onOpen: (String) -> Unit,
-    columns: Int = 2
+    columns: Int = 2,
+    isLoading: Boolean = false,
+    hasLoadError: Boolean = false,
+    onRetry: () -> Unit = {}
 ) {
+    if (items.isEmpty() && isLoading) {
+        item(key = "premium_grid_loading_${emptyMessage}") {
+            Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            }
+        }
+        return
+    }
+    if (items.isEmpty() && hasLoadError) {
+        item(key = "premium_grid_error_${emptyMessage}") {
+            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Couldn't load content", color = Color.White)
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
     if (items.isEmpty()) {
         item(key = "premium_grid_empty_${emptyMessage}") {
             Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {

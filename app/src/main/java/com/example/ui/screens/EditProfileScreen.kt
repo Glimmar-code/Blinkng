@@ -423,67 +423,12 @@ fun EditProfileScreen(
             it.isNotBlank()
         } * 100 / 14
 
-    Scaffold(
-        topBar = {
-
-            TopAppBar(
-
-                title = {
-
-                    Column {
-
-                        Text(
-                            "Edit profile",
-                            fontWeight =
-                                FontWeight.Black
-                        )
-
-                        Text(
-                            "$completion% complete",
-                            fontSize =
-                                9.sp,
-                            color =
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
-                        )
-                    }
-                },
-
-                navigationIcon = {
-
-                    IconButton(
-                        onClick = { requestLeaveEditor() },
-                        enabled =
-                            !saving
-                    ) {
-
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription =
-                                "Close"
-                        )
-                    }
-                },
-
-                actions = {
-
-                    TextButton(
-                        onClick = {
-
-                            if (
-                                saving
-                            ) {
-                                return@TextButton
-                            }
-
-                            errorMessage =
-                                null
-
-                            successMessage =
-                                null
-
-                            scope.launch {
+    // Both Save actions use one validated, idempotent submission path.
+    fun saveProfileChanges() {
+        if (saving) return
+        errorMessage = null
+        successMessage = null
+        scope.launch {
 
                                 saving =
                                     true
@@ -554,10 +499,7 @@ fun EditProfileScreen(
                                             fullName =
                                                 fullName.trim(),
 
-                                            username =
-                                                username
-                                                    .trim()
-                                                    .lowercase(),
+                                            username = username.trim().lowercase().removePrefix("@"),
 
                                             avatarUrl =
                                                 finalAvatar,
@@ -677,7 +619,55 @@ fun EditProfileScreen(
                                         false
                                 }
                             }
-                        },
+    }
+
+    Scaffold(
+        topBar = {
+
+            TopAppBar(
+
+                title = {
+
+                    Column {
+
+                        Text(
+                            "Edit profile",
+                            fontWeight =
+                                FontWeight.Black
+                        )
+
+                        Text(
+                            "$completion% complete",
+                            fontSize =
+                                9.sp,
+                            color =
+                                MaterialTheme
+                                    .colorScheme
+                                    .onSurfaceVariant
+                        )
+                    }
+                },
+
+                navigationIcon = {
+
+                    IconButton(
+                        onClick = { requestLeaveEditor() },
+                        enabled =
+                            !saving
+                    ) {
+
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription =
+                                "Close"
+                        )
+                    }
+                },
+
+                actions = {
+
+                    TextButton(
+                        onClick = { saveProfileChanges() },
                         enabled =
                             !saving
                     ) {
@@ -1423,204 +1413,7 @@ fun EditProfileScreen(
             item {
 
                 Button(
-                    onClick = {
-
-                        if (
-                            saving
-                        ) {
-                            return@Button
-                        }
-
-                        scope.launch {
-
-                            saving =
-                                true
-
-                            errorMessage =
-                                null
-
-                            try {
-
-                                val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
-
-                                if (validationError != null) throw IllegalArgumentException(validationError)
-
-                                val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
-
-                                if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
-
-                                if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
-
-                                var finalAvatar =
-                                    avatarUrl
-
-                                var finalCover =
-                                    coverUrl
-
-                                if (
-                                    selectedAvatarUri !=
-                                        null
-                                ) {
-
-                                    finalAvatar =
-                                        repository.uploadProfileMedia(
-                                            context,
-                                            selectedAvatarUri!!,
-                                            profile.id,
-                                            ProfileMediaType.AVATAR
-                                        )
-                                            ?: throw Exception(
-                                                "Unable to upload avatar."
-                                            )
-                                }
-
-                                if (
-                                    selectedCoverUri !=
-                                        null
-                                ) {
-
-                                    finalCover =
-                                        repository.uploadProfileMedia(
-                                            context,
-                                            selectedCoverUri!!,
-                                            profile.id,
-                                            ProfileMediaType.COVER
-                                        )
-                                            ?: throw Exception(
-                                                "Unable to upload cover photo."
-                                            )
-                                }
-
-                                val updated =
-                                    profile.copy(
-
-                                            profileTheme = BlinkProfileThemes.normalize(profileTheme),
-
-                                        fullName =
-                                            fullName.trim(),
-
-                                        username =
-                                            username.trim().lowercase().removePrefix("@"),
-
-                                        avatarUrl =
-                                            finalAvatar,
-
-                                        coverPhotoUrl =
-                                            finalCover,
-
-                                        professionalHeadline =
-                                            headline.trim(),
-
-                                        currentJobTitle =
-                                            jobTitle.trim(),
-
-                                        bio =
-                                            bio.trim(),
-
-                                        university =
-                                            university.trim(),
-
-                                        faculty =
-                                            faculty.trim(),
-
-                                        department =
-                                            department.trim(),
-
-                                        courseOfStudy =
-                                            courseOfStudy.trim(),
-
-                                        academicLevel =
-                                            academicLevel.trim(),
-
-                                        graduationYear =
-                                            graduationYear.trim(),
-
-                                        relationshipStatus =
-                                            relationshipStatus,
-
-                                        email =
-                                            ContactField(
-                                                email.trim(),
-                                                emailVisibility == ProfileVisibilityScope.PUBLIC
-                                            ),
-
-                                        phone =
-                                            ContactField(
-                                                phone.trim(),
-                                                phoneVisibility == ProfileVisibilityScope.PUBLIC
-                                            ),
-
-                                        whatsapp =
-                                            ContactField(
-                                                whatsapp.trim(),
-                                                whatsappVisibility == ProfileVisibilityScope.PUBLIC
-                                            ),
-
-                                        emailVisibility =
-                                            emailVisibility,
-
-                                        phoneVisibility =
-                                            phoneVisibility,
-
-                                        whatsappVisibility =
-                                            whatsappVisibility,
-
-                                        presenceVisibility =
-                                            presenceVisibility,
-
-                                        links =
-                                            profile.links.copy(
-                                                website =
-                                                    website.trim(),
-                                                linkedin =
-                                                    linkedin.trim(),
-                                                twitter =
-                                                    twitter.trim(),
-                                                instagram =
-                                                    instagram.trim(),
-                                                featuredLink =
-                                                    featuredLink.trim(),
-                                                featuredLinkLabel =
-                                                    featuredLinkLabel.trim()
-                                            )
-                                    )
-
-                                if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
-
-                                avatarUrl =
-                                    finalAvatar
-
-                                coverUrl =
-                                    finalCover
-
-                                selectedAvatarUri =
-                                    null
-
-                                selectedCoverUri =
-                                    null
-
-                                onSave(
-                                    updated
-                                )
-
-                                successMessage =
-                                    "Profile saved and synced."
-
-                            } catch (
-                                e: Exception
-                            ) {
-
-                                errorMessage =
-                                    e.message
-                                        ?: "Profile save failed."
-
-                            } finally {
-
-                                saving =
-                                    false
-                            }
-                        }
-                    },
+                    onClick = { saveProfileChanges() },
                     enabled =
                         !saving,
                     colors =

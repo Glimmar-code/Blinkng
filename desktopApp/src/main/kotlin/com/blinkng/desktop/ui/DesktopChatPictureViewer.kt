@@ -12,10 +12,18 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import kotlin.math.abs
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -56,6 +64,8 @@ internal fun DesktopChatPictureViewer(
     if(message.imageViewOnce || message.messageType!="image" ||
         message.mediaUrl.isNullOrBlank()) return
     val scope=rememberCoroutineScope()
+    val viewerFocus = remember(message.id) { FocusRequester() }
+    LaunchedEffect(message.id) { viewerFocus.requestFocus() }
     var busy by remember(message.id){mutableStateOf(false)}
     var downloadJob by remember(message.id){mutableStateOf<Job?>(null)}
     var progress by remember(message.id){mutableIntStateOf(-1)}
@@ -85,6 +95,24 @@ internal fun DesktopChatPictureViewer(
     )
     DisposableEffect(message.id) {onDispose{downloadJob?.cancel()}}
     AlertDialog(
+        modifier = Modifier
+            .focusRequester(viewerFocus)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) false
+                else when (event.key) {
+                    Key.DirectionLeft -> {
+                        if (hasPrevious) { onPrevious(); true } else false
+                    }
+                    Key.DirectionRight -> {
+                        if (hasNext) { onNext(); true } else false
+                    }
+                    Key.Escape -> {
+                        if (!busy) { onClose(); true } else false
+                    }
+                    else -> false
+                }
+            }
+            .focusable(),
         onDismissRequest={if(!busy)onClose()},
         title={
             Column {
@@ -160,6 +188,8 @@ internal fun DesktopChatPictureViewer(
                             }
                     )
                 }
+                Text("← / → Browse chat photos  ·  Esc Close",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if(message.content.isNotBlank() &&
                     message.content !in setOf("Photo","Image")) {
                     Text(message.content,fontSize=13.sp,

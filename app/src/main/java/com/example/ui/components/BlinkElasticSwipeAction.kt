@@ -19,11 +19,13 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import com.example.performance.rememberBlinkReduceMotion
 import kotlin.math.abs
+import kotlin.math.sign
 
 enum class BlinkElasticSwipeDirection { LEFT, RIGHT, UP, DOWN }
 
@@ -39,6 +41,9 @@ fun Modifier.blinkElasticSwipeAction(
     activation: Dp = 98.dp,
 ): Modifier = composed {
     val density = LocalDensity.current
+    val touchSlopPx = LocalViewConfiguration.current.touchSlop
+    val horizontal = direction == BlinkElasticSwipeDirection.LEFT ||
+        direction == BlinkElasticSwipeDirection.RIGHT
     val activationPx = with(density) { activation.toPx() }
     val minFlickPx = with(density) { BlinkElasticGesturePhysics.MIN_FLICK_DP.dp.toPx() }
     val fastVelocityPx = with(density) {
@@ -49,10 +54,12 @@ fun Modifier.blinkElasticSwipeAction(
     var distance by remember(direction) { mutableFloatStateOf(0f) }
     var dragging by remember(direction) { mutableStateOf(false) }
     val travel by animateFloatAsState(
-        targetValue = if (reducedMotion) 0f
+        // Horizontal back navigation follows the finger, like Telegram; vertical
+        // dismiss actions retain bounded rubber resistance.
+        targetValue = if (reducedMotion) 0f else if (horizontal) distance
             else BlinkElasticGesturePhysics.visualDistance(distance, activationPx),
         animationSpec = if (dragging || reducedMotion) snap() else spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "blinkElasticNavigation"
@@ -61,7 +68,7 @@ fun Modifier.blinkElasticSwipeAction(
         if (direction == BlinkElasticSwipeDirection.LEFT ||
             direction == BlinkElasticSwipeDirection.RIGHT) translationX = travel
         else translationY = travel
-    }.pointerInput(enabled, direction, activationPx) {
+    }.pointerInput(enabled, direction, activationPx, touchSlopPx) {
         if (!enabled) return@pointerInput
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
@@ -69,6 +76,7 @@ fun Modifier.blinkElasticSwipeAction(
             tracker.addPosition(down.uptimeMillis, down.position)
             var childOwned = false
             var committed = false
+            var directionLocked = false
             try {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Final)
@@ -80,8 +88,12 @@ fun Modifier.blinkElasticSwipeAction(
                 val dy = change.position.y - down.position.y
                 val raw = directionalSwipeDistance(dx, dy, direction)
                 if (change.pressed) {
-                    dragging = !childOwned && raw != 0f
-                    distance = if (dragging) raw else 0f
+                    // Never translate an entire screen for small vertical scroll
+                    // noise, a tiny diagonal move or a child-owned gesture.
+                    if (!childOwned && abs(raw) > touchSlopPx) directionLocked = true
+                    val isDragging = !childOwned && directionLocked && raw != 0f
+                    dragging = isDragging
+                    distance = if (isDragging) raw - sign(raw) * touchSlopPx else 0f
                 } else {
                     val v = tracker.calculateVelocity()
                     val projectedV = when (direction) {
