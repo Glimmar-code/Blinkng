@@ -5088,7 +5088,9 @@ suspend fun uploadPostMedia(
             val merged = (notificationItems + legacyFallback)
                 .sortedByDescending { it.rawTimestamp }
                 .distinctBy { it.id }
-                .take(150)
+                // Each source fetches 100 rows. Retaining fewer than 200 would
+                // discard fetched rows that pagination can never recover.
+                .take(200)
 
             Result.success(merged)
         } catch (e: Exception) {
