@@ -3091,6 +3091,11 @@ private fun ChatHeader(
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 VerificationDot(conversation.verificationBadge, conversation.isVerified)
+                BlinkVipMarkForUsername(
+                    username = conversation.partnerUsername,
+                    knownVip = if (conversation.partnerIsVip) true else null,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
             }
             Text(
                 conversation.presenceLabel.ifBlank {
