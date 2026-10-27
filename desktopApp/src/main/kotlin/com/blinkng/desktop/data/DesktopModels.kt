@@ -33,7 +33,6 @@ data class DesktopProfile(
     val isBlinkVip: Boolean = false,
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
-    val verificationExpiresAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
     val academicLevel: String? = null,
     val gender: String? = null,
@@ -49,6 +48,7 @@ data class DesktopProfile(
     val professionalHeadline: String? = null,
     val dailyStreak: Int = 0,
     val profileTheme: String = "black",
+    val verificationExpiresAtMillis: Long = 0L,
 )
 
 data class DesktopProfileFollowerPoint(
