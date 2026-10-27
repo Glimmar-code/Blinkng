@@ -219,6 +219,9 @@ data class DesktopMarketItem(
     val imageUrls: List<String> = emptyList(),
     val videoUrl: String? = null,
     val createdAt: String = "",
+    val quantity: Int? = null,
+    val viewCount: Long? = null,
+    val saveCount: Long? = null,
 )
 
 data class DesktopConnectListing(
