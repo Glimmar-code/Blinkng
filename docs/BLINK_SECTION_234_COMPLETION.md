@@ -42,7 +42,7 @@ production SQL until the corresponding acceptance gates below pass.
 | Profiles + Stories | Theme/story code merged | Cross-client theme persistence, Story privacy/playback/replies, screenshot and font-scale acceptance |
 | Search + Connect | Redesigned screens merged | Exact five tags / three users, true 30-day ranking, autocomplete, consent-based recommendations, Discover/housing/mentor tests |
 | Messages + groups | Chat and invitation foundation merged | Delivery/reading/drafts, member permissions, offline recovery, moderation and UI exactness |
-| Notifications | Phase-two tracker open | Archive, quiet hours, digests, cross-device read, verified FCM/worker retries |
+| Notifications | Production `notification_preferences` table has quiet-hours fields and Android `NotificationPreferenceStore` already implements local quiet-hour/category controls; Phase-two tracker remains open | Archive, digests, quiet-hour user experience verification, cross-device read, verified FCM/worker retries |
 | Website | Cloudflare route PRs merged | Real deployed deep links, Android-app parity, SEO smoke, safe public metadata |
 | APK updates/releases | Signed workflow code present | Repair open publication issue, exact artifact install/upgrade, smaller delta updates after tested rollback |
 | Admin & reporting | Mobile admin code present | Protected role switches, bug reports and auditable rewards, remotely managed announcements |
@@ -54,6 +54,8 @@ production SQL until the corresponding acceptance gates below pass.
 
 - Production `public.feed_posts` already has trigger `blink_feed_market_category_guard` (read-only inspection, 27 October 2026). Do **not** deploy another competing policy merely because PR #588's old description said otherwise. The trigger's behavior still needs server-side negative tests with isolated accounts. No production writes were performed in this audit.
 - Contact discovery still needs independent backend integration; a merged UI/PR is not evidence of live phone-number matching.
+- Production has a `notification_preferences` table with `quiet_hours_enabled`, start/end minute and `timezone`, and Android already has client quiet-hours logic. Do **not** rebuild these settings; complete end-to-end notification suppression, expiry/archiving, and cross-device verification instead.
+- The production database has `blink_referral_coin_milestones` and verification subscription columns, but schema existence alone does not establish enabled Coin payouts or working subscription renewals.
 
 ## This Testlab increment (2026-10-27)
 
