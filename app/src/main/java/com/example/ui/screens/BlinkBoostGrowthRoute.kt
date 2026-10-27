@@ -419,6 +419,7 @@ private fun BoostCampaignColumn(
     var pendingRequestFingerprint by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
+    var showAllReceipts by remember { mutableStateOf(false) }
 
     suspend fun reloadState() {
         stateLoading = true
@@ -968,7 +969,16 @@ private fun BoostCampaignColumn(
         if (receipts.isNotEmpty()) {
             item { HorizontalDivider() }
             item { SectionTitle("Growth receipts", "Every Boost reserve/refund and Drop reserve/reward/refund remains auditable.") }
-            items(receipts.take(12), key = { "receipt-" + it.optString("id") }) { receipt ->
+            if (receipts.size > 4) {
+                item {
+                    TextButton(onClick = { showAllReceipts = !showAllReceipts }) {
+                        Text(if (showAllReceipts) "Show fewer receipts"
+                            else "View all ${receipts.size} recent receipts")
+                    }
+                }
+            }
+            items(if (showAllReceipts) receipts else receipts.take(4),
+                key = { "receipt-" + it.optString("id") }) { receipt ->
                 GrowthReceiptCard(receipt, formatter)
             }
         }
