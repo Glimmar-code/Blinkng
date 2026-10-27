@@ -168,7 +168,8 @@ data class ActivityItem(
     val actorIsVip: Boolean = false,
     val vipPriority: Boolean = false,
     val targetEntityId: String? = null,
-    val targetResourceId: String? = null
+    val targetResourceId: String? = null,
+    val eventType: String? = null // Backend event identity, not display copy
 )
 
 data class MarketItem(
