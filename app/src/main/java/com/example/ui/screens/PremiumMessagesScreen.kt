@@ -474,6 +474,14 @@ fun PremiumMessagesScreen(
 }
 
 
+/** Pure direction lock for Telegram-style chat back. Vertical scroll and zoom win. */
+internal fun isTelegramChatBackIntent(
+    deltaX: Float,
+    deltaY: Float,
+    touchSlopPx: Float
+): Boolean = deltaX.isFinite() && deltaY.isFinite() && touchSlopPx.isFinite() &&
+    touchSlopPx >= 0f && deltaX > touchSlopPx && deltaX > abs(deltaY) * 1.35f
+
 private fun Modifier.observeRightSwipeToClose(
     thresholdPx: Float,
     onSwipeRight: () -> Unit,
@@ -486,20 +494,27 @@ private fun Modifier.observeRightSwipeToClose(
         tracker.addPosition(down.uptimeMillis, down.position)
         var committed = false
         var childHandled = false
+        var visualDragActive = false
         val touchSlopPx = viewConfiguration.touchSlop
         while (true) {
             // Final pass lets a photo carousel or child swipe claim its own gesture.
             // This observer never consumes pointer changes from the conversation.
             val event = awaitPointerEvent(PointerEventPass.Final)
+            if (event.changes.size != 1) childHandled = true
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
             if (change.pressed && change.isConsumed) childHandled = true
             tracker.addPosition(change.uptimeMillis, change.position)
             val horizontal = change.position.x - down.position.x
             val vertical = change.position.y - down.position.y
-            val rightIntent = horizontal > touchSlopPx && horizontal > abs(vertical) * 1.35f
+            val rightIntent = isTelegramChatBackIntent(horizontal, vertical, touchSlopPx)
             if (change.pressed) {
-                if (!childHandled && rightIntent) onDragProgress(horizontal - touchSlopPx)
-                else onDragProgress(0f)
+                if (!childHandled && rightIntent) {
+                    visualDragActive = true
+                    onDragProgress(horizontal - touchSlopPx)
+                } else if (visualDragActive) {
+                    visualDragActive = false
+                    onDragProgress(0f)
+                }
             } else {
                 committed = !childHandled && rightIntent && BlinkElasticGesturePhysics.shouldCommit(
                     horizontal, BlinkElasticGesturePhysics.resolvedFlickVelocity(
