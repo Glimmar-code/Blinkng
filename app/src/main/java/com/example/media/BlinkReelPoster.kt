@@ -45,14 +45,19 @@ internal object BlinkReelPoster {
             )?.toLongOrNull() ?: 0L).coerceAtLeast(0L) * 1_000L
             val frameTimeUs = if (durationUs <= 0L) 0L else
                 (durationUs * fraction.coerceIn(0f, 0.99f)).toLong()
+            // Prefer the requested frame rather than an earlier keyframe.
+            // Some low-end decoders cannot seek precisely; fall back to a sync frame.
             val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 retriever.getScaledFrameAtTime(
-                    frameTimeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST,
+                    targetWidth, targetHeight
+                ) ?: retriever.getScaledFrameAtTime(
+                    frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                     targetWidth, targetHeight
                 )
             } else {
-                retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    ?: retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             } ?: return null
             val longest = maxOf(frame.width, frame.height)
             val scale = (MAX_EDGE.toFloat() / longest.coerceAtLeast(1)).coerceAtMost(1f)
