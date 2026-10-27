@@ -4110,11 +4110,24 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val imageInputs = parseImagePayload(imageUri)
-                val mediaTotal = imageInputs.size + if (videoUri.isNullOrBlank()) 0 else 1
+                // Weight by actual bytes, not by number of attachments. A 40 MB Reel
+                // must not be treated as equal to a tiny cover JPEG.
+                val mediaInputs = imageInputs + listOfNotNull(videoUri)
+                val byteWeights = mediaInputs.map { source ->
+                    if (!source.startsWith("content://")) 0L else
+                        runCatching {
+                            appContext.contentResolver.openAssetFileDescriptor(Uri.parse(source), "r")
+                                ?.use { it.length.coerceAtLeast(1L) } ?: 1L
+                        }.getOrDefault(1L)
+                }
+                val totalBytes = byteWeights.sum().coerceAtLeast(1L)
                 fun reportTransfer(index: Int, sent: Long, total: Long) {
-                    if (total <= 0 || mediaTotal == 0) return
-                    val overall = (((index + sent.coerceIn(0L, total).toDouble() / total) /
-                        mediaTotal) * 100).toInt().coerceIn(0, 100)
+                    if (total <= 0 || index !in byteWeights.indices) return
+                    val preceding = byteWeights.take(index).sum()
+                    val completed = (byteWeights[index] * sent.coerceIn(0L, total).toDouble() /
+                        total.toDouble()).toLong()
+                    val overall = (((preceding + completed).toDouble() /
+                        totalBytes) * 100).toInt().coerceIn(0, 100)
                     _uiState.value = _uiState.value.copy(postUploadProgress = overall)
                 }
                 val uploadedImageUrls = mutableListOf<String>()
