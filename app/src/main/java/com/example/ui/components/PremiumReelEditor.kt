@@ -11,6 +11,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -74,6 +81,11 @@ internal fun PremiumReelEditor(
     var sticker by remember(uri) { mutableStateOf("") }
     var overlayStartMs by remember(uri) { mutableLongStateOf(0L) }
     var overlayEndMs by remember(uri) { mutableLongStateOf(0L) }
+    var overlayX by remember(uri) { mutableFloatStateOf(0f) }
+    var overlayY by remember(uri) { mutableFloatStateOf(0f) }
+    var overlayScale by remember(uri) { mutableFloatStateOf(1f) }
+    var previewWidth by remember(uri) { mutableIntStateOf(1) }
+    var previewHeight by remember(uri) { mutableIntStateOf(1) }
     var musicUri by remember(uri) { mutableStateOf<String?>(null) }
     var originalAudioVolume by remember(uri) { mutableFloatStateOf(1f) }
     var musicVolume by remember(uri) { mutableFloatStateOf(1f) }
@@ -136,7 +148,10 @@ internal fun PremiumReelEditor(
         originalAudioVolume = originalAudioVolume,
         musicVolume = musicVolume,
         overlayStartMs = overlayStartMs.coerceAtLeast(0L),
-        overlayEndMs = if (overlayEndMs == 0L) Long.MAX_VALUE else overlayEndMs
+        overlayEndMs = if (overlayEndMs == 0L) Long.MAX_VALUE else overlayEndMs,
+        overlayX = overlayX,
+        overlayY = overlayY,
+        overlayScale = overlayScale
     )
     val hasPendingEdits = durationMs >= 500L && spec.hasChanges(durationMs)
     LaunchedEffect(hasPendingEdits) { onPendingEdits(hasPendingEdits) }
@@ -151,7 +166,9 @@ internal fun PremiumReelEditor(
         Box(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
                 .aspectRatio(9f / 16f).clip(RoundedCornerShape(27.dp))
-                .background(Color(0xFF121217)),
+                .background(Color(0xFF121217))
+                .onSizeChanged { previewWidth = it.width.coerceAtLeast(1);
+                    previewHeight = it.height.coerceAtLeast(1) },
             contentAlignment = Alignment.Center
         ) {
             AndroidView(
@@ -168,7 +185,25 @@ internal fun PremiumReelEditor(
             if ((overlayText.isNotBlank() || sticker.isNotBlank()) &&
                 spec.overlayVisibleAt(positionMs)) {
                 Column(
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 18.dp),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset {
+                            IntOffset(
+                                (overlayX * previewWidth / 2f).roundToInt(),
+                                (-overlayY * previewHeight / 2f).roundToInt()
+                            )
+                        }
+                        .graphicsLayer(scaleX = overlayScale, scaleY = overlayScale)
+                        .pointerInput(uri) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                overlayX = (overlayX + 2f * drag.x / previewWidth)
+                                    .coerceIn(-0.85f, 0.85f)
+                                overlayY = (overlayY - 2f * drag.y / previewHeight)
+                                    .coerceIn(-0.85f, 0.85f)
+                            }
+                        }
+                        .padding(horizontal = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (sticker.isNotBlank()) Text(sticker, fontSize = 40.sp)
@@ -275,6 +310,14 @@ internal fun PremiumReelEditor(
                         label = { Text("Sticker / emoji") }, singleLine = true,
                         enabled = !isExporting, modifier = Modifier.fillMaxWidth())
                     if (overlayText.isNotBlank() || sticker.isNotBlank()) {
+                        Text("Drag the words or sticker over the video to position them.",
+                            color = Color.LightGray, fontSize = 12.sp)
+                        Text("Overlay size: ${(overlayScale * 100).toInt()}%",
+                            color = white, fontSize = 12.sp)
+                        Slider(
+                            value = overlayScale, onValueChange = { overlayScale = it },
+                            valueRange = 0.5f..2f, enabled = !isExporting
+                        )
                         Text("Overlay timing", fontWeight = FontWeight.Medium, color = white,
                             fontSize = 13.sp)
                         val overlayStart = overlayStartMs.coerceIn(0L, durationMs)
