@@ -2163,15 +2163,16 @@ fun ConnectScreen(state: DesktopAppState) {
     var contactMatches by remember(state.profile?.id) { mutableStateOf<List<Pair<String,String>>>(emptyList()) }
     var contactBusy by remember(state.profile?.id) { mutableStateOf(false) }
     var contactError by remember(state.profile?.id) { mutableStateOf<String?>(null) }
+    var contactReady by remember(state.profile?.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun loadContactSnapshot(reply: JSONObject) {
+    fun loadContactSnapshot(reply: JSONObject, replaceMatches: Boolean = true) {
         val settings = reply.optJSONObject("settings")
         contactSync = settings?.optBoolean("sync_enabled") == true
         contactDiscoverable = settings?.optBoolean("discoverable") == true
         contactAlerts = settings?.optBoolean("join_alerts") == true
         val matches = reply.optJSONArray("matches")
-        contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
+        if (replaceMatches) contactMatches = if (matches == null) emptyList() else (0 until matches.length()).mapNotNull { n ->
             matches.optJSONObject(n)?.let { item ->
                 item.optString("username").takeIf(String::isNotBlank)?.let { username ->
                     username to item.optString("full_name").ifBlank { username }
@@ -2184,19 +2185,32 @@ fun ConnectScreen(state: DesktopAppState) {
         scope.launch {
             contactBusy = true
             runCatching { state.client.setContactDiscovery(syncEnabled, discoverable, alerts) }
-                .onSuccess { reply -> loadContactSnapshot(JSONObject().put("settings", reply.optJSONObject("settings")))
+                .onSuccess { reply ->
+                    loadContactSnapshot(JSONObject().put("settings", reply.optJSONObject("settings")), replaceMatches = false)
                     if (!syncEnabled) contactMatches = emptyList()
-                    contactError = null }
+                    contactError = null
+                }
                 .onFailure { contactError = it.message ?: "Contact preferences could not be updated." }
             contactBusy = false
         }
     }
 
-    LaunchedEffect(state.profile?.id) {
-        if (state.profile == null) return@LaunchedEffect
+    suspend fun refreshContacts() {
+        contactBusy = true
         runCatching { state.client.contactDiscovery() }
-            .onSuccess { loadContactSnapshot(it) }
-            .onFailure { contactError = "Contact discovery is unavailable." }
+            .onSuccess {
+                loadContactSnapshot(it)
+                contactReady = true
+                contactError = null
+            }
+            .onFailure {
+                contactReady = false
+                contactError = it.message ?: "Contact discovery is unavailable."
+            }
+        contactBusy = false
+    }
+    LaunchedEffect(state.profile?.id) {
+        if (state.profile != null) refreshContacts()
     }
 
     val directoryOptions = remember { listOf(
@@ -2439,17 +2453,17 @@ fun ConnectScreen(state: DesktopAppState) {
                         Text("Sync your phone contacts on Android, then discover the same matches here. Contact access is optional.",
                             fontSize = 12.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactSync, enabled = !contactBusy,
+                            Switch(checked = contactSync, enabled = contactReady && !contactBusy,
                                 onCheckedChange = { changeContacts(it, contactDiscoverable, contactAlerts && it) })
                             Text("Contact sync", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactDiscoverable, enabled = !contactBusy,
+                            Switch(checked = contactDiscoverable, enabled = contactReady && !contactBusy,
                                 onCheckedChange = { changeContacts(contactSync, it, contactAlerts) })
                             Text("Let my contacts find me", modifier = Modifier.padding(start = 9.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = contactAlerts, enabled = !contactBusy && contactSync,
+                            Switch(checked = contactAlerts, enabled = contactReady && !contactBusy && contactSync,
                                 onCheckedChange = { changeContacts(contactSync, contactDiscoverable, it) })
                             Text("Notify me when contacts join", modifier = Modifier.padding(start = 9.dp))
                         }
@@ -2459,13 +2473,8 @@ fun ConnectScreen(state: DesktopAppState) {
                             } }) { Text(name + "  @" + username) }
                         }
                         Row {
-                            TextButton(onClick = { scope.launch {
-                                contactBusy = true
-                                runCatching { state.client.contactDiscovery() }
-                                    .onSuccess { loadContactSnapshot(it); contactError = null }
-                                    .onFailure { contactError = it.message }
-                                contactBusy = false
-                            } }, enabled = !contactBusy) { Text("Refresh matches") }
+                            TextButton(onClick = { scope.launch { refreshContacts() } },
+                                enabled = !contactBusy) { Text(if (contactReady) "Refresh matches" else "Retry matching") }
                             TextButton(onClick = { scope.launch {
                                 contactBusy = true
                                 runCatching { state.client.deleteContactDiscovery() }
@@ -2473,7 +2482,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                         contactAlerts = false; contactMatches = emptyList(); contactError = null }
                                     .onFailure { contactError = it.message }
                                 contactBusy = false
-                            } }, enabled = !contactBusy) { Text("Delete synced contacts") }
+                            } }, enabled = contactReady && !contactBusy) { Text("Delete synced contacts") }
                         }
                         contactError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
