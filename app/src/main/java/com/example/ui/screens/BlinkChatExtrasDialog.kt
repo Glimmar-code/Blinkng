@@ -122,10 +122,7 @@ internal fun BlinkChatExtrasDialog(
         isPoll && pollDraft != null -> {
             // Until the server/native clients are deployed, send an honest text
             // fallback, never silently drop duplicate or ninth poll options.
-            "📊 Poll question: ${pollDraft.question}\n" +
-                pollDraft.options.mapIndexed { index, option -> "${index + 1}. $option" }
-                    .joinToString("\n") +
-                "\n(Reply with your choice number)"
+            BlinkChatPollPolicy.textFallback(pollDraft)
         }
         else -> ""
     }

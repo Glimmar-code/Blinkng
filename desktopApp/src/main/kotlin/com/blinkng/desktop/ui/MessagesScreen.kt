@@ -1143,11 +1143,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 draftsByConversation[target.id].isNullOrBlank()
                             ) {
                                 draftsByConversation[target.id] =
-                                    "📊 Poll question: ${safe.question}\n" +
-                                    safe.options.mapIndexed { index, option ->
-                                        "${index + 1}. $option"
-                                    }.joinToString("\n") +
-                                    "\n(Reply with your choice number)"
+                                    BlinkChatPollPolicy.textFallback(safe)
                                 showTextPollComposer = false
                             }
                         }

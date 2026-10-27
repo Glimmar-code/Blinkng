@@ -35,6 +35,21 @@ object BlinkChatPollPolicy {
         return BlinkChatPollDraft(cleanQuestion, cleanOptions)
     }
 
+    /**
+     * Stable readable fallback for app versions without native poll rendering.
+     * Never emit it for an invalid draft: callers must prepare() first.
+     */
+    fun textFallback(draft: BlinkChatPollDraft): String {
+        val checked = prepare(draft.question, draft.options)
+        return buildString {
+            append("📊 Poll question: ").append(checked.question).append('\n')
+            checked.options.forEachIndexed { index, option ->
+                append(index + 1).append(". ").append(option).append('\n')
+            }
+            append("(Reply with your choice number)")
+        }
+    }
+
     fun validChoice(choiceIndex: Int, optionCount: Int): Boolean =
         optionCount in MIN_OPTIONS..MAX_OPTIONS && choiceIndex in 0 until optionCount
 

@@ -31,6 +31,22 @@ class BlinkChatPollPolicyTest {
         }
     }
 
+    @Test fun fallback_is_consistent_and_requires_validated_input() {
+        val poll = BlinkChatPollPolicy.prepare(" Meet? ", listOf(" Today ", " Tomorrow "))
+        assertEquals(
+            "📊 Poll question: Meet?\n1. Today\n2. Tomorrow\n(Reply with your choice number)",
+            BlinkChatPollPolicy.textFallback(poll)
+        )
+        assertTrue(runCatching {
+            BlinkChatPollPolicy.textFallback(BlinkChatPollDraft("Q", listOf("Yes", "yes")))
+        }.isFailure)
+    }
+
+    @Test fun handles_min_and_max_option_bounds() {
+        assertEquals(8, BlinkChatPollPolicy.prepare("Q", (1..8).map(Int::toString)).options.size)
+        assertEquals(2, BlinkChatPollPolicy.prepare("Q", listOf("Y", "N")).options.size)
+    }
+
     @Test fun indices_are_zero_based_and_respect_actual_option_count() {
         assertTrue(BlinkChatPollPolicy.validChoice(0, 2))
         assertTrue(BlinkChatPollPolicy.validChoice(7, 8))
