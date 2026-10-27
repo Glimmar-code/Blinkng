@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkReplySwipePhysics
 import com.blinkng.shared.BlinkElasticGesturePhysics
@@ -535,12 +536,13 @@ private fun PremiumMessagesMasterDetail(
 ) {
     val density = LocalDensity.current
     val groupContext = LocalContext.current
+    val chatReducedMotion = rememberBlinkReduceMotion()
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
     var closeDragPx by remember(activeConversation.partnerUsername) { mutableStateOf(0f) }
     var closeDragging by remember(activeConversation.partnerUsername) { mutableStateOf(false) }
     val closeVisual by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(closeDragPx, swipeThresholdPx),
-        animationSpec = if (closeDragging) snap() else spring(
+        targetValue = if (chatReducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(closeDragPx, swipeThresholdPx),
+        animationSpec = if (closeDragging || chatReducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ), label = "chatElasticClose"
@@ -3175,13 +3177,14 @@ private fun MessageBubble(
     val density = LocalDensity.current
     val threshold = with(density) { BlinkReplySwipePhysics.activationDp.dp.toPx() }
     val haptic = LocalHapticFeedback.current
+    val bubbleReducedMotion = rememberBlinkReduceMotion()
     var dragOffset by remember(message.id) { mutableStateOf(0f) }
     var isDragging by remember(message.id) { mutableStateOf(false) }
     var replyArmed by remember(message.id) { mutableStateOf(false) }
     var replyVelocity by remember(message.id) { mutableStateOf(VelocityTracker()) }
     val displayOffset by animateFloatAsState(
-        targetValue = BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
-        animationSpec = if (isDragging) snap() else spring(
+        targetValue = if (bubbleReducedMotion) 0f else BlinkReplySwipePhysics.visualOffset(dragOffset, threshold),
+        animationSpec = if (isDragging || bubbleReducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
         ),
@@ -3210,7 +3213,9 @@ private fun MessageBubble(
                         onHorizontalDrag = { change, amount ->
                             replyVelocity.addPosition(change.uptimeMillis, change.position)
                             dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 2f)
-                            val active = BlinkReplySwipePhysics.shouldReply(dragOffset, threshold)
+                            val active = BlinkReplySwipePhysics.shouldReply(
+                                dragOffset, threshold, replyVelocity.calculateVelocity().x
+                            )
                             if (active && !replyArmed) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
