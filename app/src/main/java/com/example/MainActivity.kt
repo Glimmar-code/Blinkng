@@ -79,24 +79,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
-
-    private val viewModel: BlinkViewModel by viewModels()
-    private lateinit var rewardedAdManager: BlinkRewardedAdManager
-    private lateinit var adConsentManager: BlinkAdConsentManager
-    private var presenceHeartbeatJob: Job? = null
-    private var rewardedAdShowPending = false
-    private var startupIntroComplete = false
-    private var itemsOpenSignal by mutableIntStateOf(0)
-    private var boostOpenSignal by mutableIntStateOf(0)
-    private var showBugReportSheet by mutableStateOf(false)
-    private var shakeSensorListener: android.hardware.SensorEventListener? = null
-    private var lastShakeTriggerAt: Long = 0L
-    private var lastShakeImpulseAt: Long = 0L
-    private var shakeImpulses: Int = 0
-
     /** One authoritative action binding for every chat entry point. */
-    private fun messageInteractionActions(): ChatInteractionActions = ChatInteractionActions(
+private fun messageInteractionActions(viewModel: BlinkViewModel): ChatInteractionActions = ChatInteractionActions(
             onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
             onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
             onDeleteForMe = { partner, message -> viewModel.deleteChatMessageForMe(partner, message) },
@@ -117,6 +101,23 @@ class MainActivity : ComponentActivity() {
             onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
     )
+
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: BlinkViewModel by viewModels()
+    private lateinit var rewardedAdManager: BlinkRewardedAdManager
+    private lateinit var adConsentManager: BlinkAdConsentManager
+    private var presenceHeartbeatJob: Job? = null
+    private var rewardedAdShowPending = false
+    private var startupIntroComplete = false
+    private var itemsOpenSignal by mutableIntStateOf(0)
+    private var boostOpenSignal by mutableIntStateOf(0)
+    private var showBugReportSheet by mutableStateOf(false)
+    private var shakeSensorListener: android.hardware.SensorEventListener? = null
+    private var lastShakeTriggerAt: Long = 0L
+    private var lastShakeImpulseAt: Long = 0L
+    private var shakeImpulses: Int = 0
 
     private fun startBugShakeListener() {
         if (shakeSensorListener != null) return
@@ -1896,7 +1897,7 @@ fun MainAppContent(
                         onForwardMessage = { target, message ->
                             viewModel.forwardChatMessage(target, message)
                         },
-                        interactionActions = messageInteractionActions(),
+                        interactionActions = messageInteractionActions(viewModel),
                         onSendAttachment = { partner, uri, kind ->
                             viewModel.sendAttachmentMessage(partner, uri, kind)
                         },
@@ -2877,7 +2878,7 @@ fun MainAppContent(
                     },
                     onForwardMessage = { target, message -> viewModel.forwardChatMessage(target, message) },
                     onPresenceChange = { state -> viewModel.updateChatPresence(convo.partnerUsername, state) },
-                    interactionActions = messageInteractionActions(),
+                    interactionActions = messageInteractionActions(viewModel),
                     chatPrivacySettings = uiState.chatPrivacySettings,
                     allConversations = uiState.conversations,
                     isLoadingMessages = uiState.loadingInitialConversationId == convo.id,
