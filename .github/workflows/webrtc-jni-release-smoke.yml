@@ -2,7 +2,7 @@ name: BLINK release-minified WebRTC JNI smoke
 
 on:
   push:
-    branches: [main, 'Testlab/**']
+    branches: [main]
     paths:
       - 'app/build.gradle.kts'
       - 'app/proguard-rules.pro'
@@ -52,6 +52,8 @@ jobs:
           test -s "$apk"
           unzip -Z1 "$apk" | grep -Fx 'lib/arm64-v8a/libjingle_peerconnection_so.so'
           unzip -Z1 "$apk" | grep -Fx 'lib/x86_64/libjingle_peerconnection_so.so'
+          # Fail closed if the supposed release-like build was not actually R8-shrunk.
+          test -s app/build/outputs/mapping/rtcSmoke/mapping.txt
       - name: Enable KVM
         shell: bash
         run: |
@@ -71,9 +73,9 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
-            gradle :app:connectedRtcSmokeAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest \
-              --stacktrace --no-daemon
+            # The emulator action executes each script line separately. Backslash
+            # continuations therefore become a bogus Gradle task named '\\'.
+            gradle :app:connectedRtcSmokeAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest --stacktrace --no-daemon
       - name: Upload minified JNI test reports
         if: always()
         uses: actions/upload-artifact@v4
