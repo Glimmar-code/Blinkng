@@ -1726,6 +1726,8 @@ fun MainAppContent(
                         isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
                         followingErrorMessage = uiState.followingFeedErrorMessage,
+                        paginationErrorMessage = uiState.feedPaginationErrorMessage,
+                        followingPaginationErrorMessage = uiState.followingPaginationErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
                         onFollowingVisible = { viewModel.refreshFollowingIfStale() },
