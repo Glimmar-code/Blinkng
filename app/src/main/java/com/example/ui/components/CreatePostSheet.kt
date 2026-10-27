@@ -194,6 +194,7 @@ fun CreatePostSheet(
     isDark: Boolean,
     startInReelMode: Boolean = false,
     isSubmitting: Boolean = false,
+    uploadProgress: Int? = null,
     searchMentions: (suspend (String, Int, String?, String?) -> List<UserProfile>)? = null
 ) {
     val context = LocalContext.current
@@ -839,6 +840,7 @@ fun CreatePostSheet(
             val isEditingReel = selectedVideo != null && reelEditorStage
             ComposerTopBar(
                 isSubmitting = isSubmitting,
+                uploadProgress = uploadProgress,
                 canSubmit = if (isEditingReel)
                     !isSubmitting && !reelExporting && !reelHasPendingEdits
                 else canSubmit,
@@ -2061,6 +2063,7 @@ private fun ColoredTextComposer(
 @Composable
 private fun ComposerTopBar(
     isSubmitting: Boolean,
+    uploadProgress: Int?,
     canSubmit: Boolean,
     isReel: Boolean,
     isEditingReel: Boolean,
@@ -2092,11 +2095,16 @@ private fun ComposerTopBar(
             enabled = canSubmit
         ) {
             if (isSubmitting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(17.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
+                if (uploadProgress != null) {
+                    Text("Upload ${uploadProgress.coerceIn(0, 100)}%",
+                        style = MaterialTheme.typography.labelMedium)
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(17.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             } else {
                 Text(if (isEditingReel) "Next" else if (isReel) "Publish Reel" else "Post")
             }
