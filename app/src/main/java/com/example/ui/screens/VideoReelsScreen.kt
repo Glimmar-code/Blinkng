@@ -900,6 +900,7 @@ private fun ReelsContent(
                 onMenu = onMenuClick,
                 featuredReels = featuredReels,
                 onRefresh = onRefreshSelected,
+                onCreateReel = onCreateReelClick,
                 isRefreshing = isRefreshing,
                 onFeaturedReelClick = { reelId ->
                     // Featured videos must open from every tab, including Following.
