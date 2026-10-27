@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,6 +34,13 @@ object NotificationPreferenceStore {
     private const val TAG = "BlinkNotifyPrefs"
     private const val PREFS = "blink_notification_preferences"
     private val syncMutex = kotlinx.coroutines.sync.Mutex()
+    enum class SyncStatus { SAVING, SYNCED, FAILED }
+    private val _syncStatus = MutableStateFlow<Map<String, SyncStatus>>(emptyMap())
+    val syncStatus: StateFlow<Map<String, SyncStatus>> = _syncStatus
+    private fun updateSyncStatus(uid: String, status: SyncStatus) {
+        if (uid.isNotBlank()) _syncStatus.value = _syncStatus.value + (uid to status)
+    }
+    fun retrySync(context: Context) = syncToServerAsync(context)
     private fun accountPrefs(context: Context, accountId: String? = null): android.content.SharedPreferences {
         val appContext = context.applicationContext
         val uid = accountId ?: runCatching {
@@ -148,6 +157,7 @@ object NotificationPreferenceStore {
     fun syncToServerAsync(context: Context) {
         val uid = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
         if (uid.isBlank()) return
+        updateSyncStatus(uid, SyncStatus.SAVING)
         CoroutineScope(Dispatchers.IO).launch {
             syncMutex.withLock { syncToServer(context.applicationContext, uid) }
         }
@@ -246,9 +256,15 @@ object NotificationPreferenceStore {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "Notification preference sync failed: ${response.code}")
+                    throw IllegalStateException("Notification preference sync failed: ${response.code}")
                 }
             }
-        }.onFailure { Log.w(TAG, "Unable to sync notification preferences", it) }
+            if (SupabaseService().getCurrentUserId() == expectedUid) {
+                updateSyncStatus(expectedUid, SyncStatus.SYNCED)
+            }
+        }.onFailure {
+            updateSyncStatus(expectedUid, SyncStatus.FAILED)
+            Log.w(TAG, "Unable to sync notification preferences", it)
+        }
     }
 }
