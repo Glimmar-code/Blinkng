@@ -1,3 +1,12 @@
+## 2026-10-27 — Notification push trust and preference safety (Testlab candidate, not deployed)
+
+- **Shared backend only:** Protects Android and Windows notifications equally; neither client changes its UI, API or notification event format.
+- **Client authorization:** The activity push dispatcher verifies the sender's JWT with Supabase Auth instead of trusting a decoded unverified `sub` claim. Only the independently checked service-role path can send server-authorized referral, Channel and opted-in contact alerts.
+- **Recipient consent:** Failure or non-boolean results from `notification_push_allowed` now return a retryable HTTP 503 rather than sending an unapproved push. Genuine opt-outs remain terminal skips.
+- **Deduplication:** An inaccessible notification dispatch ledger also yields a retryable failure instead of sending an untracked, potentially duplicate FCM push.
+- **Tests:** Node tests cover unsigned/forged JWTs, auth outages, opt-outs, missing preference results and backend errors; the tests are part of the standard Supabase CI package suite.
+- **Release hold:** No production Edge Function deployment, database migration, app merge or APK publication is implied. Isolated CI, real-auth/FCM staging, recipient preference and cross-platform delivery checks must pass before promotion. Existing `main`, unmerged #608/#609/#566 and production user notifications are untouched by this staging work.
+
 ## 2026-10-26 — Channels production database foundation ACTIVATED, UI release still held
 
 - **Database verified live:** Supabase BLINK production now contains 6 new channel tables, 21 channel RPC functions and one private `blink-channel-media` Storage bucket, applied through `blink_channels_broadcast_media_polls_20261026` and `blink_channels_explicit_data_api_grants_20261026`. The previously existing Community and membership rows were preserved (one each at verification). Both `authenticated` grants for raw channel updates and private reports remain disabled; exposed reads/writes flow through authorization-gated functions.
