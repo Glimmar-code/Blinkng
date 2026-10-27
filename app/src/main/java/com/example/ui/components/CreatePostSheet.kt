@@ -322,6 +322,19 @@ fun CreatePostSheet(
         }
     }
 
+    fun cleanupAbandonedRender(media: String?) {
+        if (media.isNullOrBlank() ||
+            savedDrafts.any { it.videoUri == media || it.imageUri?.contains(media) == true }) return
+        val uri = runCatching { Uri.parse(media) }.getOrNull() ?: return
+        if (uri.scheme != "content" || uri.authority != "${context.packageName}.chatfiles") return
+        val filename = uri.lastPathSegment ?: return
+        if (!Regex("^(reel_[0-9a-fA-F-]{36}\\.mp4|reel_cover_[0-9a-fA-F-]{36}\\.jpg)$")
+                .matches(filename)) return
+        val folder = java.io.File(context.filesDir, "reel_edits")
+        val local = java.io.File(folder, filename)
+        if (local.parentFile == folder && local.isFile) runCatching { local.delete() }
+    }
+
     fun imagePayload(images: List<String>): String? {
         return when (images.size) {
             0 -> null
@@ -497,7 +510,9 @@ fun CreatePostSheet(
         if (video == null || coverFrameIndex < 0) return@LaunchedEffect
         coverRendering = true
         coverError = null
+        val previousCover = selectedCoverUri
         selectedCoverUri = null
+        cleanupAbandonedRender(previousCover)
         val choice = floatArrayOf(0.02f, 0.25f, 0.5f, 0.75f, 0.95f)
             .getOrElse(coverFrameIndex) { 0.25f }
         try {
@@ -875,7 +890,9 @@ fun CreatePostSheet(
                                 }
                             },
                             onEdited = { renderedUri ->
+                                val previousRender = selectedVideo
                                 selectedVideo = renderedUri
+                                cleanupAbandonedRender(previousRender)
                                 mode = "reel"
                             },
                             onExporting = { reelExporting = it },
