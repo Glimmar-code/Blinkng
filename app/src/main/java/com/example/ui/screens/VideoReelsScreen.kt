@@ -621,9 +621,16 @@ private fun ReelsContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
         val density = LocalDensity.current
         val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
-        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-            if (featuredReels.isNotEmpty()) 292.dp else 114.dp)
-            .coerceAtMost(maxHeight * 0.48f)
+        // Header (56dp) + Stories (72dp) + tabs (52dp) + optional
+        // featured banner. On short viewports use a compact banner, or omit it
+        // to avoid placing an invisible control behind the video preview.
+        val compactViewport = maxHeight < 700.dp
+        val showFeatured = featuredReels.isNotEmpty() && maxHeight >= 560.dp
+        val featuredHeight = if (compactViewport) 100.dp else 144.dp
+        val chromeTop = (
+            WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                180.dp + if (showFeatured) featuredHeight else 0.dp
+        ).coerceAtMost(maxHeight * 0.52f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
             else expansion.value.coerceIn(0f, 1f)
@@ -917,7 +924,8 @@ private fun ReelsContent(
                 onGame = onGameClick,
                 onNotifications = onNotificationsClick,
                 onMenu = onMenuClick,
-                featuredReels = featuredReels,
+                featuredReels = if (showFeatured) featuredReels else emptyList(),
+                featuredCardHeight = featuredHeight,
                 onRefresh = onRefreshSelected,
                 onCreateReel = onCreateReelClick,
                 isRefreshing = isRefreshing,
