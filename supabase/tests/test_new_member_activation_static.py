@@ -34,6 +34,17 @@ class NewMemberTests(unittest.TestCase):
         self.assertIn("if (!it.syncEnabled) people = emptyList()", card)
         self.assertNotIn("READ_CALL_LOG", app)
 
+    def test_returning_member_can_verify_phone_before_enabling_discovery(self):
+        android_auth = source("app/src/main/java/com/example/auth/BlinkPhoneVerificationClient.kt")
+        android_connect = source("app/src/main/java/com/example/ui/components/BlinkContactDiscoveryCard.kt")
+        desktop_auth = source("desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt")
+        desktop_connect = source("desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt")
+        for part in (android_auth, android_connect, desktop_auth, desktop_connect):
+            self.assertIn("phone_confirmed_at" if part in (android_auth, desktop_auth) else "Verify phone", part)
+        self.assertIn("phoneClient.verify(phoneNumber, phoneCode)", android_connect)
+        self.assertIn("verifyOnboardingPhoneCode(contactPhoneNumber, contactPhoneCode)", desktop_connect)
+        self.assertNotIn("READ_CALL_LOG", android_connect)
+
     def test_sms_does_not_block_new_accounts_before_provider_activation(self):
         policy = source("shared/src/main/kotlin/com/blinkng/shared/BlinkPhonePolicy.kt")
         client = source("app/src/main/java/com/example/auth/BlinkPhoneVerificationClient.kt")
