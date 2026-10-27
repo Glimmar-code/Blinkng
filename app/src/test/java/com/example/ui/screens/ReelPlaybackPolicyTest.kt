@@ -36,6 +36,15 @@ class ReelPlaybackPolicyTest {
         assertTrue(shouldKeepReelFullscreen(Float.NaN))
     }
 
+    @Test fun reelCompletionRequiresActualWatchedTimeNotJustPosition() {
+        assertFalse(qualifiedReelCompletion(0L, 10_000L))
+        assertFalse(qualifiedReelCompletion(100L, 10_000L)) // Scrubbed to 99% is not a watch.
+        assertFalse(qualifiedReelCompletion(8_999L, 10_000L))
+        assertTrue(qualifiedReelCompletion(9_000L, 10_000L))
+        assertTrue(qualifiedReelCompletion(15_000L, 10_000L))
+        assertFalse(qualifiedReelCompletion(9_000L, 0L))
+    }
+
     @Test fun seekingClampsTouchPositionsAndRejectsInvalidDimensions() {
         assertEquals(0f, reelSeekFraction(-25f, 100), 0f)
         assertEquals(0.5f, reelSeekFraction(50f, 100), 0f)
