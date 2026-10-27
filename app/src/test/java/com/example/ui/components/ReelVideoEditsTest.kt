@@ -61,4 +61,18 @@ class ReelVideoEditsTest {
             ReelEditSpec(0L, 5_000L, musicVolume = -0.1f).validate(5_000L)
         }.isFailure)
     }
+
+    @Test fun overlayGeometryIsValidatedForExport() {
+        val centered = ReelEditSpec(0, 4_000, overlayText = "BLINK",
+            overlayX = 0.2f, overlayY = -0.3f, overlayScale = 1.5f)
+        assertEquals(1.5f, centered.validate(4_000).overlayScale)
+        assertTrue(runCatching {
+            ReelEditSpec(0, 4_000, sticker = "A", overlayX = 1.5f)
+                .validate(4_000)
+        }.isFailure)
+        assertTrue(runCatching {
+            ReelEditSpec(0, 4_000, sticker = "A", overlayScale = 0.2f)
+                .validate(4_000)
+        }.isFailure)
+    }
 }
