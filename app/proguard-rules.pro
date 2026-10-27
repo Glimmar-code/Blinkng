@@ -15,6 +15,13 @@
 # members (including WebRTC audio helpers and nested classes) for JNI safety.
 -keep class org.webrtc.** { *; }
 
+# WebRTC SDK 150.x embeds Chromium's JNI Zero bridge. libjingle_peerconnection_so.so
+# looks up org.jni_zero.JniZero by its exact name during JNI_OnLoad. R8 removed
+# every org.jni_zero class in the minified Android 15 smoke APK, causing SIGABRT:
+# "JNI NewGlobalRef called with pending exception ClassNotFoundException".
+# These are native ABI entry points, not ordinary unused Java code.
+-keep class org.jni_zero.** { *; }
+
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
 
