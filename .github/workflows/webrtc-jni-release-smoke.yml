@@ -10,7 +10,7 @@ on:
       - 'app/src/androidTest/java/com/example/call/**'
       - '.github/workflows/webrtc-jni-release-smoke.yml'
   pull_request:
-    branches: [main, Testlab]
+    branches: [main, Testlab, 'Testlab-*']
     paths:
       - 'app/build.gradle.kts'
       - 'app/proguard-rules.pro'
