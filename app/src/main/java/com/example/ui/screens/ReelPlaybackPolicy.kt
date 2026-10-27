@@ -30,3 +30,7 @@ internal fun shouldExpandReelPreview(
 /** A small first-page overscroll returns to fullscreen; a deliberate pull collapses. */
 internal fun shouldKeepReelFullscreen(visibleFraction: Float): Boolean =
     !visibleFraction.isFinite() || visibleFraction >= 0.84f
+
+/** Scrubbing or jumping to the end must not earn a completed-view signal. */
+internal fun qualifiedReelCompletion(watchedMs: Long, durationMs: Long): Boolean =
+    durationMs > 0L && watchedMs >= (durationMs * 9L / 10L)
