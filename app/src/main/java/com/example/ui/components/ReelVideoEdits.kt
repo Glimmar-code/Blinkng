@@ -149,19 +149,22 @@ internal suspend fun exportEditedReel(
         val startUs = (edit.overlayStartMs - edit.startMs).coerceAtLeast(0L) * 1_000L
         val endUs = if (edit.overlayEndMs == Long.MAX_VALUE) Long.MAX_VALUE else
             (edit.overlayEndMs - edit.startMs).coerceAtLeast(0L) * 1_000L
-        val settings = StaticOverlaySettings.Builder()
-            .setBackgroundFrameAnchor(edit.overlayX, edit.overlayY)
-            .setScale(edit.overlayScale, edit.overlayScale)
-            .build()
         videoEffects += OverlayEffect(
             listOf(object : TextOverlay() {
+                // Empty text can create a zero-sized texture in Media3's BitmapOverlay;
+                // retain glyph bounds and hide it with alpha outside the selected time.
                 override fun getText(presentationTimeUs: Long): SpannableString =
-                    SpannableString(
-                        if (presentationTimeUs in startUs..endUs) overlayString else ""
-                    )
+                    SpannableString(overlayString)
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
-                    settings
+                    StaticOverlaySettings.Builder()
+                        .setBackgroundFrameAnchor(edit.overlayX, edit.overlayY)
+                        .setScale(edit.overlayScale, edit.overlayScale)
+                        .setAlphaScale(
+                            if (presentationTimeUs >= startUs &&
+                                presentationTimeUs <= endUs) 1f else 0f
+                        )
+                        .build()
             })
         )
     }
