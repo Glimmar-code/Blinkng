@@ -101,6 +101,7 @@ data class DesktopFeedPost(
     val isRepostedByMe: Boolean = false,
     val repostCount: Int = 0,
     val linkUrl: String? = null,
+    val hasPoll: Boolean = false,
 )
 
 data class DesktopComment(

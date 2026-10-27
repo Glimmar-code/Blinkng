@@ -567,6 +567,7 @@ fun FeedTabs(
     onFilterClick: () -> Unit,
     onRefreshClick: () -> Unit = {},
     isRefreshing: Boolean = false,
+    filterActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -577,6 +578,29 @@ fun FeedTabs(
     ) {
         FeedTabLabel("For You", selectedIndex == 0, Modifier.weight(1f), onForYouClick)
         FeedTabLabel("Following", selectedIndex == 1, Modifier.weight(1f), onFollowingClick)
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(role = Role.Button, onClick = onFilterClick)
+                .semantics { contentDescription = if (filterActive) "Change active feed filter" else "Filter feed posts" }
+                .testTag("feed_filter_action"),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Tune,
+                contentDescription = null,
+                tint = if (filterActive) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+            if (filterActive) {
+                Box(
+                    Modifier.align(Alignment.BottomCenter)
+                        .size(5.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+            }
+        }
     }
 }
 
