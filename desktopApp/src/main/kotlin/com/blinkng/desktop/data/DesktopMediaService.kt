@@ -112,7 +112,13 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
             .put("action", "init").put("purpose", purpose)
             .put("mimeType", mime).put("bytes", file.length()))
         if (status !in 200..299) {
-            val code = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
+            val code = runCatching {
+                val reply = JSONObject(body)
+                if (reply.optString("code") == "NOT_FOUND" &&
+                    reply.optString("message") == "Requested function was not found")
+                    "R2_FUNCTION_NOT_DEPLOYED"
+                else reply.optString("error")
+            }.getOrDefault("")
             if (BlinkR2MediaPolicy.intentionalFallback(status, code)) return null
             throw IllegalStateException("BLINK media upload could not start ($status).")
         }
