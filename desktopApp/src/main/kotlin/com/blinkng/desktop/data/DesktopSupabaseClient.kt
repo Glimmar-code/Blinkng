@@ -4,6 +4,7 @@ import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.ProfileVisitSettings
 import com.blinkng.shared.ProfileVisitor
 import com.blinkng.shared.ProfileVisitHistory
+import com.blinkng.shared.ProfileContentMetrics
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
@@ -977,6 +978,24 @@ class DesktopSupabaseClient(
             }
         }
 
+
+    suspend fun getProfileContentMetrics(profileId: String): ProfileContentMetrics? =
+        withContext(Dispatchers.IO) {
+            if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext null
+            runCatching {
+                val result = postObject("/rest/v1/rpc/get_profile_content_metrics",
+                    JSONObject().put("p_profile_id", profileId)) as? JSONObject
+                    ?: return@runCatching null
+                ProfileContentMetrics(
+                    posts = result.optLong("posts").coerceAtLeast(0),
+                    reels = result.optLong("reels").coerceAtLeast(0),
+                    views = result.optLong("views").coerceAtLeast(0),
+                    likes = result.optLong("likes").coerceAtLeast(0),
+                    comments = result.optLong("comments").coerceAtLeast(0),
+                    shares = result.optLong("shares").coerceAtLeast(0)
+                )
+            }.getOrNull()
+        }
 
     /** Owner-scoped visitor RPCs; errors must never silently become opt-out. */
     suspend fun getMyProfileVisitSettings(): ProfileVisitSettings = withContext(Dispatchers.IO) {
