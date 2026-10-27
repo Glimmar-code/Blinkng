@@ -209,6 +209,7 @@ fun ProfileScreen(
     var visitorsReloadKey by remember(profile.id) { mutableIntStateOf(0) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
+    var showCreatorStudio by rememberSaveable(profile.id) { mutableStateOf(false) }
 
     val profileService = remember { SupabaseService() }
     var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
@@ -289,6 +290,18 @@ fun ProfileScreen(
             profile = profile,
             onDismiss = { showProgressHub = false },
             onProgressChanged = onRefreshProfile,
+        )
+    }
+
+    if (showCreatorStudio && isMe) {
+        BlinkCreatorStudioSheet(
+            profile = profile,
+            posts = userPosts,
+            postsLoading = isPostsLoading,
+            onDismiss = { showCreatorStudio = false },
+            onVerify = onOpenGetVerified,
+            onRefresh = onRefreshProfile,
+            onOpenPost = onOpenPost
         )
     }
 
@@ -516,6 +529,7 @@ fun ProfileScreen(
                             }
                         },
                         onVerify = onOpenGetVerified,
+                        onCreatorStudio = { showCreatorStudio = true },
                         onEarnCoins = onOpenCoinsWallet,
                         onWallet = onOpenCoinsWallet,
                         onCampusRank = { onNavigateMainTab("leaderboard") },
