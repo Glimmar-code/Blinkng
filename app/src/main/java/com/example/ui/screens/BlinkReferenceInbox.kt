@@ -116,8 +116,10 @@ internal fun BlinkReferenceInbox(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onMyProfileClick)
-                        .testTag("inbox_my_avatar")
+                    modifier = Modifier.size(48.dp)
+                        .clickable(role = Role.Button, onClick = onMyProfileClick)
+                        .testTag("inbox_my_avatar"),
+                    contentAlignment = Alignment.Center
                 ) {
                     InboxAvatar(myAvatar, myName, if (compactHeader) 36.dp else 40.dp, bg)
                     if (isConnected) {
@@ -139,14 +141,14 @@ internal fun BlinkReferenceInbox(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                IconButton(onClick = onToggleSearch, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_search")) {
+                IconButton(onClick = onToggleSearch, modifier = Modifier.size(48.dp).testTag("inbox_search")) {
                     Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
                 }
-                IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_game")) {
+                IconButton(onClick = onGameClick, modifier = Modifier.size(48.dp).testTag("inbox_game")) {
                     Icon(Icons.Outlined.SportsEsports, contentDescription = "Open games", tint = primary, modifier = Modifier.size(27.dp))
                 }
                 Box {
-                    IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_notifications")) {
+                    IconButton(onClick = onNotificationsClick, modifier = Modifier.size(48.dp).testTag("inbox_notifications")) {
                         Icon(Icons.Outlined.NotificationsNone, contentDescription = "Notifications", tint = primary, modifier = Modifier.size(25.dp))
                     }
                     if (hasUnreadNotifications) {
