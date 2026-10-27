@@ -837,7 +837,7 @@ fun CreatePostSheet(
                         )
                     }
                     Text(
-                        "Trim and apply your edits, then tap Next to add a caption, cover details and publishing settings.",
+                        "Trim and apply your edits, then tap Next to add a caption and publishing settings.",
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
