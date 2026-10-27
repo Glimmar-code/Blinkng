@@ -449,7 +449,17 @@ class CallActivity : ComponentActivity() {
                 turnCredentials = temporaryTurnCredentials,
                 dataSaverEnabled = dataSaverEnabled
             )
+        } catch (error: LinkageError) {
+            // A missing or mismatched Java/native WebRTC symbol may throw before
+            // media is created. A fatal JNI abort still requires the minified
+            // APK instrumentation gate; it cannot be caught here.
+            android.util.Log.e("CallActivity", "WebRTC JNI linking failed", error)
+            mediaStarted = false
+            errorText = "Unable to load the calling engine. Update BLINK and try again."
+            failAndFinish("failed")
+            return
         } catch (error: Exception) {
+            android.util.Log.e("CallActivity", "WebRTC call media initialization failed", error)
             mediaStarted = false
             errorText = "Unable to initialize call media."
             failAndFinish("failed")
