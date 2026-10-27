@@ -72,11 +72,51 @@ do $views$
 declare
   v_source text := pg_get_functiondef('public.record_content_view(uuid,uuid)'::regprocedure);
   v_anchor text := 'v_user_view_count := coalesce(v_user_view_count, 0);';
+  v_eligibility_anchor text := 'v_content_type := case when v_is_reel then ''reel'' else ''post'' end;';
 begin
   if v_source is null or position(v_anchor in v_source)=0
      or position('v_user_contribution' in v_source)=0 then
     raise exception 'CONTENT_VIEW_SOURCE_DRIFT';
   end if;
+  if position(v_eligibility_anchor in v_source)=0 then
+    raise exception 'CONTENT_VIEW_VISIBILITY_SOURCE_DRIFT';
+  end if;
+  v_source := replace(v_source,v_eligibility_anchor,$visibility$
+    -- Enforce the same visibility constraints used when serving a Feed item.
+    -- SECURITY DEFINER must not count hidden or private creator content.
+    if not exists (
+      select 1 from public.feed_posts allowed
+      where allowed.id=p_post_id
+        and allowed.is_active=true
+        and coalesce(allowed.is_flagged,false)=false
+        and (allowed.expires_at is null or allowed.expires_at>now())
+        and (
+          lower(coalesce(allowed.audience,'everyone'))='everyone'
+          or allowed.user_id=v_viewer_id
+          or (lower(coalesce(allowed.audience,''))='followers' and exists (
+            select 1 from public.follows audience_follow
+            where audience_follow.follower_id=v_viewer_id
+              and audience_follow.following_id=allowed.user_id
+          ))
+        )
+        and (allowed.user_id=v_viewer_id or not exists (
+          select 1 from public.user_settings privacy
+          where privacy.user_id=allowed.user_id and privacy.private_account=true
+        ))
+        and not exists (
+          select 1 from public.blocks deny
+          where (deny.blocker_id=v_viewer_id and deny.blocked_id=allowed.user_id)
+             or (deny.blocked_id=v_viewer_id and deny.blocker_id=allowed.user_id)
+        )
+        and not exists (
+          select 1 from public.muted_users hidden
+          where hidden.user_id=v_viewer_id and hidden.muted_id=allowed.user_id
+        )
+    ) then
+      raise exception 'CONTENT_NOT_VISIBLE';
+    end if;
+    v_content_type := case when v_is_reel then 'reel' else 'post' end;
+$visibility$);
   if position('ALGORITHM_VIEW_REPLAY_COOLDOWN' in v_source)=0 then
     v_source := replace(v_source,v_anchor,v_anchor || $block$
 
