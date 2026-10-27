@@ -111,6 +111,7 @@ fun DesktopUserProfileDialog(
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
     var showVisitorHistory by remember(initialProfile.id) { mutableStateOf(false) }
+    var visitorDetail by remember(initialProfile.id) { mutableStateOf<DesktopProfile?>(null) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
     var showEditProfile by remember(initialProfile.id) { mutableStateOf(false) }
     var editError by remember(initialProfile.id) { mutableStateOf<String?>(null) }
@@ -636,7 +637,21 @@ fun DesktopUserProfileDialog(
     if (showVisitorHistory && isMe) {
         DesktopProfileVisitorsDialog(
             client = state.client,
-            onDismiss = { showVisitorHistory = false }
+            onDismiss = { showVisitorHistory = false },
+            onOpenProfile = { username ->
+                scope.launch {
+                    runCatching { state.client.fetchProfileDetail(username) }
+                        .onSuccess { if (it != null) visitorDetail = it
+                            else statusMessage = "That profile isn't available." }
+                        .onFailure { statusMessage = "Couldn't open visitor profile." }
+                }
+            }
+        )
+    }
+    visitorDetail?.let { selected ->
+        DesktopUserProfileDialog(
+            state = state, initialProfile = selected,
+            onDismiss = { visitorDetail = null }
         )
     }
 
