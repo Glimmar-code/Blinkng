@@ -110,6 +110,7 @@ fun DesktopUserProfileDialog(
     var connectionProfiles by remember(initialProfile.id) { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var statusMessage by remember(initialProfile.id) { mutableStateOf<String?>(null) }
     var showThemePicker by remember(initialProfile.id) { mutableStateOf(false) }
+    var showVisitorHistory by remember(initialProfile.id) { mutableStateOf(false) }
     var chosenTheme by remember(initialProfile.id) { mutableStateOf(BlinkProfileThemes.normalize(initialProfile.profileTheme)) }
     var showEditProfile by remember(initialProfile.id) { mutableStateOf(false) }
     var editError by remember(initialProfile.id) { mutableStateOf<String?>(null) }
@@ -150,6 +151,12 @@ fun DesktopUserProfileDialog(
     }
 
     LaunchedEffect(initialProfile.id) { reload() }
+    LaunchedEffect(initialProfile.id, isMe) {
+        if (!isMe && initialProfile.id.isNotBlank()) {
+            // Server refuses recording without reciprocal user consent.
+            runCatching { state.client.recordOptInProfileVisit(initialProfile.id) }
+        }
+    }
 
     val filteredContent = remember(content, likedContent, savedContent, selectedTab, searchQuery) {
         val reels = selectedTab == "Reels"
@@ -353,6 +360,14 @@ fun DesktopUserProfileDialog(
                                     Icon(Icons.Rounded.Notifications, contentDescription = null, modifier = Modifier.size(17.dp))
                                     Spacer(Modifier.width(5.dp))
                                     Text("Notify")
+                                }
+                            }
+                        }
+
+                        if (isMe) {
+                            item {
+                                TextButton(onClick = { showVisitorHistory = true }) {
+                                    Text("Profile visitors · Privacy controls")
                                 }
                             }
                         }
@@ -594,6 +609,13 @@ fun DesktopUserProfileDialog(
             }
         }
     }
+    }
+
+    if (showVisitorHistory && isMe) {
+        DesktopProfileVisitorsDialog(
+            client = state.client,
+            onDismiss = { showVisitorHistory = false }
+        )
     }
 
     shareReelId?.let { id ->
