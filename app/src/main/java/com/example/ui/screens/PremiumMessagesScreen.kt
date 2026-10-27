@@ -495,7 +495,9 @@ private fun Modifier.observeLeftSwipeToClose(
                 else onDragProgress(0f)
             } else {
                 committed = !childHandled && leftIntent && BlinkElasticGesturePhysics.shouldCommit(
-                    horizontal, tracker.calculateVelocity().x, thresholdPx,
+                    horizontal, BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                        horizontal, tracker.calculateVelocity().x, change.uptimeMillis - down.uptimeMillis
+                    ), thresholdPx,
                     thresholdPx * 0.36f, thresholdPx * 14.5f
                 )
                 break
