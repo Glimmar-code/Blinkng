@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.shared.BlinkElasticGesturePhysics
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -1140,11 +1141,12 @@ private fun PremiumProfileTabs(
     )
     val density = LocalDensity.current
     val tabActivation = with(density) { 76.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     var rawTabDrag by remember(selectedTab) { mutableFloatStateOf(0f) }
     var tabDragging by remember(selectedTab) { mutableStateOf(false) }
     val tabVisual by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(rawTabDrag, tabActivation) * .32f,
-        animationSpec = if (tabDragging) snap() else spring(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(rawTabDrag, tabActivation) * .32f,
+        animationSpec = if (tabDragging || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ), label = "profileTabElastic"
