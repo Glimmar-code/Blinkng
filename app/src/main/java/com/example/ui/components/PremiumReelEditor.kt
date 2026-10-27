@@ -281,7 +281,7 @@ internal fun PremiumReelEditor(
                             valueRange = 0f..durationMs.coerceAtLeast(500L).toFloat(),
                             enabled = !isExporting && durationMs >= 500L,
                             onValueChange = { range ->
-                                overlayStartMs = range.start.toLong().coerceIn(0L, durationMs)
+                                overlayStartMs = range.start.toLong().coerceIn(0L, durationMs - 1L)
                                 overlayEndMs = range.endInclusive.toLong()
                                     .coerceIn(overlayStartMs + 1L, durationMs)
                                 player.seekTo(overlayStartMs)
