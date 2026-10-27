@@ -35,7 +35,6 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
-import java.util.concurrent.atomic.AtomicBoolean
 
 class WebRtcCallClient(
     context: Context,
@@ -56,7 +55,7 @@ class WebRtcCallClient(
         private const val STREAM_ID = "blink_call"
         private const val AUDIO_TRACK_ID = "blink_audio"
         private const val VIDEO_TRACK_ID = "blink_video"
-        private val factoryInitialized = AtomicBoolean(false)
+        @Volatile private var factoryInitialized = false
     }
 
     private val appContext = context.applicationContext
@@ -343,12 +342,17 @@ class WebRtcCallClient(
     }
 
     private fun initializeFactoryOnce() {
-        if (factoryInitialized.compareAndSet(false, true)) {
+        // A failed initialization must NOT permanently mark WebRTC as initialized.
+        // Synchronize on the class, not this call instance: incoming and outgoing
+        // calls may race to create separate WebRtcCallClients.
+        synchronized(WebRtcCallClient::class.java) {
+            if (factoryInitialized) return
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(appContext)
                     .setEnableInternalTracer(false)
                     .createInitializationOptions()
             )
+            factoryInitialized = true
         }
     }
 
