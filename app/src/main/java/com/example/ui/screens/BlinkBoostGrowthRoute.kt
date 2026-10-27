@@ -419,6 +419,7 @@ private fun BoostCampaignColumn(
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
     var quoteError by remember { mutableStateOf<String?>(null) }
+    var cashBoostEnabled by remember { mutableStateOf(false) }
     var quoteRetryNonce by remember { mutableIntStateOf(0) }
     var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
@@ -448,7 +449,12 @@ private fun BoostCampaignColumn(
         stateLoading = false
     }
 
-    LaunchedEffect(refreshNonce) { reloadState() }
+    LaunchedEffect(refreshNonce) {
+        reloadState()
+        service.cashBoostAvailability()
+            .onSuccess { cashBoostEnabled = it.optBoolean("enabled",false) }
+            .onFailure { cashBoostEnabled = false }
+    }
     LaunchedEffect(refreshNonce) {
         contentLoading = true
         service.boostableContent()
@@ -899,20 +905,27 @@ private fun BoostCampaignColumn(
                                         Text("Get Blink Coins")
                                     }
                                 }
-                                OutlinedButton(
-                                    onClick = {
-                                        onPaystackBoost(
-                                            targetType.name, targetId, boostPower,
-                                            objective.name, audience.name,
-                                            durationDays, targetUniversity
-                                        )
-                                    },
-                                    enabled = paystackCheckoutAvailable && isOnline &&
-                                        !working && !quoteLoading && quote != null &&
-                                        quoteCost > 0 && targetReady,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("Pay with Paystack • Final price shown at checkout")
+                                if (paystackCheckoutAvailable && cashBoostEnabled) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            onPaystackBoost(
+                                                targetType.name, targetId, boostPower,
+                                                objective.name, audience.name,
+                                                durationDays, targetUniversity
+                                            )
+                                        },
+                                        enabled = isOnline && !working && !quoteLoading &&
+                                            quote != null && quoteCost > 0 && targetReady,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text("Pay with Paystack · Final price shown at checkout")
+                                    }
+                                } else {
+                                    Text(
+                                        "Cash-funded Boost is unavailable. Blink Coins can still be used.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                                 Button(
                                     onClick = { startError = null; confirmStart = true },
