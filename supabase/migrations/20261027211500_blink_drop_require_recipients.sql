@@ -47,3 +47,33 @@ end;
 $$;
 revoke all on function public.create_blink_drop_v2(text,uuid,text,integer,integer,text,integer,uuid) from public, anon;
 grant execute on function public.create_blink_drop_v2(text,uuid,text,integer,integer,text,integer,uuid) to authenticated;
+
+-- Also protect the legacy public.create_blink_drop RPC, which authenticated users
+-- can still invoke directly. A deferred constraint checks after the existing
+-- create function has inserted its eligibility snapshot and before COMMIT.
+-- A zero-recipient Drop aborts the *entire* transaction, including any wallet debit,
+-- ledger row, notification, and idempotency record.
+create or replace function private.assert_blink_drop_has_eligible_followers()
+returns trigger
+language plpgsql
+security definer
+set search_path=''
+as $$
+begin
+  if not exists (
+    select 1 from public.blink_drop_eligible_followers e
+    where e.drop_id = new.id
+  ) then
+    raise exception 'DROP_NO_ELIGIBLE_FOLLOWERS';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.assert_blink_drop_has_eligible_followers() from public, anon, authenticated;
+
+drop trigger if exists blink_drop_nonempty_recipient_guard on public.blink_drops;
+create constraint trigger blink_drop_nonempty_recipient_guard
+after insert on public.blink_drops
+deferrable initially deferred
+for each row
+execute function private.assert_blink_drop_has_eligible_followers();
