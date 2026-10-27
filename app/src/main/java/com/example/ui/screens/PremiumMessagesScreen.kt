@@ -1678,6 +1678,10 @@ private fun PremiumChatDetail(
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
+    // A quoted reply can point beyond the currently loaded history window.
+    var pendingReplyTargetId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var lastRequestedReplyOldestId by remember(conversation.id) { mutableStateOf<String?>(null) }
+    var highlightedReplyId by remember(conversation.id) { mutableStateOf<String?>(null) }
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
         derivedStateOf {
@@ -1903,6 +1907,42 @@ private fun PremiumChatDetail(
         })
     }
     val historyHeaderCount = if (isLoadingOlder) 1 else 0
+
+    LaunchedEffect(
+        pendingReplyTargetId, conversation.messages.firstOrNull()?.id,
+        visibleMessages, hasMoreMessages, isLoadingOlder
+    ) {
+        val targetId = pendingReplyTargetId ?: return@LaunchedEffect
+        val original = messagesById[targetId]
+        val position = visibleMessages.indexOfFirst { visible ->
+            visible.id == targetId || (
+                !original?.imageAlbumId.isNullOrBlank() &&
+                    visible.imageAlbumId == original?.imageAlbumId
+            )
+        }
+        if (position >= 0) {
+            listState.animateScrollToItem(position + historyHeaderCount)
+            highlightedReplyId = targetId
+            pendingReplyTargetId = null
+            lastRequestedReplyOldestId = null
+        } else if (!hasMoreMessages) {
+            pendingReplyTargetId = null
+            lastRequestedReplyOldestId = null
+            Toast.makeText(context, "Original message is no longer available.", Toast.LENGTH_SHORT).show()
+        } else if (!isLoadingOlder) {
+            val oldestId = conversation.messages.firstOrNull()?.id ?: "empty"
+            if (lastRequestedReplyOldestId != oldestId) {
+                lastRequestedReplyOldestId = oldestId
+                onLoadOlder()
+            }
+        }
+    }
+    LaunchedEffect(highlightedReplyId) {
+        if (highlightedReplyId != null) {
+            delay(1800)
+            highlightedReplyId = null
+        }
+    }
 
     fun submitMessage(value: String = text) {
         val clean = value.trim()
@@ -2137,7 +2177,17 @@ private fun PremiumChatDetail(
 
                     items(visibleMessages, key = { it.id }) { message ->
                         val replyTarget = message.replyToMessageId?.let(messagesById::get)
-                        Column {
+                        val highlightedAlbumId = highlightedReplyId?.let { messagesById[it]?.imageAlbumId }
+                        val showReplyHighlight = highlightedReplyId == message.id ||
+                            (!highlightedAlbumId.isNullOrBlank() && highlightedAlbumId == message.imageAlbumId)
+                        Column(
+                            modifier = Modifier
+                                .background(
+                                    if (showReplyHighlight) palette.accent.copy(alpha = .12f)
+                                    else Color.Transparent,
+                                    RoundedCornerShape(12.dp)
+                                )
+                        ) {
                             messageDateLabels[message.id]?.let { label ->
                                 Box(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
@@ -2178,10 +2228,14 @@ private fun PremiumChatDetail(
                                 editingMessage = null
                             },
                             onReplyTargetClick = {
-                                val targetId = message.replyToMessageId
-                                val targetIndex = visibleMessageIndexes[targetId]
-                                if (targetIndex != null) {
-                                    scrollScope.launch { listState.animateScrollToItem(targetIndex + historyHeaderCount) }
+                                message.replyToMessageId?.let { targetId ->
+                                    // Clear local filters before resolving the target. If it is in
+                                    // older history, load additional pages until found or exhausted.
+                                    searchQuery = ""
+                                    pinnedOnly = false
+                                    starredOnly = false
+                                    lastRequestedReplyOldestId = null
+                                    pendingReplyTargetId = targetId
                                 }
                             },
                             onActions = { selectedMessage = message },
