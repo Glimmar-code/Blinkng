@@ -569,6 +569,11 @@ fun GetVerifiedSheet(
                             isDark = isDark
                         )
                         VerificationFeatureItem(
+                            icon = Icons.Default.Storefront,
+                            text = "Merchant Pro: stock checks, listing-photo reminders and category insights for enrolled sellers",
+                            isDark = isDark
+                        )
+                        VerificationFeatureItem(
                             icon = Icons.Default.WorkspacePremium,
                             text = "Gold status treatment on supported leaderboard and notification surfaces",
                             isDark = isDark
