@@ -60,7 +60,7 @@ fun Modifier.blinkElasticSwipeAction(
             else BlinkElasticGesturePhysics.visualDistance(distance, activationPx),
         animationSpec = if (dragging || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumHigh
+            stiffness = Spring.StiffnessMedium
         ),
         label = "blinkElasticNavigation"
     )
