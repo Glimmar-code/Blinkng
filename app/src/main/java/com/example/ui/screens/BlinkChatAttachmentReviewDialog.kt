@@ -30,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.example.media.BlinkChatAudioTrim
+import com.example.media.BlinkChatPdfNote
 
 private data class PreviewDocument(val title: String, val size: Long, val mime: String)
 
@@ -49,6 +50,10 @@ internal fun BlinkChatAttachmentReviewDialog(
     var info by remember(uri) { mutableStateOf(PreviewDocument("Attachment", 0L, "")) }
     var pdfPage by remember(uri) { mutableStateOf<Bitmap?>(null) }
     var error by remember(uri) { mutableStateOf<String?>(null) }
+    var workingUri by remember(uri) { mutableStateOf(uri) }
+    var pdfNote by remember(uri) { mutableStateOf("") }
+    var pdfNoteApplied by remember(uri) { mutableStateOf(false) }
+    var exportingPdf by remember(uri) { mutableStateOf(false) }
     LaunchedEffect(uri) {
         withContext(Dispatchers.IO) {
             runCatching {
@@ -128,7 +133,9 @@ internal fun BlinkChatAttachmentReviewDialog(
                 Text(if (isAudio) "AUDIO PREVIEW" else "DOCUMENT PREVIEW",
                     color = Color.White, modifier = Modifier.weight(1f))
                 Button(
-                    enabled = !exportingAudio,
+                    enabled = !exportingAudio && !exportingPdf &&
+                        (isAudio || info.mime != "application/pdf" || pdfNote.isBlank() ||
+                            pdfNoteApplied),
                     onClick = {
                         if (isAudio && duration > 500L &&
                             (trimStart > 0L || trimEnd < duration - 100L)) {
@@ -144,9 +151,9 @@ internal fun BlinkChatAttachmentReviewDialog(
                                 }
                                 exportingAudio = false
                             }
-                        } else onSend(uri)
+                        } else onSend(workingUri)
                     }
-                ) { Text(if (exportingAudio) "Exporting" else "Send") }
+                ) { Text(if (exportingAudio || exportingPdf) "Exporting" else "Send") }
             }
             Column(Modifier.fillMaxWidth().weight(1f)
                 .verticalScroll(rememberScrollState()).padding(18.dp),
@@ -219,6 +226,48 @@ internal fun BlinkChatAttachmentReviewDialog(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp))
                     Text("Preview of page 1", color = Color.LightGray)
+                }
+                if (!isAudio && info.mime == "application/pdf") {
+                    Spacer(Modifier.height(14.dp))
+                    Text("Add a note to each PDF page", color = Color.White)
+                    OutlinedTextField(
+                        value = pdfNote,
+                        onValueChange = {
+                            pdfNote = it.take(180)
+                            pdfNoteApplied = false
+                            workingUri = uri
+                        },
+                        label = { Text("Footer note (optional)") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "Notes are added to a separate flattened PDF copy. Original text, links and form fields are not preserved in the annotated copy.",
+                        color = Color.LightGray
+                    )
+                    if (pdfNoteApplied) Text(
+                        "Annotated PDF copy prepared. Tap Send to share it.",
+                        color = Color(0xFF76D9B2)
+                    )
+                    OutlinedButton(
+                        enabled = !exportingPdf && pdfNote.isNotBlank() && !pdfNoteApplied,
+                        onClick = {
+                            exportingPdf = true
+                            error = null
+                            scope.launch {
+                                runCatching {
+                                    BlinkChatPdfNote.createCopy(context, uri, pdfNote)
+                                }.onSuccess {
+                                    workingUri = it
+                                    pdfNoteApplied = true
+                                }.onFailure {
+                                    error = it.message ?: "Could not prepare annotated PDF."
+                                }
+                                exportingPdf = false
+                            }
+                        }
+                    ) { Text(if (exportingPdf) "Preparing PDF…" else "Apply note to copy") }
                 }
                 if (!isAudio && pdfPage == null) {
                     Spacer(Modifier.height(18.dp))
