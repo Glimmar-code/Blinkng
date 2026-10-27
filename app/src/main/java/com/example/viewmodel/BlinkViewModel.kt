@@ -3391,7 +3391,7 @@ private suspend fun restoreSupabaseSession() {
                         activitiesLoading = false,
                         activitiesHasMore = page.hasMore,
                         activitiesLoadingMore = false,
-                        activitiesError = null
+                        activitiesError = page.warning
                     )
                     persistExtendedCache()
                 },
@@ -3430,11 +3430,25 @@ private suspend fun restoreSupabaseSession() {
                     val combined = (_uiState.value.activities + page.items)
                         .distinctBy { it.id }
                         .sortedByDescending { it.rawTimestamp }
+                    val canonical = combined.filter { it.id.startsWith("notification:") }
+                    val canonicalIds = canonical.mapNotNull { it.targetEntityId }.toSet()
+                    val reconciled = combined.filterNot { legacy ->
+                        !legacy.id.startsWith("notification:") &&
+                            (com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isOfficialMirror(
+                                legacy.targetType, legacy.targetEntityId, canonicalIds
+                            ) || canonical.any { item ->
+                                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.isSameSocialEvent(
+                                    legacy.user, item.user, legacy.eventType, item.eventType,
+                                    legacy.rawTimestamp, item.rawTimestamp,
+                                    legacy.targetPostId, item.targetPostId, item.targetType
+                                )
+                            })
+                    }
                     _uiState.value = _uiState.value.copy(
-                        activities = combined,
+                        activities = reconciled,
                         activitiesHasMore = page.hasMore,
                         activitiesLoadingMore = false,
-                        activitiesError = null
+                        activitiesError = page.warning
                     )
                     persistExtendedCache()
                 },
