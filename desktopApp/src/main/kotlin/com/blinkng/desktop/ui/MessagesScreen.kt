@@ -720,8 +720,12 @@ fun MessagesScreen(state: DesktopAppState) {
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     legacyPoll.options.forEachIndexed { index, option ->
                                                         TextButton(onClick = {
-                                                            replyingTo = message
-                                                            draftsByConversation[active.id] = (index + 1).toString()
+                                                            if (draft.isBlank() && editingMessage == null) {
+                                                                replyingTo = message
+                                                                draftsByConversation[active.id] = (index + 1).toString()
+                                                            } else {
+                                                                error = "Finish your draft before selecting a poll reply."
+                                                            }
                                                         }) {
                                                             Text("${index + 1}. $option · Reply")
                                                         }
