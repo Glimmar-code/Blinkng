@@ -2444,12 +2444,18 @@ fun MainAppContent(
             }
         }
 
+        // Hold outgoing route content through its exit animation. Otherwise a
+        // null ViewModel destination removes the whole page one frame early.
+        var previousPost by remember { mutableStateOf(uiState.deepLinkedPost) }
+        LaunchedEffect(uiState.deepLinkedPost) {
+            uiState.deepLinkedPost?.let { previousPost = it }
+        }
         AnimatedVisibility(
             visible = uiState.deepLinkedPost != null,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.deepLinkedPost?.let { post ->
+            (uiState.deepLinkedPost ?: previousPost)?.let { post ->
                 SharedPostScreen(
                     post = post,
                     currentUsername = uiState.myProfile.username,
@@ -2474,12 +2480,16 @@ fun MainAppContent(
         }
 
         // Sub-screen Overlays: Product Detail
+        var previousProduct by remember { mutableStateOf(uiState.viewingProduct) }
+        LaunchedEffect(uiState.viewingProduct) {
+            uiState.viewingProduct?.let { previousProduct = it }
+        }
         AnimatedVisibility(
             visible = uiState.viewingProduct != null,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.viewingProduct?.let { product ->
+            (uiState.viewingProduct ?: previousProduct)?.let { product ->
                 ProductDetailScreen(
                     item = product,
                     onBack = { viewModel.closeProductDetail() },
@@ -2520,25 +2530,18 @@ fun MainAppContent(
             }
         }
 
-        // Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging
+        // Keep profiles rendered while sliding out to reveal the originating page.
+        // All detail routes enter from the right and leave to the right.
+        var previousProfile by remember { mutableStateOf(uiState.viewingProfile) }
+        LaunchedEffect(uiState.viewingProfile) {
+            uiState.viewingProfile?.let { previousProfile = it }
+        }
         AnimatedVisibility(
             visible = uiState.viewingProfile != null,
-            enter = slideInHorizontally(
-                initialOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 280,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            ) + fadeIn(androidx.compose.animation.core.tween(180)),
-            exit = slideOutHorizontally(
-                targetOffsetX = { -it },
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 230,
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            ) + fadeOut(androidx.compose.animation.core.tween(160))
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(260)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(240))
         ) {
-            uiState.viewingProfile?.let { profile ->
+            (uiState.viewingProfile ?: previousProfile)?.let { profile ->
                 val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
