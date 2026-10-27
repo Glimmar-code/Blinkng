@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
@@ -144,7 +143,7 @@ internal fun BlinkReferenceInbox(
                     Icon(Icons.Default.Search, contentDescription = "Search messages", tint = primary, modifier = Modifier.size(25.dp))
                 }
                 IconButton(onClick = onGameClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_game")) {
-                    Icon(Icons.Outlined.GridView, contentDescription = "Open Items", tint = primary, modifier = Modifier.size(27.dp))
+                    Icon(Icons.Outlined.SportsEsports, contentDescription = "Open games", tint = primary, modifier = Modifier.size(27.dp))
                 }
                 Box {
                     IconButton(onClick = onNotificationsClick, modifier = Modifier.size(if (compactHeader) 38.dp else 43.dp).testTag("inbox_notifications")) {
