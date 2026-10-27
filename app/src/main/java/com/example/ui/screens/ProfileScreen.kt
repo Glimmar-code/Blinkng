@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.ProfileCompletionPolicy
 import com.blinkng.shared.profileRankLabel
 import com.blinkng.shared.xpProgress
 import com.blinkng.shared.canViewProfileField
@@ -341,7 +342,11 @@ fun ProfileScreen(
             .toList()
     }
 
-    val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
+    val profileCompletion = remember(profile) {
+        ProfileCompletionPolicy.calculate(profile.fullName, profile.username, profile.avatarUrl,
+            profile.professionalHeadline, profile.bio, profile.university, profile.faculty,
+            profile.department, profile.academicLevel, profile.accountType)
+    }
     val premiumIdentity by rememberBlinkPublicPremiumIdentity(
         username = profile.username,
         knownVip = profile.isBlinkVip,
@@ -744,7 +749,8 @@ fun ProfileScreen(
                             onBookmark = onBookmarkPost,
                             onShare = onSharePost,
                             onOptions = onOptionsClick,
-                            onProfileClick = onProfileClick
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
                         )
                         item(key = "liked_header") {
                             Text(
@@ -774,7 +780,8 @@ fun ProfileScreen(
                             onBookmark = onBookmarkPost,
                             onShare = onSharePost,
                             onOptions = onOptionsClick,
-                            onProfileClick = onProfileClick
+                            onProfileClick = onProfileClick,
+                            onOpenPost = onOpenPost
                         )
                     }
                 }
@@ -850,22 +857,29 @@ fun ProfileScreen(
     // AVATAR VIEWER
     // ================================================================
     if (showAvatarViewer) {
-        AlertDialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showAvatarViewer = false },
-            confirmButton = { TextButton(onClick = { showAvatarViewer = false }) { Text("Close") } },
-            text = {
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 AsyncImage(
                     model = profile.avatarUrl,
                     error = painterResource(R.drawable.ic_default_profile),
                     fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Full profile picture",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f)
                 )
+                IconButton(
+                    onClick = { showAvatarViewer = false },
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
+                        .padding(12.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .size(48.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close profile picture", tint = Color.White)
+                }
             }
-        )
+        }
     }
 
     // ================================================================
@@ -1270,9 +1284,11 @@ private fun PremiumProfileTabs(
                             28.dp.toPx(), 1100.dp.toPx()
                         )
                         if (commit) {
-                            val target = (selectedTab + if (rawTabDrag < 0f) 1 else -1)
-                                .coerceIn(0, tabs.lastIndex)
-                            if (target != selectedTab) onTabSelected(target)
+                            val current = primary.indexOf(tabs.getOrNull(selectedTab))
+                            val targetVisible = (if (current < 0) 0 else current +
+                                if (rawTabDrag < 0f) 1 else -1).coerceIn(0, primary.lastIndex)
+                            val target = tabs.indexOf(primary[targetVisible])
+                            if (target >= 0 && target != selectedTab) onTabSelected(target)
                         }
                         rawTabDrag = 0f
                         tabDragging = false
@@ -2013,7 +2029,8 @@ private fun AboutSection(
             .padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        InfoCard(title = "Student identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+        if (!profile.accountType.equals("NON_STUDENT", ignoreCase = true)) {
+        InfoCard(title = "Academic identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
             if (profile.university.isNotBlank()) {
                 ProfileInfoRow(Icons.Default.School, "University", profile.university, textPrimary, textSecondary)
             }
@@ -2025,6 +2042,24 @@ private fun AboutSection(
             }
             if (profile.academicLevel.isNotBlank()) {
                 ProfileInfoRow(Icons.Default.TrendingUp, "Academic level", profile.academicLevel, textPrimary, textSecondary)
+            }
+            if (profile.courseOfStudy.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.AutoStories, "Course of study", profile.courseOfStudy, textPrimary, textSecondary)
+            }
+            if (profile.graduationYear.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.Event, "Graduation year", profile.graduationYear, textPrimary, textSecondary)
+            }
+        }
+        }
+
+        if (profile.currentJobTitle.isNotBlank() || profile.professionalHeadline.isNotBlank()) {
+            InfoCard(title = "Work", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.currentJobTitle.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Work, "Current role", profile.currentJobTitle, textPrimary, textSecondary)
+                }
+                if (profile.professionalHeadline.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Badge, "Headline", profile.professionalHeadline, textPrimary, textSecondary)
+                }
             }
         }
 
