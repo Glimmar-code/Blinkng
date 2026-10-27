@@ -49,7 +49,7 @@ class MessageInboxReferenceVisualAuditTest {
         val storiesOpened = mutableIntStateOf(0)
         val chatsOpened = mutableIntStateOf(0)
         val notificationsOpened = mutableIntStateOf(0)
-        val gamesOpened = mutableIntStateOf(0)
+        val composeOpened = mutableIntStateOf(0)
         val rows = listOf(
             ChatConversation("audit_a", "aisha", partnerName = "Aisha Khan", partnerAvatar = "",
                 lastMessage = "Hey! Are you coming to the event tonight? 👀", lastMessageTime = "2m",
@@ -97,8 +97,8 @@ class MessageInboxReferenceVisualAuditTest {
                                 onStoryClick = { storiesOpened.intValue += 1 },
                                 onAddStoryClick = {},
                                 onOpenActivity = { notificationsOpened.intValue += 1 },
-                                onComposeMessage = {},
-                                onGameClick = { gamesOpened.intValue += 1 },
+                                onComposeMessage = { composeOpened.intValue += 1 },
+                                onGameClick = {},
                                 isDark = false
                             )
                         }
@@ -145,11 +145,11 @@ class MessageInboxReferenceVisualAuditTest {
         rule.onNodeWithTag("inbox_search").performClick()
         rule.onNodeWithTag("inbox_search_field").assertIsDisplayed()
         rule.onNodeWithTag("inbox_see_all").performClick()
-        rule.onNodeWithTag("inbox_game").performClick()
+        rule.onNodeWithTag("inbox_compose").performClick()
         rule.onNodeWithTag("inbox_notifications").performClick()
         rule.onNodeWithTag("inbox_chat_audit_a").performClick()
         rule.runOnIdle {
-            check(gamesOpened.intValue == 1)
+            check(composeOpened.intValue == 1)
             check(notificationsOpened.intValue == 1)
             check(chatsOpened.intValue == 1)
         }
