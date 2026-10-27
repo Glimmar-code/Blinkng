@@ -1141,6 +1141,16 @@ private fun ReelsLoadingSkeleton(isDark: Boolean) {
             }
         }
         Row(
+            Modifier.fillMaxWidth().height(72.dp)
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            repeat(4) {
+                Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+            }
+        }
+        Row(
             Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
