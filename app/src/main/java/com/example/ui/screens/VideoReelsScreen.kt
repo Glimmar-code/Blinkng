@@ -484,11 +484,20 @@ private fun ReelsContent(
     // A deep-link is fulfilled once; a later refresh or pagination must not jump the
     // user back to the originally linked video.
     var unconsumedLaunchId by remember(initialReelId) { mutableStateOf(initialReelId) }
+    var launchLookupTimedOut by remember(initialReelId) { mutableStateOf(false) }
+    LaunchedEffect(unconsumedLaunchId) {
+        if (unconsumedLaunchId != null) {
+            launchLookupTimedOut = false
+            delay(8_000L)
+            if (unconsumedLaunchId != null) launchLookupTimedOut = true
+        }
+    }
     LaunchedEffect(unconsumedLaunchId, pagerItems) {
         val launchId = unconsumedLaunchId ?: return@LaunchedEffect
         val targetPage = reelPageIndex(pagerItems, launchId) ?: return@LaunchedEffect
         if (pager.currentPage != targetPage) pager.scrollToPage(targetPage)
         unconsumedLaunchId = null
+        launchLookupTimedOut = false
     }
 
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
@@ -767,7 +776,7 @@ private fun ReelsContent(
                     val reel = item.reel
                     ReelPage(
                         reel = reel,
-                        isActive = isScreenActive && index == pager.currentPage,
+                        isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
@@ -822,7 +831,7 @@ private fun ReelsContent(
                     }
                     ReelPage(
                         reel = reel,
-                        isActive = isScreenActive && index == pager.currentPage,
+                        isActive = isScreenActive && unconsumedLaunchId == null && index == pager.currentPage,
                         shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
@@ -911,6 +920,38 @@ private fun ReelsContent(
                         translationY = -48.dp.toPx() * progress
                     }
             )
+        }
+
+        if (expanded && unconsumedLaunchId != null) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                color = Color.Black.copy(alpha = .9f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (!launchLookupTimedOut) CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (launchLookupTimedOut) "Reel not found in this feed" else "Opening reel...",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (launchLookupTimedOut) {
+                        TextButton(onClick = onRetry) { Text("Try refreshing", color = Color.White) }
+                        TextButton(onClick = {
+                            unconsumedLaunchId = null
+                            expanded = false
+                        }) { Text("Browse other reels", color = Color.White) }
+                    }
+                }
+            }
         }
 
         if (expanded) {
@@ -1243,16 +1284,28 @@ private fun ReelPage(
                 // rather than this child consuming it and jumping on release.
                 if (!isActive || isPreview) return@pointerInput
                 val swipeThreshold = 84.dp.toPx()
+                var swipeVelocity = VelocityTracker()
                 detectHorizontalDragGestures(
-                    onDragStart = { horizontalDrag = 0f },
+                    onDragStart = {
+                        horizontalDrag = 0f
+                        swipeVelocity = VelocityTracker()
+                    },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume() // prevent shell from handling this swipe twice
                         horizontalDrag += dragAmount
+                        swipeVelocity.addPosition(change.uptimeMillis, change.position)
                     },
                     onDragEnd = {
-                        when {
-                            horizontalDrag >= swipeThreshold -> onSwipeToHome()
-                            horizontalDrag <= -swipeThreshold -> onSwipeToConnect()
+                        val gestureVelocity = swipeVelocity.calculateVelocity().x
+                        val intentionalSwipe = ReelExpansionMotion.shouldCompleteFastSwipe(
+                            dragDistancePx = horizontalDrag,
+                            releaseVelocityPxPerSecond = gestureVelocity,
+                            minimumDistancePx = swipeThreshold,
+                            velocityThresholdPxPerSecond = 900.dp.toPx()
+                        )
+                        if (intentionalSwipe) {
+                            if (horizontalDrag > 0f) onSwipeToHome()
+                            else onSwipeToConnect()
                         }
                         horizontalDrag = 0f
                     },
