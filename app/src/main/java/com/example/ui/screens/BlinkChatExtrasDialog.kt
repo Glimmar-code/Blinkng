@@ -1,6 +1,18 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.Build
+import android.os.CancellationSignal
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +41,60 @@ internal fun BlinkChatExtrasDialog(
     var title by remember(mode) { mutableStateOf("") }
     var details by remember(mode) { mutableStateOf("") }
     var other by remember(mode) { mutableStateOf("") }
+    val context = LocalContext.current
+    var locationStatus by remember(mode) { mutableStateOf<String?>(null) }
+    var locating by remember(mode) { mutableStateOf(false) }
+    var locationSignal by remember(mode) { mutableStateOf<CancellationSignal?>(null) }
+    DisposableEffect(mode) {
+        onDispose { locationSignal?.cancel() }
+    }
+    @SuppressLint("MissingPermission")
+    fun locateOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            locationStatus = "Enter a place or coordinates on this device."
+            return
+        }
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (manager == null) {
+            locationStatus = "Location service unavailable. Enter a place instead."
+            return
+        }
+        val provider = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .firstOrNull { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+        if (provider == null) {
+            locationStatus = "Turn on device location or enter a place."
+            return
+        }
+        locationSignal?.cancel()
+        val signal = CancellationSignal()
+        locationSignal = signal
+        locating = true
+        locationStatus = "Getting your current location…"
+        runCatching {
+            manager.getCurrentLocation(
+                provider, signal, ContextCompat.getMainExecutor(context)
+            ) { location ->
+                locating = false
+                if (location == null) {
+                    locationStatus = "Location unavailable. Enter a place manually."
+                } else {
+                    // Approximate coordinates: still shown to the sender before Send.
+                    title = String.format(Locale.US, "%.4f,%.4f",
+                        location.latitude, location.longitude)
+                    locationStatus = "Approximate coordinates added. Tap Send to share."
+                }
+            }
+        }.onFailure {
+            locating = false
+            locationStatus = "Location unavailable. Enter a place manually."
+        }
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { allowed ->
+        if (allowed) locateOnce()
+        else locationStatus = "Location permission denied. You can enter a place instead."
+    }
     val isContact = mode == "contact"
     val isLocation = mode == "location"
     val isArticle = mode == "article"
@@ -81,6 +147,21 @@ internal fun BlinkChatExtrasDialog(
                         label={Text("Place, address or coordinates")}, singleLine=true,
                         modifier=Modifier.fillMaxWidth()
                     )
+                    TextButton(
+                        enabled = !locating,
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.ACCESS_COARSE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) locateOnce()
+                            else locationPermissionLauncher.launch(
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        }
+                    ) { Text(if (locating) "Finding location…" else "Use my current location") }
+                    locationStatus?.let { Text(it, color = Color.LightGray) }
+                    Text("Your location is never sent until you tap Send. This is a one-time place link, not live tracking.",
+                        color = Color.LightGray)
                 }
                 isArticle -> {
                     OutlinedTextField(
