@@ -53,3 +53,13 @@ const directMessage = readFileSync(
 assert.ok(directMessage.includes('"conversation_preferences_unavailable"'),
   "Message push must not bypass unavailable mute settings");
 console.log("PASS message, call and activity push sender/consent/dedup regression checks");
+
+const turnSource = readFileSync(
+  new URL("../functions/call-turn-credentials/index.ts", import.meta.url), "utf8");
+assert.ok(turnSource.includes("verifiedNotificationActor("),
+  "Temporary TURN relay credentials must be issued only after verifying JWT");
+assert.ok(!turnSource.includes("jwtSubject("),
+  "Never mint TURN credentials from unverified JWT subjects");
+assert.ok(turnSource.includes('if (!userId) return json({ error: "Unauthorized" }, 401)'),
+  "TURN relay must deny unauthenticated callers");
+console.log("PASS TURN relay credential JWT verification contract");
