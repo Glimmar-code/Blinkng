@@ -274,9 +274,15 @@ fun BlinkChannelDetail(
                     runCatching { backend.recordChannelView(update.id) }
                 }
                 var signedMedia by remember(update.id, update.mediaPath) { mutableStateOf<String?>(null) }
-                LaunchedEffect(update.mediaPath) {
-                    signedMedia = update.mediaPath?.let { path ->
-                        runCatching { BlinkChannelMediaService.signedUrl(path) }.getOrNull()
+                var mediaError by remember(update.id, update.mediaPath) { mutableStateOf(false) }
+                var mediaRetry by remember(update.id, update.mediaPath) { mutableIntStateOf(0) }
+                LaunchedEffect(update.mediaPath, mediaRetry) {
+                    signedMedia = null
+                    mediaError = false
+                    update.mediaPath?.let { path ->
+                        val result = runCatching { BlinkChannelMediaService.signedUrl(path) }
+                        signedMedia = result.getOrNull()
+                        mediaError = result.isFailure || signedMedia.isNullOrBlank()
                     }
                 }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -296,20 +302,29 @@ fun BlinkChannelDetail(
                                 modifier = Modifier.fillMaxWidth().height(230.dp)
                             ) }
                         } else if (update.mediaPath != null) {
-                            TextButton(onClick = {
-                                if (update.mediaKind in setOf("image", "audio", "video")) {
-                                    mediaUpdateId = update.id
-                                } else {
-                                    signedMedia?.let { url ->
-                                        runCatching {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                .addCategory(Intent.CATEGORY_BROWSABLE))
-                                        }.onFailure { error = "No PDF viewer is available." }
-                                    }
+                            if (mediaError) {
+                                TextButton(onClick = { mediaRetry++ }) {
+                                    Text("Attachment unavailable · Retry")
                                 }
-                            }) {
-                                Text(if (signedMedia == null) "Loading attachment…" else
-                                    "Open ${update.mediaKind} attachment")
+                            } else {
+                                TextButton(
+                                    enabled = !signedMedia.isNullOrBlank(),
+                                    onClick = {
+                                        if (update.mediaKind in setOf("image", "audio", "video")) {
+                                            mediaUpdateId = update.id
+                                        } else {
+                                            signedMedia?.let { url ->
+                                                runCatching {
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                        .addCategory(Intent.CATEGORY_BROWSABLE))
+                                                }.onFailure { error = "No PDF viewer is available." }
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Text(if (signedMedia == null) "Loading attachment…" else
+                                        "Open ${update.mediaKind} attachment")
+                                }
                             }
                         }
                         if (update.mediaKind == "poll") {
