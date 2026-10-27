@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { pushPreferenceDecision, verifiedNotificationActor } from "../_shared/push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -7,19 +8,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 
 let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
-
-function jwtSubject(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-    return JSON.parse(atob(padded)).sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function base64Url(input: string): string {
   return btoa(input).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -95,7 +83,7 @@ function isUnregisteredFcmToken(status: number, responseText: string): boolean {
   return status === 404 || text.includes("UNREGISTERED") || text.includes("REGISTRATION-TOKEN-NOT-REGISTERED");
 }
 
-type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string };
+type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string; retryable?: boolean };
 
 async function claimDispatch(
   admin: ReturnType<typeof createClient>,
@@ -107,7 +95,8 @@ async function claimDispatch(
     .eq("notification_id", notificationId)
     .maybeSingle();
 
-  if (readError) return { proceed: true, tracked: false, attempts: 1 };
+  // Never send untracked pushes: a failed ledger read could cause duplicate delivery.
+  if (readError) return { proceed: false, tracked: false, attempts: 0, reason: "dispatch_ledger_unavailable", retryable: true };
   if (existing?.status === "sent") {
     return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sent" };
   }
@@ -119,16 +108,31 @@ async function claimDispatch(
   }
 
   const attempts = Number(existing?.attempts ?? 0) + 1;
-  const { error } = await admin.from("notification_push_dispatches").upsert({
-    notification_id: notificationId,
-    status: "sending",
-    attempts,
-    last_error: null,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "notification_id" });
-
+  const next = { status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() };
+  if (existing) {
+    // Optimistic concurrency control: two push requests may both read a stale
+    // failed/expired claim. Only the first may atomically advance its version.
+    const { data: claimed, error } = await admin.from("notification_push_dispatches")
+      .update(next)
+      .eq("notification_id", notificationId)
+      .eq("status", existing.status)
+      .eq("updated_at", existing.updated_at)
+      .select("notification_id")
+      .maybeSingle();
+    if (error) return { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true };
+    return claimed
+      ? { proceed: true, tracked: true, attempts }
+      : { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
+  }
+  // An insert (not an unconditional upsert) makes concurrent first delivery
+  // atomic on the existing notification_id primary key.
+  const { error } = await admin.from("notification_push_dispatches")
+    .insert({ notification_id: notificationId, ...next });
+  if (error?.code === "23505") {
+    return { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
+  }
   return error
-    ? { proceed: true, tracked: false, attempts }
+    ? { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true }
     : { proceed: true, tracked: true, attempts };
 }
 
@@ -162,14 +166,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
-  const actorId = jwtSubject(auth);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   // Service-role dispatch is restricted to independently verified events,
   // never arbitrary notification IDs submitted by an untrusted caller.
   const serverAuthorizedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
-  if (!actorId && !serverAuthorizedDispatch) return json({ error: "Unauthorized" }, 401);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
   if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
@@ -186,6 +188,12 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  // Decode-only JWT "sub" strings are attacker-controlled. Require Auth to
+  // verify signature, expiry and session BEFORE treating anyone as an actor.
+  const actorId = serverAuthorizedDispatch
+    ? null
+    : await verifiedNotificationActor(auth, token => admin.auth.getUser(token));
+  if (!serverAuthorizedDispatch && !actorId) return json({ error: "Unauthorized" }, 401);
 
   const { data: notification, error: notificationError } = await admin
     .from("notifications")
@@ -271,12 +279,21 @@ Deno.serve(async (req) => {
     p_user_id: recipientId,
     p_type: type,
   });
-  if (!allowedError && allowed === false) {
+  const preferenceDecision = pushPreferenceDecision(allowed, allowedError);
+  if (preferenceDecision === "retry") {
+    // A missing/failing preference RPC must not silently opt the recipient into push.
+    // The outbox worker can retry after its dependency recovers.
+    return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
+  }
+  if (preferenceDecision === "skip") {
     return json({ ok: true, skipped: "recipient_preferences" });
   }
 
   const claim = await claimDispatch(admin, notificationId);
   if (!claim.proceed) {
+    if (claim.retryable) {
+      return json({ error: claim.reason ?? "dispatch_ledger_unavailable", retryable: true }, 503);
+    }
     return json({ ok: true, skipped: claim.reason ?? "duplicate", attempts: claim.attempts });
   }
 

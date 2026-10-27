@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { verifiedNotificationActor } from "../_shared/push-gates.mjs";
 
 const encoder = new TextEncoder();
 
@@ -10,19 +12,6 @@ function json(body: unknown, status = 200): Response {
       "Cache-Control": "no-store, max-age=0",
     },
   });
-}
-
-function jwtSubject(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-    return JSON.parse(atob(padded)).sub ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -57,9 +46,18 @@ async function coturnCredential(secret: string, username: string): Promise<strin
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
-  // Supabase's function gateway verifies the JWT for this function. The subject is only
-  // used to bind temporary TURN credentials to one authenticated BLINK account.
-  const userId = jwtSubject(req.headers.get("Authorization") ?? "");
+  // Defense in depth: credential issuance MUST verify the token's signature and
+  // expiry even if a gateway's verify_jwt setting is changed accidentally.
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRole) return json({ error: "Authentication unavailable" }, 503);
+  const admin = createClient(supabaseUrl, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const userId = await verifiedNotificationActor(
+    req.headers.get("Authorization") ?? "",
+    token => admin.auth.getUser(token),
+  );
   if (!userId) return json({ error: "Unauthorized" }, 401);
 
   const sharedSecret = Deno.env.get("TURN_SHARED_SECRET")?.trim() ?? "";
