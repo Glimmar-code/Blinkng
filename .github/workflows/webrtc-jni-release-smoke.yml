@@ -44,6 +44,14 @@ jobs:
         run: gradle :app:dependencyInsight --configuration rtcSmokeRuntimeClasspath --dependency io.github.webrtc-sdk --no-daemon
       - name: Build R8-shrunk APK and instrumentation APK
         run: gradle :app:assembleRtcSmoke :app:assembleRtcSmokeAndroidTest --stacktrace --no-daemon
+      - name: Verify native libraries ship for Redmi ARM64 and emulator x86_64
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/rtcSmoke/app-rtcSmoke.apk"
+          test -s "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'lib/arm64-v8a/libjingle_peerconnection_so.so'
+          unzip -Z1 "$apk" | grep -Fx 'lib/x86_64/libjingle_peerconnection_so.so'
       - name: Enable KVM
         shell: bash
         run: |
