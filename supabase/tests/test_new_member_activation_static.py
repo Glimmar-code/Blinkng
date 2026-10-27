@@ -19,6 +19,18 @@ class NewMemberTests(unittest.TestCase):
             self.assertIn(s, code)
         self.assertIn("support@blink.com.ng", code)
 
+    def test_worker_schedule_requires_explicit_enablement(self):
+        job = source(".github/workflows/welcome-email-dispatch.yml")
+        for part in (
+            "BLINK_EMAIL_DELIVERY_ENABLED",
+            "BLINK_EMAIL_WORKER_SECRET",
+            "BLINK_SUPABASE_URL",
+            "x-blink-email-worker-secret",
+            "contents: read",
+        ):
+            self.assertIn(part, job)
+        self.assertNotIn("service_role", job)
+
     def test_edge_function_auth_modes_are_pinned(self):
         config = source("supabase/config.toml")
         self.assertIn("[functions.send-essential-email]\nverify_jwt = false", config)
