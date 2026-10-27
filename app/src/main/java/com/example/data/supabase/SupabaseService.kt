@@ -2996,19 +2996,47 @@ suspend fun uploadPostMedia(
                     )
                     .build()
 
-                val nextOffset = executeRequest(patch).use { response ->
-                    if (!response.isSuccessful) {
-                        Log.e(
-                            TAG,
-                            "POST_MEDIA_TUS_PATCH failed status=" + response.code +
-                                " body=" + response.body?.string().orEmpty()
-                        )
-                        return null
+                // A lost PATCH acknowledgement must not duplicate bytes or skip
+                // part of a Reel. Ask TUS for the server's authoritative offset.
+                val expected = offset + count
+                var acknowledged = false
+                for (attempt in 0 until 3) {
+                    val resultOffset = try {
+                        executeRequest(patch).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (resultOffset == expected) {
+                        acknowledged = true
+                        break
                     }
-                    response.header("Upload-Offset")?.toLongOrNull() ?: (offset + count)
+
+                    val serverOffset = try {
+                        val head = Request.Builder()
+                            .url(uploadUrl)
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", "Bearer $token")
+                            .addHeader("Tus-Resumable", "1.0.0")
+                            .head()
+                            .build()
+                        executeRequest(head).use { response ->
+                            if (response.isSuccessful) {
+                                response.header("Upload-Offset")?.toLongOrNull()
+                            } else null
+                        }
+                    } catch (_: java.io.IOException) { null }
+                    if (serverOffset == expected) {
+                        acknowledged = true
+                        break
+                    }
+                    // Only resend when the entire chunk is still unacknowledged.
+                    if (serverOffset != offset && serverOffset != null) return null
+                    if (attempt < 2) kotlinx.coroutines.delay(250L * (attempt + 1))
                 }
-                if (nextOffset <= offset || nextOffset > contentLength) return null
-                offset = nextOffset
+                if (!acknowledged) return null
+                offset = expected
                 onProgress(offset, contentLength)
             }
         }
