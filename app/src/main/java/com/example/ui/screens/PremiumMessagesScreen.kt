@@ -372,8 +372,8 @@ fun PremiumMessagesScreen(
                             isLoading = isLoading,
                             isDark = isDark,
                             // Hidden inbox rows must not mark conversations read.
-                            onVisibleInboxReceipt = { id ->
-                                if (!chatSlideVisible) onVisibleInboxReceipt(id)
+                            onVisibleInboxReceipt = { conversationId, receiptId ->
+                                if (!chatSlideVisible) onVisibleInboxReceipt(conversationId, receiptId)
                             }
                         )
 
