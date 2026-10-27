@@ -3969,6 +3969,7 @@ private suspend fun restoreSupabaseSession() {
                         isCreatingPost = false
                     )
                     clearCreatePostPersistentState(profile)
+                    cleanupPublishedReelExport(post.videoUrl)
                     showToast("Post scheduled for $timeFormatted")
                 }
             } catch (e: Exception) {
@@ -4159,14 +4160,41 @@ private suspend fun restoreSupabaseSession() {
                     )
                     persistCurrentFeed()
                     clearCreatePostPersistentState(profile)
+                    cleanupPublishedReelExport(videoUri)
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation failed", e)
-                showToast("Couldn't publish the post. Please try again.")
+                showToast(
+                    when {
+                        e is java.io.IOException -> "Connection interrupted. Your draft is safe; try again."
+                        e.message.orEmpty().contains("upload", ignoreCase = true) ->
+                            "Media upload failed. Check your connection and try again."
+                        else -> "Couldn't publish. Your draft is safe; try again."
+                    }
+                )
             } finally {
                 _uiState.value = _uiState.value.copy(isCreatingPost = false)
             }
+        }
+    }
+
+    /** Reclaim temporary rendered MP4s only after the server saves the post.
+     * A video still referenced by a saved draft must remain available offline.
+     */
+    private fun cleanupPublishedReelExport(videoUri: String?) {
+        if (videoUri.isNullOrBlank() ||
+            _uiState.value.savedDrafts.any { it.videoUri == videoUri }) return
+        val uri = runCatching { Uri.parse(videoUri) }.getOrNull() ?: return
+        if (uri.scheme != "content" ||
+            uri.authority != "${appContext.packageName}.chatfiles") return
+        val filename = uri.lastPathSegment ?: return
+        if (!Regex("^reel_[0-9a-fA-F-]{36}\\.mp4$").matches(filename)) return
+        val renderDir = java.io.File(appContext.filesDir, "reel_edits")
+        val rendered = java.io.File(renderDir, filename)
+        if (rendered.parentFile == renderDir && rendered.isFile) {
+            runCatching { rendered.delete() }
+                .onFailure { Log.w(TAG, "Unable to remove published render", it) }
         }
     }
 
