@@ -957,6 +957,19 @@ class DesktopSupabaseClient(
         ProfileVisitHistory(item.optBoolean("enabled", false), item.optString("seen_through"), visitors)
     }
 
+    suspend fun countMyNewProfileVisitors(): Int = withContext(Dispatchers.IO) {
+        val response = postObject("/rest/v1/rpc/count_my_new_profile_visitors", JSONObject())
+        (response as? JSONObject)?.optString("value")?.removeSurrounding("\"")
+            ?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    }
+
+    suspend fun acknowledgeMyProfileVisitorsSeen(watermark: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (watermark.isBlank()) return@withContext false
+            rpcBoolean(postObject("/rest/v1/rpc/ack_my_profile_visitors_seen",
+                JSONObject().put("p_seen_through", watermark)))
+        }
+
     suspend fun recordOptInProfileVisit(profileId: String): Boolean = withContext(Dispatchers.IO) {
         if (profileId == requireSession().userId) return@withContext false
         if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
