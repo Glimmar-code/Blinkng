@@ -108,7 +108,8 @@ fun safePulseRange(
     maxUnits: Int,
     maxDisplayValue: Int,
 ): IntRange {
-    val safeUnits = units.coerceAtLeast(1).coerceAtMost(maxUnits.coerceAtLeast(1)).toLong()
+    if (units <= 0) return 0..0 // No real sessions or rank-up events: no synthetic activity.
+    val safeUnits = units.coerceAtMost(maxUnits.coerceAtLeast(1)).toLong()
     val lowFactor = min(minPerUnit, maxPerUnit).coerceAtLeast(1).toLong()
     val highFactor = max(minPerUnit, maxPerUnit).coerceAtLeast(1).toLong()
     val cap = maxDisplayValue.coerceAtLeast(1).toLong()
