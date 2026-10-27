@@ -118,6 +118,7 @@ internal fun BlinkChatPictureViewer(
     )
     var confirmation by remember(message.id) { mutableStateOf<String?>(null) }
     var editingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
+    var pendingEditedUri by remember(message.id) { mutableStateOf<Uri?>(null) }
     var stickerEditingPhoto by remember(message.id) { mutableStateOf<Uri?>(null) }
     var settingProfilePhoto by remember(message.id) { mutableStateOf(false) }
     var savingSticker by remember(message.id) { mutableStateOf(false) }
@@ -539,11 +540,9 @@ internal fun BlinkChatPictureViewer(
             originalUri=saved,
             onEdited={ result ->
                 editingPhoto=null
-                scope.launch {
-                    runCatching { saveLocalChatPhotoToGallery(context,result) }
-                        .onSuccess { savedUri=it; downloadError=null; confirmation="edit_saved" }
-                        .onFailure { downloadError="Edited picture could not be saved to gallery." }
-                }
+                // Editing a received photo does not imply consent to save it publicly.
+                pendingEditedUri = result
+                confirmation = "edit_save_required"
             },
             onDismiss={editingPhoto=null}
         )
@@ -552,6 +551,7 @@ internal fun BlinkChatPictureViewer(
         AlertDialog(
             onDismissRequest={
                 if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
+                if (confirmation == "edit_save_required") pendingEditedUri = null
                 confirmation = null
             },
             title={Text(when(confirmation) {
@@ -562,7 +562,8 @@ internal fun BlinkChatPictureViewer(
                 "group" -> "Set this group picture?"
                 "sticker" -> "Save as reusable sticker?"
                 "ai" -> "Send image to BLINK AI?"
-                else -> "Edited copy created"
+                "edit_save_required" -> "Save edited copy to gallery?"
+                else -> "Picture action"
             })},
             text={Text(when(confirmation) {
                 "private_copy_required" ->
@@ -579,6 +580,8 @@ internal fun BlinkChatPictureViewer(
                     "Open the editor to crop, draw and add text before saving this private sticker. Do not reuse someone's private photo without permission."
                 "ai" ->
                     "BLINK AI may process the selected picture. It will be attached to a draft; nothing is sent until you press Send."
+                "edit_save_required" ->
+                    "Your original message is unchanged. Save your edited picture to the device gallery, or discard this edit."
                 else -> "Your original picture in BLINK has not been changed."
             })},
             confirmButton={TextButton(onClick={
@@ -637,6 +640,20 @@ internal fun BlinkChatPictureViewer(
                             settingProfilePhoto=false
                         }
                     }
+                } else if (confirmation=="edit_save_required") {
+                    pendingEditedUri?.let { edited ->
+                        scope.launch {
+                            runCatching { saveLocalChatPhotoToGallery(context, edited) }
+                                .onSuccess {
+                                    galleryUri = it
+                                    downloadError = "Edited picture saved to gallery."
+                                }
+                                .onFailure {
+                                    downloadError = "Could not save edited picture to gallery."
+                                }
+                        }
+                    }
+                    pendingEditedUri = null
                 } else if (confirmation=="external_search") {
                     savedUri?.let { uri ->
                         runCatching {
@@ -654,8 +671,9 @@ internal fun BlinkChatPictureViewer(
             }) { Text("Continue") }},
             dismissButton={TextButton(onClick={
                 if (confirmation == "private_copy_required" || confirmation == "gallery_download") pendingLocalAction = null
+                if (confirmation == "edit_save_required") pendingEditedUri = null
                 confirmation = null
-            }){Text("Cancel")}}
+            }){Text(if (confirmation == "edit_save_required") "Discard" else "Cancel")}}
         )
     }
 }
