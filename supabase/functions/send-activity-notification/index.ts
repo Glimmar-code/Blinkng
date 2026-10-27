@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { pushPreferenceDecision } from "./push-gates.mjs";
+import { pushPreferenceDecision, verifiedNotificationActor } from "./push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -8,19 +8,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 
 let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
-
-function jwtSubject(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-    return JSON.parse(atob(padded)).sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function base64Url(input: string): string {
   return btoa(input).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -165,14 +152,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
-  const actorId = jwtSubject(auth);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   // Service-role dispatch is restricted to independently verified events,
   // never arbitrary notification IDs submitted by an untrusted caller.
   const serverAuthorizedDispatch = Boolean(serviceRole && auth === `Bearer ${serviceRole}`);
-  if (!actorId && !serverAuthorizedDispatch) return json({ error: "Unauthorized" }, 401);
   const firebaseJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (!supabaseUrl || !serviceRole) return json({ error: "Supabase server configuration missing" }, 503);
   if (!firebaseJson) return json({ error: "Firebase server credential is not configured" }, 503);
@@ -189,6 +174,12 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  // Decode-only JWT "sub" strings are attacker-controlled. Require Auth to
+  // verify signature, expiry and session BEFORE treating anyone as an actor.
+  const actorId = serverAuthorizedDispatch
+    ? null
+    : await verifiedNotificationActor(auth, token => admin.auth.getUser(token));
+  if (!serverAuthorizedDispatch && !actorId) return json({ error: "Unauthorized" }, 401);
 
   const { data: notification, error: notificationError } = await admin
     .from("notifications")
