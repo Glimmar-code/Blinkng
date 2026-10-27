@@ -18,6 +18,7 @@ class BlinkR2MediaPolicyTest {
     @Test fun onlyIntentionalDisableAllowsLegacyFallback() {
         assertTrue(BlinkR2MediaPolicy.intentionalFallback(503,"R2_DISABLED"))
         assertTrue(BlinkR2MediaPolicy.intentionalFallback(404,"Function not found"))
+        assertTrue(BlinkR2MediaPolicy.intentionalFallback(404,"R2_FUNCTION_NOT_DEPLOYED"))
         assertFalse(BlinkR2MediaPolicy.intentionalFallback(401,"INVALID_SESSION"))
         assertFalse(BlinkR2MediaPolicy.intentionalFallback(503,"MEDIA_BACKEND_UNAVAILABLE"))
         assertFalse(BlinkR2MediaPolicy.intentionalFallback(400,"INVALID_PURPOSE"))
