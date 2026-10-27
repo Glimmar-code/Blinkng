@@ -1,3 +1,11 @@
+## 2026-10-27 — Verified creator membership value (Testlab PR #629, not merged)
+
+- **Shared-first:** `BlinkCreatorStudioPolicy` computes unique loaded post/Reel aggregates, honest qualified views, interaction totals, top content and top tags. Both clients pass their real post models through thin adapters. No new backend/RLS/checkout paths.
+- **Android:** Creator Studio on owner's profile: free baseline counters; active Blue content analytics; active Gold hashtags and Android share intent for performance reports. Get Verified and Wallet describe actually implemented benefits, not speculative reach.
+- **Windows:** Creator Studio on owner's desktop profile with matching shared counts, Blue performance and Gold top tags/report clipboard export. Desktop post API currently omits aggregate saves, so saves are shown as unavailable instead of fabricated. Desktop tier resolves the canonical `verification_badge` field with legacy `verification_tier` fallback.
+- **Parity limitation:** Android uses currently loaded profile posts, Windows loads a paginated profile content list, so snapshot sizes may differ. Neither platform calls snapshots lifetime/unique audience analytics. Desktop requires the server-reported verified flag plus a Blue/Gold tier; production should be retested for expiry-state propagation.
+- **Testlab hold:** Android unit/lint/assemble, Windows build and user-flows must pass on the latest PR head. Unfinished items (Channel Pro, Merchant Pro, Gold promotions/AI and advanced scheduling) are roadmap proposals, NOT subscriber entitlements in this PR.
+
 ## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (passed Testlab, main promotion pending)
 
 - **Observed failure:** Redmi/Android 15 SIGABRT during `libjingle_peerconnection_so.so` `JNI_OnLoad` inside `PeerConnectionFactory.initialize`; this is a native Java-class lookup failure and cannot be recovered by catching Kotlin exceptions.
