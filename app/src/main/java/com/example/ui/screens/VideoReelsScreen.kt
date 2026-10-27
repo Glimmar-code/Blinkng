@@ -449,7 +449,13 @@ private fun ReelsContent(
     val activeReels = remember(selectedTab, reels, followingReels, featuredReels) {
         val source = selectReelsForTab(reels, followingReels, selectedTab)
         if (selectedTab == "Following") source
-        else (source + featuredReels.map { it.reel }).distinctBy { it.id }
+        else selectReelsForTab(
+            // Featured entries can arrive asynchronously. Re-sort Reels *after*
+            // merging them so a newer featured video does not appear last.
+            (source + featuredReels.map { it.reel }).distinctBy { it.id },
+            followingReels,
+            selectedTab
+        )
     }
     val activeHasMore = if (selectedTab == "Following") hasMoreFollowing else hasMore
     val activeIsLoadingMore = if (selectedTab == "Following") isLoadingMoreFollowing else isLoadingMore
