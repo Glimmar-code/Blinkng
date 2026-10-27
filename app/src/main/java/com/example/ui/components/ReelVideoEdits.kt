@@ -141,32 +141,35 @@ internal suspend fun exportEditedReel(
         videoEffects += ScaleAndRotateTransformation.Builder()
             .setRotationDegrees(edit.rotationDegrees).build()
     }
-    val overlayString = listOf(edit.overlayText.trim(), edit.sticker.trim())
-        .filter(String::isNotBlank).joinToString("  ")
-    if (overlayString.isNotBlank()) {
-        // Transformer emits the clipped video starting at zero. Convert overlay
-        // times into this clock so exported visibility matches the editor preview.
+    // Text and sticker are independent render layers, matching their stacked
+    // positions in the editor. Never return empty text (Media3 zero-size texture).
+    val overlays = listOfNotNull(
+        edit.sticker.trim().takeIf { it.isNotBlank() },
+        edit.overlayText.trim().takeIf { it.isNotBlank() }
+    )
+    if (overlays.isNotEmpty()) {
         val startUs = (edit.overlayStartMs - edit.startMs).coerceAtLeast(0L) * 1_000L
         val endUs = if (edit.overlayEndMs == Long.MAX_VALUE) Long.MAX_VALUE else
             (edit.overlayEndMs - edit.startMs).coerceAtLeast(0L) * 1_000L
-        videoEffects += OverlayEffect(
-            listOf(object : TextOverlay() {
-                // Empty text can create a zero-sized texture in Media3's BitmapOverlay;
-                // retain glyph bounds and hide it with alpha outside the selected time.
+        val layers = overlays.mapIndexed { index, content ->
+            val anchorY = (edit.overlayY +
+                if (overlays.size == 2) (if (index == 0) 0.12f else -0.12f) else 0f)
+                .coerceIn(-0.9f, 0.9f)
+            object : TextOverlay() {
                 override fun getText(presentationTimeUs: Long): SpannableString =
-                    SpannableString(overlayString)
+                    SpannableString(content)
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
                     StaticOverlaySettings.Builder()
-                        .setBackgroundFrameAnchor(edit.overlayX, edit.overlayY)
+                        .setBackgroundFrameAnchor(edit.overlayX, anchorY)
                         .setScale(edit.overlayScale, edit.overlayScale)
                         .setAlphaScale(
-                            if (presentationTimeUs >= startUs &&
-                                presentationTimeUs <= endUs) 1f else 0f
+                            if (presentationTimeUs in startUs..endUs) 1f else 0f
                         )
                         .build()
-            })
-        )
+            }
+        }
+        videoEffects += OverlayEffect(layers)
     }
     fun volumeEffect(level: Float): List<androidx.media3.common.audio.AudioProcessor> {
         if (level == 1f) return emptyList()
