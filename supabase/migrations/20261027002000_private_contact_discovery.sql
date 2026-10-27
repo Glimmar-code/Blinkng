@@ -81,6 +81,7 @@ begin
  end if;
  select coalesce(array_agg(distinct h),'{}'::text[]) into clean_hashes from unnest(p_hashes) h;
  delete from private.blink_contact_imports where owner_id=p_owner;
+ delete from private.blink_contact_join_alerts where owner_id=p_owner;
  insert into private.blink_contact_imports(owner_id,phone_hmac)
   select p_owner,h from unnest(clean_hashes) h on conflict do nothing;
  update public.blink_contact_settings set last_synced_at=now(),updated_at=now()

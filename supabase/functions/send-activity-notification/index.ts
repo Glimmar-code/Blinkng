@@ -279,9 +279,10 @@ Deno.serve(async (req) => {
   const senderAvatar = String(actor?.avatar_url ?? "");
   const action = String(notification.text ?? "New activity").trim();
   const body = String(notification.sub_text ?? "").trim() || action;
-  const title = action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
-    ? action
-    : `${senderName} ${action}`.trim();
+  const title = notification.metadata?.kind === "blink_contact_joined"
+    ? `${senderName} from your contacts is now on BLINK!`
+    : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
+      ? action : `${senderName} ${action}`.trim();
 
   const data: Record<string, string> = {
     type,

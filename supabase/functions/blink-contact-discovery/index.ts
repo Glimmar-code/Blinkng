@@ -114,7 +114,7 @@ Deno.serve(async request => {
         user_id: uid,
         sync_enabled: data.sync_enabled,
         discoverable: data.discoverable,
-        join_alerts: data.join_alerts,
+        join_alerts: data.join_alerts && data.sync_enabled,
         updated_at: new Date().toISOString(),
       };
       const { error: changeError } = await admin.from("blink_contact_settings")

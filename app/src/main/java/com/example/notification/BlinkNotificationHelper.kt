@@ -941,10 +941,10 @@ object BlinkNotificationHelper {
                 .setNumber(notificationCount.coerceAtLeast(1))
                 .setContentIntent(
                     when {
-                        targetType.equals("profile", ignoreCase = true) &&
+                        (targetType.equals("profile", ignoreCase = true) || targetType.equals("user", ignoreCase = true)) &&
                             !profileIdentifier.isNullOrBlank() ->
                             buildProfilePendingIntent(context, profileIdentifier)
-                        targetType.equals("profile", ignoreCase = true) &&
+                        (targetType.equals("profile", ignoreCase = true) || targetType.equals("user", ignoreCase = true)) &&
                             !targetId.isNullOrBlank() ->
                             buildProfilePendingIntent(context, targetId)
                         targetType.equals("market", ignoreCase = true) ->
