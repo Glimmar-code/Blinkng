@@ -961,13 +961,8 @@ class DesktopSupabaseClient(
         if (profileId == requireSession().userId) return@withContext false
         if (runCatching { UUID.fromString(profileId) }.isFailure) return@withContext false
         runCatching {
-            val response = postObject("/rest/v1/rpc/record_opt_in_profile_visit",
-                JSONObject().put("p_profile_id", profileId))
-            when (response) {
-                is Boolean -> response
-                is String -> response.equals("true", ignoreCase = true)
-                else -> false
-            }
+            rpcBoolean(postObject("/rest/v1/rpc/record_opt_in_profile_visit",
+                JSONObject().put("p_profile_id", profileId)))
         }.getOrDefault(false)
     }
 
