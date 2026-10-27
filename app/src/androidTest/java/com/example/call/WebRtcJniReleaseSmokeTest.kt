@@ -19,6 +19,9 @@ class WebRtcJniReleaseSmokeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assertNotNull(context.classLoader.loadClass("org.webrtc.NativeLibrary"))
         assertNotNull(context.classLoader.loadClass("org.webrtc.PeerConnectionFactory"))
+        // The native Chromium JNI Zero bridge is not referenced by ordinary Kotlin
+        // calls; without an explicit keep rule R8 can remove it and JNI_OnLoad aborts.
+        assertNotNull(context.classLoader.loadClass("org.jni_zero.JniZero"))
 
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context)
