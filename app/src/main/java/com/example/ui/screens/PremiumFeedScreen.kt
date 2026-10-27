@@ -734,9 +734,12 @@ private fun PremiumHomeFeed(
         pendingAuthorFollowIds = pendingAuthorFollowIds + id
         uiScope.launch {
             try {
-                FollowStateStore.setFollowing(id, shouldFollow)
-                locallyUnfollowedAuthorIds = if (shouldFollow) locallyUnfollowedAuthorIds - id
-                    else locallyUnfollowedAuthorIds + id
+                if (FollowStateStore.setFollowing(id, shouldFollow)) {
+                    // Failed RPCs roll back in FollowStateStore; do not hide a
+                    // creator permanently when their Unfollow did not succeed.
+                    locallyUnfollowedAuthorIds = if (shouldFollow) locallyUnfollowedAuthorIds - id
+                        else locallyUnfollowedAuthorIds + id
+                }
             } finally {
                 pendingAuthorFollowIds = pendingAuthorFollowIds - id
             }
