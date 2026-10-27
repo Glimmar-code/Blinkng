@@ -516,9 +516,15 @@ fun ProfileScreen(
                                 followBusy = true
                                 overlayScope.launch {
                                     val desired = !isFollowing
-                                    val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                    val saved = runCatching {
+                                        FollowStateStore.setFollowing(profile.id, desired)
+                                    }.getOrDefault(false)
                                     followBusy = false
-                                    if (saved) onFollowChanged(desired)
+                                    if (saved) {
+                                        onFollowChanged(desired)
+                                    } else {
+                                        Toast.makeText(context, "Couldn't update Follow. Check your connection.", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         },
