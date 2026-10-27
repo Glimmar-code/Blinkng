@@ -108,11 +108,20 @@ begin
         when v_profile.whatsapp_visibility = 'PUBLIC' then v_profile.whatsapp
         when v_profile.whatsapp_visibility = 'FOLLOWERS' and v_is_following then v_profile.whatsapp
         else '' end,
-      'email_visibility', case when v_viewer = v_profile.id
+      'email_visibility', case
+        when v_viewer = v_profile.id
+             or v_profile.email_visibility = 'PUBLIC'
+             or (v_profile.email_visibility = 'FOLLOWERS' and v_is_following)
         then v_profile.email_visibility else 'PRIVATE' end,
-      'phone_visibility', case when v_viewer = v_profile.id
+      'phone_visibility', case
+        when v_viewer = v_profile.id
+             or v_profile.phone_visibility = 'PUBLIC'
+             or (v_profile.phone_visibility = 'FOLLOWERS' and v_is_following)
         then v_profile.phone_visibility else 'PRIVATE' end,
-      'whatsapp_visibility', case when v_viewer = v_profile.id
+      'whatsapp_visibility', case
+        when v_viewer = v_profile.id
+             or v_profile.whatsapp_visibility = 'PUBLIC'
+             or (v_profile.whatsapp_visibility = 'FOLLOWERS' and v_is_following)
         then v_profile.whatsapp_visibility else 'PRIVATE' end,
       'presence_visibility', case when v_viewer = v_profile.id
         then v_profile.presence_visibility else 'PRIVATE' end,
