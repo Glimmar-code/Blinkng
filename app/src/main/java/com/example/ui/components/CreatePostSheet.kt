@@ -1086,6 +1086,18 @@ fun CreatePostSheet(
                     searchProfiles = searchMentions
                 )
 
+                val previewText = listOfNotNull(
+                    text.takeIf { it.contains("http://") || it.contains("https://") },
+                    normalizedLinkUrl
+                ).joinToString(" ")
+                if (previewText.isNotBlank()) {
+                    BlinkRichLinkPreview(
+                        text = previewText,
+                        compact = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+
                 if (selectedImages.isNotEmpty()) {
                     LazyRow(
                         modifier = Modifier
