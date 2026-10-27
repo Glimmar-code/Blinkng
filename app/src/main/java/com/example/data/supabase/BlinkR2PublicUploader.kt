@@ -49,8 +49,13 @@ internal object BlinkR2PublicUploader {
             .put("action","init").put("purpose",purpose)
             .put("mimeType",mimeType).put("bytes",byteCount))
         if (initStatus !in 200..299) {
-            val serverError = runCatching { JSONObject(initRaw).optString("error") }
-                .getOrDefault("")
+            val serverError = runCatching {
+                val response = JSONObject(initRaw)
+                if (response.optString("code") == "NOT_FOUND" &&
+                    response.optString("message") == "Requested function was not found")
+                    "R2_FUNCTION_NOT_DEPLOYED"
+                else response.optString("error")
+            }.getOrDefault("")
             if (BlinkR2MediaPolicy.intentionalFallback(initStatus, serverError))
                 return@withContext null
             throw IllegalStateException("BLINK media upload could not start ($initStatus).")
