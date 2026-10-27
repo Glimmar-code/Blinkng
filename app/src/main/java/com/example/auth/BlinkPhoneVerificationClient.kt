@@ -40,6 +40,13 @@ class BlinkPhoneVerificationClient {
         }
     }
 
+    /** Actual Supabase Auth phone proof, never the unverified profile phone field. */
+    suspend fun isCurrentPhoneVerified(): Boolean = withContext(Dispatchers.IO) {
+        val token = requireNotNull(SupabaseService.accessToken()) { "Sign in to check phone verification." }
+        val user = send(request("/auth/v1/user", token).get().build())
+        user.optString("phone").isNotBlank() && user.optString("phone_confirmed_at").isNotBlank()
+    }
+
     suspend fun requestCode(raw: String) = withContext(Dispatchers.IO) {
         val number = requireNotNull(BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
         val token = requireNotNull(SupabaseService.accessToken()) { "Sign in to verify your number." }
