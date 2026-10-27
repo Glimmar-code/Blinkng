@@ -1,3 +1,11 @@
+## 2026-10-27 — WebRTC Android 15 JNI call-crash repair (Testlab candidate, not released)
+
+- **Observed failure:** Redmi/Android 15 SIGABRT during `libjingle_peerconnection_so.so` `JNI_OnLoad` inside `PeerConnectionFactory.initialize`; this is a native Java-class lookup failure and cannot be recovered by catching Kotlin exceptions.
+- **Android:** Preserve existing `org.webrtc.**` JNI keep rules, upgrade the pinned native/Java WebRTC AAR together from 150.7871.01 to 150.7871.04, only mark factory initialization successful after it returns, and log/handle recoverable Java/native linkage errors without hiding fatal JNI failures.
+- **Release verification:** Added `rtcSmoke` with R8/resource shrinking and the production keep file, an Android 15 instrumented JNI load/factory-creation test, and APK native-binary checks for both arm64-v8a and x86_64. Debug-only tests do not validate this crash.
+- **Windows parity:** WebRTC native Android initialization and APK shrinking are Android-specific; no shared calling model, Supabase signaling, credentials, message contracts, or Windows calling behavior is changed. Desktop's closest equivalent is retaining its existing native calling path; this is a platform-specific exception, not a missing user feature.
+- **Hold:** Do not ship this candidate until the minified Android 15 workflow and Android unit/build checks pass, and ideally confirm an actual incoming/outgoing voice and video call on the Redmi arm64 handset. Green emulator JNI initialization alone is not end-to-end call validation.
+
 ## 2026-10-26 — Channels production database foundation ACTIVATED, UI release still held
 
 - **Database verified live:** Supabase BLINK production now contains 6 new channel tables, 21 channel RPC functions and one private `blink-channel-media` Storage bucket, applied through `blink_channels_broadcast_media_polls_20261026` and `blink_channels_explicit_data_api_grants_20261026`. The previously existing Community and membership rows were preserved (one each at verification). Both `authenticated` grants for raw channel updates and private reports remain disabled; exposed reads/writes flow through authorization-gated functions.
