@@ -13,6 +13,12 @@ class BlinkElasticGesturePhysicsTest {
         assertEquals(0f, BlinkElasticGesturePhysics.visualDistance(Float.NaN, 100f), 0.001f)
     }
 
+    @Test fun fastReleaseVelocityFallbackIsTimeBoundedAndNeverOverridesReverseMotion() {
+        assertTrue(BlinkElasticGesturePhysics.resolvedFlickVelocity(95f, 0f, 20L) >= 1100f)
+        assertEquals(300f, BlinkElasticGesturePhysics.resolvedFlickVelocity(95f, 300f, 1000L), 0f)
+        assertEquals(-1500f, BlinkElasticGesturePhysics.resolvedFlickVelocity(95f, -1500f, 20L), 0f)
+    }
+
     @Test fun incompleteSlowDragReturnsWithoutAction() {
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(40f, 180f, 100f, 28f, 1100f))
         assertFalse(BlinkElasticGesturePhysics.shouldCommit(-40f, -180f, 100f, 28f, 1100f))
