@@ -271,7 +271,10 @@ begin
       and fp.is_active = true
       and fp.is_flagged = false
       and fp.user_id <> v_viewer
-      and lower(coalesce(fp.audience,'everyone'))='everyone'
+      and (lower(coalesce(fp.audience,'everyone'))='everyone'
+        or (lower(coalesce(fp.audience,''))='followers' and exists (
+          select 1 from public.follows audience_follow
+          where audience_follow.follower_id=v_viewer and audience_follow.following_id=fp.user_id)))
       and (fp.expires_at is null or fp.expires_at>now())
       and (not exists (select 1 from public.user_settings settings
         where settings.user_id=fp.user_id and settings.private_account=true)
@@ -287,12 +290,15 @@ begin
   end if;
 
   v_duration_ms := p_duration_ms;
+  -- Do not accept more credited watch-time than could have elapsed on the server.
+  -- Old clients send only a terminal sample; this bounds gross inflation, but is
+  -- not cryptographic playback proof. Further session-start attestation is required.
   v_watch_ms := least(greatest(coalesce(p_watched_ms,0),0), v_duration_ms * 3);
   v_watch_pct := least(1::numeric, v_watch_ms::numeric / v_duration_ms::numeric);
   v_completed := v_watch_ms >= round(v_duration_ms * 0.90)::integer;
   v_rewatched := v_watch_ms >= round(v_duration_ms * 1.05)::integer;
   v_skipped := (not v_completed) and (v_watch_ms <= 2500 or v_watch_pct < 0.20::numeric);
-  v_event_type := case when v_skipped then 'skip' else 'view' end;
+  v_event_type := case when v_skipped then 'skip' else 'dwell' end; -- recommendation RPC does not accept a view event
 
   -- Repeated sessions within a brief interval are telemetry, not independent voters.
   -- This is a best-effort cooldown in addition to the session_id idempotency key.
