@@ -21,6 +21,11 @@
 # "JNI NewGlobalRef called with pending exception ClassNotFoundException".
 # These are native ABI entry points, not ordinary unused Java code.
 -keep class org.jni_zero.** { *; }
+# The upstream 150.7871.04 AAR references an optional/generated JniZeroJni
+# wrapper without packaging that generated class. Keeping native ABI methods
+# exposes the reference to R8: silence only this known absent wrapper.
+# The Android 15 JNI smoke test still exercises actual native initialization.
+-dontwarn org.jni_zero.JniZeroJni
 
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
