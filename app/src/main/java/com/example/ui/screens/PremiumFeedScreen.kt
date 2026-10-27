@@ -1720,6 +1720,7 @@ private fun PremiumHomeFeed(
                                                 onDiscover = onSearchClick,
                                                 hasMorePosts = hasMorePosts,
                                                 isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
                                                 onLoadMore = {
                                                     // Manually request the next unseen backend page even
                                                     // when the current filter hasn't produced a match.
@@ -1749,6 +1750,7 @@ private fun PremiumHomeFeed(
                                                 onDiscover = onSearchClick,
                                                 hasMorePosts = hasMorePosts,
                                                 isLoadingMorePosts = isLoadingMorePosts,
+                                                paginationErrorMessage = paginationErrorMessage,
                                                 onLoadMore = {
                                                     // Manually request the next unseen backend page even
                                                     // when the current filter hasn't produced a match.
@@ -2477,6 +2479,7 @@ private fun PremiumEmptyFeed(
     onDiscover: () -> Unit,
     hasMorePosts: Boolean = false,
     isLoadingMorePosts: Boolean = false,
+    paginationErrorMessage: String? = null,
     onLoadMore: () -> Unit = {}
 ) {
     Column(
@@ -2528,8 +2531,19 @@ private fun PremiumEmptyFeed(
             }, color = MaterialTheme.colorScheme.primary)
         }
         if (isFiltered && hasMorePosts) {
+            if (!paginationErrorMessage.isNullOrBlank()) {
+                Text(
+                    paginationErrorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             TextButton(onClick = onLoadMore, enabled = !isLoadingMorePosts) {
-                Text(if (isLoadingMorePosts) "Loading…" else "Load more matching posts")
+                Text(
+                    if (isLoadingMorePosts) "Loading…"
+                    else if (!paginationErrorMessage.isNullOrBlank()) "Retry loading matching posts"
+                    else "Load more matching posts"
+                )
             }
         }
     }
