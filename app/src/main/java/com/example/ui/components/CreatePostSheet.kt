@@ -240,6 +240,9 @@ fun CreatePostSheet(
     var audioTitle by rememberSaveable { mutableStateOf("") }
     var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
     var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
+    var showPublishingTips by rememberSaveable { mutableStateOf(false) }
+    // Confirm destructive media changes; cancelling a picker never discards existing media.
+    var pendingMediaSwitch by rememberSaveable { mutableStateOf<String?>(null) }
     var autosaveRestored by rememberSaveable { mutableStateOf(false) }
     var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
 
@@ -274,6 +277,7 @@ fun CreatePostSheet(
                 .distinct()
                 .take(10)
             selectedVideo = null
+            showPoll = false
             mode = "post"
         }
     }
@@ -467,7 +471,7 @@ fun CreatePostSheet(
             limit = 3
         )
     }
-    val tagsValid = allTags.size in 1..BlinkSmartTags.MAX_TAGS
+    val tagsValid = allTags.size <= BlinkSmartTags.MAX_TAGS
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll &&
         PostComposerRules.validPoll(pollQuestion, pollOptions)
@@ -486,12 +490,17 @@ fun CreatePostSheet(
         linkUrl.isNotBlank() ||
         altText.isNotBlank() ||
         audioTitle.isNotBlank() ||
+        selectedTags.isNotEmpty() ||
         hideLikes ||
         isDisappearing ||
         !allowComments
     val canSubmit = hasContent &&
+        (mode != "reel" || selectedVideo != null) &&
+        tagsValid &&
+        marketOnlyWarning == null &&
         linkValid &&
         (!showPoll || pollValid) &&
+        !reelExporting && !reelHasPendingEdits &&
         !isSubmitting
 
     fun scheduledPreviewPost(): FeedPost {
@@ -537,16 +546,16 @@ fun CreatePostSheet(
     }
 
     fun scheduleAt(timeMillis: Long) {
+        if (selectedVideo != null && (reelExporting || reelHasPendingEdits)) {
+            showScheduleDialog = false
+            Toast.makeText(context, "Apply Reel edits before scheduling.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (marketOnlyWarning != null) {
             Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
         if (!canSubmit) return
-        if (!tagsValid) {
-            showScheduleDialog = false
-            tagWarning = "Include 1–5 relevant hashtags before scheduling."
-            return
-        }
         if (timeMillis < System.currentTimeMillis() + 60_000L) {
             Toast.makeText(context, "Choose a time at least one minute from now.", Toast.LENGTH_SHORT).show()
             return
@@ -604,9 +613,8 @@ fun CreatePostSheet(
             Toast.makeText(context, marketOnlyWarning, Toast.LENGTH_LONG).show()
             return
         }
-        if (canSubmit && !tagsValid) {
-            tagWarning = if (allTags.isEmpty()) "Include at least one relevant hashtag. 1–3 works best."
-                         else "Use no more than 5 unique hashtags, including tags in the caption."
+        if (!tagsValid) {
+            tagWarning = "Use no more than 5 unique hashtags, including tags in the caption."
             return
         }
         if (!canSubmit) {
@@ -621,6 +629,8 @@ fun CreatePostSheet(
                             "Add a poll question and at least two options."
                         linkUrl.isNotBlank() && !linkValid ->
                             "Enter a valid link before publishing."
+                        mode == "reel" && selectedVideo == null ->
+                            "Choose a video before publishing a Reel."
                         else ->
                             "Add something to your post first."
                     },
@@ -708,7 +718,6 @@ fun CreatePostSheet(
                 }
             )
         )
-        Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
     }
 
     val currentHasContent by rememberUpdatedState(hasComposerInput)
@@ -805,8 +814,11 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = mode == "post" && !showPoll,
                         onClick = {
-                            mode = "post"
-                            showPoll = false
+                            if (selectedVideo != null) pendingMediaSwitch = "post"
+                            else {
+                                mode = "post"
+                                showPoll = false
+                            }
                         },
                         enabled = !isSubmitting,
                         label = { Text("Post") }
@@ -814,13 +826,12 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = mode == "reel",
                         onClick = {
-                            mode = "reel"
-                            showPoll = false
                             if (selectedVideo == null) {
-                                videoPicker.launch(
+                                if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                                else videoPicker.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                                 )
-                            }
+                            } else mode = "reel"
                         },
                         enabled = !isSubmitting,
                         label = { Text("Reel") }
@@ -828,10 +839,10 @@ fun CreatePostSheet(
                     FilterChip(
                         selected = showPoll,
                         onClick = {
-                            showPoll = !showPoll
-                            if (showPoll) {
-                                mode = "post"
-                                selectedVideo = null
+                            if (selectedVideo != null) pendingMediaSwitch = "poll"
+                            else {
+                                showPoll = !showPoll
+                                if (showPoll) mode = "post"
                             }
                         },
                         enabled = !isSubmitting,
@@ -839,42 +850,44 @@ fun CreatePostSheet(
                     )
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow
-                ) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                        Text("✨ Make your post stand out",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            BlinkPostGrowthTips.suggestion(
-                                hasImages = selectedImages.isNotEmpty(),
-                                hasVideo = selectedVideo != null,
-                                hasPoll = showPoll
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(BlinkPostGrowthTips.hashtagHint,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text("Product sales belong in BLINK Market",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface)
-                        Text("Regular Feed posts cannot advertise products for sale. Create a Market listing instead.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (marketOnlyWarning != null) {
-                            Text("This looks like a product advertisement. Publishing it to Feed is blocked.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error)
+                if (marketOnlyWarning != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Product listings belong in BLINK Market", fontWeight = FontWeight.SemiBold)
+                            Text(marketOnlyWarning, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
+                                Text("Go to Market")
+                            }
                         }
-                        TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
-                            Text("Create a Market listing")
+                    }
+                } else {
+                    TextButton(
+                        onClick = { showPublishingTips = !showPublishingTips },
+                        modifier = Modifier.padding(start = 8.dp),
+                        enabled = !isSubmitting
+                    ) { Text(if (showPublishingTips) "Hide posting tips" else "Posting tips & Feed rules") }
+                    if (showPublishingTips) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(BlinkPostGrowthTips.suggestion(
+                                    hasImages = selectedImages.isNotEmpty(),
+                                    hasVideo = selectedVideo != null,
+                                    hasPoll = showPoll
+                                ), style = MaterialTheme.typography.bodySmall)
+                                Text("Hashtags are optional. Product sales belong in Market.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = onOpenMarket, enabled = !isSubmitting) {
+                                    Text("Create a Market listing")
+                                }
+                            }
                         }
                     }
                 }
@@ -1079,20 +1092,22 @@ fun CreatePostSheet(
                 AddToPostCard(
                     enabled = !isSubmitting,
                     onImages = {
-                        imagePicker.launch(
+                        if (selectedVideo != null || showPoll) pendingMediaSwitch = "gallery"
+                        else imagePicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     },
                     onVideo = {
-                        videoPicker.launch(
+                        if (selectedImages.isNotEmpty() || showPoll) pendingMediaSwitch = "reel"
+                        else videoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         )
                     },
                     onPoll = {
-                        showPoll = !showPoll
-                        if (showPoll) {
-                            selectedVideo = null
-                            mode = "post"
+                        if (selectedVideo != null || selectedImages.isNotEmpty()) pendingMediaSwitch = "poll"
+                        else {
+                            showPoll = !showPoll
+                            if (showPoll) mode = "post"
                         }
                     },
                     onMention = {
@@ -1116,7 +1131,7 @@ fun CreatePostSheet(
                                 Text(if (showMoreTrendingTags) "Show less" else "See more")
                             }
                         }
-                        Text("Use 1–3 relevant tags. Maximum 5 per post.", style = MaterialTheme.typography.bodySmall)
+                        Text("Optional: use up to 5 relevant tags to help discovery.", style = MaterialTheme.typography.bodySmall)
                         if (suggestedTags.isNotEmpty()) {
                             Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1525,6 +1540,47 @@ fun CreatePostSheet(
         }
     }
 
+    pendingMediaSwitch?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingMediaSwitch = null },
+            title = { Text("Change post type?") },
+            text = { Text(
+                when (target) {
+                    "post" -> "Switching to a regular post removes the selected Reel video."
+                    "poll" -> "Choosing a poll replaces the selected photos or Reel video."
+                    else -> "Selecting new media will replace the current media or poll. Cancelling the picker keeps it."
+                }
+            ) },
+            dismissButton = { TextButton(onClick = { pendingMediaSwitch = null }) { Text("Keep editing") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingMediaSwitch = null
+                    when (target) {
+                        "post" -> {
+                            selectedVideo = null
+                            reelHasPendingEdits = false
+                            mode = "post"
+                            showPoll = false
+                        }
+                        "poll" -> {
+                            selectedVideo = null
+                            selectedImages = emptyList()
+                            reelHasPendingEdits = false
+                            mode = "post"
+                            showPoll = true
+                        }
+                        "gallery" -> imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                        "reel" -> videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    }
+                }) { Text("Continue") }
+            }
+        )
+    }
+
     tagWarning?.let { message ->
         AlertDialog(
             onDismissRequest = { tagWarning = null },
@@ -1622,7 +1678,7 @@ private fun PostPreviewDialog(
             shadowElevation = 10.dp
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1668,22 +1724,28 @@ private fun PostPreviewDialog(
                     }
                 }
 
-                if (!post.videoUrl.isNullOrBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
-                    ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text("Reel video selected", fontWeight = FontWeight.SemiBold)
-                            post.audioTitle?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                post.videoUrl?.takeIf { it.isNotBlank() }?.let { videoUri ->
+                    val context = LocalContext.current
+                    val previewPlayer = remember(videoUri) {
+                        ExoPlayer.Builder(context).build().apply {
+                            setMediaItem(MediaItem.fromUri(videoUri))
+                            prepare()
+                            playWhenReady = false
                         }
                     }
+                    DisposableEffect(previewPlayer) {
+                        onDispose { previewPlayer.release() }
+                    }
+                    AndroidView(
+                        factory = { ctx -> PlayerView(ctx).apply {
+                            useController = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            player = previewPlayer
+                        } },
+                        update = { it.player = previewPlayer },
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp).aspectRatio(9f / 16f)
+                    )
+                    post.audioTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
 
                 post.poll?.let { poll ->
@@ -1887,7 +1949,7 @@ private fun ComposerTopBar(
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text("Post")
+                Text(if (isReel) "Publish Reel" else "Post")
             }
         }
     }
