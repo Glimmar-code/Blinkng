@@ -865,6 +865,7 @@ fun CreatePostSheet(
                     selectedVideo?.let { uri ->
                         VideoComposerPreview(
                             uri = uri,
+                            draftScope = composerScope,
                             onRemove = {
                                 if (!isSubmitting && !reelExporting) {
                                     selectedVideo = null
@@ -2516,6 +2517,7 @@ private fun DraftCard(
 @Composable
 private fun VideoComposerPreview(
     uri: String,
+    draftScope: String,
     onRemove: () -> Unit,
     onEdited: (String) -> Unit,
     onExporting: (Boolean) -> Unit,
@@ -2523,6 +2525,7 @@ private fun VideoComposerPreview(
 ) {
     PremiumReelEditor(
         uri = uri,
+        draftScope = draftScope,
         onRemove = onRemove,
         onEdited = onEdited,
         onExporting = onExporting,
