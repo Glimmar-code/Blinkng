@@ -3365,9 +3365,12 @@ private suspend fun restoreSupabaseSession() {
     }
 
     private var notificationRefreshJob: kotlinx.coroutines.Job? = null
+    private var olderNotificationJob: kotlinx.coroutines.Job? = null
+    private var activityHistoryCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null
+    private var canonicalHistoryCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null
 
     fun refreshNotifications() {
-        if (notificationRefreshJob?.isActive == true) return
+        if (notificationRefreshJob?.isActive == true || olderNotificationJob?.isActive == true) return
         if (!_uiState.value.isOnline) {
             _uiState.value = _uiState.value.copy(activitiesError = "You're offline. Showing saved activity.")
             return
@@ -3378,13 +3381,15 @@ private suspend fun restoreSupabaseSession() {
                 activitiesLoading = _uiState.value.activities.isEmpty(),
                 activitiesError = null
             )
-            supabaseService.fetchActivities().fold(
-                onSuccess = { fresh ->
+            supabaseService.fetchActivitiesPage().fold(
+                onSuccess = { page ->
                     if (_uiState.value.myProfile.id != accountId) return@fold
+                    activityHistoryCursor = page.activityCursor
+                    canonicalHistoryCursor = page.notificationCursor
                     _uiState.value = _uiState.value.copy(
-                        activities = fresh,
+                        activities = page.items,
                         activitiesLoading = false,
-                        activitiesHasMore = fresh.size >= 80,
+                        activitiesHasMore = page.hasMore,
                         activitiesLoadingMore = false,
                         activitiesError = null
                     )
@@ -3403,22 +3408,33 @@ private suspend fun restoreSupabaseSession() {
     fun loadOlderNotifications() {
         val current = _uiState.value
         if (!current.activitiesHasMore || current.activitiesLoadingMore ||
-            !current.isOnline || current.activities.isEmpty()) return
-        val oldest = current.activities.map { it.rawTimestamp }
-            .filter { it.isNotBlank() }.minOrNull() ?: return
+            !current.isOnline || current.activities.isEmpty() ||
+            notificationRefreshJob?.isActive == true ||
+            olderNotificationJob?.isActive == true) return
+        val activityBefore = activityHistoryCursor
+        val notificationBefore = canonicalHistoryCursor
+        if (activityBefore == null && notificationBefore == null) return
         val accountId = current.myProfile.id
         _uiState.value = current.copy(activitiesLoadingMore = true)
-        viewModelScope.launch {
-            supabaseService.fetchActivities(beforeCreatedAt = oldest).fold(
-                onSuccess = { older ->
+        olderNotificationJob = viewModelScope.launch {
+            supabaseService.fetchActivitiesPage(
+                activityBefore = activityBefore,
+                notificationBefore = notificationBefore,
+                includeActivities = activityBefore != null,
+                includeNotifications = notificationBefore != null
+            ).fold(
+                onSuccess = { page ->
                     if (_uiState.value.myProfile.id != accountId) return@fold
-                    val combined = (_uiState.value.activities + older)
+                    activityHistoryCursor = page.activityCursor
+                    canonicalHistoryCursor = page.notificationCursor
+                    val combined = (_uiState.value.activities + page.items)
                         .distinctBy { it.id }
                         .sortedByDescending { it.rawTimestamp }
                     _uiState.value = _uiState.value.copy(
                         activities = combined,
-                        activitiesHasMore = older.size >= 80,
-                        activitiesLoadingMore = false
+                        activitiesHasMore = page.hasMore,
+                        activitiesLoadingMore = false,
+                        activitiesError = null
                     )
                     persistExtendedCache()
                 },

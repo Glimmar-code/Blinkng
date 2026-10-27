@@ -16,6 +16,21 @@ class BlinkNotificationTimelinePolicyTest {
         assertFalse(BlinkNotificationTimelinePolicy.isOfficialMirror("notification", "id-2", setOf("id-1")))
     }
 
+    @Test fun eachSourceUsesAStableTimeAndIdCursor() {
+        val newestSource = BlinkNotificationTimelinePolicy.Cursor(
+            "2026-10-27T12:01:00Z", "00000000-0000-4000-8000-000000000090"
+        )
+        val olderSource = BlinkNotificationTimelinePolicy.Cursor(
+            "2026-10-27T08:00:00Z", "00000000-0000-4000-8000-000000000020"
+        )
+        val newestPredicate = BlinkNotificationTimelinePolicy.olderThanCursorFilter(newestSource) { it }
+        val olderPredicate = BlinkNotificationTimelinePolicy.olderThanCursorFilter(olderSource) { it }
+        assertTrue(newestPredicate.contains("created_at.lt.2026-10-27T12:01:00Z"))
+        assertTrue(newestPredicate.contains("id.lt.00000000-0000-4000-8000-000000000090"))
+        assertTrue(olderPredicate.contains("created_at.lt.2026-10-27T08:00:00Z"))
+        assertFalse(newestPredicate == olderPredicate)
+    }
+
     @Test fun socialMirrorRequiresSameActorPostTypeAndTime() {
         fun matches(actor: String, post: String) =
             BlinkNotificationTimelinePolicy.isSameSocialEvent(

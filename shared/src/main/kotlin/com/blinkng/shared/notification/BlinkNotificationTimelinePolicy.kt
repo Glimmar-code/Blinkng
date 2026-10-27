@@ -2,6 +2,20 @@ package com.blinkng.shared.notification
 
 /** Stable cross-platform policy for mirrored activity and canonical notifications. */
 object BlinkNotificationTimelinePolicy {
+    /** Each source needs its own stable (created_at, id) cursor. */
+    data class Cursor(val createdAt: String, val id: String)
+
+    /**
+     * PostgREST lexicographic cursor for order=created_at.desc,id.desc.
+     * Equality on created_at prevents missing records with identical timestamps.
+     */
+    fun olderThanCursorFilter(cursor: Cursor, encode: (String) -> String): String {
+        require(cursor.createdAt.isNotBlank() && cursor.id.isNotBlank())
+        val time = encode(cursor.createdAt)
+        val id = encode(cursor.id)
+        return "&or=(created_at.lt.$time,and(created_at.eq.$time,id.lt.$id))"
+    }
+
     fun belongsInActivityTimeline(targetType: String?): Boolean =
         !targetType.equals("CHAT", ignoreCase = true)
 

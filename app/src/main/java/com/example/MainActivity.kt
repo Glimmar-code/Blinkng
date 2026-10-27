@@ -2932,7 +2932,7 @@ fun MainAppContent(
                     }
                 },
                 isDark = uiState.isDarkMode,
-                isConnected = uiState.isLiveSupabaseConnected,
+                isConnected = uiState.isOnline,
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
                 onRefresh = { viewModel.refreshNotifications() },

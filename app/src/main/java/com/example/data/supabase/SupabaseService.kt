@@ -4939,9 +4939,27 @@ suspend fun uploadPostMedia(
             false
         }
     }
-    suspend fun fetchActivities(beforeCreatedAt: String? = null): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
+    data class NotificationHistoryPage(
+        val items: List<ActivityItem>,
+        val activityCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?,
+        val notificationCursor: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor?
+    ) {
+        val hasMore: Boolean get() = activityCursor != null || notificationCursor != null
+    }
+
+    suspend fun fetchActivities(): Result<List<ActivityItem>> =
+        fetchActivitiesPage().map { it.items }
+
+    suspend fun fetchActivitiesPage(
+        activityBefore: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null,
+        notificationBefore: com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? = null,
+        includeActivities: Boolean = true,
+        includeNotifications: Boolean = true
+    ): Result<NotificationHistoryPage> = withContext(Dispatchers.IO) {
         try {
-            val uid = getCurrentUserId() ?: return@withContext Result.success(emptyList())
+            val uid = getCurrentUserId() ?: return@withContext Result.success(
+                NotificationHistoryPage(emptyList(), null, null)
+            )
 
             fun semanticKey(item: ActivityItem): String = listOf(
                 item.user.trim().lowercase(Locale.US),
@@ -4969,18 +4987,24 @@ suspend fun uploadPostMedia(
                 }
             }
 
-            val cursorFilter = beforeCreatedAt?.takeIf { it.isNotBlank() }
-                ?.let { "&created_at=lt.${encodeValue(it)}" }.orEmpty()
-            val activityArray = fetchArray(
-                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}${cursorFilter}&order=created_at.desc&limit=100",
+            val activityFilter = activityBefore?.let {
+                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .olderThanCursorFilter(it, ::encodeValue)
+            }.orEmpty()
+            val notificationFilter = notificationBefore?.let {
+                com.blinkng.shared.notification.BlinkNotificationTimelinePolicy
+                    .olderThanCursorFilter(it, ::encodeValue)
+            }.orEmpty()
+            val activityArray = if (includeActivities) fetchArray(
+                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}${activityFilter}&order=created_at.desc,id.desc&limit=100",
                 "Activity",
                 required = true
-            )
-            val notificationArray = fetchArray(
-                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}${cursorFilter}&order=created_at.desc&limit=100",
+            ) else JSONArray()
+            val notificationArray = if (includeNotifications) fetchArray(
+                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}${notificationFilter}&order=created_at.desc,id.desc&limit=100",
                 "Notification",
                 required = false
-            )
+            ) else JSONArray()
 
             val activityItems = buildList {
                 for (i in 0 until activityArray.length()) {
@@ -5092,9 +5116,23 @@ suspend fun uploadPostMedia(
                 // discard fetched rows that pagination can never recover.
                 .take(200)
 
-            Result.success(merged)
+            fun nextCursor(array: JSONArray): com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor? {
+                if (array.length() < 100) return null
+                val last = array.optJSONObject(array.length() - 1) ?: return null
+                val createdAt = last.optString("created_at")
+                val id = last.optString("id")
+                return if (createdAt.isBlank() || id.isBlank()) null
+                else com.blinkng.shared.notification.BlinkNotificationTimelinePolicy.Cursor(createdAt, id)
+            }
+            Result.success(
+                NotificationHistoryPage(
+                    items = merged,
+                    activityCursor = nextCursor(activityArray),
+                    notificationCursor = nextCursor(notificationArray)
+                )
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "fetchActivities exception", e)
+            Log.e(TAG, "fetchActivitiesPage exception", e)
             Result.failure(e)
         }
     }
