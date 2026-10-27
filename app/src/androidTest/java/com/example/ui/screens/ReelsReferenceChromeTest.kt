@@ -38,6 +38,7 @@ class ReelsReferenceChromeTest {
                     onProfileClick = { actions += "profile:$it" },
                     onSearch = { actions += "search" },
                     onRefresh = { actions += "refresh" },
+                    onCreateReel = { actions += "create" },
                     onGame = { actions += "games" },
                     onNotifications = { actions += "notifications" },
                     onMenu = { actions += "menu" },
@@ -63,12 +64,13 @@ class ReelsReferenceChromeTest {
         composeRule.onNodeWithText("For You").assertExists()
         composeRule.onNodeWithText("Aisha").assertExists()
         composeRule.onNodeWithText("Campus Vibes").performClick()
+        composeRule.onNodeWithContentDescription("Create reel").performClick()
         composeRule.onNodeWithContentDescription("Refresh reels").performClick()
         composeRule.onNodeWithContentDescription("Search").performClick()
         composeRule.onNodeWithContentDescription("Menu").performClick()
         composeRule.onNodeWithText("Following").performClick()
         composeRule.runOnIdle {
-            assertEquals(listOf("featured:reel-1", "refresh", "search", "menu", "tab:Following"), actions)
+            assertEquals(listOf("featured:reel-1", "create", "refresh", "search", "menu", "tab:Following"), actions)
         }
     }
 }
