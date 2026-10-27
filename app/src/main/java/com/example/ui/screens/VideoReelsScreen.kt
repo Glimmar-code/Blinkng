@@ -141,10 +141,13 @@ fun VideoReelsScreen(
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     isLoading: Boolean = false,
+    errorMessage: String? = null,
+    isServerConnected: Boolean = true,
     isRefreshing: Boolean = false,
     isRefreshingFollowing: Boolean = isRefreshing,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
+    onRetry: () -> Unit = onRefresh,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -196,7 +199,6 @@ fun VideoReelsScreen(
         val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
             !hasAnyReels && isLoading -> ReelsUiState.Loading
-            !hasAnyReels -> ReelsUiState.Empty
             else -> ReelsUiState.Content
         }
 
@@ -207,7 +209,6 @@ fun VideoReelsScreen(
         ) { state ->
             when (state) {
                 ReelsUiState.Loading -> ReelsLoadingSkeleton()
-                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts, refreshSelected, activeRefreshing)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -235,6 +236,9 @@ fun VideoReelsScreen(
                     isScreenActive = isScreenActive,
                     isRefreshing = activeRefreshing,
                     onRefreshSelected = refreshSelected,
+                    errorMessage = errorMessage,
+                    isServerConnected = isServerConnected,
+                    onRetry = onRetry,
                     onFirstPageChanged = { firstPageVisible = it },
                     onFollowingSelectionChanged = { followingSelected = it },
                     initialReelId = initialReelId,
@@ -264,7 +268,7 @@ fun VideoReelsScreen(
     }
 }
 
-private enum class ReelsUiState { Loading, Empty, Content }
+private enum class ReelsUiState { Loading, Content }
 
 private const val REELS_SPONSORED_INTERVAL = 7
 
@@ -364,6 +368,9 @@ private fun ReelsContent(
     isScreenActive: Boolean,
     isRefreshing: Boolean,
     onRefreshSelected: () -> Unit,
+    errorMessage: String?,
+    isServerConnected: Boolean,
+    onRetry: () -> Unit,
     onFirstPageChanged: (Boolean) -> Unit,
     onFollowingSelectionChanged: (Boolean) -> Unit,
     initialReelId: String?,
@@ -402,7 +409,7 @@ private fun ReelsContent(
         // Only poll while Reels is active; database cohorts change at 00:00/12:00 UTC.
         while (true) {
             featuredReels = featuredService.fetch()
-            delay(60_000L)
+            delay(300_000L)
         }
     }
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
@@ -584,7 +591,8 @@ private fun ReelsContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(if (isDark) Color(0xFF121214) else Color.White)) {
         val density = LocalDensity.current
         val viewportHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
-        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 292.dp)
+        val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+            if (featuredReels.isNotEmpty()) 292.dp else 114.dp)
             .coerceAtMost(maxHeight * 0.48f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
         val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
@@ -720,6 +728,20 @@ private fun ReelsContent(
                             fontSize = 12.sp
                         )
                     }
+                    if (!isServerConnected) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("You are offline. Reconnect and try again.", color = Color.White.copy(alpha = .85f), fontSize = 12.sp)
+                    } else if (!errorMessage.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(errorMessage, color = Color.White.copy(alpha = .85f), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { if (!isServerConnected || !errorMessage.isNullOrBlank()) onRetry() else onRefreshSelected() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Retry / refresh reels", color = Color.White)
+                    }
+                    TextButton(onClick = onCreateReelClick) { Text("Create a reel", color = Color.White) }
                 }
             }
         } else {
@@ -727,7 +749,7 @@ private fun ReelsContent(
             state = pager,
             key = { index ->
                 when (val item = pagerItems.getOrNull(index)) {
-                    is ReelPagerItem.ReelItem -> "reel:${item.sourceIndex}:${item.reel.id}"
+                    is ReelPagerItem.ReelItem -> "reel:${item.reel.id}"
                     is ReelPagerItem.Boosted -> "boosted_reel:${item.placement.campaignId}:${item.slot}"
                     is ReelPagerItem.Sponsored -> "sponsored:${item.slot}"
                     null -> "reel_missing:$index"
@@ -765,7 +787,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = onOpenConnectHub,
+                        onSwipeToConnect = onOpenConnectHub,
                         isPreview = !expanded,
                         onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
@@ -819,7 +841,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = onOpenConnectHub,
+                        onSwipeToConnect = onOpenConnectHub,
                         isPreview = !expanded,
                         onExpandPreview = { if (!isInteractionOverlayOpen) expanded = true },
                         initialPositionMs = 0L,
@@ -866,6 +888,8 @@ private fun ReelsContent(
                 onNotifications = onNotificationsClick,
                 onMenu = onMenuClick,
                 featuredReels = featuredReels,
+                onRefresh = onRefreshSelected,
+                isRefreshing = isRefreshing,
                 onFeaturedReelClick = { reelId ->
                     refreshScope.launch {
                         // Banner reels are present in the same vertical pager as feed reels.
@@ -909,7 +933,7 @@ private fun ReelsContent(
         }
 
         AnimatedVisibility(
-            visible = isLoadingMore,
+            visible = activeIsLoadingMore,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier
@@ -1096,7 +1120,7 @@ private fun ReelPage(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
     onOpenConnectHub: () -> Unit,
     onSwipeToHome: () -> Unit,
-    onSwipeToProfile: () -> Unit,
+    onSwipeToConnect: () -> Unit,
     initialPositionMs: Long,
     onInitialPositionConsumed: () -> Unit,
     isPreview: Boolean = false,
@@ -1225,7 +1249,7 @@ private fun ReelPage(
                     onDragEnd = {
                         when {
                             horizontalDrag >= swipeThreshold -> onSwipeToHome()
-                            horizontalDrag <= -swipeThreshold -> onSwipeToProfile()
+                            horizontalDrag <= -swipeThreshold -> onSwipeToConnect()
                         }
                         horizontalDrag = 0f
                     },
@@ -2172,7 +2196,6 @@ private fun ReelVideo(
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
-    var previousPositionMs by remember(url) { mutableLongStateOf(0L) }
     var completed by remember(url) { mutableStateOf(false) }
     var rewatched by remember(url) { mutableStateOf(false) }
     var autoRetryCount by remember(url) { mutableIntStateOf(0) }
@@ -2216,7 +2239,6 @@ private fun ReelVideo(
 
                     override fun onPlaybackStateChanged(state: Int) {
                         currentOnBufferingChange(state == Player.STATE_BUFFERING)
-                        if (state == Player.STATE_ENDED) completed = true
                     }
                 })
                 setMediaItem(MediaItem.fromUri(url))
@@ -2240,7 +2262,6 @@ private fun ReelVideo(
         watchedMs = 0L
         completed = false
         rewatched = false
-        previousPositionMs = player.currentPosition.coerceAtLeast(0L)
         sessionWasActive = false
     }
 
@@ -2311,18 +2332,14 @@ private fun ReelVideo(
                 knownDurationMs = duration
                 currentOnProgressChange((position.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
 
-                if (position >= (duration * 95L / 100L) || watchedMs >= (duration * 90L / 100L)) {
+                // Seeking close to the end or backwards is not a completed watch.
+                if (watchedMs >= (duration * 90L / 100L)) {
                     completed = true
-                }
-                if (previousPositionMs > (duration * 80L / 100L) && position < (duration * 20L / 100L)) {
-                    completed = true
-                    rewatched = true
                 }
                 if (watchedMs >= (duration * 105L / 100L)) {
                     rewatched = true
                 }
             }
-            previousPositionMs = position
             delay(100)
         }
     }
