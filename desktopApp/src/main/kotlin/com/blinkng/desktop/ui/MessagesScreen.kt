@@ -127,7 +127,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var messages by remember(myUserId) { mutableStateOf<List<DesktopMessage>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var inboxShowSearch by remember { mutableStateOf(false) }
-    var inboxShowAll by remember { mutableStateOf(false) }
+    var inboxShowAll by remember { mutableStateOf(true) }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
@@ -138,7 +138,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var showNewGroup by remember { mutableStateOf(false) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
-    var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
+    var inbox by remember { mutableStateOf(BlinkMessageInbox.ALL) }
     var controlsBusy by remember { mutableStateOf(false) }
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
@@ -1723,7 +1723,7 @@ private fun DesktopInboxPanel(
 ) {
     val filtered = remember(conversations, query, inbox) {
         conversations.filter {
-            BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
+            (query.isNotBlank() || BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread)) &&
                 BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
         }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
     }
@@ -1776,9 +1776,8 @@ private fun DesktopInboxPanel(
             TextButton(onClick = onGroupInvitations) { Text("Groups & invitations") }
             TextButton(onClick = {
                 onShowAllChange(!inboxShowAll)
-                onInboxChange(if (!inboxShowAll) BlinkMessageInbox.ALL else BlinkMessageInbox.PRIMARY)
             }) {
-                Text(if (inboxShowAll) "Close" else "See all")
+                Text(if (inboxShowAll) "Hide filters" else "Filters")
             }
         }
 
@@ -1813,10 +1812,15 @@ private fun DesktopInboxPanel(
 
         HorizontalDivider()
         if (inboxShowAll) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 BlinkMessageInbox.entries.forEach { tab ->
-                    FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
-                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    item(key = tab.name) {
+                        FilterChip(selected = inbox == tab, onClick = { onInboxChange(tab) },
+                            label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    }
                 }
             }
         }
