@@ -88,9 +88,12 @@ fun Modifier.blinkElasticSwipeAction(
                         BlinkElasticSwipeDirection.LEFT, BlinkElasticSwipeDirection.RIGHT -> v.x
                         BlinkElasticSwipeDirection.UP, BlinkElasticSwipeDirection.DOWN -> v.y
                     }
+                    val stableV = BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                        raw, projectedV, change.uptimeMillis - down.uptimeMillis
+                    )
                     committed = !childOwned && raw != 0f &&
                         BlinkElasticGesturePhysics.shouldCommit(
-                            raw, projectedV, activationPx, minFlickPx, fastVelocityPx
+                            raw, stableV, activationPx, minFlickPx, fastVelocityPx
                         )
                     break
                 }

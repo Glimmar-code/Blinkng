@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.performance.rememberBlinkReduceMotion
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -103,9 +104,10 @@ fun StoryViewerDialog(
     var storyDismissDrag by remember(currentStory.id) { mutableFloatStateOf(0f) }
     var storyDismissActive by remember(currentStory.id) { mutableStateOf(false) }
     val storyDismissThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val reducedMotion = rememberBlinkReduceMotion()
     val storyDismissVisual by animateFloatAsState(
-        targetValue = BlinkElasticGesturePhysics.visualDistance(storyDismissDrag, storyDismissThresholdPx),
-        animationSpec = if (storyDismissActive) snap() else spring(
+        targetValue = if (reducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(storyDismissDrag, storyDismissThresholdPx),
+        animationSpec = if (storyDismissActive || reducedMotion) snap() else spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ),
