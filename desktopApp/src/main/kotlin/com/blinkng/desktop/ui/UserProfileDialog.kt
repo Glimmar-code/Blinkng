@@ -67,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.blinkng.shared.BlinkProfileThemes
+import com.blinkng.shared.ProfileContentMetrics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,7 @@ fun DesktopUserProfileDialog(
     var profile by remember(initialProfile.id) { mutableStateOf(initialProfile) }
     val isMe = initialProfile.id == state.session?.userId
     var content by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var accountMetrics by remember(initialProfile.id) { mutableStateOf<ProfileContentMetrics?>(null) }
     var likedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var savedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var followingIds by remember(initialProfile.id) { mutableStateOf<Set<String>>(emptySet()) }
@@ -147,6 +149,7 @@ fun DesktopUserProfileDialog(
         postsFailed = false
         likedFailed = false
         savedFailed = false
+        accountMetrics = runCatching { state.client.getProfileContentMetrics(initialProfile.id) }.getOrNull()
         runCatching { state.client.fetchProfileContent(initialProfile.id) }
             .onSuccess { content = it }
             .onFailure { postsFailed = true; content = emptyList(); statusMessage = it.message }
@@ -326,7 +329,8 @@ fun DesktopUserProfileDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                ProfileStat("Loaded posts", content.count { !it.isReel }.toString())
+                                ProfileStat(if (accountMetrics == null) "Loaded posts" else "Posts",
+                                    (accountMetrics?.posts ?: content.count { !it.isReel }.toLong()).toString())
                                 ProfileStat(
                                     "Followers",
                                     profile.followerCount.toString(),
