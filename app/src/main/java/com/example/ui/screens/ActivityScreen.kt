@@ -118,13 +118,13 @@ fun ActivityScreen(
     onToggleRead: (ActivityItem) -> Unit = {},
     accountId: String = "",
 ) {
-    var filter by remember { mutableStateOf(NotificationCategory.ALL) }
-    var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
-    var newestFirst by remember { mutableStateOf(true) }
-    var searchVisible by remember { mutableStateOf(false) }
+    var filter by remember(accountId) { mutableStateOf(NotificationCategory.ALL) }
+    var viewMode by remember(accountId) { mutableStateOf(NotificationViewMode.ALL) }
+    var newestFirst by remember(accountId) { mutableStateOf(true) }
+    var searchVisible by remember(accountId) { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var showSavedUpdates by remember { mutableStateOf(false) }
+    var searchQuery by remember(accountId) { mutableStateOf("") }
+    var showSavedUpdates by remember(accountId) { mutableStateOf(false) }
     val context = LocalContext.current
     var savedUpdates by remember(accountId) {
         mutableStateOf(BlinkOfflineAnnouncementCache.read(context, accountId))
@@ -136,8 +136,8 @@ fun ActivityScreen(
     val profileService = remember { SupabaseService() }
     val announcementService = remember { AdminAnnouncementService() }
     val scope = rememberCoroutineScope()
-    var actorProfiles by remember { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
-    var selectedAdminMessage by remember { mutableStateOf<AdminAnnouncementDetail?>(null) }
+    var actorProfiles by remember(accountId) { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
+    var selectedAdminMessage by remember(accountId) { mutableStateOf<AdminAnnouncementDetail?>(null) }
     var adminMessageLoading by remember { mutableStateOf(false) }
     var adminMessageError by remember { mutableStateOf<String?>(null) }
 
@@ -151,7 +151,7 @@ fun ActivityScreen(
 
     // Activity rows store actor_id for integrity. Resolve those IDs to public profile
     // details only while this screen is visible so UUIDs are never rendered to people.
-    LaunchedEffect(activities, isConnected) {
+    LaunchedEffect(accountId, activities, isConnected) {
         if (!isConnected || activities.isEmpty()) return@LaunchedEffect
 
         val actors = activities
@@ -210,8 +210,8 @@ fun ActivityScreen(
         if (newestFirst) filtered.sortedByDescending { it.rawTimestamp }
         else filtered.sortedBy { it.rawTimestamp }
     }
-    val sections = remember(sortedNotifications, viewMode) {
-        buildNotificationSections(sortedNotifications, viewMode)
+    val sections = remember(sortedNotifications, viewMode, newestFirst) {
+        buildNotificationSections(sortedNotifications, viewMode, newestFirst)
     }
     val listState = rememberLazyListState()
     LaunchedEffect(listState, hasMore, isLoadingMore, showSavedUpdates, isLoading, sortedNotifications.size) {
@@ -439,11 +439,24 @@ fun ActivityScreen(
                     onRefresh = onRefresh
                 )
 
-                filtered.isEmpty() -> NotificationEmptyState(
-                    filter = filter,
-                    viewMode = viewMode,
-                    hasSearch = searchQuery.isNotBlank()
-                )
+                filtered.isEmpty() -> Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NotificationEmptyState(
+                        filter = filter,
+                        viewMode = viewMode,
+                        hasSearch = searchQuery.isNotBlank()
+                    )
+                    if (hasMore && !isLoadingMore && isConnected) {
+                        TextButton(onClick = onLoadMore) { Text("Search older notifications") }
+                    } else if (isLoadingMore) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(12.dp).size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
 
                 else -> LazyColumn(
                     state = listState,
@@ -463,17 +476,21 @@ fun ActivityScreen(
                                     profile = actorProfiles[item.user],
                                     onProfileClick = onProfileClick,
                                     onNotificationClick = { tapped ->
-                                        if (!tapped.targetType.equals("notification", ignoreCase = true)) {
+                                        if (!tapped.targetType.equals("notification", ignoreCase = true) &&
+                                            !tapped.targetType.equals("system", ignoreCase = true)) {
                                             onNotificationClick(tapped)
                                         } else if (!adminMessageLoading) {
                                             scope.launch {
                                                 adminMessageLoading = true
                                                 adminMessageError = null
-                                                announcementService.fetchForActivity(tapped.id)
-                                                    .onSuccess { detail ->
+                                                (if (tapped.targetType.equals("system", true)) {
+                                                    Result.success<AdminAnnouncementDetail?>(null)
+                                                } else {
+                                                    announcementService.fetchForActivity(tapped.id)
+                                                }).onSuccess { detail ->
                                                         if (detail != null) {
                                                             selectedAdminMessage = detail
-                                                            onRefresh()
+                                                            if (tapped.isUnread) onToggleRead(tapped)
                                                         } else {
                                                             // Ordinary notices may not belong to admin campaigns.
                                                             selectedAdminMessage = AdminAnnouncementDetail(
@@ -866,7 +883,8 @@ private fun NotificationCard(
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit
 ) {
-    val isOfficial = item.targetType.equals("notification", ignoreCase = true)
+    val isOfficial = item.targetType.equals("notification", ignoreCase = true) ||
+        item.targetType.equals("system", ignoreCase = true)
     val safeAction = item.action.takeUnless {
         it.isBlank() || it.trim().equals("null", ignoreCase = true)
     } ?: "New activity"
@@ -1048,9 +1066,11 @@ private fun NotificationCard(
 
 private fun buildNotificationSections(
     items: List<ActivityItem>,
-    viewMode: NotificationViewMode
+    viewMode: NotificationViewMode,
+    newestFirst: Boolean
 ): List<NotificationSection> {
     if (items.isEmpty()) return emptyList()
+    if (!newestFirst) return listOf(NotificationSection("Oldest first", items))
 
     if (viewMode == NotificationViewMode.UNREAD) {
         return listOf(NotificationSection("New", items))
@@ -1126,7 +1146,8 @@ private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter
 private fun notificationIcon(item: ActivityItem): ImageVector {
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("notification", ignoreCase = true) -> Icons.Default.Campaign
+        item.targetType.equals("notification", ignoreCase = true) ||
+            item.targetType.equals("system", ignoreCase = true) -> Icons.Default.Campaign
         item.targetType.equals("market", ignoreCase = true) || action.contains("market") -> Icons.Default.Storefront
         action.contains("mention") -> Icons.Default.AlternateEmail
         action.contains("reply") -> Icons.Default.Reply
@@ -1144,7 +1165,8 @@ private fun notificationIcon(item: ActivityItem): ImageVector {
 private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("notification", ignoreCase = true) -> NotificationCategory.BLINK
+        item.targetType.equals("notification", ignoreCase = true) ||
+            item.targetType.equals("system", ignoreCase = true) -> NotificationCategory.BLINK
         item.targetType.equals("reel", ignoreCase = true) || action.contains("reel") -> NotificationCategory.REELS
         item.targetType.equals("story", ignoreCase = true) || action.contains("story") -> NotificationCategory.STORIES
         action.contains("coin") || action.contains("reward") || action.contains("rank point") -> NotificationCategory.REWARDS
