@@ -175,6 +175,7 @@ class BlinkDropsService {
             message.contains("INSUFFICIENT_BLINK_COINS") -> "You don't have enough BLINK Coins for this Drop."
             message.contains("DROP_REWARD_INVALID") -> "Each person must receive a multiple of 100 BLINK Coins."
             message.contains("DROP_WINNER_COUNT_INVALID") -> "Choose a valid number of recipients."
+            message.contains("DROP_NO_ELIGIBLE_FOLLOWERS") -> "You need at least one eligible follower before organizing a Drop."
             message.contains("DROP_BUDGET_TOO_LARGE") -> "That Drop is above the supported budget."
             message.contains("DROP_DURATION_INVALID") -> "Choose a supported Drop duration."
             message.contains("DROP_TARGET_NOT_OWNED") -> "Choose one of your own active posts, Reels or listings."
