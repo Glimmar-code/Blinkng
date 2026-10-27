@@ -37,6 +37,7 @@ internal fun ProfileVisitorsSheet(
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var newVisitors by remember { mutableIntStateOf(0) }
     var confirmDisable by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshKey) {
@@ -50,9 +51,13 @@ internal fun ProfileVisitorsSheet(
         } else {
             settings = preference.getOrNull()
             if (settings?.participate == true) {
+                newVisitors = service.countMyNewProfileVisitors()
                 val result = service.listMyProfileVisitors()
                 if (result.isSuccess) {
                     history = result.getOrNull()
+                    history?.seenThrough?.takeIf { it.isNotBlank() }?.let {
+                        service.acknowledgeMyProfileVisitorsSeen(it)
+                    }
                 } else {
                     message = "Couldn't load visitor history. Please retry."
                 }
@@ -101,6 +106,10 @@ internal fun ProfileVisitorsSheet(
                         Text(if (busy) "Saving…" else "Enable visitor history")
                     }
                 } else {
+                    if (newVisitors > 0) {
+                        Text("$newVisitors new visitor(s) since your last check.",
+                            style = MaterialTheme.typography.labelLarge)
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
