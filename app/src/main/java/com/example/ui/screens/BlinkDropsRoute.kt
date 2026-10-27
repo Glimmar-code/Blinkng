@@ -235,7 +235,7 @@ fun BlinkDropsRoute(
     LaunchedEffect(initialDropId, loading, activeDrops, analytics, isOnline, error, message) {
         val match = activeDrops.indexOfFirst { it.id == initialDropId }
         if (!deepLinkHandled && initialDropId != null && !loading && match >= 0) {
-            val prefix = 1 + (if (analytics != null) 1 else 0) +
+            val prefix = 1 +
                 (if (!isOnline) 1 else 0) +
                 (if (error != null && state == null) 1 else 0) +
                 (if (error != null) 1 else 0) +
