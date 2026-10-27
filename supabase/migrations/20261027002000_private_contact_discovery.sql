@@ -108,6 +108,9 @@ begin
   join public.blink_contact_settings s on s.user_id=i.owner_id
   where i.phone_hmac=p_hmac and i.owner_id<>p_joiner and
     s.sync_enabled=true and s.join_alerts=true
+    and not exists(select 1 from public.blocks b
+      where (b.blocker_id=i.owner_id and b.blocked_id=p_joiner)
+         or (b.blocker_id=p_joiner and b.blocked_id=i.owner_id))
   limit 250
  loop
   insert into private.blink_contact_join_alerts(owner_id,joiner_id)
@@ -189,6 +192,9 @@ as $$
  join public.blink_contact_settings target on target.user_id=d.user_id
  where i.owner_id=p_user and own.sync_enabled=true and target.discoverable=true
    and p.onboarding_completed=true
+   and not exists(select 1 from public.blocks b
+     where (b.blocker_id=p_user and b.blocked_id=p.id)
+        or (b.blocker_id=p.id and b.blocked_id=p_user))
  order by p.username limit 100;
 $$;
 revoke all on function public.blink_contact_matches_for(uuid) from public,anon,authenticated;
@@ -217,6 +223,9 @@ as $$
    n.metadata->>'kind'='blink_contact_joined' and
    recipient.sync_enabled=true and recipient.join_alerts=true and
    joiner.discoverable=true
+   and not exists(select 1 from public.blocks b
+     where (b.blocker_id=a.owner_id and b.blocked_id=a.joiner_id)
+        or (b.blocker_id=a.joiner_id and b.blocked_id=a.owner_id))
  );
 $$;
 revoke all on function public.blink_contact_push_is_authorized(uuid) from public,anon,authenticated;
