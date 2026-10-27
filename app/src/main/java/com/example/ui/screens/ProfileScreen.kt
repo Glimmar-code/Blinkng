@@ -206,10 +206,6 @@ fun ProfileScreen(
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showProfileVisitors by rememberSaveable(profile.id) { mutableStateOf(false) }
-    var visitorTimes by remember(profile.id) { mutableStateOf<List<String>>(emptyList()) }
-    var visitorsLoading by remember(profile.id) { mutableStateOf(false) }
-    var visitorsLoadFailed by remember(profile.id) { mutableStateOf(false) }
-    var visitorsReloadKey by remember(profile.id) { mutableIntStateOf(0) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
 
@@ -241,18 +237,11 @@ fun ProfileScreen(
         }
     }
 
-    // Visitors are derived solely from the signed-in owner's activity records.
-    // Never expose the underlying actor IDs or claim that a missing activity is a visit.
-    LaunchedEffect(showProfileVisitors, profile.id, isMe, visitorsReloadKey) {
-        if (showProfileVisitors && isMe) {
-            visitorsLoading = true
-            visitorsLoadFailed = false
-            val response = profileService.fetchActivities()
-            visitorsLoadFailed = response.isFailure
-            visitorTimes = response.getOrNull().orEmpty()
-                .filter { it.action.contains("viewed your profile", ignoreCase = true) }
-                .map { it.time }
-            visitorsLoading = false
+    // The backend stores a visit ONLY when both accounts explicitly opt in.
+    // A missing visitor-history RPC is not treated as consent or as a visit.
+    LaunchedEffect(profile.id, isMe, currentUserId) {
+        if (!isMe && profile.id.isNotBlank() && currentUserId.isNotBlank()) {
+            profileService.recordOptInProfileVisit(profile.id)
         }
     }
 
@@ -833,40 +822,14 @@ fun ProfileScreen(
     }
 
     // ================================================================
-    // OWNER-ONLY PROFILE VISIT ACTIVITY
+    // CONSENT-BASED OWNER-ONLY PROFILE VISITOR HISTORY
     // ================================================================
     if (showProfileVisitors && isMe) {
-        ModalBottomSheet(onDismissRequest = { showProfileVisitors = false }) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Profile visits", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text("Recent profile-view notifications. Visits are shown only when recorded by BLINK.",
-                    style = MaterialTheme.typography.bodySmall)
-                when {
-                    visitorsLoading -> CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    visitorsLoadFailed -> {
-                        Text("Could not load profile visits.")
-                        TextButton(onClick = { visitorsReloadKey++ }) {
-                            Text("Retry")
-                        }
-                    }
-                    visitorTimes.isEmpty() -> Text("No recorded profile visits yet.")
-                    else -> {
-                        Text("${visitorTimes.size} recent visit notification(s)",
-                            fontWeight = FontWeight.SemiBold)
-                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                            items(visitorTimes.size) { index ->
-                                Text("Profile viewed · ${visitorTimes[index]}",
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
+        ProfileVisitorsSheet(
+            service = profileService,
+            onDismiss = { showProfileVisitors = false },
+            onOpenProfile = onProfileClick
+        )
     }
 
     // ================================================================
