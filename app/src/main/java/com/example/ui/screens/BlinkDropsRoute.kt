@@ -13,6 +13,9 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
 
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -182,6 +185,8 @@ private data class DropItem(
     val createdAt: String,
     val endsAt: String,
     val eligible: Boolean,
+    val creatorAvatar: String = "",
+    val previewUrl: String = "",
 )
 
 private data class TopGiver(
@@ -224,6 +229,15 @@ fun BlinkDropsRoute(
     var creatingDrop by remember { mutableStateOf(false) }
     var pendingCreateRequestId by remember { mutableStateOf<String?>(null) }
     var pendingCreateFingerprint by remember { mutableStateOf<String?>(null) }
+    var availablePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var minePage by remember { mutableStateOf<List<DropItem>?>(null) }
+    var availableMore by remember { mutableStateOf(false) }
+    var mineMore by remember { mutableStateOf(false) }
+    var pageBusy by remember { mutableStateOf(false) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var notificationDrop by remember(initialDropId) { mutableStateOf<DropItem?>(null) }
+    var notificationError by remember(initialDropId) { mutableStateOf<String?>(null) }
+    var followBusyId by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
     var showAllReceipts by remember { mutableStateOf(false) }
@@ -243,13 +257,33 @@ fun BlinkDropsRoute(
             .onFailure {
                 error = it.message ?: "Unable to load BLINK Drops."
             }
+        service.page("AVAILABLE", 0).onSuccess { result ->
+            availablePage = result.optJSONArray("items").toDropItems()
+            availableMore = result.optBoolean("has_more")
+        }.onFailure { availablePage = null; availableMore = false }
+        service.page("MINE", 0).onSuccess { result ->
+            minePage = result.optJSONArray("items").toDropItems()
+            mineMore = result.optBoolean("has_more")
+        }.onFailure { minePage = null; mineMore = false }
         loading = false
+    }
+
+    LaunchedEffect(initialDropId, refreshNonce) {
+        if (initialDropId == null) return@LaunchedEffect
+        notificationError = null
+        service.detail(initialDropId).onSuccess { result ->
+            notificationDrop = if (result.optBoolean("not_found")) null
+                else JSONArray().put(result).toDropItems().firstOrNull()
+            if (notificationDrop == null) notificationError = "This Drop is unavailable or you are not eligible to view it."
+        }.onFailure {
+            notificationError = "Unable to load this Drop. Refresh to retry."
+        }
     }
 
     val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
     val balance = liveWalletBalance ?: stateBalance
-    val activeDrops = state?.optJSONArray("active_drops").toDropItems()
-    val allMyDrops = state?.optJSONArray("my_drops").toDropItems()
+    val activeDrops = availablePage ?: state?.optJSONArray("active_drops").toDropItems()
+    val allMyDrops = minePage ?: state?.optJSONArray("my_drops").toDropItems()
     val myDrops = allMyDrops
         .filter { historyFilter == "ALL" || it.status.equals(historyFilter, ignoreCase = true) }
         .filter {
@@ -270,16 +304,10 @@ fun BlinkDropsRoute(
     val analytics = state?.optJSONObject("analytics")
     val dropsListState = rememberLazyListState()
     var deepLinkHandled by remember(initialDropId) { mutableStateOf(false) }
-    LaunchedEffect(initialDropId, loading, activeDrops, analytics, isOnline, error, message) {
-        val match = activeDrops.indexOfFirst { it.id == initialDropId }
-        if (!deepLinkHandled && initialDropId != null && !loading && match >= 0) {
-            val prefix = 1 +
-                (if (!isOnline) 1 else 0) +
-                (if (error != null && state == null) 1 else 0) +
-                (if (error != null) 1 else 0) +
-                (if (message != null) 1 else 0) + 1
+    LaunchedEffect(initialDropId, notificationDrop) {
+        if (initialDropId != null && notificationDrop != null && !deepLinkHandled) {
             selectedColumn = DropsColumn.GIVEAWAYS
-            dropsListState.animateScrollToItem(prefix + match)
+            dropsListState.animateScrollToItem(1)
             deepLinkHandled = true
         }
     }
@@ -389,6 +417,27 @@ fun BlinkDropsRoute(
                     )
                 }
 
+                if (initialDropId != null) {
+                    item {
+                        notificationDrop?.let { drop ->
+                            SectionHeader("Opened from notification", "Original Drop details, including completed or expired rewards.")
+                            DropCard(
+                                drop = drop, formatter = formatter, busy = busyDropId == drop.id,
+                                highlighted = true,
+                                onComplete = if (drop.eligible && drop.status == "ACTIVE") ({
+                                    if (drop.action == "COMMENT") commentDrop = drop else complete(drop)
+                                }) else null,
+                                onCancel = if (drop.creatorId == com.example.data.supabase.SupabaseService().getCurrentUserId() &&
+                                    drop.status == "ACTIVE") ({
+                                    pendingCancelDropId = drop.id
+                                    cancellationError = null
+                                }) else null,
+                            )
+                        } ?: Text(notificationError ?: "Loading Drop details…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
                 if (!isOnline) {
                     item {
                         StatusCard(
@@ -433,7 +482,8 @@ fun BlinkDropsRoute(
                         )
                     }
                 } else {
-                    items(activeDrops, key = { "active-drop-${it.id}" }) { drop ->
+                    items(activeDrops.filterNot { it.id == notificationDrop?.id },
+                        key = { "active-drop-${it.id}" }) { drop ->
                         DropCard(
                             drop = drop,
                             formatter = formatter,
@@ -445,6 +495,29 @@ fun BlinkDropsRoute(
                             },
                             onCancel = null,
                         )
+                    }
+                }
+
+                if (availableMore || pageBusy || pageError != null) {
+                    item {
+                        pageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy && availableMore,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    pageError = null
+                                    service.page("AVAILABLE", activeDrops.size)
+                                        .onSuccess { result ->
+                                            availablePage = (activeDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            availableMore = result.optBoolean("has_more")
+                                        }.onFailure { pageError = it.message ?: "Could not load more Drops." }
+                                    pageBusy = false
+                                }
+                            }
+                        ) { Text(if (pageBusy) "Loading…" else "Load more available Drops") }
                     }
                 }
 
@@ -505,6 +578,27 @@ fun BlinkDropsRoute(
                     }
                 }
 
+                if (mineMore) {
+                    item {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isOnline && !pageBusy,
+                            onClick = {
+                                scope.launch {
+                                    pageBusy = true
+                                    service.page("MINE", allMyDrops.size)
+                                        .onSuccess { result ->
+                                            minePage = (allMyDrops + result.optJSONArray("items").toDropItems())
+                                                .distinctBy { it.id }
+                                            mineMore = result.optBoolean("has_more")
+                                            pageError = null
+                                        }.onFailure { pageError = it.message ?: "Could not load more history." }
+                                    pageBusy = false
+                                }
+                            },
+                        ) { Text(if (pageBusy) "Loading…" else "Load more Drop history") }
+                    }
+                }
                 analytics?.let { value ->
                     item {
                         Spacer(Modifier.height(4.dp))
@@ -1624,6 +1718,8 @@ private fun JSONArray?.toDropItems(): List<DropItem> {
                         createdAt = item.optString("created_at"),
                         endsAt = item.optString("ends_at"),
                         eligible = item.optBoolean("eligible", false),
+                        creatorAvatar = item.optString("creator_avatar"),
+                        previewUrl = item.optString("target_preview_url"),
                     )
                 )
             }
