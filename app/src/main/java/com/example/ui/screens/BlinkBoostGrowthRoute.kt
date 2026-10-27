@@ -357,9 +357,10 @@ private fun BoostCampaignColumn(
         val cached = (posts + reels).filter {
             it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
         }.distinctBy { it.id }
-        val serverRows = if (ownedPages.containsKey("POST") || ownedPages.containsKey("REEL"))
-            (ownedPages["POST"].orEmpty() + ownedPages["REEL"].orEmpty())
-        else ownedContent?.optJSONArray("posts").objectList()
+        val legacyRows = ownedContent?.optJSONArray("posts").objectList()
+        val serverRows = listOf("POST", "REEL").flatMap { type ->
+            ownedPages[type] ?: legacyRows.filter { it.optString("type").equals(type, ignoreCase = true) }
+        }
         val server = serverRows.mapNotNull { item ->
             val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
             cached.firstOrNull { it.id == id } ?: FeedPost(
@@ -396,7 +397,8 @@ private fun BoostCampaignColumn(
                 listing = cached[id],
             )
         }.orEmpty()
-        (server + cached.values.map { BoostListingTarget(it.id, it.title, it) })
+        (if (ownedPages.containsKey("LISTING")) server
+         else server + cached.values.map { BoostListingTarget(it.id, it.title, it) })
             .distinctBy { it.id }
     }
 
