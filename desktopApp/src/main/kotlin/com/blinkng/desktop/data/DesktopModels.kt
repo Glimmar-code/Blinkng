@@ -52,6 +52,15 @@ data class DesktopProfile(
     val courseOfStudy: String? = null,
     val graduationYear: String? = null,
     val relationshipStatus: String? = null,
+    val phoneVisibility: String = "PRIVATE",
+    val whatsappVisibility: String = "PRIVATE",
+    val emailVisibility: String = "PRIVATE",
+    val website: String? = null,
+    val linkedin: String? = null,
+    val twitter: String? = null,
+    val instagram: String? = null,
+    val featuredLink: String? = null,
+    val featuredLinkLabel: String? = null,
 )
 
 data class DesktopProfileFollowerPoint(
