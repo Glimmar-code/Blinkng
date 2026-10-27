@@ -115,7 +115,43 @@ private data class DropDraftSnapshot(
 )
 
 private object DropDraftStore {
-    var value = DropDraftSnapshot()
+    private fun prefs(context: android.content.Context): android.content.SharedPreferences? {
+        val id = com.example.data.supabase.SupabaseService().getCurrentUserId()
+            ?.takeIf(String::isNotBlank) ?: return null
+        return context.getSharedPreferences("blink_drop_draft_" + id, android.content.Context.MODE_PRIVATE)
+    }
+
+    fun load(context: android.content.Context): DropDraftSnapshot {
+        val raw = prefs(context)?.getString("draft", null) ?: return DropDraftSnapshot()
+        return runCatching {
+            val json = JSONObject(raw)
+            DropDraftSnapshot(
+                targetType = BlinkDropTargetType.valueOf(json.optString("targetType", "POST")),
+                selectedTargetId = json.optString("selectedTargetId"),
+                action = json.optString("action", "LIKE"),
+                rewardText = json.optString("rewardText", "100"),
+                winnerText = json.optString("winnerText", "1"),
+                audience = json.optString("audience", "ALL_CAMPUSES"),
+                durationHours = json.optInt("durationHours", 24),
+            )
+        }.getOrDefault(DropDraftSnapshot())
+    }
+
+    fun save(context: android.content.Context, value: DropDraftSnapshot) {
+        val json = JSONObject()
+            .put("targetType", value.targetType.name)
+            .put("selectedTargetId", value.selectedTargetId)
+            .put("action", value.action)
+            .put("rewardText", value.rewardText)
+            .put("winnerText", value.winnerText)
+            .put("audience", value.audience)
+            .put("durationHours", value.durationHours)
+        prefs(context)?.edit()?.putString("draft", json.toString())?.apply()
+    }
+
+    fun clear(context: android.content.Context) {
+        prefs(context)?.edit()?.remove("draft")?.apply()
+    }
 }
 
 private data class DropTarget(
@@ -618,7 +654,7 @@ fun BlinkDropsRoute(
                         organizerError = null
                         pendingCreateRequestId = null
                         pendingCreateFingerprint = null
-                        DropDraftStore.value = DropDraftSnapshot()
+                        DropDraftStore.clear(context)
                         showOrganizer = false
                         refresh()
                     }.onFailure {
@@ -956,7 +992,8 @@ private fun OrganizeDropDialog(
     ) -> Unit,
 ) {
     val service = remember { BlinkDropsService() }
-    val draft = remember { DropDraftStore.value }
+    val context = LocalContext.current
+    val draft = remember(context) { DropDraftStore.load(context) }
     var targetType by remember { mutableStateOf(draft.targetType) }
     var selectedTargetId by remember { mutableStateOf(draft.selectedTargetId) }
     var action by remember { mutableStateOf(draft.action) }
@@ -997,7 +1034,7 @@ private fun OrganizeDropDialog(
         isOnline,
         quoteRetryNonce,
     ) {
-        DropDraftStore.value = DropDraftSnapshot(
+        DropDraftStore.save(context, DropDraftSnapshot(
             targetType = targetType,
             selectedTargetId = selectedTargetId,
             action = action,
@@ -1005,7 +1042,7 @@ private fun OrganizeDropDialog(
             winnerText = winnerText,
             audience = audience,
             durationHours = duration,
-        )
+        ))
 
         quote = null
         quoteError = null
@@ -1089,7 +1126,7 @@ private fun OrganizeDropDialog(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     if (!isOnline) {
-                        Text("Offline · This draft remains available while the screen is open.",
+                        Text("Offline · Your draft is saved on this device until you reconnect.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)
                     }
