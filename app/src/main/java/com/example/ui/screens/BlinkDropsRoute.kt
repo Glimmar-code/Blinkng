@@ -351,10 +351,6 @@ fun BlinkDropsRoute(
                     )
                 }
 
-                analytics?.let { value ->
-                    item { DropAnalyticsCard(value, formatter) }
-                }
-
                 if (!isOnline) {
                     item {
                         StatusCard(
@@ -471,6 +467,12 @@ fun BlinkDropsRoute(
                     }
                 }
 
+                analytics?.let { value ->
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        DropAnalyticsCard(value, formatter)
+                    }
+                }
                 if (receipts.isNotEmpty()) {
                     item {
                         Spacer(Modifier.height(4.dp))
@@ -495,6 +497,12 @@ fun BlinkDropsRoute(
                         "Top Givers",
                         "Ranked by BLINK Coins successfully distributed, not by how many Drops were created."
                     )
+                }
+                error?.let { value ->
+                    item { StatusCard(value, isError = true) }
+                }
+                message?.let { value ->
+                    item { StatusCard(value, isError = false) }
                 }
                 if (topGivers.isEmpty()) {
                     item { EmptyCard("Top Givers will appear after completed Drops.") }
@@ -809,7 +817,7 @@ private fun DropCard(
                             Icon(actionIcon(drop.action), null, modifier = Modifier.size(17.dp))
                         }
                         Spacer(Modifier.width(5.dp))
-                        Text("Complete & earn")
+                        Text(actionLabel(drop.action) + " & claim")
                     }
                 }
                 onCancel?.let {
@@ -1336,7 +1344,8 @@ private fun OrganizeDropDialog(
                             0 -> selectedTarget != null
                             2 -> BlinkDropsPolicy.isRewardValid(reward) &&
                                 BlinkDropsPolicy.isWinnerCountValid(winners) &&
-                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET
+                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
+                                    (balance ?: -1L) >= total
                             else -> true
                         },
                         modifier = Modifier.weight(1f),
