@@ -199,9 +199,15 @@ fun DesktopChannelDetail(
                     runCatching { state.client.recordChannelView(update.id) }
                 }
                 var signedMedia by remember(update.id, update.mediaPath) { mutableStateOf<String?>(null) }
-                LaunchedEffect(update.mediaPath) {
-                    signedMedia = update.mediaPath?.let {
-                        runCatching { state.client.signedChannelMedia(it) }.getOrNull()
+                var mediaError by remember(update.id, update.mediaPath) { mutableStateOf(false) }
+                var mediaRetry by remember(update.id, update.mediaPath) { mutableIntStateOf(0) }
+                LaunchedEffect(update.mediaPath, mediaRetry) {
+                    signedMedia = null
+                    mediaError = false
+                    update.mediaPath?.let { path ->
+                        val result = runCatching { state.client.signedChannelMedia(path) }
+                        signedMedia = result.getOrNull()
+                        mediaError = result.isFailure || signedMedia.isNullOrBlank()
                     }
                 }
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
@@ -219,15 +225,26 @@ fun DesktopChannelDetail(
                                 modifier = Modifier.fillMaxWidth().height(245.dp)
                             )
                         }
-                        if (update.mediaPath != null) TextButton(
-                            enabled = signedMedia != null,
-                            onClick = {
-                                signedMedia?.let { address ->
-                                    runCatching { Desktop.getDesktop().browse(URI(address)) }
-                                        .onFailure { error = "Unable to open channel media." }
+                        if (update.mediaPath != null) {
+                            if (mediaError) {
+                                TextButton(onClick = { mediaRetry++ }) {
+                                    Text("Attachment unavailable · Retry")
+                                }
+                            } else {
+                                TextButton(
+                                    enabled = !signedMedia.isNullOrBlank(),
+                                    onClick = {
+                                        signedMedia?.let { address ->
+                                            runCatching { Desktop.getDesktop().browse(URI(address)) }
+                                                .onFailure { error = "Unable to open channel media." }
+                                        }
+                                    }
+                                ) {
+                                    Text(if (signedMedia == null) "Loading attachment…" else
+                                        "Open ${update.mediaKind}")
                                 }
                             }
-                        ) { Text(if (signedMedia == null) "Loading attachment…" else "Open ${update.mediaKind}") }
+                        }
                         if (update.mediaKind == "poll") {
                             Text(update.pollQuestion.orEmpty(), fontWeight = FontWeight.SemiBold)
                             update.pollOptions.forEachIndexed { index, option ->
