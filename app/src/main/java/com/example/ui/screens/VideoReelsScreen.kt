@@ -573,7 +573,12 @@ private fun ReelsContent(
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
     val latestReelFullscreenChange by rememberUpdatedState(onReelFullscreenChange)
     LaunchedEffect(initialReelId) {
-        if (!initialReelId.isNullOrBlank()) expanded = true
+        if (!initialReelId.isNullOrBlank()) {
+            // A saved Following selection cannot hide a Reel launched from a
+            // link or another screen: resolve links in the discovery source.
+            selectedTab = "Reels"
+            expanded = true
+        }
     }
     LaunchedEffect(expanded, isScreenActive) {
         latestReelFullscreenChange(expanded && isScreenActive)
