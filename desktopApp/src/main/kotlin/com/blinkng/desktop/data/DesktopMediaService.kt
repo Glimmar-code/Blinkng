@@ -1,14 +1,17 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkR2MediaPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
+import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
@@ -67,6 +70,8 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
 
     private suspend fun uploadPublic(bucket: String, file: File): String = withContext(Dispatchers.IO) {
         require(file.exists() && file.isFile) { "The selected file no longer exists." }
+        // Same authenticated server-side signing contract as Android.
+        tryUploadR2(bucket, file)?.let { return@withContext it }
         val session = requireSession()
         val extension = file.extension.lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,8}")) } ?: "bin"
         val objectPath = "${session.userId}/${UUID.randomUUID()}.$extension"
@@ -81,6 +86,59 @@ class DesktopMediaService(private val client: DesktopSupabaseClient) {
             .build()
         execute(request)
         "$baseUrl/storage/v1/object/public/$bucket/$encodedPath"
+    }
+
+    private fun tryUploadR2(bucket: String, file: File): String? {
+        val purpose = when (bucket) {
+            "post-media" -> "feed"
+            "marketplace-media" -> "market"
+            "avatars" -> "profile"
+            else -> return null
+        }
+        val mime = detectContentType(file)
+        if (!BlinkR2MediaPolicy.mayUploadPublic(purpose, mime, file.length())) return null
+        val token = requireSession().accessToken
+        val endpoint = "$baseUrl/functions/v1/blink-r2-media"
+
+        fun request(action: JSONObject): Pair<Int, String> {
+            val call = Request.Builder().url(endpoint)
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $token")
+                .post(action.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+                .build()
+            return http.newCall(call).execute().use { it.code to it.body?.string().orEmpty() }
+        }
+        val (status, body) = request(JSONObject()
+            .put("action", "init").put("purpose", purpose)
+            .put("mimeType", mime).put("bytes", file.length()))
+        if (status !in 200..299) {
+            val code = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
+            if (BlinkR2MediaPolicy.intentionalFallback(status, code)) return null
+            throw IllegalStateException("BLINK media upload could not start ($status).")
+        }
+        val init = JSONObject(body)
+        val signed = init.getString("uploadUrl")
+        val signedUri = URI(signed)
+        require(signedUri.scheme == "https" && signedUri.userInfo == null &&
+            signedUri.host?.endsWith(".r2.cloudflarestorage.com") == true) {
+            "Invalid R2 upload destination."
+        }
+        val put = Request.Builder().url(signed).header("Content-Type",mime)
+            .put(file.asRequestBody(mime.toMediaTypeOrNull())).build()
+        http.newCall(put).execute().use {
+            check(it.isSuccessful) { "BLINK media transfer failed (${it.code})." }
+        }
+        val (completeStatus, completeRaw) = request(JSONObject()
+            .put("action", "complete").put("purpose", purpose)
+            .put("assetId", init.getString("assetId")))
+        check(completeStatus in 200..299) {
+            "BLINK media confirmation failed ($completeStatus)."
+        }
+        val result = JSONObject(completeRaw).getString("publicUrl")
+        check(BlinkR2MediaPolicy.isValidPublicUrl(result)) {
+            "Invalid BLINK public media URL."
+        }
+        return result
     }
 
     private fun patchRow(path: String, body: JSONObject) {
