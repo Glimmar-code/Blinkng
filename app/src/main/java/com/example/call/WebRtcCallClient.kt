@@ -290,9 +290,10 @@ class WebRtcCallClient(
         runCatching { factory.dispose() }
         runCatching { audioDeviceModule.release() }
         runCatching { eglBase.release() }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            runCatching { audioManager.clearCommunicationDevice() }
-        } else {
+        // On Android 8+ Core-Telecom owns endpoint selection. Clearing the
+        // communication device here can override Telecom/Bluetooth routing while
+        // its call session is still being disconnected.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             @Suppress("DEPRECATION")
             runCatching { audioManager.isSpeakerphoneOn = false }
         }
