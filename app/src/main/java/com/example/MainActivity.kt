@@ -2904,26 +2904,26 @@ fun MainAppContent(
                         "channel" -> {
                             val id = activity.targetResourceId.orEmpty()
                             if (runCatching { java.util.UUID.fromString(id) }.isSuccess) {
-                                startActivity(
-                                    Intent(this@MainActivity, ProfessionalCenterActivity::class.java)
+                                context.startActivity(
+                                    Intent(context, ProfessionalCenterActivity::class.java)
                                         .putExtra("section", "communities")
                                         .putExtra("channel_id", id)
                                 )
                             } else viewModel.openActivity(true)
                         }
-                        "giveaway", "drops" -> startActivity(
-                            Intent(this@MainActivity, BlinkDropsActivity::class.java)
+                        "giveaway", "drops" -> context.startActivity(
+                            Intent(context, BlinkDropsActivity::class.java)
                                 .putExtra(BlinkDropsActivity.EXTRA_DROP_ID, activity.targetResourceId)
                         )
                         "boost" -> {
                             viewModel.setTab(MainTab.HOME)
                             viewModel.setFeedSubTab(0)
-                            boostOpenSignal += 1
+                            feedUtilitySheet = "boost"
                         }
                         "items" -> {
                             viewModel.setTab(MainTab.HOME)
                             viewModel.setFeedSubTab(0)
-                            itemsOpenSignal += 1
+                            feedUtilitySheet = "items"
                         }
                         "wallet", "coins", "coin", "reward" -> {
                             walletOpenedFromMenu = false
