@@ -57,12 +57,14 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertNotIn('FeedUtilityRow(', home)
         self.assertNotIn('StoryBar(', home)
 
-    def test_tabs_have_underlines_and_no_extra_visible_buttons(self):
+    def test_tabs_have_underlines_and_accessible_filter_action(self):
         tabs = method_body(CHROME, 'fun FeedTabs(', '/**\n * One stable create speed-dial')
         for text in ('For You', 'Following', 'RoundedCornerShape(2.dp)'):
             self.assertIn(text, tabs)
         self.assertNotIn('feed_refresh_action', tabs)
-        self.assertNotIn('feed_filter_action', tabs)
+        self.assertIn('feed_filter_action', tabs)
+        self.assertIn('onFilterClick', tabs)
+        self.assertIn('filterActive', tabs)
         # A minimum height leaves the tab's fillMaxHeight child free to
         # consume the viewport and pushes every post offscreen.
         self.assertIn('height(58.dp)', tabs)
@@ -71,7 +73,8 @@ class HomeReferenceContractTests(unittest.TestCase):
     def test_posts_show_true_identity_and_reference_actions(self):
         self.assertIn('authorUniversity: String', POST)
         self.assertIn('Icons.Default.MoreVert', POST)
-        self.assertIn('onDoubleTapLike = if (xFeedStyle) onLike else null', POST)
+        self.assertIn('shouldApplyPostDoubleTapLike(post.isLiked)', POST)
+        self.assertIn('internal fun shouldApplyPostDoubleTapLike', POST)
         a = POST.index('// Like remains visible for every post,')
         b = POST.index('} else {', a)
         footer = POST[a:b]
@@ -86,6 +89,18 @@ class HomeReferenceContractTests(unittest.TestCase):
         self.assertIn('maxLines = if (expandedText) Int.MAX_VALUE else 4', POST)
         self.assertIn('authorUniversity.trim().ifBlank', POST)
         self.assertIn('onOpenPost?.invoke()', POST)
+
+    def test_feed_uses_one_post_view_pipeline_and_recovers_paging(self):
+        home = method_body(HOME, 'private fun PremiumHomeFeed(', 'private fun PremiumNewPostsPill(')
+        self.assertIn('trackExposure = isScreenActive', home)
+        self.assertNotIn('impressionTracker.update(ids).forEach(latestViewed)', home)
+        self.assertIn('paginationErrorMessage', home)
+        self.assertIn('Retry loading posts', home)
+        self.assertIn('Discover people', HOME)
+        self.assertIn('followingPaginationErrorMessage', MAIN.replace('uiState.', ''))
+        vm = (ROOT / 'app/src/main/java/com/example/viewmodel/BlinkViewModel.kt').read_text()
+        self.assertIn('isRefreshingFollowing = true', vm)
+        self.assertIn('hasMoreFollowingPosts = fresh.size >= 30', vm)
 
     def test_phone_header_avoids_unnecessary_second_rail(self):
         header = method_body(CHROME, "fun FeedTopBar(", "private fun FeedBrandBlock(")
