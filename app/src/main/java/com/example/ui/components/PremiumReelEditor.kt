@@ -39,6 +39,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.RgbFilter
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.Locale
@@ -92,6 +94,39 @@ internal fun PremiumReelEditor(
     var exportError by remember(uri) { mutableStateOf<String?>(null) }
     var filmstrip by remember(uri) { mutableStateOf(emptyList<android.graphics.Bitmap>()) }
     var showAdvanced by remember(uri) { mutableStateOf(false) }
+    val musicPlayer = remember(musicUri) {
+        musicUri?.let { selected ->
+            runCatching {
+                ExoPlayer.Builder(context).build().apply {
+                    setMediaItem(MediaItem.fromUri(selected))
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    playWhenReady = false
+                    prepare()
+                }
+            }.getOrNull()
+        }
+    }
+    DisposableEffect(musicPlayer) {
+        onDispose { musicPlayer?.release() }
+    }
+    LaunchedEffect(grayscale, rotation, player) {
+        val effects = mutableListOf<androidx.media3.common.Effect>()
+        if (grayscale) effects += RgbFilter.createGrayscaleFilter()
+        if (rotation != 0f) {
+            effects += ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(rotation).build()
+        }
+        runCatching { player.setVideoEffects(effects) }
+    }
+    LaunchedEffect(musicPlayer, positionMs, playing, musicVolume, trimStartMs) {
+        musicPlayer ?: return@LaunchedEffect
+        val clipPosition = (positionMs - trimStartMs).coerceAtLeast(0L)
+        if (kotlin.math.abs(musicPlayer.currentPosition - clipPosition) > 750L) {
+            musicPlayer.seekTo(clipPosition)
+        }
+        musicPlayer.volume = musicVolume
+        if (playing) musicPlayer.play() else musicPlayer.pause()
+    }
 
     val audioPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -362,13 +397,13 @@ internal fun PremiumReelEditor(
                             value = musicVolume, onValueChange = { musicVolume = it },
                             enabled = !isExporting
                         )
-                        Text("Audio balance is applied to the exported video.",
+                        Text("Audio balance previews with your video and is applied on export.",
                             color = Color.LightGray, fontSize = 12.sp)
                     }
                 }
                 if (grayscale || rotation != 0f) {
-                    Text("Color and rotation are rendered into the exported MP4.",
-                        color = Color.LightGray, fontSize = 10.sp)
+                    Text("B&W and rotation preview the same effects applied on export.",
+                        color = Color.LightGray, fontSize = 12.sp)
                 }
                 exportError?.let {
                     Text(it, color = Color(0xFFFF8A80), fontSize = 11.sp)
