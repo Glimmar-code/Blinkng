@@ -737,13 +737,11 @@ private fun ReelsContent(
             userScrollEnabled = expanded && !isInteractionOverlayOpen,
             modifier = Modifier.fillMaxSize()
         ) { index ->
-            val pageOffset = (pager.currentPage - index) + pager.currentPageOffsetFraction
             when (val item = pagerItems.getOrNull(index) ?: return@VerticalPager) {
                 is ReelPagerItem.ReelItem -> {
                     val reel = item.reel
                     ReelPage(
                         reel = reel,
-                        pageOffset = pageOffset,
                         isActive = isScreenActive && index == pager.currentPage,
                         shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
@@ -798,7 +796,6 @@ private fun ReelsContent(
                     }
                     ReelPage(
                         reel = reel,
-                        pageOffset = pageOffset,
                         isActive = isScreenActive && index == pager.currentPage,
                         shouldPreload = isScreenActive && shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
@@ -1078,7 +1075,6 @@ private fun EmptyReelsState(
 @Composable
 private fun ReelPage(
     reel: FeedPost,
-    pageOffset: Float,
     isActive: Boolean,
     shouldPreload: Boolean,
     isMuted: Boolean,
@@ -1206,8 +1202,10 @@ private fun ReelPage(
                     }
                 )
             }
-            .pointerInput(reel.id, isActive) {
-                if (!isActive) return@pointerInput
+            .pointerInput(reel.id, isActive, isPreview) {
+                // In preview the top-level HorizontalPager must own the drag,
+                // rather than this child consuming it and jumping on release.
+                if (!isActive || isPreview) return@pointerInput
                 val swipeThreshold = 84.dp.toPx()
                 detectHorizontalDragGestures(
                     onDragStart = { horizontalDrag = 0f },
