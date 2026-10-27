@@ -217,10 +217,12 @@ object NotificationPreferenceStore {
         runCatching {
             SupabaseService.initialize(context)
             val service = SupabaseService()
-            if (!service.restoreSession()) return
-            val token = SupabaseService.accessToken() ?: return
-            val uid = service.getCurrentUserId() ?: return
-            if (uid != expectedUid) return
+            if (!service.restoreSession()) throw IllegalStateException("BLINK session unavailable")
+            val token = SupabaseService.accessToken()
+                ?: throw IllegalStateException("BLINK access token unavailable")
+            val uid = service.getCurrentUserId()
+                ?: throw IllegalStateException("BLINK account unavailable")
+            if (uid != expectedUid) throw IllegalStateException("BLINK account changed during sync")
             val prefs = accountPrefs(context, expectedUid)
             val payload = JSONObject()
                 .put("user_id", uid)
