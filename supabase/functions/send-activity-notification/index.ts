@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { pushPreferenceDecision, verifiedNotificationActor } from "./push-gates.mjs";
+import { pushPreferenceDecision, verifiedNotificationActor } from "../_shared/push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
