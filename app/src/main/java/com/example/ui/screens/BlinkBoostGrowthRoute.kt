@@ -187,7 +187,7 @@ fun BlinkBoostGrowthRoute(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Growth", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                Text("Boost", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                 Text(
                     "Promote content or earn Rank Points from promoted content.",
                     style = MaterialTheme.typography.bodySmall,
@@ -349,12 +349,15 @@ private fun BoostCampaignColumn(
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var quoteError by remember { mutableStateOf<String?>(null) }
     var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
     var budgetWorking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmStart by remember { mutableStateOf(false) }
+    var pendingCancelCampaignId by remember { mutableStateOf<String?>(null) }
+    var cancellationError by remember { mutableStateOf<String?>(null) }
     var refreshNonce by remember { mutableIntStateOf(0) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     var pendingRequestFingerprint by remember { mutableStateOf<String?>(null) }
@@ -416,8 +419,10 @@ private fun BoostCampaignColumn(
     val targetReady = targetId.isNotBlank() &&
         (audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY || selectedUniversity.isNotBlank())
 
-    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
+    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity, isOnline) {
         quote = null
+        quoteError = null
+        quoteLoading = false
         if (!targetReady || !isOnline) return@LaunchedEffect
         delay(260)
         quoteLoading = true
@@ -432,9 +437,9 @@ private fun BoostCampaignColumn(
         ).onSuccess {
             quote = it
             it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-            error = null
+            quoteError = null
         }.onFailure {
-            error = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
+            quoteError = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
         }
         quoteLoading = false
     }
@@ -755,6 +760,15 @@ private fun BoostCampaignColumn(
                                 SectionTitle("6. Review", "Review your estimated reach, price and balance.")
                                 CampaignQuoteCard(quote = quote, quoteLoading = quoteLoading,
                                     balance = balance, formatter = formatter)
+                                quoteError?.let { problem ->
+                                    Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick = { refreshNonce++ }, enabled = isOnline && !quoteLoading) {
+                                        Text("Retry estimate")
+                                    }
+                                }
+                                if (!isOnline) {
+                                    Text("Reconnect to get an updated price.", style = MaterialTheme.typography.bodySmall)
+                                }
                                 if (quote != null && balance != null && balance < quoteCost) {
                                     OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
                                         Text("Get Blink Coins")
@@ -803,14 +817,14 @@ private fun BoostCampaignColumn(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (setupStep > 0) {
-                        OutlinedButton(onClick = { setupStep-- }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { setupStep-- }, enabled = !working, modifier = Modifier.weight(1f)) {
                             Text("Back")
                         }
                     }
                     if (setupStep < 5) {
                         Button(
                             onClick = { setupStep++ },
-                            enabled = (setupStep != 0 || targetId.isNotBlank()) &&
+                            enabled = !working && (setupStep != 0 || targetId.isNotBlank()) &&
                                 (setupStep != 1 || audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY ||
                                     selectedUniversity.isNotBlank()),
                             modifier = Modifier.weight(1f),
@@ -829,24 +843,9 @@ private fun BoostCampaignColumn(
                     formatter = formatter,
                     working = working,
                     onCancel = {
-                        val id = campaign.optString("id")
-                        if (id.isNotBlank()) {
-                            scope.launch {
-                                working = true
-                                service.cancelBoostCampaign(id)
-                                    .onSuccess {
-                                        val refund = it.optLong("refunded", 0L)
-                                        it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
-                                        message = if (refund > 0) {
-                                            "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
-                                        } else {
-                                            "Boost cancelled."
-                                        }
-                                        reloadState()
-                                    }
-                                    .onFailure { error = boostUserMessage(it, "Unable to cancel this boost right now.") }
-                                working = false
-                            }
+                        campaign.optString("id").takeIf(String::isNotBlank)?.let { id ->
+                            cancellationError = null
+                            pendingCancelCampaignId = id
                         }
                     },
                 )
@@ -902,6 +901,45 @@ private fun BoostCampaignColumn(
     }
     }
 
+    pendingCancelCampaignId?.let { campaignId ->
+        AlertDialog(
+            onDismissRequest = { if (!working) pendingCancelCampaignId = null },
+            title = { Text("Cancel this Boost?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Delivery stops and unused reserved Blink Coins are refunded according to the server's settlement rules.")
+                    cancellationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !working && isOnline,
+                    onClick = {
+                        scope.launch {
+                            working = true
+                            service.cancelBoostCampaign(campaignId)
+                                .onSuccess { result ->
+                                    val refund = result.optLong("refunded", 0L)
+                                    result.takeIf { it.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                    message = if (refund > 0) {
+                                        "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
+                                    } else "Boost cancelled."
+                                    pendingCancelCampaignId = null
+                                    cancellationError = null
+                                    reloadState()
+                                }
+                                .onFailure { cancellationError = boostUserMessage(it, "Unable to cancel this Boost right now.") }
+                            working = false
+                        }
+                    }
+                ) { Text(if (working) "Cancelling…" else "Confirm cancellation") }
+            },
+            dismissButton = {
+                TextButton(enabled = !working, onClick = { pendingCancelCampaignId = null }) { Text("Keep Boost") }
+            },
+        )
+    }
+
     if (confirmStart) {
         val low = quote?.optLong("estimated_reach_low", 0L) ?: 0L
         val high = quote?.optLong("estimated_reach_high", 0L) ?: 0L
@@ -927,7 +965,8 @@ private fun BoostCampaignColumn(
             },
             confirmButton = {
                 Button(
-                    enabled = !working && isOnline && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                    enabled = !working && !quoteLoading && isOnline && targetReady &&
+                        quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                     onClick = {
                         scope.launch {
                             working = true
@@ -1599,7 +1638,7 @@ private fun ActiveCampaignCard(
             val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
             LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
             Text(
-                ((progress * 100).toInt()).toString() + "% delivered • " +
+                ((progress * 100).toInt()).toString() + "% of coin budget spent • " +
                     formatter.format(impressions) + " impressions • " +
                     formatter.format(opens) + " opens",
                 style = MaterialTheme.typography.bodySmall,
@@ -1773,7 +1812,11 @@ private fun BalanceCard(
 }
 
 private fun shortGrowthDate(raw: String): String =
-    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
+    runCatching {
+        java.time.OffsetDateTime.parse(raw)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a"))
+    }.getOrElse { raw.replace('T', ' ').take(16).ifBlank { "—" } }
 
 private fun boostUserMessage(error: Throwable, fallback: String): String {
     val raw = error.message.orEmpty()
