@@ -475,7 +475,18 @@ fun ActivityScreen(
                                                             selectedAdminMessage = detail
                                                             onRefresh()
                                                         } else {
-                                                            onNotificationClick(tapped)
+                                                            // Ordinary notices may not belong to admin campaigns.
+                                                            selectedAdminMessage = AdminAnnouncementDetail(
+                                                                activityId = tapped.id,
+                                                                notificationId = tapped.id.removePrefix("notification:"),
+                                                                campaignId = "",
+                                                                topic = tapped.action,
+                                                                subtopic = "",
+                                                                message = tapped.previewText.orEmpty().ifBlank { tapped.action },
+                                                                senderName = "BLINK",
+                                                                createdAt = tapped.rawTimestamp
+                                                            )
+                                                            if (tapped.isUnread) onToggleRead(tapped)
                                                         }
                                                     }
                                                     .onFailure {

@@ -5006,7 +5006,8 @@ suspend fun uploadPostMedia(
                             targetMarketId = o.optString("entity_id")
                                 .takeIf { o.optString("entity_type").equals("market", true) },
                             targetType = o.optString("entity_type").takeIf { it.isNotBlank() },
-                            targetEntityId = o.optString("entity_id").takeIf { it.isNotBlank() }
+                            targetEntityId = o.optString("entity_id").takeIf { it.isNotBlank() },
+                            targetResourceId = o.optString("entity_id").takeIf { it.isNotBlank() }
                         )
                     )
                 }
@@ -5044,7 +5045,8 @@ suspend fun uploadPostMedia(
                                 else -> NotificationFilter.ALL
                             },
                             targetPostId = postId ?: optionalTargetId.takeIf {
-                                optionalTargetType.equals("post", ignoreCase = true)
+                                optionalTargetType.equals("post", ignoreCase = true) ||
+                                    optionalTargetType.equals("reel", ignoreCase = true)
                             },
                             targetMarketId = optionalTargetId.takeIf {
                                 optionalTargetType.equals("market", ignoreCase = true)
@@ -5056,6 +5058,7 @@ suspend fun uploadPostMedia(
                                 else -> "NOTIFICATION"
                             },
                             targetEntityId = id,
+                            targetResourceId = optionalTargetId,
                             previewText = o.optString("sub_text").takeIf { it.isNotBlank() },
                             actorIsVip = o.optBoolean("actor_is_vip", false),
                             vipPriority = o.optBoolean("vip_priority", false)

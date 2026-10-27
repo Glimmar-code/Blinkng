@@ -6427,6 +6427,8 @@ private suspend fun restoreSupabaseSession() {
         if (myId.isNotBlank() && event.recipientId.isNotBlank() && event.recipientId != myId) return
 
         val normalizedType = event.activityType.trim().uppercase()
+        // Official broadcasts already arrive as canonical notification events.
+        if (event.entityType.equals("notification", ignoreCase = true)) return
         if (normalizedType in setOf(
                 "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
                 "FOLLOW", "REPOST"
@@ -6463,7 +6465,9 @@ private suspend fun restoreSupabaseSession() {
             category = category,
             targetPostId = postId,
             targetMarketId = marketId,
-            targetType = entityType.takeIf { it.isNotBlank() }
+            targetType = entityType.takeIf { it.isNotBlank() },
+            targetEntityId = event.entityId.takeIf { it.isNotBlank() },
+            targetResourceId = event.entityId.takeIf { it.isNotBlank() }
         )
 
         val semanticKey = notificationSemanticKey(activity)
@@ -6572,6 +6576,8 @@ private suspend fun restoreSupabaseSession() {
             targetPostId = targetPostId,
             targetMarketId = targetMarketId,
             targetType = targetType,
+            targetEntityId = event.id,
+            targetResourceId = event.targetId.takeIf { it.isNotBlank() },
             previewText = event.subText.takeIf { it.isNotBlank() }
         )
 
@@ -7666,6 +7672,11 @@ private suspend fun restoreSupabaseSession() {
             }
             return
         }
+
+        // These destination types are handled by MainActivity after read acknowledgement.
+        if (activity.targetType?.lowercase() in setOf(
+                "channel", "giveaway", "drops", "boost", "wallet", "coins", "coin", "reward", "items"
+            )) return
 
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.followingPosts + _uiState.value.reels).find { it.id == postId }
