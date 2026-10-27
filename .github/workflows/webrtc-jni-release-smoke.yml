@@ -43,7 +43,12 @@ jobs:
       - name: Resolve WebRTC runtime dependency
         run: gradle :app:dependencyInsight --configuration rtcSmokeRuntimeClasspath --dependency io.github.webrtc-sdk --no-daemon
       - name: Build R8-shrunk APK and instrumentation APK
-        run: gradle :app:assembleRtcSmoke :app:assembleRtcSmokeAndroidTest --stacktrace --no-daemon
+        run: |
+          # Room/KSP emits variant schemas to a shared directory. Parallel debug
+          # and rtcSmoke KSP tasks can read a half-written schema JSON, failing
+          # with JsonDecodingException at database.identityHash. Serialize Gradle
+          # workers for this CI-only native smoke build; production tasks unchanged.
+          gradle :app:assembleRtcSmoke :app:assembleRtcSmokeAndroidTest --stacktrace --no-daemon --no-parallel --max-workers=1
       - name: Verify native libraries ship for Redmi ARM64 and emulator x86_64
         shell: bash
         run: |
@@ -75,7 +80,7 @@ jobs:
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
             # The emulator action executes each script line separately. Backslash
             # continuations therefore become a bogus Gradle task named '\\'.
-            gradle :app:connectedRtcSmokeAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest --stacktrace --no-daemon
+            gradle :app:connectedRtcSmokeAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.call.WebRtcJniReleaseSmokeTest --stacktrace --no-daemon --no-parallel --max-workers=1
       - name: Upload minified JNI test reports
         if: always()
         uses: actions/upload-artifact@v4

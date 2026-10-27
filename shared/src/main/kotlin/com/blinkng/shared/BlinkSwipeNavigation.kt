@@ -1,7 +1,5 @@
 package com.blinkng.shared
 
-import kotlin.math.abs
-
 /**
  * Single source of truth for the five swipeable BLINK surfaces.
  *
@@ -28,10 +26,11 @@ object BlinkSwipeNavigation {
         return (page + if (direction > 0) 1 else -1).takeIf { it in surfaces.indices }
     }
 
-    /** Adjacent cards subtly shrink while the destination expands under the finger. */
-    fun scale(distanceFromCenter: Float): Float =
-        1f - 0.06f * abs(distanceFromCenter).coerceIn(0f, 1f)
+    /**
+     * Whole-screen pager pages must remain opaque and full size while the native
+     * pager slides them. Scaling/dimming pages reveals window-background seams.
+     */
+    fun scale(distanceFromCenter: Float): Float = 1f
 
-    fun alpha(distanceFromCenter: Float): Float =
-        1f - 0.08f * abs(distanceFromCenter).coerceIn(0f, 1f)
+    fun alpha(distanceFromCenter: Float): Float = 1f
 }

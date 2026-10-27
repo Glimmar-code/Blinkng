@@ -117,6 +117,7 @@ fun BlinkBeyondLinkIntro(
                 smoothstep(fraction(time, from, to))
             }
             val gapExit = smoothstep(fraction(time, 1_850, 2_100))
+            // Compose is the only visual intro; no pre-shown static wordmark.
             val enlarge = 1f + 0.60f * smoothstep(fraction(time, 2_050, 2_700))
 
             val dp = density.density * artworkScale

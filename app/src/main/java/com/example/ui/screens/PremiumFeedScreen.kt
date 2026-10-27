@@ -354,6 +354,7 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onOpenFeedPost: (FeedPost) -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    onReelFullscreenChange: (Boolean) -> Unit = {},
     isBottomNavigationVisible: Boolean = true,
     onBottomBarTravelChange: (Float) -> Unit = {},
     isMainPageActive: Boolean = true,
@@ -562,6 +563,7 @@ fun PremiumFeedScreen(
             isInteractionOverlayOpen = isInteractionOverlayOpen,
             homeReselectSignal = homeReselectSignal,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            onReelFullscreenChange = onReelFullscreenChange,
             initialReelId = routedReelId ?: launchReelId,
             initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
         )

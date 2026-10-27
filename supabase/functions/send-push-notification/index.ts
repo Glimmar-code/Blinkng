@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { verifiedNotificationActor, pushPreferenceDecision } from "../_shared/push-gates.mjs";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -8,18 +9,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
 
-function jwtSubject(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
-    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-    return JSON.parse(atob(padded)).sub ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function base64Url(input: string): string {
   return btoa(input).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -97,7 +86,7 @@ function isUnregisteredFcmToken(status: number, responseText: string): boolean {
   return status === 404 || text.includes("UNREGISTERED") || text.includes("REGISTRATION-TOKEN-NOT-REGISTERED");
 }
 
-type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string };
+type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string; retryable?: boolean };
 
 async function claimDispatch(
   admin: ReturnType<typeof createClient>,
@@ -109,7 +98,7 @@ async function claimDispatch(
     .eq("message_id", messageId)
     .maybeSingle();
 
-  if (readError) return { proceed: true, tracked: false, attempts: 1 };
+  if (readError) return { proceed: false, tracked: false, attempts: 0, reason: "dispatch_ledger_unavailable", retryable: true };
 
   if (existing) {
     if (existing.status === "sent") {
@@ -122,13 +111,20 @@ async function claimDispatch(
     }
 
     const attempts = Number(existing.attempts ?? 0) + 1;
-    const { error } = await admin
+    // Compare-and-swap the previous claim version. Another caller may have
+    // claimed this exact failed/expired message after our first read.
+    const { data: claimed, error } = await admin
       .from("message_push_dispatches")
       .update({ status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() })
-      .eq("message_id", messageId);
-    return error
-      ? { proceed: true, tracked: false, attempts }
-      : { proceed: true, tracked: true, attempts };
+      .eq("message_id", messageId)
+      .eq("status", existing.status)
+      .eq("updated_at", existing.updated_at)
+      .select("message_id")
+      .maybeSingle();
+    if (error) return { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true };
+    return claimed
+      ? { proceed: true, tracked: true, attempts }
+      : { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
   }
 
   const { error: insertError } = await admin
@@ -139,7 +135,7 @@ async function claimDispatch(
   if (String(insertError.code ?? "") === "23505") {
     return { proceed: false, tracked: true, attempts: 1, reason: "concurrent_dispatch" };
   }
-  return { proceed: true, tracked: false, attempts: 1 };
+  return { proceed: false, tracked: false, attempts: 1, reason: "dispatch_ledger_unavailable", retryable: true };
 }
 
 async function finishDispatch(
@@ -164,8 +160,6 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   const auth = req.headers.get("Authorization") ?? "";
-  const senderId = jwtSubject(auth);
-  if (!senderId) return json({ error: "Unauthorized" }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -185,6 +179,10 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  // The claimed sub in a JWT is attacker-controlled until Supabase Auth
+  // validates its signature, issuer and expiry. Never trust decode-only IDs.
+  const senderId = await verifiedNotificationActor(auth, token => admin.auth.getUser(token));
+  if (!senderId) return json({ error: "Unauthorized" }, 401);
 
   const { data: message, error: messageError } = await admin
     .from("messages")
@@ -213,7 +211,9 @@ Deno.serve(async (req) => {
     .eq("user_id", recipientId)
     .maybeSingle();
 
-  if (!recipientStateError && recipientState?.is_muted === true) {
+  // Privacy metadata unavailable is not equivalent to "unmuted".
+  if (recipientStateError) return json({ error: "conversation_preferences_unavailable", retryable: true }, 503);
+  if (recipientState?.is_muted === true) {
     const mutedUntil = String(recipientState.muted_until ?? "").trim();
     const timedMuteActive = !mutedUntil || Date.parse(mutedUntil) > Date.now();
     if (timedMuteActive) {
@@ -225,11 +225,9 @@ Deno.serve(async (req) => {
     p_user_id: recipientId,
     p_type: "message",
   });
-  // Backward-compatible while a deployment is rolling: if the RPC is unavailable, keep the
-  // pre-existing delivery behavior rather than dropping messages.
-  if (!allowedError && allowed === false) {
-    return json({ ok: true, skipped: "recipient_preferences" });
-  }
+  const preference = pushPreferenceDecision(allowed, allowedError);
+  if (preference === "retry") return json({ error: "notification_preferences_unavailable", retryable: true }, 503);
+  if (preference === "skip") return json({ ok: true, skipped: "recipient_preferences" });
 
   const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
     admin.from("profiles")
@@ -267,6 +265,7 @@ Deno.serve(async (req) => {
 
   const claim = await claimDispatch(admin, messageId);
   if (!claim.proceed) {
+    if (claim.retryable) return json({ error: claim.reason ?? "dispatch_ledger_unavailable", retryable: true }, 503);
     return json({ ok: true, skipped: claim.reason ?? "duplicate", attempts: claim.attempts });
   }
 

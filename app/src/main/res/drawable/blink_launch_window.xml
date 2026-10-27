@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- An immediate brand frame, before the Compose intro is ready on slow devices. -->
+    <!-- Android must draw a startup window before Compose. No static text or logo:
+         the first visible branding is the actual Beyond LINK -> BLINK animation. -->
     <item android:drawable="@color/black" />
-    <item android:drawable="@drawable/ic_splash_b" android:gravity="center" />
 </layer-list>

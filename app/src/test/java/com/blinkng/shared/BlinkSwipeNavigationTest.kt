@@ -2,7 +2,6 @@ package com.blinkng.shared
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkSwipeNavigationTest {
@@ -30,11 +29,10 @@ class BlinkSwipeNavigationTest {
     }
 
     @Test
-    fun gestureDepthKeepsCardsReadable() {
-        assertEquals(1f, BlinkSwipeNavigation.scale(0f), 0.0001f)
-        assertEquals(.97f, BlinkSwipeNavigation.scale(.5f), 0.0001f)
-        assertEquals(.94f, BlinkSwipeNavigation.scale(1f), 0.0001f)
-        assertEquals(.94f, BlinkSwipeNavigation.scale(-2f), 0.0001f)
-        assertTrue(BlinkSwipeNavigation.alpha(1f) >= .90f)
+    fun pagesStayFullSizeAndOpaqueThroughDrag() {
+        for (distance in listOf(-2f, -1f, -.5f, 0f, .5f, 1f, 2f)) {
+            assertEquals(1f, BlinkSwipeNavigation.scale(distance), 0.0001f)
+            assertEquals(1f, BlinkSwipeNavigation.alpha(distance), 0.0001f)
+        }
     }
 }

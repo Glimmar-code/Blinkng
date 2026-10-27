@@ -1,0 +1,79 @@
+# BLINK completion: Sections 2, 3 and 4 (BLINK LIFE excluded)
+
+**Scope authorized by owner:** Complete the unfinished functionality and
+verification listed under Sections **2, 3 and 4** of the 2026-10-27
+conversation audit, **excluding BLINK LIFE 3D** and the three independently
+managed pull requests described below. Do not equate a merged PR with an
+operational or released feature. Preserve newer main behavior.
+
+## Owner-managed work — STRICTLY OUT OF SCOPE
+
+- **PR #609:** Telegram-style navigation, elastic page switching, seamless
+  Beyond LINK startup. Do not edit its branch, port its motion/launch changes,
+  modify its checks or merge it as part of this work.
+- **PR #608:** Cloudflare R2 storage migration. Do not modify migration tooling,
+  the R2 gateway, bucket configurations, CORS or private-media cutover, and do
+  not merge its branch.
+- **PR #566:** GitHub Actions manual management. Do not change workflow triggers,
+  permissions, scheduled workers, CI ownership or that PR's branch.
+- **BLINK LIFE 3D:** excluded by the owner. No game-engine/asset/map/multiplayer
+  changes in this consolidation.
+
+These tasks are being handled separately by the owner. Changes in unrelated
+areas must preserve their work rather than silently replace or absorb it.
+
+**Release state:** This Testlab branch is a FIRST INCREMENT, not completion.
+Do not publish the APK, turn on paid features, copy private media, or run
+production SQL until the corresponding acceptance gates below pass.
+
+## Priority and evidence backlog
+
+| Track | Existing baseline | Work still required |
+|---|---|---|
+| Chat media studio (#595) | Merged partial editor, gallery, vault candidate | Native interactive polls, live location consent, video transitions, audio processing, PDF/OCR, vault device and privacy tests, exact reference screenshots |
+| Private photo delivery (#571/#578) | Merged album/retry/view-once code | Two-account Android↔Windows tests, app-exit/reconnect/cancellation, delivery receipts, private RLS, signed APK |
+| Phone and contacts (#606) | Clients merged, OTP enforcement off | Stage private matching schema/function, configure SMS provider and HMAC secret, consent/delete/opt-out/push E2E |
+| Market-only Feed (#588) | Clients merged; **production `blink_feed_market_category_guard` trigger was independently observed on 27 Oct** | Real-account negative tests for spoofed categories/ads and existing posts, legitimate discussions, image-only moderation, bypass/rollback checks |
+| WhatsApp Channels (#601) | UI and backend merged | Physical-client media, offline, visual fidelity, follower FCM end-to-end and retry |
+| Coins, HP, Wallet (#586/#591) | Core screens and reward rules merged | SSV verified awards, phone/emulator wallet UX, ledger/mission/transfer live parity, expiry and refund tests |
+| Refer & Grow (#572/#573) | Invite/analytics/discovery staged | Fraud-reviewed reward activation, signup attribution, worker/push/analytics live tests |
+| Paystack / subscriptions | Payment Edge Functions present | Opt-in renewals, expiry/cancel, duplicate/refund security, boosts, seller payout acceptance |
+| Feed + Reels | Extensive screens merged | Freshness, pagination, views, media edit/publish/privacy parity and device frame timing; navigation/swipe/startup changes are reserved for PR #609 |
+| Profiles + Stories | Theme/story code merged | Cross-client theme persistence, Story privacy/playback/replies, screenshot and font-scale acceptance |
+| Search + Connect | Redesigned screens merged; Search landing now requests 5 genuine server hashtags and correctly labels the existing **7-day** backend window | The requested **30-day** ranking, 3 properly ranked trending users, autocomplete, consent-based recommendations and housing/mentor E2E are still pending |
+| Messages + groups | Chat and invitation foundation merged | Delivery/reading/drafts, member permissions, offline recovery, moderation and UI exactness |
+| Notifications | Production `notification_preferences` table has quiet-hours fields and Android `NotificationPreferenceStore` already implements local quiet-hour/category controls; Phase-two tracker remains open | Archive, digests, quiet-hour user experience verification, cross-device read, verified FCM/worker retries |
+| Website | Cloudflare route PRs merged | Real deployed deep links, Android-app parity, SEO smoke, safe public metadata |
+| APK updates/releases | Signed workflow code present | Repair open publication issue, exact artifact install/upgrade, smaller delta updates after tested rollback |
+| Admin & reporting | Mobile admin code present | Protected role switches, bug reports and auditable rewards, remotely managed announcements |
+| University Battle | Mini-game proposal | Separately scope 1v1 game and fair online results; do not bundle BLINK LIFE 3D |
+| iOS | Unreleased | Plan independent cross-platform parity/TestFlight release; do not claim builds exist |
+| Whole-app performance/accessibility | Partial tests | 320–412dp/200% fonts, low-end Android 15 device, Windows parity, lifecycle and offline; do not alter #609 gesture/startup implementation |
+
+## Current confirmed integration evidence
+
+- Production `public.feed_posts` already has trigger `blink_feed_market_category_guard` (read-only inspection, 27 October 2026). Do **not** deploy another competing policy merely because PR #588's old description said otherwise. The trigger's behavior still needs server-side negative tests with isolated accounts. No production writes were performed in this audit.
+- Contact discovery still needs independent backend integration; a merged UI/PR is not evidence of live phone-number matching.
+- Production has a `notification_preferences` table with `quiet_hours_enabled`, start/end minute and `timezone`, and Android already has client quiet-hours logic. Do **not** rebuild these settings; complete end-to-end notification suppression, expiry/archiving, and cross-device verification instead.
+- The production database has `blink_referral_coin_milestones` and verification subscription columns, but schema existence alone does not establish enabled Coin payouts or working subscription renewals.
+
+## This Testlab increment (2026-10-27)
+
+- Added a shared Android/Windows chat poll input/choice policy and unit tests.
+- Added Android text-poll validation and Windows text-poll draft composer, both using the same bounded 2–8 option policy and consistent fallback formatting.
+- Added a reference Search landing component to render up to 5 **real server-sourced** trending hashtags (backend currently uses 7 days, not the owner's requested 30); tap enters the searched hashtag. No fake data. The proper 30-day/3-user ranking still needs a separately validated server migration. Interactive native votes remain unavailable until client RPC/UI/backend integration is verified.
+- Added a **STAGING-ONLY** SQL candidate with server-authoritative, single-choice vote idempotency, authenticated participant checks, direct-chat block-denial, privacy-safe aggregates, poll closure and deleted-message safeguards. No production deployment.
+- Do **not** deploy SQL or present polls as available to users. Android/Windows
+  UI + actual transport integration, disposable PostgreSQL security fixture and
+  full end-to-end testing remain required.
+
+## Promotion gate for every increment
+
+Use an isolated main-based Testlab candidate. Check latest-head Android JVM,
+lint, instrumentation, debug/release APK, Windows build, browser, SQL fixture,
+security and platform parity. Exercise private features with disposable users
+and approved staging. Verify exact reference screenshots on an actual target
+device and prove the exact signed APK installs. Confirm no wallet ledger,
+old-client, server grants or data deletion regressions. Only merge to protected
+main when ALL applicable checks pass. Never force merge or claim unverified
+publication.
