@@ -456,7 +456,7 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             hiddenFeedPostIds = hiddenFeedPostIds,
             mutedFeedAuthors = mutedFeedAuthors,
-            isLoading = if (feedLane == 1) isRefreshingFollowing && followingPosts.isEmpty() else isLoading,
+            isLoading = if (feedLane == 1) (isRefreshingFollowing || isLoading) && followingPosts.isEmpty() else isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
             isServerConnected = isServerConnected,
