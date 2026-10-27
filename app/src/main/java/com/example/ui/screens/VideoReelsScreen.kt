@@ -2333,7 +2333,7 @@ private fun ReelVideo(
                 currentOnProgressChange((position.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
 
                 // Seeking close to the end or backwards is not a completed watch.
-                if (watchedMs >= (duration * 90L / 100L)) {
+                if (qualifiedReelCompletion(watchedMs, duration)) {
                     completed = true
                 }
                 if (watchedMs >= (duration * 105L / 100L)) {
