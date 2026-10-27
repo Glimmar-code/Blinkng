@@ -1323,8 +1323,10 @@ private fun ImageFullscreenDialog(
                                 } else {
                                     committed = !handledByChild && downward &&
                                         BlinkElasticGesturePhysics.shouldCommit(
-                                            deltaY, velocity.calculateVelocity().y,
-                                            dismissActivation, flickMinimum, flickVelocity
+                                            deltaY, BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                                                deltaY, velocity.calculateVelocity().y,
+                                                change.uptimeMillis - down.uptimeMillis
+                                            ), dismissActivation, flickMinimum, flickVelocity
                                         )
                                     break
                                 }
