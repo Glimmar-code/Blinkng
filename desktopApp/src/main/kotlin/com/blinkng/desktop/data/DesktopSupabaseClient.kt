@@ -3512,6 +3512,9 @@ class DesktopSupabaseClient(
             row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
         },
         createdAt = row.optString("created_at"),
+        quantity = if (row.has("quantity") && !row.isNull("quantity")) row.optInt("quantity").coerceAtLeast(0) else null,
+        viewCount = if (row.has("views_count") && !row.isNull("views_count")) row.optLong("views_count").coerceAtLeast(0L) else null,
+        saveCount = if (row.has("saves_count") && !row.isNull("saves_count")) row.optLong("saves_count").coerceAtLeast(0L) else null,
     )
 
     private fun parseConnectListing(row: JSONObject) = DesktopConnectListing(
