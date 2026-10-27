@@ -3214,6 +3214,7 @@ fun MainAppContent(
                 isDark = uiState.isDarkMode,
                 startInReelMode = startReelComposer,
                 isSubmitting = uiState.isCreatingPost,
+                uploadProgress = uiState.postUploadProgress,
                 searchMentions = { query, limit, afterUsername, afterId ->
                     viewModel.searchMentionProfiles(query, limit, afterUsername, afterId)
                 }
