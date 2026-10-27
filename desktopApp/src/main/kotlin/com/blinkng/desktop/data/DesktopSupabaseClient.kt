@@ -1013,6 +1013,17 @@ class DesktopSupabaseClient(
         val likedIds = fetchMyLikedPostIds()
         val bookmarkedIds = fetchMyBookmarkedPostIds()
         val repostedIds = fetchMyRepostedPostIds()
+        // One bounded, authenticated metadata read for the current page.
+        // A lack of polls permission must not block all Feed content.
+        val pageIds = (0 until rows.length())
+            .mapNotNull { rows.optJSONObject(it)?.optString("id")?.takeIf(String::isNotBlank) }
+        val pollPostIds = if (pageIds.isEmpty()) emptySet() else runCatching {
+            val ids = pageIds.joinToString(",")
+            val pollRows = getArray("/rest/v1/polls?select=post_id&post_id=in.($ids)")
+            (0 until pollRows.length()).mapNotNull {
+                pollRows.optJSONObject(it)?.optString("post_id")?.takeIf(String::isNotBlank)
+            }.toSet()
+        }.getOrDefault(emptySet())
         (0 until rows.length()).mapNotNull { index ->
             val row = rows.optJSONObject(index) ?: return@mapNotNull null
             val postId = row.optString("id")
@@ -1024,7 +1035,7 @@ class DesktopSupabaseClient(
                 liked = postId in likedIds,
                 bookmarked = postId in bookmarkedIds,
                 reposted = postId in repostedIds,
-            )
+            ).copy(hasPoll = postId in pollPostIds)
         }
     }
 

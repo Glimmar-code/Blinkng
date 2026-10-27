@@ -182,6 +182,9 @@ data class BlinkUiState(
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
     val followingFeedErrorMessage: String? = null,
+    val feedPaginationErrorMessage: String? = null,
+    val followingPaginationErrorMessage: String? = null,
+    val reelsPaginationErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
@@ -1896,6 +1899,7 @@ private suspend fun restoreSupabaseSession() {
         if (!BlinkRefreshPolicy.isStale(last, now, BlinkRefreshPolicy.SOCIAL_FEED_REFRESH_INTERVAL_MS)) return
         visibleRefreshAt[key] = now
         val accountId = state.myProfile.id
+        _uiState.value = state.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
         viewModelScope.launch {
             try {
                 syncMutex.withLock {
@@ -1909,6 +1913,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         followingPosts = if (fresh.isEmpty()) emptyList()
                             else reconcileRefreshedFeed(current.followingPosts, fresh),
+                        hasMoreFollowingPosts = fresh.size >= 30,
+                        followingFeedErrorMessage = null,
                         followingRefreshRevision = if (fresh.isEmpty() && current.followingPosts.isNotEmpty())
                             current.followingRefreshRevision + 1 else current.followingRefreshRevision
                     )
@@ -1918,6 +1924,15 @@ private suspend fun restoreSupabaseSession() {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Quiet Following feed refresh failed", error)
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(
+                        followingFeedErrorMessage = "Couldn't load Following. Tap refresh to retry."
+                    )
+                }
+            } finally {
+                if (_uiState.value.myProfile.id == accountId) {
+                    _uiState.value = _uiState.value.copy(isRefreshingFollowing = false)
+                }
             }
         }
     }
@@ -2316,16 +2331,19 @@ private suspend fun restoreSupabaseSession() {
             following -> before.copy(
                 isRefreshingFollowing = true,
                 isLoadingMoreFollowingPosts = false,
-                followingFeedErrorMessage = null
+                followingFeedErrorMessage = null,
+                followingPaginationErrorMessage = null
             )
             isReel -> before.copy(
                 isRefreshingReels = true,
                 isLoadingMoreReels = false,
+                reelsPaginationErrorMessage = null,
                 feedErrorMessage = null
             )
             else -> before.copy(
                 isRefreshingHome = true,
                 isLoadingMorePosts = false,
+                feedPaginationErrorMessage = null,
                 feedErrorMessage = null
             )
         }
@@ -2362,16 +2380,19 @@ private suspend fun restoreSupabaseSession() {
                             followingPosts = refreshed.items,
                             followingRefreshRevision = now.followingRefreshRevision + 1,
                             hasMoreFollowingPosts = page.size >= pageSize,
+                            followingPaginationErrorMessage = null,
                             followingFeedErrorMessage = null
                         )
                         isReel -> now.copy(
                             reels = refreshed.items,
-                            hasMoreReels = page.size >= pageSize
+                            hasMoreReels = page.size >= pageSize,
+                            reelsPaginationErrorMessage = null
                         )
                         else -> now.copy(
                             posts = refreshed.items,
                             postsRefreshRevision = now.postsRefreshRevision + 1,
-                            hasMorePosts = page.size >= pageSize
+                            hasMorePosts = page.size >= pageSize,
+                            feedPaginationErrorMessage = null
                         )
                     }
                     // A manual refresh of one lane must not postpone fresh
@@ -2548,13 +2569,15 @@ private suspend fun restoreSupabaseSession() {
                             reels = (latest.reels + page).distinctBy { it.id },
                             // Server-side ranking/fallback must advance the visible cursor.
                             hasMoreReels = page.size >= 30 &&
-                                page.any { item -> latest.reels.none { it.id == item.id } }
+                                page.any { item -> latest.reels.none { it.id == item.id } },
+                            reelsPaginationErrorMessage = null
                         )
                     } else {
                         _uiState.value = latest.copy(
                             posts = (latest.posts + page).distinctBy { it.id },
                             hasMorePosts = page.size >= 30 &&
-                                page.any { item -> latest.posts.none { it.id == item.id } }
+                                page.any { item -> latest.posts.none { it.id == item.id } },
+                            feedPaginationErrorMessage = null
                         )
                     }
                     persistCurrentFeed()
@@ -2563,6 +2586,14 @@ private suspend fun restoreSupabaseSession() {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Load more feed failed", error)
+                if (requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    _uiState.value = if (isReel) latest.copy(
+                        reelsPaginationErrorMessage = "Couldn't load more reels."
+                    ) else latest.copy(
+                        feedPaginationErrorMessage = "Couldn't load more posts."
+                    )
+                }
             } finally {
                 if (requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
                     val latest = _uiState.value
@@ -2583,7 +2614,7 @@ private suspend fun restoreSupabaseSession() {
         if (last.createdAt.isBlank()) return
         val requestEpoch = followingPageEpoch
 
-        _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
+        _uiState.value = state.copy(isLoadingMoreFollowingPosts = true, followingPaginationErrorMessage = null)
         viewModelScope.launch {
             try {
                 val page = syncMutex.withLock {
@@ -2598,13 +2629,20 @@ private suspend fun restoreSupabaseSession() {
                     val latest = _uiState.value
                     _uiState.value = latest.copy(
                         followingPosts = (latest.followingPosts + page).distinctBy { it.id },
-                        hasMoreFollowingPosts = page.size >= 30
+                        hasMoreFollowingPosts = page.size >= 30 &&
+                            page.any { item -> latest.followingPosts.none { it.id == item.id } },
+                        followingPaginationErrorMessage = null
                     )
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Load more following feed failed", error)
+                if (requestEpoch == followingPageEpoch) {
+                    _uiState.value = _uiState.value.copy(
+                        followingPaginationErrorMessage = "Couldn't load more Following posts."
+                    )
+                }
             } finally {
                 if (requestEpoch == followingPageEpoch) {
                     _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
