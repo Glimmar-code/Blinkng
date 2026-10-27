@@ -212,6 +212,14 @@ Deno.serve(async (req) => {
       if (referralError || !referral) {
         return json({ error: "Referral record was not independently verified" }, 403);
       }
+    } else if (kind === "blink_contact_joined") {
+      // Do not accept arbitrary contact alerts, even from trusted service-role callers.
+      const { data: authorized, error: authError } = await admin.rpc(
+        "blink_contact_push_is_authorized", { p_notification_id: notificationId },
+      );
+      if (authError || authorized !== true) {
+        return json({ error: "Contact notification was not independently authorized" }, 403);
+      }
     } else if (kind === "blink_channel_update" && notification.target_type === "channel") {
       // Every recipient is rechecked at delivery time: unfollowing, banning
       // and muting must prevent delayed/retried pushes.
@@ -303,9 +311,10 @@ Deno.serve(async (req) => {
   const senderAvatar = String(actor?.avatar_url ?? "");
   const action = String(notification.text ?? "New activity").trim();
   const body = String(notification.sub_text ?? "").trim() || action;
-  const title = action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
-    ? action
-    : `${senderName} ${action}`.trim();
+  const title = notification.metadata?.kind === "blink_contact_joined"
+    ? `${senderName} from your contacts is now on BLINK!`
+    : action.startsWith("@") || action.toLowerCase().startsWith(senderName.toLowerCase())
+      ? action : `${senderName} ${action}`.trim();
 
   const data: Record<string, string> = {
     type,

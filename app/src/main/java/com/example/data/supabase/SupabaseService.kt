@@ -1665,6 +1665,7 @@ fun getCurrentUserId(): String? {
                 put("current_job_title", profile.currentJobTitle)
                 put("bio", profile.bio)
                 put("university", profile.university)
+                profile.accountType.takeIf { it.isNotBlank() }?.let { put("account_type", it) }
                 put("faculty", profile.faculty)
                 put("department", profile.department)
                 put("course_of_study", profile.courseOfStudy)
@@ -4455,6 +4456,7 @@ suspend fun uploadPostMedia(
             professionalHeadline = obj.cleanString("professional_headline"),
             currentJobTitle = obj.cleanString("current_job_title"),
             university = obj.cleanString("university"),
+            accountType = obj.cleanString("account_type"),
             faculty = obj.cleanString("faculty"),
             department = obj.cleanString("department"),
             courseOfStudy = obj.cleanString("course_of_study"),

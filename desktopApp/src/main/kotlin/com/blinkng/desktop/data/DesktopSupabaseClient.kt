@@ -598,7 +598,7 @@ class DesktopSupabaseClient(
         }
 
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,cover_photo_url,profile_theme,professional_headline,daily_streak,university,account_type,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -652,9 +652,46 @@ class DesktopSupabaseClient(
         ))
     }
 
+    /** Windows uses the same server-held, permission-gated contact matches as Android.
+     * It never reads another device's address book or downloads raw numbers. */
+    suspend fun contactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "get")) as JSONObject
+    }
+
+    suspend fun setContactDiscovery(syncEnabled: Boolean, discoverable: Boolean, joinAlerts: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "settings")
+            .put("sync_enabled", syncEnabled).put("discoverable", discoverable)
+            .put("join_alerts", joinAlerts)) as JSONObject
+    }
+
+    suspend fun deleteContactDiscovery(): JSONObject = withContext(Dispatchers.IO) {
+        postObject("/functions/v1/blink-contact-discovery", JSONObject().put("action", "delete")) as JSONObject
+    }
+
+    suspend fun requestOnboardingPhoneCode(raw: String) = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Enter a valid phone number." }
+        execute(authenticatedRequest("/auth/v1/user")
+            .put(JSONObject().put("phone", number).toString().toRequestBody(jsonMedia)).build())
+    }
+
+    suspend fun verifyOnboardingPhoneCode(raw: String, code: String): Boolean = withContext(Dispatchers.IO) {
+        val number = requireNotNull(com.blinkng.shared.BlinkPhonePolicy.normalize(raw)) { "Invalid phone number." }
+        require(com.blinkng.shared.BlinkPhonePolicy.otpIsValid(code)) { "Enter a six-digit code." }
+        val rawReply = execute(authenticatedRequest("/auth/v1/verify")
+            .post(JSONObject().put("phone", number).put("token", code).put("type", "phone_change")
+                .toString().toRequestBody(jsonMedia)).build())
+        val reply = JSONObject(rawReply)
+        if (reply.optString("access_token").isNotBlank() && reply.optString("refresh_token").isNotBlank()) {
+            saveAuthResponseBlocking(reply, requireSession().email)
+        }
+        val user = JSONObject(execute(authenticatedRequest("/auth/v1/user").get().build()))
+        user.optString("phone") == number && user.optString("phone_confirmed_at").isNotBlank()
+    }
+
     suspend fun saveOnboardingProfile(
         username: String? = null,
         university: String? = null,
+        accountType: String? = null,
         department: String? = null,
         academicLevel: String? = null,
         gender: String? = null,
@@ -672,6 +709,7 @@ class DesktopSupabaseClient(
             body.put("username", clean)
         }
         university?.let { body.put("university", it.trim()) }
+        accountType?.let { body.put("account_type", it) }
         department?.let { body.put("department", it.trim()) }
         academicLevel?.let {
             val clean = it.trim()
@@ -3351,6 +3389,7 @@ class DesktopSupabaseClient(
         professionalHeadline = row.optNullableString("professional_headline"),
         dailyStreak = row.optInt("daily_streak", 0).coerceAtLeast(0),
         university = row.optNullableString("university"),
+        accountType = row.optString("account_type"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),
         academicLevel = row.optNullableString("academic_level"),
