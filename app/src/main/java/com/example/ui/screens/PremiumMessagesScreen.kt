@@ -349,9 +349,10 @@ fun PremiumMessagesScreen(
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // The inbox remains available for the entrance/exit transition.
-                    // Do not keep a blurred offscreen inbox alive during full-screen chat.
-                    if (activeConversation == null || !isConversationFullScreen) {
+                    // Telegram-style interactive back needs the actual previous
+                    // conversation list underneath the chat even at full screen.
+                    // Do not blank it while the top screen follows the finger.
+                    {
                         PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
@@ -371,20 +372,23 @@ fun PremiumMessagesScreen(
                             isConnected = isConnected,
                             isLoading = isLoading,
                             isDark = isDark,
-                            onVisibleInboxReceipt = onVisibleInboxReceipt
+                            // Hidden inbox rows must not mark conversations read.
+                            onVisibleInboxReceipt = { id ->
+                                if (!chatSlideVisible) onVisibleInboxReceipt(id)
+                            }
                         )
                     }
 
                     AnimatedVisibility(
                         visible = chatSlideVisible && activeConversation != null,
                         enter = slideInHorizontally(
-                            initialOffsetX = { -it },
-                            animationSpec = tween(420, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(260)),
+                            initialOffsetX = { it },
+                            animationSpec = tween(260, easing = FastOutSlowInEasing)
+                        ),
                         exit = slideOutHorizontally(
-                            targetOffsetX = { -it },
-                            animationSpec = tween(390, easing = FastOutSlowInEasing)
-                        ) + fadeOut(tween(240))
+                            targetOffsetX = { it },
+                            animationSpec = tween(240, easing = FastOutSlowInEasing)
+                        )
                     ) {
                         val displayedConversation = activeConversation ?: retainedActiveConversation
                         if (displayedConversation != null) {
@@ -472,9 +476,9 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeLeftSwipeToClose(
+private fun Modifier.observeRightSwipeToClose(
     thresholdPx: Float,
-    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
     onDragProgress: (Float) -> Unit,
     onRelease: () -> Unit
 ): Modifier = pointerInput(thresholdPx) {
@@ -484,6 +488,7 @@ private fun Modifier.observeLeftSwipeToClose(
         tracker.addPosition(down.uptimeMillis, down.position)
         var committed = false
         var childHandled = false
+        val touchSlopPx = viewConfiguration.touchSlop
         while (true) {
             // Final pass lets a photo carousel or child swipe claim its own gesture.
             // This observer never consumes pointer changes from the conversation.
@@ -493,12 +498,12 @@ private fun Modifier.observeLeftSwipeToClose(
             tracker.addPosition(change.uptimeMillis, change.position)
             val horizontal = change.position.x - down.position.x
             val vertical = change.position.y - down.position.y
-            val leftIntent = horizontal < 0f && -horizontal > abs(vertical) * 1.35f
+            val rightIntent = horizontal > touchSlopPx && horizontal > abs(vertical) * 1.35f
             if (change.pressed) {
-                if (!childHandled && leftIntent) onDragProgress(horizontal)
+                if (!childHandled && rightIntent) onDragProgress(horizontal - touchSlopPx)
                 else onDragProgress(0f)
             } else {
-                committed = !childHandled && leftIntent && BlinkElasticGesturePhysics.shouldCommit(
+                committed = !childHandled && rightIntent && BlinkElasticGesturePhysics.shouldCommit(
                     horizontal, BlinkElasticGesturePhysics.resolvedFlickVelocity(
                         horizontal, tracker.calculateVelocity().x, change.uptimeMillis - down.uptimeMillis
                     ), thresholdPx,
@@ -508,7 +513,7 @@ private fun Modifier.observeLeftSwipeToClose(
             }
         }
         onRelease()
-        if (committed) onSwipeLeft()
+        if (committed) onSwipeRight()
     }
 }
 
@@ -547,9 +552,11 @@ private fun PremiumMessagesMasterDetail(
     var closeDragPx by remember(activeConversation.partnerUsername) { mutableStateOf(0f) }
     var closeDragging by remember(activeConversation.partnerUsername) { mutableStateOf(false) }
     val closeVisual by animateFloatAsState(
-        targetValue = if (chatReducedMotion) 0f else BlinkElasticGesturePhysics.visualDistance(closeDragPx, swipeThresholdPx),
+        // Follow the user's finger instead of the old capped rubber offset.
+        // The inbox remains fully drawn underneath the chat during the drag.
+        targetValue = if (chatReducedMotion) 0f else closeDragPx,
         animationSpec = if (closeDragging || chatReducedMotion) snap() else spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium
         ), label = "chatElasticClose"
     )
@@ -557,11 +564,11 @@ private fun PremiumMessagesMasterDetail(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { translationX = closeVisual }
+            .graphicsLayer { translationX = closeVisual.coerceAtMost(size.width) }
             .semantics { contentDescription = "Chat" }
-            .observeLeftSwipeToClose(
+            .observeRightSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeLeft = onCloseConversation,
+                onSwipeRight = onCloseConversation,
                 onDragProgress = { closeDragging = true; closeDragPx = it },
                 onRelease = { closeDragging = false; closeDragPx = 0f }
             )
