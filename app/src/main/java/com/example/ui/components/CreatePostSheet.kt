@@ -501,7 +501,9 @@ fun CreatePostSheet(
             .getOrElse(coverFrameIndex) { 0.25f }
         try {
             val created = withContext(Dispatchers.IO) {
-                BlinkReelPoster.saveCover(context, Uri.parse(video), choice)
+                runCatching {
+                    BlinkReelPoster.saveCover(context, Uri.parse(video), choice)
+                }.getOrNull()
             }
             if (created == null) {
                 coverError = "Couldn't generate that cover. The automatic cover is still available."
