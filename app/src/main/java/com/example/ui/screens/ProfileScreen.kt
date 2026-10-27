@@ -47,6 +47,9 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -382,48 +385,59 @@ fun ProfileScreen(
                         else overlayOffset.value).roundToInt(), 0)
                 }
                 .pointerInput(profile.id, overlayThresholdPx) {
-                    var rawDrag = 0f
-                    var tracker = VelocityTracker()
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            rawDrag = 0f
-                            tracker = VelocityTracker()
-                            overlayDragPx = overlayOffset.value
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            // Standard Telegram back direction: drag RIGHT to uncover
-                            // the existing screen. A slow release springs to the start.
-                            rawDrag = (rawDrag + dragAmount).coerceAtLeast(0f)
+                    // Passive final-pass observer: LazyColumn, image carousels and
+                    // horizontal child controls always get first priority.
+                    // A rightward back drag follows the finger without consuming
+                    // scroll or producing one coroutine per touch sample.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        val touchSlop = viewConfiguration.touchSlop
+                        var childOwned = false
+                        var committed = false
+                        var lastDrag = 0f
+                        var moved = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (event.changes.size != 1) childOwned = true
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.pressed && change.isConsumed) childOwned = true
                             tracker.addPosition(change.uptimeMillis, change.position)
-                            change.consume()
-                            overlayDragPx = rawDrag
-                        },
-                        onDragEnd = {
-                            val commit = rawDrag > 0f && BlinkElasticGesturePhysics.shouldCommit(
-                                rawDrag, tracker.calculateVelocity().x, overlayThresholdPx,
-                                28.dp.toPx(), 1100.dp.toPx()
-                            )
-                            overlayScope.launch {
-                                overlayOffset.snapTo(rawDrag)
-                                overlayDragPx = Float.NaN
-                                if (commit) onBack()
-                                else overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ))
-                            }
-                        },
-                        onDragCancel = {
-                            overlayScope.launch {
-                                overlayOffset.snapTo(rawDrag)
-                                overlayDragPx = Float.NaN
-                                overlayOffset.animateTo(0f, spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                ))
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            val eligible = !childOwned && dx > touchSlop &&
+                                dx > kotlin.math.abs(dy) * 1.35f
+                            if (change.pressed) {
+                                lastDrag = if (eligible) dx - touchSlop else 0f
+                                if (lastDrag > 0f) moved = true
+                                if (moved) overlayDragPx = lastDrag
+                            } else {
+                                committed = eligible && BlinkElasticGesturePhysics.shouldCommit(
+                                    dx,
+                                    BlinkElasticGesturePhysics.resolvedFlickVelocity(
+                                        dx, tracker.calculateVelocity().x,
+                                        change.uptimeMillis - down.uptimeMillis
+                                    ),
+                                    overlayThresholdPx, 28.dp.toPx(), 1100.dp.toPx()
+                                )
+                                break
                             }
                         }
-                    )
+                        if (moved) {
+                            overlayScope.launch {
+                                overlayOffset.snapTo(lastDrag)
+                                overlayDragPx = Float.NaN
+                                if (committed) onBack()
+                                else overlayOffset.animateTo(
+                                    0f, spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
                 .testTag("profile_screen"),
             shape = RoundedCornerShape(0.dp),
