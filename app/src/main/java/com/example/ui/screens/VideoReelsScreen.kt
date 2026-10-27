@@ -544,6 +544,9 @@ private fun ReelsContent(
         mutableStateOf(!initialReelId.isNullOrBlank())
     }
     val expansion = remember(resumeUserKey) { Animatable(if (expanded) 1f else 0f) }
+    // A single synchronous, draw-linked state replaces a coroutine per drag sample.
+    // NaN means no gesture is in progress and the settled Animatable owns motion.
+    var dragProgress by remember(resumeUserKey) { mutableFloatStateOf(Float.NaN) }
     val animationScope = rememberCoroutineScope()
     val reducedMotion = rememberBlinkReduceMotion()
     val latestBottomBarVisibilityChange by rememberUpdatedState(onBottomBarVisibilityChange)
@@ -555,7 +558,7 @@ private fun ReelsContent(
         expansion.animateTo(
             targetValue = if (expanded) 1f else 0f,
             animationSpec = if (reducedMotion) snap() else spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = Spring.StiffnessMedium
             )
         )
@@ -578,7 +581,29 @@ private fun ReelsContent(
         val chromeTop = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 292.dp)
             .coerceAtMost(maxHeight * 0.48f)
         val chromeBottom = 92.dp.coerceAtMost(maxHeight * 0.18f)
-        val progress = expansion.value.coerceIn(0f, 1f)
+        val progress = if (dragProgress.isFinite()) dragProgress.coerceIn(0f, 1f)
+            else expansion.value.coerceIn(0f, 1f)
+        // Animate from the exact final finger position; no jump back to preview
+        // before expanding or collapsing the continuously mounted video frame.
+        val settleExpansion: (Boolean) -> Unit = { target ->
+            animationScope.launch {
+                if (dragProgress.isFinite()) {
+                    expansion.snapTo(dragProgress.coerceIn(0f, 1f))
+                    dragProgress = Float.NaN
+                }
+                if (target == expanded) {
+                    expansion.animateTo(
+                        targetValue = if (target) 1f else 0f,
+                        animationSpec = if (reducedMotion) snap() else spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
+                } else {
+                    expanded = target
+                }
+            }
+        }
         val pagerFrame = Modifier
             .fillMaxSize()
             .padding(
@@ -600,22 +625,22 @@ private fun ReelsContent(
                         pager.currentPage != 0 || pager.currentPageOffsetFraction != 0f ||
                         available.y <= 0f || isInteractionOverlayOpen
                     ) return Offset.Zero
-                    animationScope.launch {
-                        expansion.snapTo((expansion.value - available.y / viewportHeightPx).coerceIn(0f, 1f))
-                    }
+                    val starting = if (dragProgress.isFinite()) dragProgress else expansion.value
+                    dragProgress = ReelExpansionMotion.progressAfterDrag(starting, available.y, viewportHeightPx)
                     return Offset(0f, available.y)
                 }
 
                 override suspend fun onPreFling(available: Velocity): Velocity {
-                    if (expanded && pager.currentPage == 0 && expansion.value < 0.995f) {
-                        val fastDownwardFlick = available.y > with(density) { 1100.dp.toPx() }
-                        val target = !fastDownwardFlick
-                        if (target == expanded) {
-                            animationScope.launch {
-                                expansion.animateTo(1f, tween(250, easing = FastOutSlowInEasing))
-                            }
-                        }
-                        expanded = target
+                    if (expanded && pager.currentPage == 0 &&
+                        dragProgress.isFinite() && dragProgress < 0.995f
+                    ) {
+                        val fastDownwardFlick = ReelExpansionMotion.shouldCompleteFastSwipe(
+                            dragDistancePx = viewportHeightPx * (1f - dragProgress),
+                            releaseVelocityPxPerSecond = available.y,
+                            minimumDistancePx = with(density) { 28.dp.toPx() },
+                            velocityThresholdPxPerSecond = with(density) { 1100.dp.toPx() }
+                        )
+                        settleExpansion(!fastDownwardFlick)
                         return available
                     }
                     return Velocity.Zero
@@ -634,36 +659,27 @@ private fun ReelsContent(
                             onDragStart = {
                                 distance = 0f
                                 velocity = VelocityTracker()
+                                dragProgress = expansion.value.coerceIn(0f, 1f)
                             },
                             onVerticalDrag = { change, delta ->
                                 distance -= delta
                                 velocity.addPosition(change.uptimeMillis, change.position)
                                 change.consume()
-                                animationScope.launch {
-                                    expansion.snapTo(
-                                        (expansion.value - delta / viewportHeightPx).coerceIn(0f, 1f)
-                                    )
-                                }
+                                dragProgress = ReelExpansionMotion.progressAfterDrag(
+                                    dragProgress, delta, viewportHeightPx
+                                )
                             },
                             onDragEnd = {
                                 val fastFlick = distance > 0f &&
-                                    BlinkElasticGesturePhysics.shouldCommit(
-                                        distance, -velocity.calculateVelocity().y,
-                                        65.dp.toPx(), 28.dp.toPx(), 1100.dp.toPx()
+                                    ReelExpansionMotion.shouldCompleteFastSwipe(
+                                        dragDistancePx = distance,
+                                        releaseVelocityPxPerSecond = -velocity.calculateVelocity().y,
+                                        minimumDistancePx = 28.dp.toPx(),
+                                        velocityThresholdPxPerSecond = 1100.dp.toPx()
                                     )
-                                val target = fastFlick
-                                if (target == expanded) animationScope.launch {
-                                    expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
-                                }
-                                expanded = target
+                                settleExpansion(fastFlick)
                             },
-                            onDragCancel = {
-                                val target = false
-                                if (target == expanded) animationScope.launch {
-                                    expansion.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
-                                }
-                                expanded = target
-                            }
+                            onDragCancel = { settleExpansion(false) }
                         )
                     }
                 }
@@ -808,16 +824,9 @@ private fun ReelsContent(
                 }
 
                 is ReelPagerItem.Sponsored -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                val distance = abs(pageOffset.coerceIn(-1f, 1f))
-                                scaleX = lerp(1f, 0.96f, distance)
-                                scaleY = lerp(1f, 0.96f, distance)
-                                alpha = lerp(1f, 0.65f, distance)
-                            }
-                    ) {
+                    // The native VerticalPager already performs the entire scroll.
+                    // Scaling/dimming sponsored pages exposes dark gaps while turning.
+                    Box(modifier = Modifier.fillMaxSize()) {
                         BlinkSponsoredNativeAd(
                             adUnitId = BuildConfig.ADMOB_REELS_NATIVE_AD_UNIT_ID,
                             placement = BlinkNativeAdPlacement.REEL,
@@ -1166,12 +1175,8 @@ private fun ReelPage(
                     ?.takeIf(String::isNotBlank)
                     ?: "Reel by $authorName"
             }
-            .graphicsLayer {
-                val distance = abs(pageOffset.coerceIn(-1f, 1f))
-                scaleX = lerp(1f, 0.94f, distance)
-                scaleY = lerp(1f, 0.94f, distance)
-                alpha = lerp(1f, 0.55f, distance)
-            }
+            // Keep the full reel opaque at every pager offset: sliding is owned
+            // by VerticalPager; independent scaling made videos visibly jump.
             .pointerInput(reel.id) {
                 detectTapGestures(
                     onPress = {
