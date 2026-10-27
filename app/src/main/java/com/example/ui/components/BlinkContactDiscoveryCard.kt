@@ -50,9 +50,11 @@ fun BlinkContactDiscoveryCard(
     fun update(value: BlinkContactsDiscoveryClient.Consent) {
         scope.launch {
             working = true
-            runCatching { client.set(value) }.onSuccess { settings = it; problem = null }
-                .onFailure { problem = it.message ?: "Could not save your choices." }
-            if (!value.syncEnabled) people = emptyList()
+            runCatching { client.set(value) }.onSuccess {
+                settings = it
+                problem = null
+                if (!it.syncEnabled) people = emptyList()
+            }.onFailure { problem = it.message ?: "Could not save your choices." }
             working = false
         }
     }
@@ -81,6 +83,8 @@ fun BlinkContactDiscoveryCard(
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("People from your contacts", style = MaterialTheme.typography.titleMedium)
             Text("Optional: BLINK matches phone numbers with consent. No call history or contact names are collected.",
+                style = MaterialTheme.typography.bodySmall)
+            Text("Turn on contact matching, then tap Find my friends and allow Contacts access. Only BLINK members who verified their number and opted in can appear.",
                 style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = settings.syncEnabled, enabled = !working, onCheckedChange = {
