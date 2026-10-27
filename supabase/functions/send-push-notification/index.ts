@@ -111,13 +111,20 @@ async function claimDispatch(
     }
 
     const attempts = Number(existing.attempts ?? 0) + 1;
-    const { error } = await admin
+    // Compare-and-swap the previous claim version. Another caller may have
+    // claimed this exact failed/expired message after our first read.
+    const { data: claimed, error } = await admin
       .from("message_push_dispatches")
       .update({ status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() })
-      .eq("message_id", messageId);
-    return error
-      ? { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true }
-      : { proceed: true, tracked: true, attempts };
+      .eq("message_id", messageId)
+      .eq("status", existing.status)
+      .eq("updated_at", existing.updated_at)
+      .select("message_id")
+      .maybeSingle();
+    if (error) return { proceed: false, tracked: false, attempts, reason: "dispatch_ledger_unavailable", retryable: true };
+    return claimed
+      ? { proceed: true, tracked: true, attempts }
+      : { proceed: false, tracked: true, attempts, reason: "concurrent_dispatch" };
   }
 
   const { error: insertError } = await admin
