@@ -49,6 +49,40 @@ class ReelsReferenceChromeTest {
     }
 
     @Test
+    fun storyStripOnlyRingsRealUploadsAndOpensTheRealStory() {
+        val actions = mutableListOf<String>()
+        composeRule.setContent {
+            MaterialTheme {
+                ReelsReferenceChrome(
+                    stories = listOf(
+                        Story(id = "story_me", username = "current", avatar = ""),
+                        Story(id = "friend1", username = "aisha", avatar = "",
+                            storyImage = "https://example.com/story.jpg", displayName = "Aisha",
+                            hasUnseen = true)
+                    ),
+                    userAvatar = "",
+                    currentUsername = "current",
+                    isDark = false,
+                    hasUnreadNotifications = false,
+                    selectedTab = "Reels",
+                    onSelectTab = {},
+                    onAddStory = { actions += "add" },
+                    onStoryClick = { actions += it.id },
+                    onProfileClick = {},
+                    onSearch = {},
+                    onGame = {},
+                    onNotifications = {},
+                    onMenu = {},
+                    autoSlideEnabled = false
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Add story").assertExists()
+        composeRule.onNodeWithContentDescription("Open Aisha's story").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("friend1"), actions) }
+    }
+
+    @Test
     fun previewShowsReferenceNavigationAndRoutesRealActions() {
         var currentTab = "Reels"
         val actions = mutableListOf<String>()
