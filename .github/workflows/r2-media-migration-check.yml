@@ -48,8 +48,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
       - name: Test Android/Windows shared R2 contract
-        run: ./gradlew :shared:test --no-daemon
+        run: gradle :shared:test --no-daemon
 
 # These code checks never prove a Cloudflare staging integration, security of
 # presigned PUT size limits, chat visibility or device streaming. Keep the
