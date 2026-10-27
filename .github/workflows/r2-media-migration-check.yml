@@ -12,6 +12,7 @@ on:
       - 'app/src/test/java/com/example/data/supabase/BlinkR2MediaPolicyAndroidTest.kt'
       - 'desktopApp/src/test/kotlin/com/blinkng/desktop/data/BlinkR2MediaPolicyDesktopTest.kt'
       - 'web/app.js'
+      - 'web/r2-media.mjs'
       - 'app/src/main/java/com/example/data/supabase/BlinkR2PublicUploader.kt'
       - 'app/src/main/java/com/example/data/supabase/SupabaseService.kt'
       - 'desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopMediaService.kt'
@@ -57,7 +58,9 @@ jobs:
       - name: Test Windows shared R2 policy and uploader compilation
         run: gradle -p desktopApp test --tests com.blinkng.desktop.data.BlinkR2MediaPolicyDesktopTest --no-daemon
       - name: Check website JavaScript syntax
-        run: node --check web/app.js
+        run: |
+          node --check web/app.js
+          node --check web/r2-media.mjs
 
 # These code checks never prove a Cloudflare staging integration, security of
 # presigned PUT size limits, chat visibility or device streaming. Keep the
